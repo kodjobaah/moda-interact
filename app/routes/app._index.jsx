@@ -34,7 +34,7 @@ export default function Index() {
   const { settings, stats } = useLoaderData();
 
   if (!settings) {
-    return <sOnboarding />;
+    return <Onboarding />;
   }
 
   return <Dashboard settings={settings} stats={stats} />;
