@@ -59,7 +59,7 @@ export const action = async ({ request }) => {
         "order-completed",
         order,
         {
-          jobId: `order-${safeShop}-${safeOrderId}`,
+          jobId: `order-${safeShop}-${safeOrderId}-${Date.now()}`,
         },
       );
 
