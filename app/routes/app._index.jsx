@@ -3,6 +3,7 @@ import { useFetcher, useLoaderData } from "react-router";
 import { useAppBridge } from "@shopify/app-bridge-react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
+import db from "../db.server";
 
 import Dashboard from "@/components/dashboard/Dashboard";
 import Onboarding from "@/components/onboarding/Onboarding";
