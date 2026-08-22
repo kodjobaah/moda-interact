@@ -1,5 +1,6 @@
 import { reactRouter } from "@react-router/dev/vite";
 import { defineConfig } from "vite";
+import { fileURLToPath, URL } from "node:url";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 // Related: https://github.com/remix-run/remix/issues/2835#issuecomment-1144102176
@@ -44,14 +45,22 @@ export default defineConfig({
     port: Number(process.env.PORT || 3000),
     hmr: hmrConfig,
     fs: {
-      // See https://vitejs.dev/config/server-options.html#server-fs-allow for more information
       allow: ["app", "node_modules"],
     },
   },
+
+  resolve: {
+    alias: {
+      "@": fileURLToPath(new URL("./app", import.meta.url)),
+    },
+  },
+
   plugins: [reactRouter(), tsconfigPaths()],
+
   build: {
     assetsInlineLimit: 0,
   },
+
   optimizeDeps: {
     include: ["@shopify/app-bridge-react"],
   },
