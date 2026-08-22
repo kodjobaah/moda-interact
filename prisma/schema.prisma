@@ -35,3 +35,17 @@ model Session {
 
   @@schema("shopify")
 }
+
+model ShopSettings {
+  id                     String   @id @default(cuid())
+  shop                   String   @unique
+
+  onboardingCompleted    Boolean  @default(false)
+  plan                   String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+    @@schema("shopify")
+}
+
+
