@@ -17,6 +17,7 @@ export const loader = async ({ request }) => {
     },
   });
 
+  console.log("Settings:", settings);
   return {
     settings,
     stats: {
