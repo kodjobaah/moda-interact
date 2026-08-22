@@ -27,10 +27,10 @@ export const action = async ({ request }) => {
     case "ORDERS_CREATE":
       const order = {
         shop,
-
         orderId: payload.admin_graphql_api_id,
 
-        checkoutToken: payload.checkout_token ?? null,
+        checkoutToken:
+          payload.checkout_token ?? null,
 
         customerId:
           payload.customer?.admin_graphql_api_id ?? null,
@@ -40,21 +40,35 @@ export const action = async ({ request }) => {
           payload.total_price ??
           null,
 
-        currency: payload.currency ?? null,
+        currency:
+          payload.currency ?? null,
       };
 
-      await ordersQueue.add(
+      const safeOrderId =
+        payload.admin_graphql_api_id.replace(
+          /[^a-zA-Z0-9_-]/g,
+          "_",
+        );
+
+      const safeShop = shop.replace(
+        /[^a-zA-Z0-9_-]/g,
+        "_",
+      );
+
+      const job = await ordersQueue.add(
         "order-completed",
         order,
         {
-          jobId: `order:${shop}:${payload.admin_graphql_api_id}`,
+          jobId: `order-${safeShop}-${safeOrderId}`,
         },
       );
 
-      console.log("Order queued", {
-        orderId: order.orderId,
-        shop: order.shop,
+      console.log("BullMQ job queued", {
+        jobId: job.id,
+        name: job.name,
+        queue: job.queueName,
       });
+
       break;
 
     default:
