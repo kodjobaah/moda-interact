@@ -29,6 +29,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function Index() {
+  const { settings, stats } = useLoaderData();
   return <Dashboard settings={settings} stats={stats} />;
 }
 /**
