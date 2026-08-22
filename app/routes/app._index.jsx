@@ -29,13 +29,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function Index() {
-  return (
-    <s-page heading="Moda Interact">
-      <s-section heading="Test">
-        <s-paragraph>The index route is rendering.</s-paragraph>
-      </s-section>
-    </s-page>
-  );
+  return <Onboarding />;
 }
 /**
 export default function Index() {
