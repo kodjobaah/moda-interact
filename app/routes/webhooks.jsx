@@ -1,4 +1,5 @@
 import { authenticate } from "../shopify.server";
+import { ordersQueue } from "../queues/orders.server";
 
 export const action = async ({ request }) => {
   const { topic, shop, payload } =
@@ -24,7 +25,36 @@ export const action = async ({ request }) => {
       break;
 
     case "ORDERS_CREATE":
-      console.log("Order completed:", payload);
+      const order = {
+        shop,
+
+        orderId: payload.admin_graphql_api_id,
+
+        checkoutToken: payload.checkout_token ?? null,
+
+        customerId:
+          payload.customer?.admin_graphql_api_id ?? null,
+
+        totalPrice:
+          payload.current_total_price ??
+          payload.total_price ??
+          null,
+
+        currency: payload.currency ?? null,
+      };
+
+      await ordersQueue.add(
+        "order-completed",
+        order,
+        {
+          jobId: `order:${shop}:${payload.admin_graphql_api_id}`,
+        },
+      );
+
+      console.log("Order queued", {
+        orderId: order.orderId,
+        shop: order.shop,
+      });
       break;
 
     default:
