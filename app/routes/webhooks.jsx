@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server";
-import { ordersQueue } from "../queues/orders.server";
+import { ordersQueue } from "../queue/order.server";
 
 export const action = async ({ request }) => {
   const { topic, shop, payload } =
