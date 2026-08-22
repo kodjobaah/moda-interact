@@ -29,6 +29,16 @@ export const loader = async ({ request }) => {
 };
 
 export default function Index() {
+  return (
+    <s-page heading="Moda Interact">
+      <s-section heading="Test">
+        <s-paragraph>The index route is rendering.</s-paragraph>
+      </s-section>
+    </s-page>
+  );
+}
+/**
+export default function Index() {
   const { settings, stats } = useLoaderData();
 
   if (!settings) {
@@ -37,6 +47,7 @@ export default function Index() {
 
   return <Dashboard settings={settings} stats={stats} />;
 }
+  */
 
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
