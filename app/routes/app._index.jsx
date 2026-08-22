@@ -29,10 +29,6 @@ export const loader = async ({ request }) => {
 };
 
 export default function Index() {
-  return <Onboarding />;
-}
-/**
-export default function Index() {
   const { settings, stats } = useLoaderData();
 
   if (!settings) {
@@ -41,7 +37,7 @@ export default function Index() {
 
   return <Dashboard settings={settings} stats={stats} />;
 }
-  */
+
 
 export const headers = (headersArgs) => {
   return boundary.headers(headersArgs);
