@@ -2,7 +2,7 @@
 
 client_id = "ca78b7deba6ed1da8a15997bbe905242"
 name = "moda-interact"
-application_url = "https://example.com"
+application_url = "https://moda-interact.onrender.com"
 embedded = true
 
 [access_scopes]
@@ -45,7 +45,7 @@ api_version = "2026-10"
   topics = [ "app/scopes_update" ]
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://moda-interact.onrender.com/auth/callback" ]
 
 [build]
 include_config_on_deploy = true
