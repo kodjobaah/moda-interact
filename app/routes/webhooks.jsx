@@ -42,7 +42,7 @@ export const action = async ({ request }) => {
         crypto
           .createHash("sha256")
           .update(
-            `${shop}:${checkout.checkoutToken}`,
+            ` ${shop}:${checkout.checkoutToken}:${Date.now()}`,
           )
           .digest("hex");
 
