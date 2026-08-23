@@ -14,12 +14,8 @@ export const action = async ({ request }) => {
   switch (topic) {
     case "CARTS_CREATE":
       console.log("Cart created:", payload);
-      break;
-
     case "CARTS_UPDATE":
       console.log("Cart updated:", payload);
-      break;
-
     case "CHECKOUTS_CREATE":
       const checkout =
         normaliseCheckoutCreated(
