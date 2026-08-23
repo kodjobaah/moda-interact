@@ -1,5 +1,5 @@
 import { authenticate } from "../shopify.server";
-import { ordersQueue } from "../queue/order.server";
+import { ordersQueue } from "../lib/queues/order.server";
 
 export const action = async ({ request }) => {
   const { topic, shop, payload } =
@@ -17,7 +17,50 @@ export const action = async ({ request }) => {
       break;
 
     case "CHECKOUTS_CREATE":
-      console.log("Checkout created:", payload);
+      const checkout =
+        normaliseCheckoutCreated(
+          shop,
+          payload,
+        );
+
+      if (!checkout.checkoutToken) {
+        console.error(
+          "CHECKOUTS_CREATE missing checkout token",
+        );
+
+        return new Response(null, {
+          status: 200,
+        });
+      }
+
+      const queue = getCheckoutQueue();
+
+      const jobId =
+        "checkout-created-" +
+        crypto
+          .createHash("sha256")
+          .update(
+            `${shop}:${checkout.checkoutToken}`,
+          )
+          .digest("hex");
+
+      await queue.add(
+        "checkout-created",
+        checkout,
+        {
+          jobId,
+        },
+      );
+
+      console.log(
+        "Checkout queued:",
+        {
+          shop,
+          checkoutToken:
+            checkout.checkoutToken,
+        },
+      );
+
       break;
 
     case "CHECKOUTS_UPDATE":

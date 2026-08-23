@@ -29,4 +29,7 @@ uri = "/webhooks"
 [auth]
 redirect_urls = [ ]
 
+[build]
+automatically_update_urls_on_dev = false
+
 

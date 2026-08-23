@@ -1,5 +1,5 @@
 import { Queue } from "bullmq";
-import { createRedisConnection } from "../lib/redis.server";
+import { createRedisConnection } from "../redis.server";
 
 const connection = createRedisConnection();
 
