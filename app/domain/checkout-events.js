@@ -1,3 +1,8 @@
+
+/**
+ * @param {string} shop
+ * @param {Record<string, any>} payload
+ */
 export function normaliseCheckoutCreated(shop, payload) {
   return {
     shop,

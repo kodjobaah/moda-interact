@@ -1,9 +1,12 @@
 import { Queue } from "bullmq";
 import { createRedisConnection } from "../redis.server";
 
-const connection = createRedisConnection();
-
+/**
+ * @type {Queue<any, any, string, any, any, string, import("bullmq").RedisQueueBackend>}
+ */
+let checkoutQueue; 
 export function getCheckoutQueue() {
+
   if (checkoutQueue) {
     return checkoutQueue;
   }
