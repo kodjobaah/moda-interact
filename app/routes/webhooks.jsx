@@ -60,6 +60,7 @@ export const action = async ({ request }) => {
         "Checkout queued:",
         {
           shop,
+          jobId,
           checkoutToken:
             checkout.checkoutToken,
         },
