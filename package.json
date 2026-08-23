@@ -17,7 +17,12 @@
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",
-    "typecheck": "react-router typegen && tsc --noEmit"
+    "typecheck": "react-router typegen && tsc --noEmit",
+    "prisma:validate": "prisma validate --schema database/prisma/schema.prisma",
+    "prisma:generate": "prisma generate --schema database/prisma/schema.prisma",
+    "prisma:status": "prisma migrate status --schema database/prisma/schema.prisma",
+    "prisma:migrate:dev": "prisma migrate dev --schema database/prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma"
   },
   "type": "module",
   "engines": {
@@ -58,6 +63,7 @@
     "graphql-config": "^5.1.1",
     "prettier": "^3.6.2",
     "prisma": "^6.19.3",
+    "prisma-generator-plantuml-erd": "^1.7.1",
     "typescript": "^5.9.3",
     "vite": "^6.3.6"
   },
@@ -70,5 +76,12 @@
   "overrides": {
     "p-map": "^4.0.0"
   },
-  "author": "kwadwoadomafriyie"
+  "author": "kwadwoadomafriyie",
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "@prisma/client@5.19.0": true,
+    "@prisma/engines@6.19.3": true,
+    "prisma@6.19.3": true,
+    "esbuild@0.25.12": true
+  }
 }
