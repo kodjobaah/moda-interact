@@ -16,6 +16,8 @@ export const action = async ({ request }) => {
       console.log("Cart created:", payload);
     case "CARTS_UPDATE":
       console.log("Cart updated:", payload);
+    case "CHECKOUTS_UPDATE":
+      console.log("Checkout updated:", payload);
     case "CHECKOUTS_CREATE":
       const checkout =
         normaliseCheckoutCreated(
@@ -64,9 +66,7 @@ export const action = async ({ request }) => {
 
       break;
 
-    case "CHECKOUTS_UPDATE":
-      console.log("Checkout updated:", payload);
-      break;
+
 
     case "ORDERS_CREATE":
       const order = {
