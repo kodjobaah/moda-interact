@@ -1,14 +1,10 @@
-import { useState } from "react";
-import PlanSelector from "./PlanSelector";
-
-
 export default function Onboarding() {
-  const [selectedPlan, setSelectedPlan] = useState("growth");
-
   return (
     <s-page heading="Welcome to Moda Interact">
       <s-section>
-        <s-heading>Recover more abandoned checkouts</s-heading>
+        <s-heading>
+          Recover more abandoned checkouts
+        </s-heading>
 
         <s-paragraph>
           Moda Interact helps you reconnect with customers who leave before
@@ -16,10 +12,20 @@ export default function Onboarding() {
         </s-paragraph>
       </s-section>
 
-      <PlanSelector
-        selectedPlan={selectedPlan}
-        onSelect={setSelectedPlan}
-      />
+      <s-section>
+        <s-heading>
+          Get started
+        </s-heading>
+
+        <s-paragraph>
+          Choose the plan that works best for your store to start using
+          Moda Interact.
+        </s-paragraph>
+
+        <s-button href="/app/billing">
+          Choose a plan
+        </s-button>
+      </s-section>
     </s-page>
   );
 }
