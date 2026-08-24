@@ -2,7 +2,7 @@ import type {
   Subscription,
 } from "@prisma/client";
 
-import prisma from "../../lib/db";
+
 
 import type {
   BillingProvider,
@@ -11,6 +11,7 @@ import type {
 import {
   ShopifyBillingProvider,
 } from "./providers/shopify-billing.provider";
+import prisma from "../../db.server";
 
 
 export class BillingService {
