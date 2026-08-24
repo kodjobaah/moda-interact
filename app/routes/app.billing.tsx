@@ -1,129 +1,50 @@
-import type {
-  ActionFunctionArgs,
-  LoaderFunctionArgs,
-} from "react-router";
+import type { HeadersArgs, LoaderFunctionArgs } from "react-router";
+import { Link, useLoaderData, useRouteError } from "react-router";
 
-import {
-  Form,
-  useLoaderData,
-} from "react-router";
+import { boundary } from "@shopify/shopify-app-react-router/server";
+
+import { Form } from "react-router";
 
 import { authenticate } from "../shopify.server";
 
-import {
-  billingService,
-} from "../services/billing/billing.service";
+import { billingService } from "../services/billing/billing.service";
 
-import {
-  shopService,
-} from "../services/shop/shop.service";
+import { shopService } from "../services/shop/shop.service";
 
+export async function loader({ request }: LoaderFunctionArgs) {
+  const { admin, session } = await authenticate.admin(request);
 
-export async function loader({
-  request,
-}: LoaderFunctionArgs) {
-  const {
+  const shop = await shopService.resolveShopifyShop({
     admin,
-    session,
-  } = await authenticate.admin(request);
+    domain: session.shop,
+  });
 
-  const shop =
-    await shopService.resolveShopifyShop({
-      admin,
-      domain: session.shop,
-    });
-
-  const subscription =
-    await billingService.getSubscription(
-      shop.id,
-    );
+  const subscription = await billingService.getSubscription(shop.id);
 
   return {
     subscription: subscription
       ? {
           id: subscription.id,
 
-          status:
-            subscription.status,
+          status: subscription.status,
 
-          planHandle:
-            subscription.planHandle,
+          planHandle: subscription.planHandle,
 
-          planName:
-            subscription.plan?.name ??
-            subscription.planHandle,
+          planName: subscription.plan?.name ?? subscription.planHandle,
 
-          trialEndsAt:
-            subscription.trialEndsAt
-              ?.toISOString() ?? null,
+          trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
 
           currentPeriodEnd:
-            subscription.currentPeriodEnd
-              ?.toISOString() ?? null,
+            subscription.currentPeriodEnd?.toISOString() ?? null,
 
-          cancelAtPeriodEnd:
-            subscription.cancelAtPeriodEnd,
+          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         }
       : null,
   };
 }
 
-
-export async function action({
-  request,
-}: ActionFunctionArgs) {
-  const {
-    redirect,
-    session,
-  } = await authenticate.admin(request);
-
-  const formData =
-    await request.formData();
-
-  const intent =
-    formData.get("intent");
-
-  if (intent !== "choose-plan") {
-    throw new Response(
-      "Unknown billing action",
-      {
-        status: 400,
-      },
-    );
-  }
-
-  const appHandle =
-    process.env.SHOPIFY_APP_HANDLE;
-
-  if (!appHandle) {
-    throw new Error(
-      "SHOPIFY_APP_HANDLE is not configured",
-    );
-  }
-
-  const storeHandle =
-    session.shop.replace(
-      /\.myshopify\.com$/,
-      "",
-    );
-
-  const pricingUrl =
-    `https://admin.shopify.com/store/${storeHandle}` +
-    `/charges/${appHandle}/pricing_plans`;
-
-  return redirect(
-    pricingUrl,
-    {
-      target: "_top",
-    },
-  );
-}
-
-
 export default function BillingRoute() {
-  const {
-    subscription,
-  } = useLoaderData<typeof loader>();
+  const { subscription } = useLoaderData<typeof loader>();
 
   return (
     <div
@@ -138,42 +59,31 @@ export default function BillingRoute() {
       {subscription ? (
         <>
           <p>
-            Current plan:{" "}
-            <strong>
-              {subscription.planName}
-            </strong>
+            Current plan: <strong>{subscription.planName}</strong>
           </p>
 
           <p>
-            Status:{" "}
-            <strong>
-              {subscription.status}
-            </strong>
+            Status: <strong>{subscription.status}</strong>
           </p>
 
           {subscription.trialEndsAt && (
             <p>
               Trial ends:{" "}
-              {new Date(
-                subscription.trialEndsAt,
-              ).toLocaleDateString()}
+              {new Date(subscription.trialEndsAt).toLocaleDateString()}
             </p>
           )}
 
           {subscription.currentPeriodEnd && (
             <p>
               Billing period ends:{" "}
-              {new Date(
-                subscription.currentPeriodEnd,
-              ).toLocaleDateString()}
+              {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
             </p>
           )}
 
           {subscription.cancelAtPeriodEnd && (
             <p>
-              This subscription will end
-              at the end of the current
-              billing period.
+              This subscription will end at the end of the current billing
+              period.
             </p>
           )}
         </>
@@ -181,26 +91,21 @@ export default function BillingRoute() {
         <>
           <h2>No active plan</h2>
 
-          <p>
-            Choose a plan to activate
-            Moda Interact.
-          </p>
+          <p>Choose a plan to activate Moda Interact.</p>
         </>
       )}
 
-      <Form method="post">
-        <input
-          type="hidden"
-          name="intent"
-          value="choose-plan"
-        />
-
-        <button type="submit">
-          {subscription
-            ? "Change plan"
-            : "Choose a plan"}
-        </button>
-      </Form>
+      <Link to="/app/billing/select">
+        {subscription ? "Change plan" : "Choose a plan"}
+      </Link>
     </div>
   );
 }
+
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
+}
+
+export const headers = (headersArgs: HeadersArgs) => {
+  return boundary.headers(headersArgs);
+};
