@@ -58,7 +58,7 @@ The platform is split into focused services:
 | [`moda-interact`](https://github.com/kodjobaah/moda-interact) | Shopify application, merchant UI, webhook ingress, billing |
 | [`moda-interact-background`](https://github.com/kodjobaah/moda-interact-background) | BullMQ workers, recovery workflows, AI commerce agent, entitlements and usage |
 | [`moda-interact-database`](https://github.com/kodjobaah/moda-interact-database) | Shared Prisma schema, migrations, seed data and ERD |
-| `moda-messaging` | Messaging ingress service for WhatsApp/Meta webhooks |
+| `moda-messaging` | (https://github.com/kodjobaah/moda-interact-messaging)|Messaging ingress service for WhatsApp/Meta webhooks |
 
 ## Core product flow
 
