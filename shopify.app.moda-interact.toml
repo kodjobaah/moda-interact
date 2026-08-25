@@ -4,32 +4,29 @@ client_id = "c323c5bd8585d875719db7570b91460e"
 name = "moda-interact"
 application_url = "https://moda-interact.onrender.com"
 embedded = true
+handle = "moda-interact"
+
+[build]
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-07"
 
+  [[webhooks.subscriptions]]
+  uri = "/webhooks"
+  topics = [
+  "carts/create",
+  "checkouts/update",
+  "checkouts/create",
+  "carts/update",
+  "orders/create"
+]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_orders,read_customers,read_products"
-
+scopes = "read_customers,read_orders,read_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
-[[webhooks.subscriptions]]
-topics = [
-  "carts/create",
-  "carts/update",
-  "checkouts/create",
-  "checkouts/update",
-  "orders/create"
-]
-uri = "/webhooks"
-
 [auth]
 redirect_urls = [ ]
-
-[build]
-automatically_update_urls_on_dev = false
-
-
