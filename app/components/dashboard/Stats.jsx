@@ -1,8 +1,17 @@
+import RecoveryChart from "./RecoveryChart";
+import PropTypes from "prop-types";
+import UsageEvents from "./UsageEvents";
+
 export default function Stats({
   abandonedCheckouts = 0,
   recoveredCheckouts = 0,
   recoveredRevenue = 0,
   messagesSent = 0,
+  recoveries = [],
+  usageEvents = [],
+  usagePagination = {},
+  usageView = "current",
+  billingPeriods = [],
 }) {
   const recoveryRate =
     abandonedCheckouts > 0
@@ -38,7 +47,8 @@ export default function Stats({
   ];
 
   return (
-    <s-section heading="Performance">
+    <>
+      <s-section heading="Performance">
       <s-stack direction="inline" gap="base">
         {stats.map((stat) => (
           <s-box
@@ -55,6 +65,22 @@ export default function Stats({
           </s-box>
         ))}
       </s-stack>
-    </s-section>
+      </s-section>
+
+      <RecoveryChart recoveries={recoveries} />
+      <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} />
+    </>
   );
 }
+
+Stats.propTypes = {
+  abandonedCheckouts: PropTypes.number,
+  recoveredCheckouts: PropTypes.number,
+  recoveredRevenue: PropTypes.number,
+  messagesSent: PropTypes.number,
+  recoveries: PropTypes.arrayOf(PropTypes.object),
+  usageEvents: PropTypes.arrayOf(PropTypes.object),
+  usagePagination: PropTypes.object,
+  usageView: PropTypes.string,
+  billingPeriods: PropTypes.arrayOf(PropTypes.object),
+};

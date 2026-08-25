@@ -1,5 +1,6 @@
 import {
   redirect,
+  useSearchParams,
   useLoaderData,
 } from "react-router";
 
@@ -8,6 +9,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 
 import Dashboard from "@/components/dashboard/Dashboard";
+import UsageOverview from "@/components/dashboard/UsageOverview";
 import Onboarding from "@/components/onboarding/Onboarding";
 
 import {
@@ -26,6 +28,13 @@ export const loader = async ({ request }) => {
     admin,
     session,
   } = await authenticate.admin(request);
+  const url = new URL(request.url);
+  const requestedPageSize = Number(url.searchParams.get("pageSize"));
+  const pageSize = [10, 25, 50, 100].includes(requestedPageSize) ? requestedPageSize : 10;
+  const requestedPage = Number(url.searchParams.get("page"));
+  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
+  const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
+  const requestedBillId = url.searchParams.get("billId");
 
   /*
    * Resolve Shopify's shop into our
@@ -37,7 +46,7 @@ export const loader = async ({ request }) => {
       domain: session.shop,
     });
 
-
+  console.log("Resolved shop:", shop);
   /*
    * ShopSettings is now related using shopId,
    * rather than the Shopify domain string.
@@ -49,7 +58,7 @@ export const loader = async ({ request }) => {
       },
     });
 
-
+console.log("Resolved shop settings:", settings);
   /*
    * Let the merchant complete onboarding first.
    */
@@ -57,6 +66,11 @@ export const loader = async ({ request }) => {
     return {
       settings: null,
       subscription: null,
+      recoveries: [],
+      usageEvents: [],
+      usagePagination: { page: 1, pageSize, total: 0, totalQuantity: 0 },
+      billingPeriods: [],
+      usageSummary: { current: [], past: [] },
 
       stats: {
         abandonedCheckouts: 0,
@@ -82,6 +96,23 @@ export const loader = async ({ request }) => {
     throw redirect("/app/billing");
   }
 
+  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversations: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
+  const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
+  const allUsageWhere = { shopId: shop.id };
+  const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
+  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
+  const selectedUsageWhere = selectedPeriod ? { shopId: shop.id, billingPeriodId: selectedPeriod.id } : usageWhere;
+  const [usageEvents, usageCount, usageAggregate, recoveryUsageEvents, currentUsageEvents, paidUsageEvents] = await Promise.all([
+    db.usageEvent.findMany({ where: selectedUsageWhere, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+    db.usageEvent.count({ where: selectedUsageWhere }),
+    db.usageEvent.aggregate({ where: selectedUsageWhere, _sum: { quantity: true } }),
+    db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } }),
+    db.usageEvent.findMany({ where: { ...usageWhere, reportedAt: null }, orderBy: { occurredAt: "desc" } }),
+    db.usageEvent.findMany({ where: { ...usageWhere, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
+  ]);
+  const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
+  const messagesSent = recoveries.reduce((total, recovery) => total + recovery.conversations.reduce((count, conversation) => count + conversation.messages.length, 0), 0);
+
 
   return {
     settings,
@@ -98,11 +129,20 @@ export const loader = async ({ request }) => {
     },
 
     stats: {
-      abandonedCheckouts: 42,
-      recoveredCheckouts: 17,
-      recoveredRevenue: 1284.5,
-      messagesSent: 76,
+      abandonedCheckouts: recoveries.length,
+      recoveredCheckouts: completedRecoveries.length,
+      recoveredRevenue: completedRecoveries.reduce((total, recovery) => total + Number(recovery.totalPrice ?? 0), 0),
+      messagesSent,
     },
+    recoveries: recoveries.map((recovery) => {
+      const messageIds = recovery.conversations.flatMap((conversation) => conversation.messages.map((message) => message.id));
+      const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === recovery.conversations[0]?.id || messageIds.includes(event.sourceId));
+      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? "GBP", detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: recovery.conversations.reduce((count, conversation) => count + conversation.messages.length, 0), messages: recovery.conversations.flatMap((conversation) => conversation.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() }))), billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
+    }),
+    usageEvents: usageEvents.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, sourceType: event.sourceType, sourceId: event.sourceId, occurredAt: event.occurredAt.toISOString() })),
+    usagePagination: { page, pageSize, total: usageCount, totalQuantity: Number(usageAggregate._sum.quantity ?? 0), view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
+    billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
+    usageSummary: { current: currentUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })), past: paidUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })) },
   };
 };
 
@@ -111,16 +151,32 @@ export default function Index() {
   const {
     settings,
     stats,
+    recoveries,
+    usageEvents,
+    usagePagination,
+    billingPeriods,
+    usageView,
+    usageSummary,
   } = useLoaderData();
+  const [searchParams] = useSearchParams();
 
   if (!settings?.onboardingCompleted) {
     return <Onboarding />;
+  }
+
+  if (searchParams.get("view") !== "detail") {
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} />;
   }
 
   return (
     <Dashboard
       settings={settings}
       stats={stats}
+      recoveries={recoveries}
+      usageEvents={usageEvents}
+      usagePagination={usagePagination}
+      billingPeriods={billingPeriods}
+      usageView={usageView}
     />
   );
 }

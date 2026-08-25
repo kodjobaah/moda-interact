@@ -11,7 +11,6 @@
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
     "docker-start": "npm run setup && npm run start",
-    "setup": "npm run prisma:migrate:deploy",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
@@ -22,7 +21,9 @@
     "prisma:generate": "prisma generate --schema database/prisma/schema.prisma",
     "prisma:status": "prisma migrate status --schema database/prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema database/prisma/schema.prisma",
-    "prisma:migrate:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma"
+    "prisma:migrate:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma",
+    "setup": "npm run prisma:migrate:deploy && npm run prisma:seed",
+    "prisma:seed": "node database/prisma/seed.mjs"
   },
   "type": "module",
   "engines": {
@@ -38,8 +39,10 @@
     "@shopify/shopify-app-react-router": "^1.2.1",
     "@shopify/shopify-app-session-storage-prisma": "^9.0.0",
     "bullmq": "^6.2.0",
+    "d3": "^7.9.0",
     "ioredis": "^6.0.0",
     "isbot": "^5.1.31",
+    "prop-types": "^15.8.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router": "^7.12.0",
@@ -48,6 +51,7 @@
   "devDependencies": {
     "@shopify/api-codegen-preset": "^1.2.0",
     "@shopify/polaris-types": "^1.0.1",
+    "@tailwindcss/vite": "^4.3.3",
     "@types/eslint": "^9.6.1",
     "@types/node": "^22.18.8",
     "@types/react": "^18.3.25",
@@ -64,6 +68,7 @@
     "prettier": "^3.6.2",
     "prisma": "^6.19.3",
     "prisma-generator-plantuml-erd": "^1.7.1",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vite": "^6.3.6"
   },

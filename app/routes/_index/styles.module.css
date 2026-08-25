@@ -6,6 +6,7 @@
   width: 100%;
   text-align: center;
   padding: 1rem;
+  background: #f4faf6;
 }
 
 .heading,
@@ -14,7 +15,13 @@
   margin: 0;
 }
 
+.heading {
+  color: #102a24;
+  font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+}
+
 .text {
+  color: #286b50;
   font-size: 1.2rem;
   padding-bottom: 2rem;
 }
@@ -45,6 +52,11 @@
 }
 
 .button {
+  border: 0;
+  border-radius: 0.5rem;
+  color: white;
+  cursor: pointer;
+  font-weight: 700;
   padding: 0.4rem;
 }
 

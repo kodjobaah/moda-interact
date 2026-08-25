@@ -18,7 +18,7 @@ export interface ResolveShopifyShopInput {
 interface ShopifyShopResponse {
   data?: {
     shop?: {
-      id?: string | null;
+      shopifyShopId?: string | null;
       myshopifyDomain?: string | null;
     } | null;
   };
@@ -34,7 +34,7 @@ export class ShopService {
       `#graphql
         query ResolveModaInteractShop {
           shop {
-            id
+            shopifyShopId: id
             myshopifyDomain
           }
         }
@@ -44,18 +44,18 @@ export class ShopService {
     const result =
       (await response.json()) as ShopifyShopResponse;
 
-    const shopifyShop =
+    const shopifyGraphqlShop =
       result.data?.shop;
 
     if (
-      !shopifyShop?.id ||
-      !shopifyShop.myshopifyDomain
+      !shopifyGraphqlShop?.shopifyShopId ||
+      !shopifyGraphqlShop.myshopifyDomain
     ) {
       throw new Error(
         `Unable to resolve Shopify shop identity for ${domain}`,
       );
     }
-
+    
     /*
      * The authenticated session domain and Shopify's
      * canonical myshopifyDomain should represent the
@@ -63,33 +63,35 @@ export class ShopService {
      */
     if (
       normalizeShopDomain(
-        shopifyShop.myshopifyDomain,
+        shopifyGraphqlShop.myshopifyDomain,
       ) !== normalizeShopDomain(domain)
     ) {
       throw new Error(
-        `Shop domain mismatch. Session=${domain}, Shopify=${shopifyShop.myshopifyDomain}`,
+        `Shop domain mismatch. Session=${domain}, Shopify=${shopifyGraphqlShop.myshopifyDomain}`,
       );
     }
+   
+    const shopifyShopId = shopifyGraphqlShop.shopifyShopId;
 
     return prisma.shop.upsert({
       where: {
         domain:
-          shopifyShop.myshopifyDomain,
+          shopifyGraphqlShop.myshopifyDomain,
       },
 
       create: {
         domain:
-          shopifyShop.myshopifyDomain,
+          shopifyGraphqlShop.myshopifyDomain,
 
         shopifyShopId:
-          shopifyShop.id,
+          shopifyShopId,
 
         status: "ACTIVE",
       },
 
       update: {
         shopifyShopId:
-          shopifyShop.id,
+          shopifyShopId,
 
         status: "ACTIVE",
 

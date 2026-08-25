@@ -16,9 +16,13 @@ export default function App() {
   const { showForm } = useLoaderData();
 
   return (
-<div className={styles.index}>
-  <div className={styles.content}>
-    <h1 className={styles.heading}>
+<div className={`${styles.index} bg-forest-50 text-forest-900`}>
+  <div className={`${styles.content} font-display`}>
+    <div className="brand-lockup text-forest-900">
+      <img className="brand-mark" src="/images/moda-interact-logo.jpg" alt="Moda Interact logo" />
+      <span>Moda Interact</span>
+    </div>
+    <h1 className={`${styles.heading} text-forest-950`}>
       Recover abandoned checkouts and turn lost sales into revenue
     </h1>
 
@@ -43,7 +47,7 @@ export default function App() {
           <span>e.g. your-store.myshopify.com</span>
         </label>
 
-        <button className={styles.button} type="submit">
+        <button className={`${styles.button} bg-forest-800 text-white`} type="submit">
           Connect your store
         </button>
       </Form>
