@@ -39,10 +39,12 @@ export default function UsageEvents({ usageEvents, usagePagination, usageView, b
         </label>
       </s-stack>
       <table className="dashboard-table" style={{ marginTop: "16px" }}>
-        <thead><tr><th align="left">Action</th><th align="left">Quantity</th><th align="left">Idempotency key</th><th align="left">Recorded</th></tr></thead>
+        <thead><tr><th align="left">Action</th><th align="left">Recovery</th><th align="left">Customer</th><th align="left">Quantity</th><th align="left">Idempotency key</th><th align="left">Recorded</th></tr></thead>
         <tbody>{usageEvents.map((event) => (
           <tr key={event.id}>
             <td>{metricLabels[event.metric] ?? event.metric}</td>
+            <td>{event.sourceRecovery?.recoveryId ?? "Unlinked"}</td>
+            <td>{event.sourceRecovery?.customerName ?? "Unlinked"}</td>
             <td>{event.quantity}</td>
             <td><code>{event.idempotencyKey}</code></td>
             <td>{new Date(event.occurredAt).toLocaleDateString("en-GB")}</td>

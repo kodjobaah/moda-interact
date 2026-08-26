@@ -96,7 +96,7 @@ console.log("Resolved shop settings:", settings);
     throw redirect("/app/billing");
   }
 
-  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversations: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
+  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
   const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
   const allUsageWhere = { shopId: shop.id };
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
@@ -111,7 +111,18 @@ console.log("Resolved shop settings:", settings);
     db.usageEvent.findMany({ where: { ...usageWhere, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
   ]);
   const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
-  const messagesSent = recoveries.reduce((total, recovery) => total + recovery.conversations.reduce((count, conversation) => count + conversation.messages.length, 0), 0);
+  const messagesSent = recoveries.reduce((total, recovery) => total + (recovery.conversation?.messages.length ?? 0), 0);
+  const recoveryBySourceId = new Map();
+  for (const recovery of recoveries) {
+    const customerName = [recovery.customer?.firstName, recovery.customer?.lastName].filter(Boolean).join(" ") || recovery.customer?.email || "Guest";
+    recoveryBySourceId.set(recovery.id, { recoveryId: recovery.id, customerName });
+    if (recovery.conversation) {
+      recoveryBySourceId.set(recovery.conversation.id, { recoveryId: recovery.id, customerName });
+      for (const message of recovery.conversation.messages) {
+        recoveryBySourceId.set(message.id, { recoveryId: recovery.id, customerName });
+      }
+    }
+  }
 
 
   return {
@@ -135,11 +146,11 @@ console.log("Resolved shop settings:", settings);
       messagesSent,
     },
     recoveries: recoveries.map((recovery) => {
-      const messageIds = recovery.conversations.flatMap((conversation) => conversation.messages.map((message) => message.id));
-      const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === recovery.conversations[0]?.id || messageIds.includes(event.sourceId));
-      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? "GBP", detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: recovery.conversations.reduce((count, conversation) => count + conversation.messages.length, 0), messages: recovery.conversations.flatMap((conversation) => conversation.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() }))), billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
+      const messageIds = recovery.conversation?.messages.map((message) => message.id) ?? [];
+      const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === recovery.conversation?.id || messageIds.includes(event.sourceId));
+      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? "GBP", detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: recovery.conversation?.messages.length ?? 0, conversations: recovery.conversation ? [{ id: recovery.conversation.id, type: recovery.conversation.type, outcome: recovery.conversation.outcome, summary: recovery.conversation.summary }] : [], messages: recovery.conversation?.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() })) ?? [], billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
     }),
-    usageEvents: usageEvents.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, sourceType: event.sourceType, sourceId: event.sourceId, occurredAt: event.occurredAt.toISOString() })),
+    usageEvents: usageEvents.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, sourceType: event.sourceType, sourceId: event.sourceId, sourceRecovery: event.sourceId ? recoveryBySourceId.get(event.sourceId) ?? null : null, occurredAt: event.occurredAt.toISOString() })),
     usagePagination: { page, pageSize, total: usageCount, totalQuantity: Number(usageAggregate._sum.quantity ?? 0), view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
     billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
     usageSummary: { current: currentUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })), past: paidUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })) },

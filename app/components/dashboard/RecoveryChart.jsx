@@ -66,8 +66,8 @@ export default function RecoveryChart({ recoveries }) {
       {selectedRecovery && <s-section heading={`Recovery details: ${selectedRecovery.id}`}>
         <s-text>{[selectedRecovery.customer?.firstName, selectedRecovery.customer?.lastName].filter(Boolean).join(" ") || "Guest"} · {selectedRecovery.messages.length} messages recorded</s-text>
         <table className="dashboard-table" style={{ marginTop: "16px" }}>
-          <thead><tr><th align="left">Recovery</th><th align="left">Status</th><th align="left">Value</th><th align="left">Detected</th></tr></thead>
-          <tbody><tr><td>{selectedRecovery.id}</td><td>{statusLabels[selectedRecovery.status] ?? selectedRecovery.status}</td><td>{formatMoney(selectedRecovery)}</td><td>{new Date(selectedRecovery.detectedAt).toLocaleDateString("en-GB")}</td></tr></tbody>
+          <thead><tr><th align="left">Recovery</th><th align="left">Status</th><th align="left">Value</th><th align="left">Detected</th><th align="left">Conversation</th><th align="left">Outcome</th></tr></thead>
+          <tbody><tr><td>{selectedRecovery.id}</td><td>{statusLabels[selectedRecovery.status] ?? selectedRecovery.status}</td><td>{formatMoney(selectedRecovery)}</td><td>{new Date(selectedRecovery.detectedAt).toLocaleDateString("en-GB")}</td><td>{selectedRecovery.conversations.map((conversation) => conversation.type).join(", ")}</td><td>{selectedRecovery.conversations.map((conversation) => conversation.outcome).join(", ")}</td></tr></tbody>
         </table>
         <table className="dashboard-table" style={{ marginTop: "16px" }}>
           <thead><tr><th align="left">Message</th><th align="left">Sender</th><th align="left">Status</th><th align="left">Sent</th></tr></thead>
