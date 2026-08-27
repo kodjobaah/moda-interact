@@ -1,5 +1,5 @@
 import { authenticate, apiKey } from "../shopify.server";
-import { ingestShopifyWebhook } from "../services/webhooks/webhook-ingress.service";
+import { ingestShopifyWebhook } from "../services/webhooks/shopify-webhook-ingress.service";
 
 // @ts-ignore
 export const action = async ({ request }) => {

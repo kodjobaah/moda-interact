@@ -9,7 +9,7 @@ vi.mock("../../../app/shopify.server", () => ({
 const ingestShopifyWebhookMock = vi
   .fn()
   .mockResolvedValue(new Response(null, { status: 200 }));
-vi.mock("../../../app/services/webhooks/webhook-ingress.service", () => ({
+vi.mock("../../../app/services/webhooks/shopify-webhook-ingress.service", () => ({
   ingestShopifyWebhook: ingestShopifyWebhookMock,
 }));
 
@@ -34,9 +34,9 @@ describe("webhooks route action", () => {
 
   it("delegates authenticated requests to the ingress service", async () => {
     authenticateWebhookMock.mockResolvedValue({
-      topic: "ORDERS_CREATE",
+      topic: "CHECKOUTS_CREATE",
       shop: "shop.myshopify.com",
-      payload: { admin_graphql_api_id: "gid://shopify/Order/1" },
+      payload: { token: "checkout-token-1" },
       apiVersion: "2026-07",
       eventId: "event-1",
       triggeredAt: "2024-01-01T00:00:00Z",
@@ -55,7 +55,8 @@ describe("webhooks route action", () => {
       expect.objectContaining({
         appKey: "app-key",
         shop: "shop.myshopify.com",
-        topic: "ORDERS_CREATE",
+        topic: "CHECKOUTS_CREATE",
+        payload: { token: "checkout-token-1" },
       }),
     );
   });
