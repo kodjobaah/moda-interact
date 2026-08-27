@@ -1,15 +1,12 @@
 export type ShopifyWebhookLogEntry = {
-  receiptId: string | null;
+  topic: string;
   deliveryId: string;
   eventId: string | null;
-  providerTopic: string;
-  eventType: string | null;
-  destination: string | null;
+  queue: string | null;
+  jobId: string | null;
+  outcome: string;
   shopId: string | null;
   shopDomain: string;
-  disposition: string;
-  duplicate: boolean;
-  transactionMs: number;
   ackMs: number;
 };
 
@@ -17,17 +14,14 @@ export function logShopifyWebhookOutcome(entry: ShopifyWebhookLogEntry): void {
   console.info(
     "shopify_webhook",
     JSON.stringify({
-      receiptId: entry.receiptId,
+      topic: entry.topic,
       deliveryId: entry.deliveryId,
       eventId: entry.eventId,
-      providerTopic: entry.providerTopic,
-      eventType: entry.eventType,
-      destination: entry.destination,
+      queue: entry.queue,
+      jobId: entry.jobId,
+      outcome: entry.outcome,
       shopId: entry.shopId,
       shopDomain: entry.shopDomain,
-      disposition: entry.disposition,
-      duplicate: entry.duplicate,
-      transactionMs: entry.transactionMs,
       ackMs: entry.ackMs,
     }),
   );

@@ -11,11 +11,10 @@ export function normalizeOrderCompletedPayload(
       : null;
 
   const orderId =
-    typeof payload.admin_graphql_api_id === "string"
+    typeof payload.admin_graphql_api_id === "string" &&
+    payload.admin_graphql_api_id.length > 0
       ? payload.admin_graphql_api_id
-      : typeof payload.id === "string"
-        ? payload.id
-        : null;
+      : null;
 
   const completedAt =
     typeof payload.created_at === "string"

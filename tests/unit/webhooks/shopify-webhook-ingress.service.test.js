@@ -1,79 +1,52 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { parseShopifyCommerceEvent } from "@modainteract/moda-interact-shared/shopify";
+
+class TestPublicationError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.name = "ShopifyWebhookPublicationError";
+    this.code = code;
+  }
+}
 
 const store = {
   shopsByDomain: new Map(),
-  receiptsByComposite: new Map(),
-  receiptsById: new Map(),
-  outboxesByReceiptId: new Map(),
 };
 
 const dbMock = {
-  $transaction: vi.fn(async (callback) => callback(dbMock)),
   shop: {
     findUnique: vi.fn(async ({ where }) => store.shopsByDomain.get(where.domain) ?? null),
   },
-  shopifyWebhookReceipt: {
-    create: vi.fn(async ({ data, include }) => {
-      const compositeKey = `${data.appKey}:${data.deliveryId}`;
-      if (store.receiptsByComposite.has(compositeKey)) {
-        throw {
-          code: "P2002",
-          meta: { target: ["appKey", "deliveryId"] },
-        };
-      }
+};
 
-      const outbox = data.outbox?.create
-        ? {
-            id: `outbox_${store.outboxesByReceiptId.size + 1}`,
-            receiptId: data.id,
-            ...data.outbox.create,
-          }
-        : null;
-
-      const receipt = {
-        ...data,
-        ...(include?.outbox ? { outbox } : {}),
-      };
-
-      store.receiptsByComposite.set(compositeKey, receipt);
-      store.receiptsById.set(data.id, receipt);
-
-      if (outbox) {
-        store.outboxesByReceiptId.set(data.id, outbox);
-      }
-
-      return receipt;
-    }),
-    findUnique: vi.fn(async ({ where }) => {
-      if (where.appKey_deliveryId) {
-        const key = `${where.appKey_deliveryId.appKey}:${where.appKey_deliveryId.deliveryId}`;
-        return store.receiptsByComposite.get(key) ?? null;
-      }
-
-      if (where.id) {
-        return store.receiptsById.get(where.id) ?? null;
-      }
-
-      return null;
-    }),
-  },
+const publicationMock = {
+  ShopifyWebhookPublicationError: TestPublicationError,
+  publishShopifyCheckoutObservedEvent: vi.fn(async () => ({
+    queue: "checkout-events",
+    jobId: "checkout-job",
+    outcome: "enqueued",
+  })),
+  publishShopifyOrderCompletedEvent: vi.fn(async () => ({
+    queue: "order-events",
+    jobId: "order-job",
+    outcome: "enqueued",
+  })),
 };
 
 vi.mock("../../../app/db.server", () => ({ default: dbMock }));
+
+vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => publicationMock);
 
 const { ingestShopifyWebhook } = await import(
   "../../../app/services/webhooks/shopify-webhook-ingress.service"
 );
 
-function resetStore() {
+function resetState() {
   store.shopsByDomain.clear();
-  store.receiptsByComposite.clear();
-  store.receiptsById.clear();
-  store.outboxesByReceiptId.clear();
-  vi.clearAllMocks();
+  dbMock.shop.findUnique.mockClear();
+  publicationMock.publishShopifyCheckoutObservedEvent.mockClear();
+  publicationMock.publishShopifyOrderCompletedEvent.mockClear();
   delete process.env.REDIS_URL;
 }
 
@@ -85,15 +58,6 @@ function activeShop() {
     settings: {
       recoveryDelayMinutes: 45,
     },
-  };
-}
-
-function inactiveShop() {
-  return {
-    id: "shop_2",
-    domain: "inactive.myshopify.com",
-    status: "UNINSTALLED",
-    settings: null,
   };
 }
 
@@ -157,7 +121,10 @@ function orderInput(overrides = {}) {
     topic: "ORDERS_CREATE",
     payload: {
       admin_graphql_api_id: "gid://shopify/Order/123",
-      checkout_token: "checkout-token-1",
+      token: "ignored-checkout-token",
+      order_status_url: "https://example.invalid/orders/123/authenticate?key=ignored",
+      checkout_token: null,
+      cart_token: null,
       customer: { admin_graphql_api_id: "gid://shopify/Customer/42" },
       current_total_price: "19.99",
       currency: "USD",
@@ -171,17 +138,12 @@ function orderInput(overrides = {}) {
   };
 }
 
-function lastReceiptCreateData() {
-  const calls = dbMock.shopifyWebhookReceipt.create.mock.calls;
-  return calls[calls.length - 1]?.[0].data;
-}
-
 beforeEach(() => {
-  resetStore();
+  resetState();
 });
 
 describe("shopify webhook ingress", () => {
-  it("does not contain the legacy Redis or unified destination code path", () => {
+  it("does not contain the legacy receipt, outbox, GraphQL, or unified-queue paths", () => {
     const source = readFileSync(
       new URL(
         "../../../app/services/webhooks/shopify-webhook-ingress.service.ts",
@@ -190,69 +152,47 @@ describe("shopify webhook ingress", () => {
       "utf8",
     );
 
+    expect(source).not.toContain("ShopifyWebhookReceipt");
+    expect(source).not.toContain("ShopifyWebhookOutbox");
     expect(source).not.toContain("WEBHOOK_DISPATCH_MODE");
     expect(source).not.toContain("queue.add");
-    expect(source).not.toContain("bullmq");
-    expect(source).not.toContain("ioredis");
+    expect(source).not.toContain("GraphQL");
     expect(source).not.toContain("SHOPIFY_COMMERCE_EVENTS");
   });
 
-  it("writes checkout.observed to CHECKOUT_EVENTS with the merchant delay", async () => {
+  it("publishes checkout events with the configured delay and normalized payload", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(checkoutInput());
 
     expect(response.status).toBe(200);
-
-    const data = lastReceiptCreateData();
-    const outbox = data.outbox.create;
-
-    expect(data.disposition).toBe("ACCEPTED");
-    expect(data.topic).toBe("CHECKOUTS_CREATE");
-    expect(outbox.destination).toBe("CHECKOUT_EVENTS");
-    expect(outbox.jobName).toBe("checkout-created");
-    expect(outbox.delayMs).toBe(45 * 60 * 1000);
-    expect(outbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
-      eventType: "checkout.observed",
-      orderingKey: "shop_1:checkout-token-1",
-      payload: {
-        checkoutToken: "checkout-token-1",
-        completedAt: "2024-01-01T00:20:00Z",
-      },
-    });
-    expect(outbox.payload.eventType).not.toBe("order.completed");
-    expect(outbox.payload).not.toHaveProperty("delayMs");
+    expect(publicationMock.publishShopifyCheckoutObservedEvent).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyCheckoutObservedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recoveryDelayMinutes: 45,
+        event: expect.objectContaining({
+          eventType: "checkout.observed",
+          orderingKey: "shop_1:checkout-token-1",
+          payload: expect.objectContaining({
+            checkoutToken: "checkout-token-1",
+            completedAt: "2024-01-01T00:20:00Z",
+          }),
+        }),
+      }),
+    );
   });
 
-  it("writes order.completed to ORDER_EVENTS and accepts missing checkout tokens", async () => {
+  it("publishes order events immediately and preserves nullable checkout_token", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const withToken = await ingestShopifyWebhook(orderInput());
-
-    expect(withToken.status).toBe(200);
-
-    let data = lastReceiptCreateData();
-    let outbox = data.outbox.create;
-
-    expect(data.disposition).toBe("ACCEPTED");
-    expect(outbox.destination).toBe("ORDER_EVENTS");
-    expect(outbox.jobName).toBe("order-completed");
-    expect(outbox.delayMs).toBe(0);
-    expect(outbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
-      eventType: "order.completed",
-      payload: {
-        orderId: "gid://shopify/Order/123",
-        checkoutToken: "checkout-token-1",
-      },
-    });
-
-    const withoutToken = await ingestShopifyWebhook(
+    const response = await ingestShopifyWebhook(
       orderInput({
         payload: {
           admin_graphql_api_id: "gid://shopify/Order/456",
+          token: "ignored-token",
+          order_status_url: "https://example.invalid/orders/456/authenticate?key=ignored",
           checkout_token: null,
+          cart_token: null,
           customer: { admin_graphql_api_id: "gid://shopify/Customer/43" },
           current_total_price: "29.99",
           currency: "USD",
@@ -261,58 +201,23 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
-    expect(withoutToken.status).toBe(200);
-
-    data = lastReceiptCreateData();
-    outbox = data.outbox.create;
-
-    expect(outbox.destination).toBe("ORDER_EVENTS");
-    expect(outbox.orderingKey).toBe("shop_1:gid://shopify/Order/456");
-    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
-      eventType: "order.completed",
-      payload: {
-        orderId: "gid://shopify/Order/456",
-        checkoutToken: null,
-      },
-    });
-  });
-
-  it("keeps completedAt on checkout events and still accepts them", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    await ingestShopifyWebhook(
-      checkoutInput({
-        payload: {
-          ...checkoutInput().payload,
-          completed_at: "2024-01-01T00:20:00Z",
-        },
-      }),
-    );
-
-    const outbox = lastReceiptCreateData().outbox.create;
-    const parsed = parseShopifyCommerceEvent(outbox.payload);
-
-    expect(parsed.eventType).toBe("checkout.observed");
-    expect(parsed.payload.completedAt).toBe("2024-01-01T00:20:00Z");
-  });
-
-  it("persists IGNORED receipts for cart topics and creates no outbox", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const response = await ingestShopifyWebhook(
-      checkoutInput({
-        topic: "CARTS_CREATE",
-        payload: { cart_id: "cart-1" },
-      }),
-    );
-
     expect(response.status).toBe(200);
-    expect(lastReceiptCreateData().disposition).toBe("IGNORED");
-    expect(lastReceiptCreateData().outbox).toBeUndefined();
-    expect(store.outboxesByReceiptId.size).toBe(0);
+    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          eventType: "order.completed",
+          orderingKey: "shop_1:gid://shopify/Order/456",
+          payload: expect.objectContaining({
+            orderId: "gid://shopify/Order/456",
+            checkoutToken: null,
+          }),
+        }),
+      }),
+    );
   });
 
-  it("persists REJECTED receipts for malformed supported payloads", async () => {
+  it("rejects checkout payloads without a checkout token", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
@@ -324,137 +229,35 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
+    expect(response.status).toBe(400);
+    expect(publicationMock.publishShopifyCheckoutObservedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
+  });
+
+  it("returns 503 when publication fails", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    publicationMock.publishShopifyCheckoutObservedEvent.mockRejectedValueOnce(
+      new TestPublicationError("Redis down", "REDIS_UNAVAILABLE"),
+    );
+
+    const response = await ingestShopifyWebhook(checkoutInput());
+
+    expect(response.status).toBe(503);
+  });
+
+  it("ignores cart topics without publishing", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CARTS_CREATE",
+        payload: { cart_id: "cart-1" },
+      }),
+    );
+
     expect(response.status).toBe(200);
-    expect(lastReceiptCreateData().disposition).toBe("REJECTED");
-    expect(lastReceiptCreateData().outbox).toBeUndefined();
-
-    const orderResponse = await ingestShopifyWebhook(
-      orderInput({
-        payload: {
-          checkout_token: "checkout-token-1",
-          created_at: null,
-        },
-      }),
-    );
-
-    expect(orderResponse.status).toBe(200);
-    expect(lastReceiptCreateData().disposition).toBe("REJECTED");
-    expect(lastReceiptCreateData().outbox).toBeUndefined();
-  });
-
-  it("persists QUARANTINED receipts for unknown or inactive tenants", async () => {
-    store.shopsByDomain.set("inactive.myshopify.com", inactiveShop());
-
-    const unknownTenantResponse = await ingestShopifyWebhook(
-      checkoutInput({
-        shop: "missing.myshopify.com",
-      }),
-    );
-
-    expect(unknownTenantResponse.status).toBe(200);
-    expect(lastReceiptCreateData().disposition).toBe("QUARANTINED");
-    expect(lastReceiptCreateData().shopId).toBeNull();
-    expect(lastReceiptCreateData().outbox).toBeUndefined();
-
-    resetStore();
-    store.shopsByDomain.set("inactive.myshopify.com", inactiveShop());
-
-    const inactiveTenantResponse = await ingestShopifyWebhook(
-      checkoutInput({
-        shop: "inactive.myshopify.com",
-      }),
-    );
-
-    expect(inactiveTenantResponse.status).toBe(200);
-    expect(lastReceiptCreateData().disposition).toBe("QUARANTINED");
-    expect(lastReceiptCreateData().shopId).toBeNull();
-    expect(lastReceiptCreateData().outbox).toBeUndefined();
-  });
-
-  it("returns 400 and creates no receipt when delivery ids are missing or conflicting", async () => {
-    const missingDeliveryResponse = await ingestShopifyWebhook(
-      checkoutInput({
-        request: new Request("https://app.example/webhooks", {
-          method: "POST",
-        }),
-      }),
-    );
-
-    expect(missingDeliveryResponse.status).toBe(400);
-    expect(dbMock.shopifyWebhookReceipt.create).not.toHaveBeenCalled();
-
-    const conflictingDeliveryResponse = await ingestShopifyWebhook(
-      checkoutInput({
-        request: baseRequest({
-          "X-Shopify-Webhook-Id": "delivery-a",
-          "Webhook-Id": "delivery-b",
-        }),
-      }),
-    );
-
-    expect(conflictingDeliveryResponse.status).toBe(400);
-    expect(dbMock.shopifyWebhookReceipt.create).not.toHaveBeenCalled();
-  });
-
-  it("creates one durable receipt and one outbox for sequential duplicate deliveries", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const input = checkoutInput();
-    const first = await ingestShopifyWebhook(input);
-    const second = await ingestShopifyWebhook(input);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(store.receiptsByComposite.size).toBe(1);
-    expect(store.outboxesByReceiptId.size).toBe(1);
-  });
-
-  it("creates one durable receipt and one outbox for concurrent duplicate deliveries", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const input = checkoutInput();
-    const [first, second] = await Promise.all([
-      ingestShopifyWebhook(input),
-      ingestShopifyWebhook(input),
-    ]);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(store.receiptsByComposite.size).toBe(1);
-    expect(store.outboxesByReceiptId.size).toBe(1);
-  });
-
-  it("keeps receipts separate when the eventId is shared across deliveries", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const first = await ingestShopifyWebhook(
-      checkoutInput({
-        request: baseRequest({ "X-Shopify-Webhook-Id": "delivery-1" }),
-        eventId: "shared-event",
-      }),
-    );
-
-    const second = await ingestShopifyWebhook(
-      checkoutInput({
-        request: baseRequest({ "X-Shopify-Webhook-Id": "delivery-2" }),
-        eventId: "shared-event",
-      }),
-    );
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(store.receiptsById.size).toBe(2);
-  });
-
-  it("returns non-2xx when the transaction fails", async () => {
-    dbMock.$transaction.mockRejectedValueOnce(new Error("database down"));
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    await expect(ingestShopifyWebhook(checkoutInput())).rejects.toThrow(
-      "database down",
-    );
-    expect(store.receiptsByComposite.size).toBe(0);
-    expect(store.outboxesByReceiptId.size).toBe(0);
+    expect(publicationMock.publishShopifyCheckoutObservedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
   });
 
   it("logs structured PII-safe output", async () => {
@@ -479,11 +282,10 @@ describe("shopify webhook ingress", () => {
       .join("\n");
 
     expect(logLine).toContain("shopify_webhook");
-    expect(logLine).toContain("receiptId");
-    expect(logLine).toContain("deliveryId");
-    expect(logLine).toContain("providerTopic");
-    expect(logLine).toContain("eventType");
-    expect(logLine).toContain("destination");
+    expect(logLine).toContain("topic");
+    expect(logLine).toContain("queue");
+    expect(logLine).toContain("jobId");
+    expect(logLine).toContain("outcome");
     expect(logLine).toContain("ackMs");
     expect(logLine).not.toContain("customer@example.com");
     expect(logLine).not.toContain("+15555550100");
