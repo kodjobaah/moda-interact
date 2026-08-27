@@ -15,11 +15,11 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks"
   topics = [
+  "orders/create",
   "carts/create",
-  "checkouts/update",
   "checkouts/create",
-  "carts/update",
-  "orders/create"
+  "checkouts/update",
+  "carts/update"
 ]
 
 [access_scopes]

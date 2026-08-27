@@ -376,14 +376,102 @@ body {
   max-width: 520px;
 }
 
-.customer-summary-anchor {
-  margin-top: 24px;
-  margin-bottom: 24px;
-  padding-top: 24px;
-  padding-bottom: 24px;
-  border-top: 2px solid rgb(40 107 80 / 28%);
-  border-bottom: 2px solid rgb(40 107 80 / 28%);
-  scroll-margin-top: 20px;
+.customer-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(19 35 31 / 56%);
+}
+
+.customer-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1100px, 100%);
+  max-height: min(820px, calc(100vh - 48px));
+  overflow: hidden;
+  background: #fffdf8;
+  border: 1px solid #d9e2dc;
+  border-radius: 10px;
+  box-shadow: 0 24px 70px rgb(19 35 31 / 28%);
+}
+
+.customer-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px 28px;
+  border-bottom: 1px solid #d9e2dc;
+}
+
+.customer-dialog-kicker {
+  color: #527566;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.customer-dialog-header h2 {
+  margin: 4px 0 6px;
+  color: #19352c;
+  font-size: 24px;
+}
+
+.customer-dialog-header p {
+  margin: 0;
+  color: #5e7169;
+}
+
+.customer-dialog-close {
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  color: #19352c;
+  background: transparent;
+  border: 1px solid #b9c9c1;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.customer-dialog-close:hover,
+.customer-dialog-close:focus-visible {
+  background: #edf4ef;
+}
+
+.customer-dialog-body {
+  min-height: 0;
+  padding: 24px 28px 32px;
+  overflow-y: auto;
+}
+
+.customer-dialog-details {
+  margin-top: 28px;
+}
+
+.customer-dialog-details h3 {
+  margin: 24px 0 10px;
+  color: #19352c;
+  font-size: 16px;
+}
+
+.customer-dialog-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.customer-dialog-section-heading h3 {
+  margin-top: 0;
+}
+
+.customer-dialog-section-heading span {
+  color: #5e7169;
+  font-size: 13px;
 }
 
 .recovery-picker label {
@@ -416,6 +504,12 @@ body {
 }
 
 @media (max-width: 640px) {
+  .customer-dialog-backdrop { padding: 12px; }
+  .customer-dialog { max-height: calc(100vh - 24px); }
+  .customer-dialog-header { padding: 20px; }
+  .customer-dialog-body { padding: 20px; }
+  .customer-dialog-header h2 { font-size: 20px; }
+  .customer-dialog-section-heading { display: block; }
   .admin-brand-bar {
     padding: 12px 16px;
   }

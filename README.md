@@ -282,6 +282,14 @@ git submodule update --init --recursive
 npm install
 ```
 
+### Authenticate with Shopify
+
+Log in to Shopify CLI before running the app locally:
+
+```bash
+shopify auth login
+```
+
 ### Environment
 
 Typical environment variables include:
@@ -292,6 +300,7 @@ SHOPIFY_API_KEY=
 SHOPIFY_API_SECRET=
 SHOPIFY_APP_URL=
 SHOPIFY_APP_HANDLE=moda-interact
+CHECKOUT_RECOVERY_DELAY_MS=1800000
 
 SHOPIFY_PARTNER_ORG_ID=
 SHOPIFY_PARTNER_ACCESS_TOKEN=

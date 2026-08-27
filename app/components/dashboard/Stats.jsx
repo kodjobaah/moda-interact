@@ -1,6 +1,5 @@
 import RecoveryChart from "./RecoveryChart";
 import PropTypes from "prop-types";
-import UsageEvents from "./UsageEvents";
 
 export default function Stats({
   abandonedCheckouts = 0,
@@ -8,10 +7,6 @@ export default function Stats({
   recoveredRevenue = 0,
   messagesSent = 0,
   recoveries = [],
-  usageEvents = [],
-  usagePagination = {},
-  usageView = "current",
-  billingPeriods = [],
 }) {
   const recoveryRate =
     abandonedCheckouts > 0
@@ -68,7 +63,6 @@ export default function Stats({
       </s-section>
 
       <RecoveryChart recoveries={recoveries} />
-      <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} />
     </>
   );
 }
@@ -79,8 +73,4 @@ Stats.propTypes = {
   recoveredRevenue: PropTypes.number,
   messagesSent: PropTypes.number,
   recoveries: PropTypes.arrayOf(PropTypes.object),
-  usageEvents: PropTypes.arrayOf(PropTypes.object),
-  usagePagination: PropTypes.object,
-  usageView: PropTypes.string,
-  billingPeriods: PropTypes.arrayOf(PropTypes.object),
 };

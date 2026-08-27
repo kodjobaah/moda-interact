@@ -1,5 +1,5 @@
 import { arc, pie, scaleOrdinal, schemeTableau10 } from "d3";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
 
 const statusLabels = { COMPLETED: "Recovered", ENGAGED: "Engaged", MESSAGE_SENT: "Message sent", DETECTED: "Detected", EXPIRED: "Expired", CANCELLED: "Cancelled" };
@@ -10,7 +10,8 @@ export default function RecoveryChart({ recoveries }) {
   const [selectedStatus, setSelectedStatus] = useState(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState(null);
   const [selectedRecoveryId, setSelectedRecoveryId] = useState(null);
-  const customerSummaryRef = useRef(null);
+  const [customerPage, setCustomerPage] = useState(1);
+  const customersPerPage = 10;
   const grouped = Object.entries(recoveries.reduce((groups, recovery) => { groups[recovery.status] = (groups[recovery.status] ?? 0) + 1; return groups; }, {})).map(([status, value]) => ({ status, value }));
   const pieData = pie().value((item) => item.value).sort(null)(grouped);
   const createArc = arc().innerRadius(58).outerRadius(105);
@@ -26,13 +27,27 @@ export default function RecoveryChart({ recoveries }) {
   }, {}));
   const selectedCustomer = customers.find((customer) => customer.id === selectedCustomerId);
   const selectedRecovery = recoveries.find((recovery) => recovery.id === selectedRecoveryId);
+  const customerTotalPages = Math.max(1, Math.ceil(customers.length / customersPerPage));
+  const customerFirstItem = customers.length === 0 ? 0 : (customerPage - 1) * customersPerPage + 1;
+  const customerLastItem = Math.min(customerPage * customersPerPage, customers.length);
+  const paginatedCustomers = customers.slice((customerPage - 1) * customersPerPage, customerPage * customersPerPage);
   const formatMoney = (recovery) => new Intl.NumberFormat("en-GB", { style: "currency", currency: recovery.currency }).format(recovery.totalPrice);
 
   useEffect(() => {
-    if (selectedCustomerId && customerSummaryRef.current) {
-      customerSummaryRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-    }
-  }, [selectedCustomerId]);
+    if (!selectedCustomer) return undefined;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setSelectedCustomerId(null);
+        setSelectedRecoveryId(null);
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [selectedCustomer]);
+
+  useEffect(() => {
+    setCustomerPage(1);
+  }, [selectedStatus]);
 
   return (
     <s-section heading="Recovery breakdown">
@@ -50,10 +65,24 @@ export default function RecoveryChart({ recoveries }) {
       </s-stack>
       <table className="dashboard-table" style={{ marginTop: "24px" }}>
         <thead><tr><th align="left">Customer</th><th align="left">Recoveries</th><th align="left">Total value</th><th align="left">Latest checkout</th><th align="left">Messages</th></tr></thead>
-        <tbody>{customers.map((customer) => <tr key={customer.id} onClick={() => { setSelectedCustomerId(selectedCustomerId === customer.id ? null : customer.id); setSelectedRecoveryId(null); }} style={{ cursor: "pointer", background: selectedCustomerId === customer.id ? "#e3f0e8" : "transparent" }}><td>{[customer.customer?.firstName, customer.customer?.lastName].filter(Boolean).join(" ") || customer.customer?.email || "Guest"}</td><td>{customer.recoveries.length}</td><td>{formatMoney({ currency: customer.recoveries[0]?.currency ?? "GBP", totalPrice: customer.totalPrice })}</td><td>{new Date(customer.recoveries[0].detectedAt).toLocaleDateString("en-GB")}</td><td>{customer.messageCount}</td></tr>)}</tbody>
+        <tbody>{paginatedCustomers.map((customer) => <tr key={customer.id} onClick={() => { setSelectedCustomerId(selectedCustomerId === customer.id ? null : customer.id); setSelectedRecoveryId(null); }} style={{ cursor: "pointer", background: selectedCustomerId === customer.id ? "#e3f0e8" : "transparent" }}><td>{[customer.customer?.firstName, customer.customer?.lastName].filter(Boolean).join(" ") || customer.customer?.email || "Guest"}</td><td>{customer.recoveries.length}</td><td>{formatMoney({ currency: customer.recoveries[0]?.currency ?? "GBP", totalPrice: customer.totalPrice })}</td><td>{new Date(customer.recoveries[0].detectedAt).toLocaleDateString("en-GB")}</td><td>{customer.messageCount}</td></tr>)}</tbody>
       </table>
-      {selectedCustomer && <div ref={customerSummaryRef} className="customer-summary-anchor"><s-section heading={`Customer summary: ${[selectedCustomer.customer?.firstName, selectedCustomer.customer?.lastName].filter(Boolean).join(" ") || "Guest"}`}>
-        <s-text>{selectedCustomer.recoveries.length} recoveries · {selectedCustomer.messageCount} messages · {formatMoney({ currency: selectedCustomer.recoveries[0]?.currency ?? "GBP", totalPrice: selectedCustomer.totalPrice })} total value</s-text>
+      <s-stack direction="inline" gap="base" alignment="center" className="usage-pagination">
+        <s-text className="usage-range">{customerFirstItem}-{customerLastItem} of {customers.length}</s-text>
+        <button className="usage-page-button" type="button" disabled={customerPage <= 1} onClick={() => setCustomerPage(customerPage - 1)}>Previous</button>
+        <button className="usage-page-button" type="button" disabled={customerPage >= customerTotalPages} onClick={() => setCustomerPage(customerPage + 1)}>Next</button>
+      </s-stack>
+      {selectedCustomer && <div className="customer-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setSelectedCustomerId(null); setSelectedRecoveryId(null); } }}>
+        <div className="customer-dialog" role="dialog" aria-modal="true" aria-labelledby="customer-dialog-title">
+          <div className="customer-dialog-header">
+            <div>
+              <span className="customer-dialog-kicker">Customer interactions</span>
+              <h2 id="customer-dialog-title">{[selectedCustomer.customer?.firstName, selectedCustomer.customer?.lastName].filter(Boolean).join(" ") || "Guest"}</h2>
+              <p>{selectedCustomer.recoveries.length} recoveries · {selectedCustomer.messageCount} messages · {formatMoney({ currency: selectedCustomer.recoveries[0]?.currency ?? "GBP", totalPrice: selectedCustomer.totalPrice })} total value</p>
+            </div>
+            <button className="customer-dialog-close" type="button" aria-label="Close customer interactions" onClick={() => { setSelectedCustomerId(null); setSelectedRecoveryId(null); }}>Close</button>
+          </div>
+          <div className="customer-dialog-body">
         <div className="recovery-picker">
           <label htmlFor="recovery-select">Select a recovery to view details</label>
           <span className="recovery-picker-hint">Choose one checkout from this customer</span>
@@ -62,12 +91,11 @@ export default function RecoveryChart({ recoveries }) {
           {selectedCustomer.recoveries.map((recovery) => <option key={recovery.id} value={recovery.id}>{recovery.id} · {statusLabels[recovery.status] ?? recovery.status} · {formatMoney(recovery)}</option>)}
         </select>
         </div>
-      </s-section></div>}
-      {selectedRecovery && <s-section heading={`Recovery details: ${selectedRecovery.id}`}>
-        <s-text>{[selectedRecovery.customer?.firstName, selectedRecovery.customer?.lastName].filter(Boolean).join(" ") || "Guest"} · {selectedRecovery.messages.length} messages recorded</s-text>
+      {selectedRecovery && <div className="customer-dialog-details">
+        <div className="customer-dialog-section-heading"><h3>Recovery details</h3><span>{selectedRecovery.messages.length} messages recorded</span></div>
         <table className="dashboard-table" style={{ marginTop: "16px" }}>
-          <thead><tr><th align="left">Recovery</th><th align="left">Status</th><th align="left">Value</th><th align="left">Detected</th><th align="left">Conversation</th><th align="left">Outcome</th></tr></thead>
-          <tbody><tr><td>{selectedRecovery.id}</td><td>{statusLabels[selectedRecovery.status] ?? selectedRecovery.status}</td><td>{formatMoney(selectedRecovery)}</td><td>{new Date(selectedRecovery.detectedAt).toLocaleDateString("en-GB")}</td><td>{selectedRecovery.conversations.map((conversation) => conversation.type).join(", ")}</td><td>{selectedRecovery.conversations.map((conversation) => conversation.outcome).join(", ")}</td></tr></tbody>
+          <thead><tr><th align="left">Recovery</th><th align="left">Status</th><th align="left">Value</th><th align="left">Detected</th><th align="left">Conversation</th></tr></thead>
+          <tbody><tr><td>{selectedRecovery.id}</td><td>{statusLabels[selectedRecovery.status] ?? selectedRecovery.status}</td><td>{formatMoney(selectedRecovery)}</td><td>{new Date(selectedRecovery.detectedAt).toLocaleDateString("en-GB")}</td><td>{selectedRecovery.conversations.map((conversation) => conversation.type).join(", ")}</td></tr></tbody>
         </table>
         <table className="dashboard-table" style={{ marginTop: "16px" }}>
           <thead><tr><th align="left">Message</th><th align="left">Sender</th><th align="left">Status</th><th align="left">Sent</th></tr></thead>
@@ -77,7 +105,10 @@ export default function RecoveryChart({ recoveries }) {
           <thead><tr><th align="left">Action</th><th align="left">Quantity</th><th align="left">Idempotency key</th><th align="left">Recorded</th></tr></thead>
           <tbody>{selectedRecovery.billableActions.map((event) => <tr key={event.id}><td>{metricLabels[event.metric] ?? event.metric}</td><td>{event.quantity}</td><td><code>{event.idempotencyKey}</code></td><td>{new Date(event.occurredAt).toLocaleDateString("en-GB")}</td></tr>)}</tbody>
         </table>
-      </s-section>}
+      </div>}
+          </div>
+        </div>
+      </div>}
     </s-section>
   );
 }

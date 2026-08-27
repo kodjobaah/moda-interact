@@ -1,8 +1,12 @@
 import crypto from "node:crypto";
+import process from "node:process";
 import { authenticate } from "../shopify.server";
 import { ordersQueue } from "../lib/queues/order.server";
 import { getCheckoutQueue } from "../lib/queues/checkout.queue";
 import { normaliseCheckoutCreated } from "../domain/checkout-events";
+import db from "../db.server";
+
+const DEFAULT_RECOVERY_DELAY_MINUTES = 30;
 
 // @ts-ignore
 export const action = async ({ request }) => {
@@ -16,6 +20,7 @@ export const action = async ({ request }) => {
       console.log("Cart created:", payload);
     case "CARTS_UPDATE":
       console.log("Cart updated:", payload);
+      break;
     case "CHECKOUTS_UPDATE":
       console.log("Checkout updated:", payload);
     case "CHECKOUTS_CREATE":
@@ -36,6 +41,21 @@ export const action = async ({ request }) => {
       }
 
       const queue = getCheckoutQueue();
+      const shopRecord = await db.shop.findUnique({
+        where: { domain: shop },
+        select: {
+          settings: {
+            select: { recoveryDelayMinutes: true },
+          },
+        },
+      });
+      const configuredDelayMinutes = shopRecord?.settings?.recoveryDelayMinutes;
+      const fallbackDelayMs = Number(
+        process.env.CHECKOUT_RECOVERY_DELAY_MS ?? DEFAULT_RECOVERY_DELAY_MINUTES * 60 * 1000,
+      );
+      const recoveryDelayMs = configuredDelayMinutes == null
+        ? fallbackDelayMs
+        : configuredDelayMinutes * 60 * 1000;
 
       const jobId =
         "checkout-created-" +
@@ -51,6 +71,9 @@ export const action = async ({ request }) => {
         checkout,
         {
           jobId,
+          delay: Number.isFinite(recoveryDelayMs) && recoveryDelayMs >= 0
+            ? recoveryDelayMs
+            : DEFAULT_RECOVERY_DELAY_MINUTES * 60 * 1000,
         },
       );
 
