@@ -3,7 +3,8 @@ export type ShopifyWebhookLogEntry = {
   deliveryId: string;
   eventId: string | null;
   providerTopic: string;
-  internalEventType: string | null;
+  eventType: string | null;
+  destination: string | null;
   shopId: string | null;
   shopDomain: string;
   disposition: string;
@@ -20,7 +21,8 @@ export function logShopifyWebhookOutcome(entry: ShopifyWebhookLogEntry): void {
       deliveryId: entry.deliveryId,
       eventId: entry.eventId,
       providerTopic: entry.providerTopic,
-      internalEventType: entry.internalEventType,
+      eventType: entry.eventType,
+      destination: entry.destination,
       shopId: entry.shopId,
       shopDomain: entry.shopDomain,
       disposition: entry.disposition,

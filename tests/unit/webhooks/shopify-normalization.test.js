@@ -8,6 +8,8 @@ describe("normalizeCheckoutObservedPayload", () => {
       token: "checkout-token-1",
       cart_token: "cart-token-1",
       created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:05:00Z",
+      completed_at: "2024-01-01T00:10:00Z",
       currency: "USD",
       total_price: "19.99",
       abandoned_checkout_url: "https://shop.example/checkout",
@@ -34,10 +36,14 @@ describe("normalizeCheckoutObservedPayload", () => {
       expect.objectContaining({
         checkoutToken: "checkout-token-1",
         cartToken: "cart-token-1",
-        currency: "USD",
-        totalPrice: "19.99",
+        total: {
+          amount: "19.99",
+          currencyCode: "USD",
+        },
         checkoutUrl: "https://shop.example/checkout",
-        detectedAt: "2024-01-01T00:00:00Z",
+        checkoutCreatedAt: "2024-01-01T00:00:00Z",
+        checkoutUpdatedAt: "2024-01-01T00:05:00Z",
+        completedAt: "2024-01-01T00:10:00Z",
       }),
     );
     expect(payload.customer).toMatchObject({
@@ -48,9 +54,6 @@ describe("normalizeCheckoutObservedPayload", () => {
       lastName: "Lovelace",
     });
     expect(payload.lineItems).toHaveLength(1);
-    expect(payload).not.toHaveProperty("queueName");
-    expect(payload).not.toHaveProperty("jobName");
-    expect(payload).not.toHaveProperty("delayMs");
   });
 
   it("returns null when the checkout token is missing", () => {
@@ -72,17 +75,26 @@ describe("normalizeOrderCompletedPayload", () => {
     expect(payload).toEqual({
       orderId: "gid://shopify/Order/123",
       checkoutToken: "checkout-token-1",
-      customerId: "gid://shopify/Customer/42",
-      totalPrice: "19.99",
-      currency: "USD",
+      shopifyCustomerId: "gid://shopify/Customer/42",
+      total: {
+        amount: "19.99",
+        currencyCode: "USD",
+      },
       completedAt: "2024-01-02T00:00:00Z",
     });
-    expect(payload).not.toHaveProperty("queueName");
-    expect(payload).not.toHaveProperty("jobName");
-    expect(payload).not.toHaveProperty("delayMs");
   });
 
-  it("returns null when the checkout token is missing", () => {
-    expect(normalizeOrderCompletedPayload({})).toBeNull();
+  it("accepts a missing checkout token", () => {
+    expect(
+      normalizeOrderCompletedPayload({
+        admin_graphql_api_id: "gid://shopify/Order/123",
+        checkout_token: null,
+        created_at: "2024-01-02T00:00:00Z",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        checkoutToken: null,
+      }),
+    );
   });
 });

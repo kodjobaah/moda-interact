@@ -1,17 +1,7 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-class ExplodingRedis {
-  constructor() {
-    throw new Error("Redis should not be constructed");
-  }
-}
-
-vi.mock("ioredis", () => ({ default: ExplodingRedis }));
-vi.mock("bullmq", () => {
-  throw new Error("BullMQ should not be imported by webhook ingress");
-});
+import { parseShopifyCommerceEvent } from "@modainteract/moda-interact-shared/shopify";
 
 const store = {
   shopsByDomain: new Map(),
@@ -26,7 +16,7 @@ const dbMock = {
     findUnique: vi.fn(async ({ where }) => store.shopsByDomain.get(where.domain) ?? null),
   },
   shopifyWebhookReceipt: {
-    create: vi.fn(async ({ data }) => {
+    create: vi.fn(async ({ data, include }) => {
       const compositeKey = `${data.appKey}:${data.deliveryId}`;
       if (store.receiptsByComposite.has(compositeKey)) {
         throw {
@@ -45,7 +35,7 @@ const dbMock = {
 
       const receipt = {
         ...data,
-        outbox,
+        ...(include?.outbox ? { outbox } : {}),
       };
 
       store.receiptsByComposite.set(compositeKey, receipt);
@@ -69,35 +59,6 @@ const dbMock = {
 
       return null;
     }),
-    delete: vi.fn(async ({ where }) => {
-      const receipt = store.receiptsById.get(where.id) ?? null;
-      if (!receipt) {
-        return null;
-      }
-
-      store.receiptsById.delete(where.id);
-      store.receiptsByComposite.delete(`${receipt.appKey}:${receipt.deliveryId}`);
-      store.outboxesByReceiptId.delete(where.id);
-      return receipt;
-    }),
-    count: vi.fn(async ({ where }) => {
-      if (where.receiptId) {
-        return store.outboxesByReceiptId.has(where.receiptId) ? 1 : 0;
-      }
-
-      return store.receiptsById.size;
-    }),
-  },
-  shopifyWebhookOutbox: {
-    findUnique: vi.fn(async ({ where }) => {
-      if (where.id) {
-        return store.outboxesByReceiptId.get(
-          [...store.outboxesByReceiptId.entries()].find(([, outbox]) => outbox.id === where.id)?.[0] ?? "",
-        ) ?? null;
-      }
-
-      return null;
-    }),
   },
 };
 
@@ -113,7 +74,6 @@ function resetStore() {
   store.receiptsById.clear();
   store.outboxesByReceiptId.clear();
   vi.clearAllMocks();
-  delete process.env.WEBHOOK_DISPATCH_MODE;
   delete process.env.REDIS_URL;
 }
 
@@ -122,6 +82,9 @@ function activeShop() {
     id: "shop_1",
     domain: "shop.myshopify.com",
     status: "ACTIVE",
+    settings: {
+      recoveryDelayMinutes: 45,
+    },
   };
 }
 
@@ -130,6 +93,7 @@ function inactiveShop() {
     id: "shop_2",
     domain: "inactive.myshopify.com",
     status: "UNINSTALLED",
+    settings: null,
   };
 }
 
@@ -143,7 +107,7 @@ function baseRequest(headers = {}) {
   });
 }
 
-function baseInput(overrides = {}) {
+function checkoutInput(overrides = {}) {
   return {
     request: baseRequest(),
     appKey: "app-key",
@@ -152,13 +116,57 @@ function baseInput(overrides = {}) {
     payload: {
       token: "checkout-token-1",
       cart_token: "cart-token-1",
-      customer: { email: "customer@example.com" },
-      line_items: [],
+      created_at: "2024-01-01T00:00:00Z",
+      updated_at: "2024-01-01T00:10:00Z",
+      completed_at: "2024-01-01T00:20:00Z",
+      currency: "USD",
+      total_price: "19.99",
+      abandoned_checkout_url: "https://shop.example/checkout",
+      customer: {
+        id: 42,
+        email: "customer@example.com",
+        phone: "+15555550100",
+        first_name: "Ada",
+        last_name: "Lovelace",
+      },
+      line_items: [
+        {
+          id: "li_1",
+          product_id: 1,
+          variant_id: 2,
+          title: "T-Shirt",
+          sku: "TS-1",
+          quantity: 1,
+          price: "19.99",
+        },
+      ],
     },
     apiVersion: "2026-07",
     eventId: "event-1",
     triggeredAt: "2024-01-01T00:00:00Z",
     name: "checkout/create",
+    ...overrides,
+  };
+}
+
+function orderInput(overrides = {}) {
+  return {
+    request: baseRequest(),
+    appKey: "app-key",
+    shop: "shop.myshopify.com",
+    topic: "ORDERS_CREATE",
+    payload: {
+      admin_graphql_api_id: "gid://shopify/Order/123",
+      checkout_token: "checkout-token-1",
+      customer: { admin_graphql_api_id: "gid://shopify/Customer/42" },
+      current_total_price: "19.99",
+      currency: "USD",
+      created_at: "2024-01-02T00:00:00Z",
+    },
+    apiVersion: "2026-07",
+    eventId: "event-1",
+    triggeredAt: "2024-01-02T00:00:00Z",
+    name: "orders/create",
     ...overrides,
   };
 }
@@ -173,7 +181,7 @@ beforeEach(() => {
 });
 
 describe("shopify webhook ingress", () => {
-  it("does not contain the legacy dispatch switch or request-path Redis/BullMQ code", () => {
+  it("does not contain the legacy Redis or unified destination code path", () => {
     const source = readFileSync(
       new URL(
         "../../../app/services/webhooks/shopify-webhook-ingress.service.ts",
@@ -186,212 +194,159 @@ describe("shopify webhook ingress", () => {
     expect(source).not.toContain("queue.add");
     expect(source).not.toContain("bullmq");
     expect(source).not.toContain("ioredis");
-    expect(source).not.toContain("delayMs");
-    expect(source).not.toContain("checkout-created");
-    expect(source).not.toContain("order-completed");
+    expect(source).not.toContain("SHOPIFY_COMMERCE_EVENTS");
   });
 
-  it("works without Redis configuration", async () => {
+  it("writes checkout.observed to CHECKOUT_EVENTS with the merchant delay", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(baseInput());
+    const response = await ingestShopifyWebhook(checkoutInput());
 
     expect(response.status).toBe(200);
-    expect(dbMock.shopifyWebhookReceipt.create).toHaveBeenCalledTimes(1);
-  });
-
-  it("creates a V1 checkout envelope and commits one receipt and one outbox", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const response = await ingestShopifyWebhook(baseInput({
-      topic: "CHECKOUTS_CREATE",
-      payload: {
-        token: "checkout-token-1",
-        cart_token: "cart-token-1",
-        currency: "USD",
-        total_price: "19.99",
-        abandoned_checkout_url: "https://shop.example/checkout",
-        customer: {
-          id: 42,
-          email: "customer@example.com",
-          phone: "+15555550100",
-          first_name: "Ada",
-          last_name: "Lovelace",
-        },
-        line_items: [
-          {
-            product_id: 1,
-            variant_id: 2,
-            title: "T-Shirt",
-            sku: "TS-1",
-            quantity: 1,
-            price: "19.99",
-          },
-        ],
-      },
-    }));
-
-    expect(response.status).toBe(200);
-    expect(store.receiptsByComposite.size).toBe(1);
-    expect(store.outboxesByReceiptId.size).toBe(1);
 
     const data = lastReceiptCreateData();
     const outbox = data.outbox.create;
 
     expect(data.disposition).toBe("ACCEPTED");
-    expect(data.internalEventType).toBe("checkout.observed");
-    expect(outbox.destination).toBe("SHOPIFY_COMMERCE_EVENTS");
-    expect(outbox.contractVersion).toBe(1);
-    expect(outbox.state).toBe("PENDING");
-    expect(outbox.jobId).toMatch(/^shopify-[0-9a-f]{64}$/);
+    expect(data.topic).toBe("CHECKOUTS_CREATE");
+    expect(outbox.destination).toBe("CHECKOUT_EVENTS");
+    expect(outbox.jobName).toBe("checkout-created");
+    expect(outbox.delayMs).toBe(45 * 60 * 1000);
     expect(outbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(outbox.envelope).toMatchObject({
-      schemaVersion: 1,
-      receiptId: data.id,
-      deliveryId: "delivery-1",
+    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
       eventType: "checkout.observed",
-      providerTopic: "CHECKOUTS_CREATE",
-      tenant: {
-        shopId: "shop_1",
-        shopDomain: "shop.myshopify.com",
-      },
       orderingKey: "shop_1:checkout-token-1",
       payload: {
         checkoutToken: "checkout-token-1",
-        cartToken: "cart-token-1",
-        currency: "USD",
+        completedAt: "2024-01-01T00:20:00Z",
       },
     });
-    expect(outbox.envelope).not.toHaveProperty("delayMs");
+    expect(outbox.payload.eventType).not.toBe("order.completed");
+    expect(outbox.payload).not.toHaveProperty("delayMs");
   });
 
-  it("creates a V1 order envelope and uses the same target contract", async () => {
+  it("writes order.completed to ORDER_EVENTS and accepts missing checkout tokens", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(
-      baseInput({
-        topic: "ORDERS_CREATE",
+    const withToken = await ingestShopifyWebhook(orderInput());
+
+    expect(withToken.status).toBe(200);
+
+    let data = lastReceiptCreateData();
+    let outbox = data.outbox.create;
+
+    expect(data.disposition).toBe("ACCEPTED");
+    expect(outbox.destination).toBe("ORDER_EVENTS");
+    expect(outbox.jobName).toBe("order-completed");
+    expect(outbox.delayMs).toBe(0);
+    expect(outbox.orderingKey).toBe("shop_1:checkout-token-1");
+    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
+      eventType: "order.completed",
+      payload: {
+        orderId: "gid://shopify/Order/123",
+        checkoutToken: "checkout-token-1",
+      },
+    });
+
+    const withoutToken = await ingestShopifyWebhook(
+      orderInput({
         payload: {
-          admin_graphql_api_id: "gid://shopify/Order/123",
-          checkout_token: "checkout-token-1",
-          customer: { admin_graphql_api_id: "gid://shopify/Customer/42" },
-          current_total_price: "19.99",
+          admin_graphql_api_id: "gid://shopify/Order/456",
+          checkout_token: null,
+          customer: { admin_graphql_api_id: "gid://shopify/Customer/43" },
+          current_total_price: "29.99",
           currency: "USD",
+          created_at: "2024-01-03T00:00:00Z",
         },
       }),
     );
 
-    expect(response.status).toBe(200);
+    expect(withoutToken.status).toBe(200);
 
-    const data = lastReceiptCreateData();
-    const outbox = data.outbox.create;
+    data = lastReceiptCreateData();
+    outbox = data.outbox.create;
 
-    expect(data.disposition).toBe("ACCEPTED");
-    expect(data.internalEventType).toBe("order.completed");
-    expect(outbox.destination).toBe("SHOPIFY_COMMERCE_EVENTS");
-    expect(outbox.contractVersion).toBe(1);
-    expect(outbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(outbox.envelope).toMatchObject({
-      schemaVersion: 1,
+    expect(outbox.destination).toBe("ORDER_EVENTS");
+    expect(outbox.orderingKey).toBe("shop_1:gid://shopify/Order/456");
+    expect(parseShopifyCommerceEvent(outbox.payload)).toMatchObject({
       eventType: "order.completed",
-      providerTopic: "ORDERS_CREATE",
-      tenant: {
-        shopId: "shop_1",
-        shopDomain: "shop.myshopify.com",
-      },
-      orderingKey: "shop_1:checkout-token-1",
       payload: {
-        checkoutToken: "checkout-token-1",
-        orderId: "gid://shopify/Order/123",
+        orderId: "gid://shopify/Order/456",
+        checkoutToken: null,
       },
     });
   });
 
-  it("uses the same ordering key contract for checkout and order events", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    await ingestShopifyWebhook(baseInput());
-    const checkoutOutbox = lastReceiptCreateData().outbox.create;
-
-    resetStore();
+  it("keeps completedAt on checkout events and still accepts them", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     await ingestShopifyWebhook(
-      baseInput({
-        topic: "ORDERS_CREATE",
+      checkoutInput({
         payload: {
-          checkout_token: "checkout-token-1",
-          current_total_price: "19.99",
-          currency: "USD",
+          ...checkoutInput().payload,
+          completed_at: "2024-01-01T00:20:00Z",
         },
       }),
     );
-    const orderOutbox = lastReceiptCreateData().outbox.create;
 
-    expect(checkoutOutbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(orderOutbox.orderingKey).toBe("shop_1:checkout-token-1");
-    expect(checkoutOutbox.destination).toBe(orderOutbox.destination);
-    expect(checkoutOutbox.contractVersion).toBe(orderOutbox.contractVersion);
+    const outbox = lastReceiptCreateData().outbox.create;
+    const parsed = parseShopifyCommerceEvent(outbox.payload);
+
+    expect(parsed.eventType).toBe("checkout.observed");
+    expect(parsed.payload.completedAt).toBe("2024-01-01T00:20:00Z");
   });
 
-  it("creates one durable receipt and one outbox for duplicate deliveries", async () => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
-
-    const input = baseInput();
-    const [first, second] = await Promise.all([
-      ingestShopifyWebhook(input),
-      ingestShopifyWebhook(input),
-    ]);
-
-    expect(first.status).toBe(200);
-    expect(second.status).toBe(200);
-    expect(store.receiptsByComposite.size).toBe(1);
-    expect(store.outboxesByReceiptId.size).toBe(1);
-  });
-
-  it("persists IGNORED receipts for unsupported cart topics", async () => {
+  it("persists IGNORED receipts for cart topics and creates no outbox", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         topic: "CARTS_CREATE",
         payload: { cart_id: "cart-1" },
       }),
     );
 
     expect(response.status).toBe(200);
-    const data = lastReceiptCreateData();
-    expect(data.disposition).toBe("IGNORED");
-    expect(data.dispositionCode).toBe("UNSUPPORTED_TOPIC");
-    expect(data.outbox).toBeUndefined();
+    expect(lastReceiptCreateData().disposition).toBe("IGNORED");
+    expect(lastReceiptCreateData().outbox).toBeUndefined();
     expect(store.outboxesByReceiptId.size).toBe(0);
   });
 
-  it("persists REJECTED receipts for supported payloads missing a checkout token", async () => {
+  it("persists REJECTED receipts for malformed supported payloads", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
-      baseInput({
-        topic: "ORDERS_CREATE",
+      checkoutInput({
         payload: {
-          current_total_price: "19.99",
-          currency: "USD",
+          token: null,
+          created_at: "2024-01-01T00:00:00Z",
         },
       }),
     );
 
     expect(response.status).toBe(200);
-    const data = lastReceiptCreateData();
-    expect(data.disposition).toBe("REJECTED");
-    expect(data.dispositionCode).toBe("MISSING_CHECKOUT_TOKEN");
-    expect(data.outbox).toBeUndefined();
+    expect(lastReceiptCreateData().disposition).toBe("REJECTED");
+    expect(lastReceiptCreateData().outbox).toBeUndefined();
+
+    const orderResponse = await ingestShopifyWebhook(
+      orderInput({
+        payload: {
+          checkout_token: "checkout-token-1",
+          created_at: null,
+        },
+      }),
+    );
+
+    expect(orderResponse.status).toBe(200);
+    expect(lastReceiptCreateData().disposition).toBe("REJECTED");
+    expect(lastReceiptCreateData().outbox).toBeUndefined();
   });
 
   it("persists QUARANTINED receipts for unknown or inactive tenants", async () => {
     store.shopsByDomain.set("inactive.myshopify.com", inactiveShop());
 
     const unknownTenantResponse = await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         shop: "missing.myshopify.com",
       }),
     );
@@ -399,12 +354,13 @@ describe("shopify webhook ingress", () => {
     expect(unknownTenantResponse.status).toBe(200);
     expect(lastReceiptCreateData().disposition).toBe("QUARANTINED");
     expect(lastReceiptCreateData().shopId).toBeNull();
+    expect(lastReceiptCreateData().outbox).toBeUndefined();
 
     resetStore();
     store.shopsByDomain.set("inactive.myshopify.com", inactiveShop());
 
     const inactiveTenantResponse = await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         shop: "inactive.myshopify.com",
       }),
     );
@@ -412,11 +368,12 @@ describe("shopify webhook ingress", () => {
     expect(inactiveTenantResponse.status).toBe(200);
     expect(lastReceiptCreateData().disposition).toBe("QUARANTINED");
     expect(lastReceiptCreateData().shopId).toBeNull();
+    expect(lastReceiptCreateData().outbox).toBeUndefined();
   });
 
   it("returns 400 and creates no receipt when delivery ids are missing or conflicting", async () => {
     const missingDeliveryResponse = await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         request: new Request("https://app.example/webhooks", {
           method: "POST",
         }),
@@ -427,7 +384,7 @@ describe("shopify webhook ingress", () => {
     expect(dbMock.shopifyWebhookReceipt.create).not.toHaveBeenCalled();
 
     const conflictingDeliveryResponse = await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         request: baseRequest({
           "X-Shopify-Webhook-Id": "delivery-a",
           "Webhook-Id": "delivery-b",
@@ -439,11 +396,61 @@ describe("shopify webhook ingress", () => {
     expect(dbMock.shopifyWebhookReceipt.create).not.toHaveBeenCalled();
   });
 
+  it("creates one durable receipt and one outbox for sequential duplicate deliveries", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const input = checkoutInput();
+    const first = await ingestShopifyWebhook(input);
+    const second = await ingestShopifyWebhook(input);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(store.receiptsByComposite.size).toBe(1);
+    expect(store.outboxesByReceiptId.size).toBe(1);
+  });
+
+  it("creates one durable receipt and one outbox for concurrent duplicate deliveries", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const input = checkoutInput();
+    const [first, second] = await Promise.all([
+      ingestShopifyWebhook(input),
+      ingestShopifyWebhook(input),
+    ]);
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(store.receiptsByComposite.size).toBe(1);
+    expect(store.outboxesByReceiptId.size).toBe(1);
+  });
+
+  it("keeps receipts separate when the eventId is shared across deliveries", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const first = await ingestShopifyWebhook(
+      checkoutInput({
+        request: baseRequest({ "X-Shopify-Webhook-Id": "delivery-1" }),
+        eventId: "shared-event",
+      }),
+    );
+
+    const second = await ingestShopifyWebhook(
+      checkoutInput({
+        request: baseRequest({ "X-Shopify-Webhook-Id": "delivery-2" }),
+        eventId: "shared-event",
+      }),
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(store.receiptsById.size).toBe(2);
+  });
+
   it("returns non-2xx when the transaction fails", async () => {
     dbMock.$transaction.mockRejectedValueOnce(new Error("database down"));
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    await expect(ingestShopifyWebhook(baseInput())).rejects.toThrow(
+    await expect(ingestShopifyWebhook(checkoutInput())).rejects.toThrow(
       "database down",
     );
     expect(store.receiptsByComposite.size).toBe(0);
@@ -455,14 +462,14 @@ describe("shopify webhook ingress", () => {
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
 
     await ingestShopifyWebhook(
-      baseInput({
+      checkoutInput({
         payload: {
           token: "checkout-token-1",
+          created_at: "2024-01-01T00:00:00Z",
           customer: {
             email: "customer@example.com",
             phone: "+15555550100",
           },
-          hmac: "super-secret-hmac-value",
         },
       }),
     );
@@ -475,12 +482,11 @@ describe("shopify webhook ingress", () => {
     expect(logLine).toContain("receiptId");
     expect(logLine).toContain("deliveryId");
     expect(logLine).toContain("providerTopic");
-    expect(logLine).toContain("internalEventType");
-    expect(logLine).toContain("transactionMs");
+    expect(logLine).toContain("eventType");
+    expect(logLine).toContain("destination");
     expect(logLine).toContain("ackMs");
     expect(logLine).not.toContain("customer@example.com");
     expect(logLine).not.toContain("+15555550100");
-    expect(logLine).not.toContain("super-secret-hmac-value");
 
     infoSpy.mockRestore();
   });

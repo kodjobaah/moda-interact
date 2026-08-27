@@ -1,40 +1,52 @@
 import crypto from "node:crypto";
 
 import db from "../../db.server";
-import { buildShopifyWebhookJobId } from "./shopify-webhook-job-id";
+import {
+  createShopifyCommerceOrderingKey,
+  createShopifyOrderOrderingKey,
+  parseShopifyCommerceEvent,
+  SHOPIFY_COMMERCE_EVENT_TYPES,
+  SHOPIFY_WEBHOOK_OUTBOX_DESTINATIONS,
+  type ShopifyCheckoutObservedPayload,
+  type ShopifyCommerceEvent,
+  type ShopifyOrderCompletedPayload,
+} from "@modainteract/moda-interact-shared/shopify";
+import { createShopifyWebhookJobId } from "@modainteract/moda-interact-shared/shopify/node";
 import {
   parseShopifyWebhookMetadata,
   ShopifyWebhookMetadataError,
   type ShopifyWebhookAuthContext,
 } from "./shopify-webhook-metadata";
 import { logShopifyWebhookOutcome } from "./shopify-webhook-logger";
-import {
-  normalizeCheckoutObservedPayload,
-  type ShopifyCheckoutObservedPayload,
-} from "./checkout-normalization";
-import {
-  normalizeOrderCompletedPayload,
-  type ShopifyOrderCompletedPayload,
-} from "./order-normalization";
-import type {
-  ShopifyWebhookInternalEventType,
-  ShopifyWebhookJobV1,
-} from "./shopify-webhook-contracts";
+import { normalizeCheckoutObservedPayload } from "./checkout-normalization";
+import { normalizeOrderCompletedPayload } from "./order-normalization";
 
 type SupportedWebhookPlan =
   | {
-      kind: "checkout";
-      internalEventType: "checkout.observed";
+      eventType: typeof SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED;
+      destination: typeof SHOPIFY_WEBHOOK_OUTBOX_DESTINATIONS.CHECKOUT_EVENTS;
+      jobName: "checkout-created";
       normalize: (
         payload: Record<string, unknown>,
       ) => ShopifyCheckoutObservedPayload | null;
+      buildOrderingKey: (
+        shopId: string,
+        payload: ShopifyCheckoutObservedPayload,
+      ) => string;
+      delayMs: (recoveryDelayMinutes: number) => number;
     }
   | {
-      kind: "order";
-      internalEventType: "order.completed";
+      eventType: typeof SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED;
+      destination: typeof SHOPIFY_WEBHOOK_OUTBOX_DESTINATIONS.ORDER_EVENTS;
+      jobName: "order-completed";
       normalize: (
         payload: Record<string, unknown>,
       ) => ShopifyOrderCompletedPayload | null;
+      buildOrderingKey: (
+        shopId: string,
+        payload: ShopifyOrderCompletedPayload,
+      ) => string;
+      delayMs: () => number;
     };
 
 type IngressInput = ShopifyWebhookAuthContext & {
@@ -42,9 +54,41 @@ type IngressInput = ShopifyWebhookAuthContext & {
   payload: Record<string, unknown>;
 };
 
-export async function ingestShopifyWebhook(input: IngressInput): Promise<Response> {
+type ReceiptCreateData = {
+  id: string;
+  appKey: string;
+  deliveryId: string;
+  eventId: string | null;
+  shopId: string | null;
+  shopDomain: string;
+  topic: string;
+  apiVersion: string | null;
+  triggeredAt: Date | null;
+  triggeredAtRaw: string | null;
+  subscriptionName: string | null;
+  receivedAt: Date;
+  disposition: "ACCEPTED" | "IGNORED" | "REJECTED" | "QUARANTINED";
+  dispositionCode: string | null;
+  rejectedPayload: Record<string, unknown> | null;
+  outbox?: {
+    create: {
+      destination: string;
+      jobName: string;
+      jobId: string;
+      orderingKey: string;
+      payload: ShopifyCommerceEvent;
+      delayMs: number;
+      state: "PENDING";
+    };
+  };
+};
+
+export async function ingestShopifyWebhook(
+  input: IngressInput,
+): Promise<Response> {
   const ackStartedAt = Date.now();
   const receiptId = crypto.randomUUID();
+  const plan = classifyWebhookTopic(input.topic);
 
   let metadata;
   try {
@@ -56,7 +100,8 @@ export async function ingestShopifyWebhook(input: IngressInput): Promise<Respons
         deliveryId: "unknown",
         eventId: null,
         providerTopic: input.topic,
-        internalEventType: null,
+        eventType: plan?.eventType ?? null,
+        destination: plan?.destination ?? null,
         shopId: null,
         shopDomain: input.shop,
         disposition: `REJECTED_${error.code}`,
@@ -76,130 +121,107 @@ export async function ingestShopifyWebhook(input: IngressInput): Promise<Respons
     const result = await db.$transaction(async (tx) => {
       const shop = await tx.shop.findUnique({
         where: { domain: metadata.shopDomain },
+        include: { settings: true },
       });
-
-      const plan = classifyWebhookTopic(metadata.providerTopic);
 
       if (!shop || shop.status !== "ACTIVE") {
         return tx.shopifyWebhookReceipt.create({
-          data: {
-            id: receiptId,
-            appKey: metadata.appKey,
-            deliveryId: metadata.deliveryId,
-            eventId: metadata.eventId,
+          data: buildReceiptData({
+            receiptId,
+            metadata,
             shopId: null,
-            shopDomain: metadata.shopDomain,
-            providerTopic: metadata.providerTopic,
-            internalEventType: plan?.internalEventType ?? null,
-            apiVersion: metadata.apiVersion,
-            triggeredAt: metadata.triggeredAt,
-            triggeredAtRaw: metadata.triggeredAtRaw,
-            subscriptionName: metadata.subscriptionName,
-            receivedAt: metadata.receivedAt,
             disposition: "QUARANTINED",
             dispositionCode: shop ? "INACTIVE_TENANT" : "UNKNOWN_TENANT",
             rejectedPayload: {
               reason: shop ? "INACTIVE_TENANT" : "UNKNOWN_TENANT",
               providerTopic: metadata.providerTopic,
-              eventType: plan?.internalEventType ?? null,
+              eventType: plan?.eventType ?? null,
+              destination: plan?.destination ?? null,
             },
-          },
+          }),
         });
       }
 
       if (!plan) {
         return tx.shopifyWebhookReceipt.create({
-          data: {
-            id: receiptId,
-            appKey: metadata.appKey,
-            deliveryId: metadata.deliveryId,
-            eventId: metadata.eventId,
-            shopId: null,
-            shopDomain: metadata.shopDomain,
-            providerTopic: metadata.providerTopic,
-            internalEventType: null,
-            apiVersion: metadata.apiVersion,
-            triggeredAt: metadata.triggeredAt,
-            triggeredAtRaw: metadata.triggeredAtRaw,
-            subscriptionName: metadata.subscriptionName,
-            receivedAt: metadata.receivedAt,
+          data: buildReceiptData({
+            receiptId,
+            metadata,
+            shopId: shop.id,
             disposition: "IGNORED",
-            dispositionCode: "UNSUPPORTED_TOPIC",
+            dispositionCode: isCartTopic(metadata.providerTopic)
+              ? "CART_TOPIC"
+              : "UNSUPPORTED_TOPIC",
             rejectedPayload: null,
-          },
+          }),
         });
       }
 
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         return tx.shopifyWebhookReceipt.create({
-          data: {
-            id: receiptId,
-            appKey: metadata.appKey,
-            deliveryId: metadata.deliveryId,
-            eventId: metadata.eventId,
+          data: buildReceiptData({
+            receiptId,
+            metadata,
             shopId: shop.id,
-            shopDomain: metadata.shopDomain,
-            providerTopic: metadata.providerTopic,
-            internalEventType: plan.internalEventType,
-            apiVersion: metadata.apiVersion,
-            triggeredAt: metadata.triggeredAt,
-            triggeredAtRaw: metadata.triggeredAtRaw,
-            subscriptionName: metadata.subscriptionName,
-            receivedAt: metadata.receivedAt,
             disposition: "REJECTED",
-            dispositionCode: "MISSING_CHECKOUT_TOKEN",
+            dispositionCode:
+              plan.eventType === SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
+                ? "INVALID_CHECKOUT_PAYLOAD"
+                : "INVALID_ORDER_PAYLOAD",
             rejectedPayload: {
-              reason: "MISSING_CHECKOUT_TOKEN",
+              reason:
+                plan.eventType === SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
+                  ? "INVALID_CHECKOUT_PAYLOAD"
+                  : "INVALID_ORDER_PAYLOAD",
               providerTopic: metadata.providerTopic,
-              eventType: plan.internalEventType,
+              eventType: plan.eventType,
+              destination: plan.destination,
             },
-          },
+          }),
         });
       }
 
-      const orderingKey = `${shop.id}:${normalizedPayload.checkoutToken}`;
-      const outboxEnvelope = buildWebhookEnvelope({
-        receiptId,
-        metadata,
-        shop,
-        internalEventType: plan.internalEventType,
-        orderingKey,
-        payload: normalizedPayload,
-      });
+      const orderingKey = plan.buildOrderingKey(shop.id, normalizedPayload);
+      const envelope = parseShopifyCommerceEvent(
+        buildShopifyEventEnvelope({
+          receiptId,
+          metadata,
+          shop,
+          eventType: plan.eventType,
+          orderingKey,
+          payload: normalizedPayload,
+        }),
+      );
+
+      const delayMs =
+        plan.eventType === SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
+          ? plan.delayMs(shop.settings?.recoveryDelayMinutes ?? 30)
+          : plan.delayMs();
 
       return tx.shopifyWebhookReceipt.create({
-        data: {
-          id: receiptId,
-          appKey: metadata.appKey,
-          deliveryId: metadata.deliveryId,
-          eventId: metadata.eventId,
+        data: buildReceiptData({
+          receiptId,
+          metadata,
           shopId: shop.id,
-          shopDomain: metadata.shopDomain,
-          providerTopic: metadata.providerTopic,
-          internalEventType: plan.internalEventType,
-          apiVersion: metadata.apiVersion,
-          triggeredAt: metadata.triggeredAt,
-          triggeredAtRaw: metadata.triggeredAtRaw,
-          subscriptionName: metadata.subscriptionName,
-          receivedAt: metadata.receivedAt,
           disposition: "ACCEPTED",
           dispositionCode: null,
           rejectedPayload: null,
           outbox: {
             create: {
-              destination: "SHOPIFY_COMMERCE_EVENTS",
-              contractVersion: 1,
-              jobId: buildShopifyWebhookJobId(
+              destination: plan.destination,
+              jobName: plan.jobName,
+              jobId: createShopifyWebhookJobId(
                 metadata.appKey,
                 metadata.deliveryId,
               ),
               orderingKey,
-              envelope: outboxEnvelope,
+              payload: envelope,
+              delayMs,
               state: "PENDING",
             },
           },
-        },
+        }),
         include: { outbox: true },
       });
     });
@@ -209,7 +231,8 @@ export async function ingestShopifyWebhook(input: IngressInput): Promise<Respons
       deliveryId: metadata.deliveryId,
       eventId: metadata.eventId,
       providerTopic: metadata.providerTopic,
-      internalEventType: result.internalEventType,
+      eventType: plan?.eventType ?? null,
+      destination: plan?.destination ?? result.outbox?.destination ?? null,
       shopId: result.shopId,
       shopDomain: result.shopDomain,
       disposition: result.disposition,
@@ -236,7 +259,8 @@ export async function ingestShopifyWebhook(input: IngressInput): Promise<Respons
           deliveryId: metadata.deliveryId,
           eventId: metadata.eventId,
           providerTopic: metadata.providerTopic,
-          internalEventType: existing.internalEventType,
+          eventType: plan?.eventType ?? null,
+          destination: plan?.destination ?? null,
           shopId: existing.shopId,
           shopDomain: existing.shopDomain,
           disposition: existing.disposition,
@@ -251,6 +275,99 @@ export async function ingestShopifyWebhook(input: IngressInput): Promise<Respons
 
     throw error;
   }
+}
+
+function buildReceiptData(input: {
+  receiptId: string;
+  metadata: {
+    appKey: string;
+    deliveryId: string;
+    eventId: string | null;
+    shopDomain: string;
+    providerTopic: string;
+    apiVersion: string | null;
+    triggeredAt: Date | null;
+    triggeredAtRaw: string | null;
+    subscriptionName: string | null;
+    receivedAt: Date;
+  };
+  shopId: string | null;
+  disposition: "ACCEPTED" | "IGNORED" | "REJECTED" | "QUARANTINED";
+  dispositionCode: string | null;
+  rejectedPayload: Record<string, unknown> | null;
+  outbox?: {
+    create: {
+      destination: string;
+      jobName: string;
+      jobId: string;
+      orderingKey: string;
+      payload: ShopifyCommerceEvent;
+      delayMs: number;
+      state: "PENDING";
+    };
+  };
+}): ReceiptCreateData {
+  return {
+    id: input.receiptId,
+    appKey: input.metadata.appKey,
+    deliveryId: input.metadata.deliveryId,
+    eventId: input.metadata.eventId,
+    shopId: input.shopId,
+    shopDomain: input.metadata.shopDomain,
+    topic: input.metadata.providerTopic,
+    apiVersion: input.metadata.apiVersion,
+    triggeredAt: input.metadata.triggeredAt,
+    triggeredAtRaw: input.metadata.triggeredAtRaw,
+    subscriptionName: input.metadata.subscriptionName,
+    receivedAt: input.metadata.receivedAt,
+    disposition: input.disposition,
+    dispositionCode: input.dispositionCode,
+    rejectedPayload: input.rejectedPayload,
+    outbox: input.outbox,
+  };
+}
+
+function buildShopifyEventEnvelope({
+  receiptId,
+  metadata,
+  shop,
+  eventType,
+  orderingKey,
+  payload,
+}: {
+  receiptId: string;
+  metadata: {
+    deliveryId: string;
+    eventId: string | null;
+    providerTopic: string;
+    triggeredAt: Date | null;
+    receivedAt: Date;
+  };
+  shop: { id: string; domain: string };
+  eventType:
+    | typeof SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
+    | typeof SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED;
+  orderingKey: string;
+  payload: ShopifyCheckoutObservedPayload | ShopifyOrderCompletedPayload;
+}) {
+  return {
+    schemaVersion: 1,
+    receiptId,
+    deliveryId: metadata.deliveryId,
+    eventId: metadata.eventId,
+    source: "shopify",
+    eventType,
+    providerTopic: metadata.providerTopic,
+    tenant: {
+      shopId: shop.id,
+      shopDomain: shop.domain,
+    },
+    occurredAt: metadata.triggeredAt ? metadata.triggeredAt.toISOString() : null,
+    receivedAt: metadata.receivedAt.toISOString(),
+    traceId: receiptId,
+    orderingKey,
+    payload,
+  };
 }
 
 function classifyWebhookTopic(
@@ -268,60 +385,41 @@ function classifyWebhookTopic(
     canonicalTopic === "CHECKOUTS_UPDATE"
   ) {
     return {
-      kind: "checkout",
-      internalEventType: "checkout.observed",
+      eventType: SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED,
+      destination: SHOPIFY_WEBHOOK_OUTBOX_DESTINATIONS.CHECKOUT_EVENTS,
+      jobName: "checkout-created",
       normalize: normalizeCheckoutObservedPayload,
+      buildOrderingKey: (shopId, payload) =>
+        createShopifyCommerceOrderingKey(shopId, payload.checkoutToken),
+      delayMs: (recoveryDelayMinutes) => recoveryDelayMinutes * 60_000,
     };
   }
 
   if (canonicalTopic === "ORDERS_CREATE") {
     return {
-      kind: "order",
-      internalEventType: "order.completed",
+      eventType: SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED,
+      destination: SHOPIFY_WEBHOOK_OUTBOX_DESTINATIONS.ORDER_EVENTS,
+      jobName: "order-completed",
       normalize: normalizeOrderCompletedPayload,
+      buildOrderingKey: (shopId, payload) =>
+        payload.checkoutToken
+          ? createShopifyCommerceOrderingKey(shopId, payload.checkoutToken)
+          : createShopifyOrderOrderingKey(shopId, payload.orderId),
+      delayMs: () => 0,
     };
-  }
-
-  if (canonicalTopic.startsWith("CART")) {
-    return null;
   }
 
   return null;
 }
 
-function buildWebhookEnvelope<T>({
-  receiptId,
-  metadata,
-  shop,
-  internalEventType,
-  orderingKey,
-  payload,
-}: {
-  receiptId: string;
-  metadata: { deliveryId: string; eventId: string | null; providerTopic: string; receivedAt: Date; triggeredAtRaw: string | null };
-  shop: { id: string; domain: string };
-  internalEventType: ShopifyWebhookInternalEventType;
-  orderingKey: string;
-  payload: T;
-}): ShopifyWebhookJobV1<T> {
-  return {
-    schemaVersion: 1,
-    receiptId,
-    deliveryId: metadata.deliveryId,
-    eventId: metadata.eventId,
-    source: "shopify",
-    eventType: internalEventType,
-    providerTopic: metadata.providerTopic,
-    tenant: {
-      shopId: shop.id,
-      shopDomain: shop.domain,
-    },
-    occurredAt: metadata.triggeredAtRaw,
-    receivedAt: metadata.receivedAt.toISOString(),
-    traceId: receiptId,
-    orderingKey,
-    payload,
-  };
+function isCartTopic(providerTopic: string): boolean {
+  return providerTopic
+    .trim()
+    .toUpperCase()
+    .replaceAll("/", "_")
+    .replaceAll(".", "_")
+    .replaceAll("-", "_")
+    .startsWith("CART");
 }
 
 function isCompositeDeliveryDuplicate(error: unknown): boolean {
@@ -334,7 +432,7 @@ function isCompositeDeliveryDuplicate(error: unknown): boolean {
   return (
     candidate.code === "P2002" &&
     Array.isArray(candidate.meta?.target) &&
-    candidate.meta?.target.length === 2 &&
+    candidate.meta.target.length === 2 &&
     candidate.meta.target[0] === "appKey" &&
     candidate.meta.target[1] === "deliveryId"
   );
