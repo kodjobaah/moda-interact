@@ -30,6 +30,8 @@ const shopify = shopifyApp({
 
 export default shopify;
 export const apiVersion = ApiVersion.July26;
+// Stable, non-secret Shopify application identity for tenant-scoped dedupe keys.
+export const apiKey = process.env.SHOPIFY_API_KEY;
 export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
 export const authenticate = shopify.authenticate;
 export const unauthenticated = shopify.unauthenticated;
