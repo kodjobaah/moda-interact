@@ -1,14 +1,8 @@
-import type { ShopifyOrderCompletedPayload } from "@modainteract/moda-interact-shared/shopify";
+import type { OrderCompletedPayloadV2 } from "@modainteract/moda-interact-shared/shopify";
 
 export function normalizeOrderCompletedPayload(
   payload: Record<string, unknown>,
-): ShopifyOrderCompletedPayload | null {
-  const customer =
-    payload.customer &&
-    typeof payload.customer === "object" &&
-    !Array.isArray(payload.customer)
-      ? (payload.customer as Record<string, unknown>)
-      : null;
+): OrderCompletedPayloadV2 | null {
 
   const orderId =
     typeof payload.admin_graphql_api_id === "string" &&
@@ -33,24 +27,10 @@ export function normalizeOrderCompletedPayload(
       typeof payload.checkout_token === "string"
         ? payload.checkout_token
         : null,
-    shopifyCustomerId:
-      typeof customer?.admin_graphql_api_id === "string"
-        ? customer.admin_graphql_api_id
+    cartToken:
+      typeof payload.cart_token === "string"
+        ? payload.cart_token
         : null,
-    total:
-      typeof payload.current_total_price === "string" &&
-      typeof payload.currency === "string"
-        ? {
-            amount: payload.current_total_price,
-            currencyCode: payload.currency.toUpperCase(),
-          }
-        : typeof payload.total_price === "string" &&
-            typeof payload.currency === "string"
-          ? {
-              amount: payload.total_price,
-              currencyCode: payload.currency.toUpperCase(),
-            }
-          : null,
     completedAt,
   };
 }

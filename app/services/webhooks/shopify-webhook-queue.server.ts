@@ -1,10 +1,11 @@
 import { Queue } from "bullmq";
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
-  parseShopifyCommerceEvent,
-  type ShopifyCheckoutObservedEvent,
-  type ShopifyCommerceEvent,
-  type ShopifyOrderCompletedEvent,
+  parseShopifyRecoveryEventV2,
+  type ShopifyCheckoutCreatedEventV2,
+  type ShopifyCheckoutUpdatedEventV2,
+  type ShopifyOrderCompletedEventV2,
+  type ShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   createShopifyCheckoutJobId,
@@ -19,6 +20,7 @@ type ShopifyWebhookQueueName =
 
 type ShopifyWebhookQueueJobName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName;
 
 type ShopifyWebhookPublicationOutcome = "enqueued" | "coalesced" | "duplicate";
@@ -43,13 +45,13 @@ export type ShopifyWebhookPublicationResult = {
 };
 
 let checkoutQueue: Queue<
-  ShopifyCommerceEvent,
+  ShopifyRecoveryEventV2,
   void,
   ShopifyWebhookQueueJobName
 > | null = null;
 
 let orderQueue: Queue<
-  ShopifyCommerceEvent,
+  ShopifyRecoveryEventV2,
   void,
   ShopifyWebhookQueueJobName
 > | null = null;
@@ -152,50 +154,40 @@ function toMillis(value: string | null | undefined): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function getCheckoutStateSortKey(event: ShopifyCommerceEvent): number {
-  if (event.eventType !== "checkout.observed") {
+function getCheckoutCreateSortKey(event: ShopifyRecoveryEventV2): number {
+  if (event.eventType !== "checkout.created") {
     return 0;
   }
 
   return Math.max(
-    toMillis(event.payload.completedAt),
-    toMillis(event.payload.checkoutUpdatedAt),
     toMillis(event.payload.checkoutCreatedAt),
     toMillis(event.occurredAt),
     toMillis(event.receivedAt),
   );
 }
 
-function mergeCheckoutObservedEvent(
-  current: ShopifyCheckoutObservedEvent,
-  next: ShopifyCheckoutObservedEvent,
-): ShopifyCheckoutObservedEvent {
+function mergeCheckoutCreatedEvent(
+  current: ShopifyCheckoutCreatedEventV2,
+  next: ShopifyCheckoutCreatedEventV2,
+): ShopifyCheckoutCreatedEventV2 {
   return {
     ...next,
     payload: {
       ...next.payload,
       checkoutToken: next.payload.checkoutToken || current.payload.checkoutToken,
       cartToken: next.payload.cartToken ?? current.payload.cartToken,
-      checkoutUrl: next.payload.checkoutUrl ?? current.payload.checkoutUrl,
-      customer: next.payload.customer ?? current.payload.customer,
-      total: next.payload.total ?? current.payload.total,
-      lineItems:
-        next.payload.lineItems.length > 0
-          ? next.payload.lineItems
-          : current.payload.lineItems,
+      abandonedCheckoutUrl:
+        next.payload.abandonedCheckoutUrl ?? current.payload.abandonedCheckoutUrl,
       checkoutCreatedAt:
         next.payload.checkoutCreatedAt ?? current.payload.checkoutCreatedAt,
-      checkoutUpdatedAt:
-        next.payload.checkoutUpdatedAt ?? current.payload.checkoutUpdatedAt,
-      completedAt: next.payload.completedAt ?? current.payload.completedAt,
     },
   };
 }
 
 async function addJobWithTimeout(
-  queue: Queue<ShopifyCommerceEvent, void, ShopifyWebhookQueueJobName>,
+  queue: Queue<ShopifyRecoveryEventV2, void, ShopifyWebhookQueueJobName>,
   jobName: ShopifyWebhookQueueJobName,
-  event: ShopifyCommerceEvent,
+  event: ShopifyRecoveryEventV2,
   options: {
     jobId: string;
     delay?: number;
@@ -226,8 +218,8 @@ async function addJobWithTimeout(
   }
 }
 
-export async function publishShopifyCheckoutObservedEvent(input: {
-  event: ShopifyCheckoutObservedEvent;
+export async function publishShopifyCheckoutCreatedEvent(input: {
+  event: ShopifyCheckoutCreatedEventV2;
   recoveryDelayMinutes: number;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
@@ -238,9 +230,17 @@ export async function publishShopifyCheckoutObservedEvent(input: {
 
   const existingJob = await queue.getJob(jobId);
   if (existingJob) {
-    const currentEvent = parseShopifyCommerceEvent(existingJob.data);
-    const currentSortKey = getCheckoutStateSortKey(currentEvent);
-    const candidateSortKey = getCheckoutStateSortKey(input.event);
+    const currentEvent = parseShopifyRecoveryEventV2(existingJob.data);
+    if (currentEvent.eventType !== "checkout.created") {
+      return {
+        queue: queue.name as ShopifyWebhookQueueName,
+        jobId,
+        outcome: "duplicate",
+      };
+    }
+
+    const currentSortKey = getCheckoutCreateSortKey(currentEvent);
+    const candidateSortKey = getCheckoutCreateSortKey(input.event);
 
     if (candidateSortKey <= currentSortKey) {
       return {
@@ -251,10 +251,7 @@ export async function publishShopifyCheckoutObservedEvent(input: {
     }
 
     const state = await existingJob.getState();
-    const mergedEvent = mergeCheckoutObservedEvent(
-      currentEvent as ShopifyCheckoutObservedEvent,
-      input.event,
-    );
+    const mergedEvent = mergeCheckoutCreatedEvent(currentEvent, input.event);
 
     await existingJob.updateData(mergedEvent);
 
@@ -286,8 +283,37 @@ export async function publishShopifyCheckoutObservedEvent(input: {
   };
 }
 
+export async function publishShopifyCheckoutUpdatedEvent(input: {
+  event: ShopifyCheckoutUpdatedEventV2;
+}): Promise<ShopifyWebhookPublicationResult> {
+  const queue = getCheckoutQueue();
+  const jobId = `${input.event.tenant.shopId}:${input.event.deliveryId}`;
+
+  const existingJob = await queue.getJob(jobId);
+  if (existingJob) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId,
+      outcome: "duplicate",
+    };
+  }
+
+  await addJobWithTimeout(
+    queue,
+    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName,
+    input.event,
+    { jobId },
+  );
+
+  return {
+    queue: queue.name as ShopifyWebhookQueueName,
+    jobId,
+    outcome: "enqueued",
+  };
+}
+
 export async function publishShopifyOrderCompletedEvent(input: {
-  event: ShopifyOrderCompletedEvent;
+  event: ShopifyOrderCompletedEventV2;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getOrderQueue();
   const jobId = createShopifyOrderJobId(

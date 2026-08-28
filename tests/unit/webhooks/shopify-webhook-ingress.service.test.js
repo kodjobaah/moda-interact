@@ -22,9 +22,14 @@ const dbMock = {
 
 const publicationMock = {
   ShopifyWebhookPublicationError: TestPublicationError,
-  publishShopifyCheckoutObservedEvent: vi.fn(async () => ({
+  publishShopifyCheckoutCreatedEvent: vi.fn(async () => ({
     queue: "checkout-events",
-    jobId: "checkout-job",
+    jobId: "checkout-created-job",
+    outcome: "enqueued",
+  })),
+  publishShopifyCheckoutUpdatedEvent: vi.fn(async () => ({
+    queue: "checkout-events",
+    jobId: "checkout-updated-job",
     outcome: "enqueued",
   })),
   publishShopifyOrderCompletedEvent: vi.fn(async () => ({
@@ -45,7 +50,8 @@ const { ingestShopifyWebhook } = await import(
 function resetState() {
   store.shopsByDomain.clear();
   dbMock.shop.findUnique.mockClear();
-  publicationMock.publishShopifyCheckoutObservedEvent.mockClear();
+  publicationMock.publishShopifyCheckoutCreatedEvent.mockClear();
+  publicationMock.publishShopifyCheckoutUpdatedEvent.mockClear();
   publicationMock.publishShopifyOrderCompletedEvent.mockClear();
   delete process.env.REDIS_URL;
 }
@@ -81,29 +87,7 @@ function checkoutInput(overrides = {}) {
       token: "checkout-token-1",
       cart_token: "cart-token-1",
       created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-01T00:10:00Z",
-      completed_at: "2024-01-01T00:20:00Z",
-      currency: "USD",
-      total_price: "19.99",
       abandoned_checkout_url: "https://shop.example/checkout",
-      customer: {
-        id: 42,
-        email: "customer@example.com",
-        phone: "+15555550100",
-        first_name: "Ada",
-        last_name: "Lovelace",
-      },
-      line_items: [
-        {
-          id: "li_1",
-          product_id: 1,
-          variant_id: 2,
-          title: "T-Shirt",
-          sku: "TS-1",
-          quantity: 1,
-          price: "19.99",
-        },
-      ],
     },
     apiVersion: "2026-07",
     eventId: "event-1",
@@ -166,17 +150,50 @@ describe("shopify webhook ingress", () => {
     const response = await ingestShopifyWebhook(checkoutInput());
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutObservedEvent).toHaveBeenCalledTimes(1);
-    expect(publicationMock.publishShopifyCheckoutObservedEvent).toHaveBeenCalledWith(
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         recoveryDelayMinutes: 45,
         event: expect.objectContaining({
-          eventType: "checkout.observed",
+          schemaVersion: 2,
+          eventType: "checkout.created",
           orderingKey: "shop_1:checkout-token-1",
-          payload: expect.objectContaining({
+          payload: {
             checkoutToken: "checkout-token-1",
-            completedAt: "2024-01-01T00:20:00Z",
-          }),
+            cartToken: "cart-token-1",
+            abandonedCheckoutUrl: "https://shop.example/checkout",
+            checkoutCreatedAt: "2024-01-01T00:00:00Z",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("publishes checkout update events without basket payload", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CHECKOUTS_UPDATE",
+        payload: {
+          token: "checkout-token-1",
+          cart_token: "ignored",
+          line_items: [{ title: "ignored" }],
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          schemaVersion: 2,
+          eventType: "checkout.updated",
+          orderingKey: "shop_1:checkout-token-1",
+          payload: {
+            checkoutToken: "checkout-token-1",
+          },
         }),
       }),
     );
@@ -211,6 +228,7 @@ describe("shopify webhook ingress", () => {
           payload: expect.objectContaining({
             orderId: "gid://shopify/Order/456",
             checkoutToken: null,
+            cartToken: null,
           }),
         }),
       }),
@@ -230,13 +248,14 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(publicationMock.publishShopifyCheckoutObservedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
     expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
   });
 
   it("returns 503 when publication fails", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
-    publicationMock.publishShopifyCheckoutObservedEvent.mockRejectedValueOnce(
+    publicationMock.publishShopifyCheckoutCreatedEvent.mockRejectedValueOnce(
       new TestPublicationError("Redis down", "REDIS_UNAVAILABLE"),
     );
 
@@ -256,7 +275,8 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutObservedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
     expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
   });
 

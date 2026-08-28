@@ -1,63 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { normalizeCheckoutObservedPayload } from "../../../app/services/webhooks/checkout-normalization";
+import {
+  normalizeCheckoutCreatedPayload,
+  normalizeCheckoutUpdatedPayload,
+} from "../../../app/services/webhooks/checkout-normalization";
 import { normalizeOrderCompletedPayload } from "../../../app/services/webhooks/order-normalization";
 
-describe("normalizeCheckoutObservedPayload", () => {
+describe("normalizeCheckoutCreatedPayload", () => {
   it("returns a stable target payload shape", () => {
-    const payload = normalizeCheckoutObservedPayload({
+    const payload = normalizeCheckoutCreatedPayload({
       token: "checkout-token-1",
       cart_token: "cart-token-1",
       created_at: "2024-01-01T00:00:00Z",
-      updated_at: "2024-01-01T00:05:00Z",
-      completed_at: "2024-01-01T00:10:00Z",
-      currency: "USD",
-      total_price: "19.99",
       abandoned_checkout_url: "https://shop.example/checkout",
-      customer: {
-        id: 42,
-        phone: "+15555550100",
-        email: "customer@example.com",
-        first_name: "Ada",
-        last_name: "Lovelace",
-      },
-      line_items: [
-        {
-          product_id: 1,
-          variant_id: 2,
-          title: "T-Shirt",
-          sku: "TS-1",
-          quantity: 1,
-          price: "19.99",
-        },
-      ],
     });
 
-    expect(payload).toEqual(
-      expect.objectContaining({
-        checkoutToken: "checkout-token-1",
-        cartToken: "cart-token-1",
-        total: {
-          amount: "19.99",
-          currencyCode: "USD",
-        },
-        checkoutUrl: "https://shop.example/checkout",
-        checkoutCreatedAt: "2024-01-01T00:00:00Z",
-        checkoutUpdatedAt: "2024-01-01T00:05:00Z",
-        completedAt: "2024-01-01T00:10:00Z",
-      }),
-    );
-    expect(payload.customer).toMatchObject({
-      shopifyCustomerId: "42",
-      phone: "+15555550100",
-      email: "customer@example.com",
-      firstName: "Ada",
-      lastName: "Lovelace",
+    expect(payload).toEqual({
+      checkoutToken: "checkout-token-1",
+      cartToken: "cart-token-1",
+      abandonedCheckoutUrl: "https://shop.example/checkout",
+      checkoutCreatedAt: "2024-01-01T00:00:00Z",
     });
-    expect(payload.lineItems).toHaveLength(1);
   });
 
   it("returns null when the checkout token is missing", () => {
-    expect(normalizeCheckoutObservedPayload({})).toBeNull();
+    expect(normalizeCheckoutCreatedPayload({})).toBeNull();
+  });
+});
+
+describe("normalizeCheckoutUpdatedPayload", () => {
+  it("returns only the checkout token", () => {
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        line_items: [{ title: "ignored" }],
+      }),
+    ).toEqual({
+      checkoutToken: "checkout-token-1",
+    });
+  });
+
+  it("returns null when checkout token is missing", () => {
+    expect(normalizeCheckoutUpdatedPayload({})).toBeNull();
   });
 });
 
@@ -75,11 +58,7 @@ describe("normalizeOrderCompletedPayload", () => {
     expect(payload).toEqual({
       orderId: "gid://shopify/Order/123",
       checkoutToken: "checkout-token-1",
-      shopifyCustomerId: "gid://shopify/Customer/42",
-      total: {
-        amount: "19.99",
-        currencyCode: "USD",
-      },
+      cartToken: null,
       completedAt: "2024-01-02T00:00:00Z",
     });
   });
@@ -89,11 +68,13 @@ describe("normalizeOrderCompletedPayload", () => {
       normalizeOrderCompletedPayload({
         admin_graphql_api_id: "gid://shopify/Order/123",
         checkout_token: null,
+        cart_token: "cart-token-1",
         created_at: "2024-01-02T00:00:00Z",
       }),
     ).toEqual(
       expect.objectContaining({
         checkoutToken: null,
+        cartToken: "cart-token-1",
       }),
     );
   });

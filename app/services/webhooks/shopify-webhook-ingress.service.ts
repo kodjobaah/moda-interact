@@ -2,13 +2,14 @@ import crypto from "node:crypto";
 
 import db from "../../db.server";
 import {
-  SHOPIFY_COMMERCE_EVENT_TYPES,
+  SHOPIFY_RECOVERY_EVENT_TYPES_V2,
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
-  createShopifyCommerceOrderingKey,
-  createShopifyOrderOrderingKey,
-  parseShopifyCommerceEvent,
-  type ShopifyCheckoutObservedPayload,
-  type ShopifyOrderCompletedPayload,
+  parseShopifyRecoveryEventV2,
+  createShopifyPendingRecoveryOrderingKey,
+  createShopifyOrderCorrelationOrderingKey,
+  type CheckoutCreatedPayloadV2,
+  type CheckoutUpdatedPayloadV2,
+  type OrderCompletedPayloadV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   parseShopifyWebhookMetadata,
@@ -17,34 +18,49 @@ import {
 } from "./shopify-webhook-metadata";
 import {
   ShopifyWebhookPublicationError,
-  publishShopifyCheckoutObservedEvent,
+  publishShopifyCheckoutCreatedEvent,
+  publishShopifyCheckoutUpdatedEvent,
   publishShopifyOrderCompletedEvent,
 } from "./shopify-webhook-queue.server";
 import { logShopifyWebhookOutcome } from "./shopify-webhook-logger";
-import { normalizeCheckoutObservedPayload } from "./checkout-normalization";
+import {
+  normalizeCheckoutCreatedPayload,
+  normalizeCheckoutUpdatedPayload,
+} from "./checkout-normalization";
 import { normalizeOrderCompletedPayload } from "./order-normalization";
 
 type SupportedWebhookPlan =
   | {
-      eventType: typeof SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED;
+      eventType: typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED;
       queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName;
       normalize: (
         payload: Record<string, unknown>,
-      ) => ShopifyCheckoutObservedPayload | null;
+      ) => CheckoutCreatedPayloadV2 | null;
       buildOrderingKey: (
         shopId: string,
-        payload: ShopifyCheckoutObservedPayload,
+        payload: CheckoutCreatedPayloadV2,
       ) => string;
     }
   | {
-      eventType: typeof SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED;
+      eventType: typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED;
+      queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.queueName;
+      normalize: (
+        payload: Record<string, unknown>,
+      ) => CheckoutUpdatedPayloadV2 | null;
+      buildOrderingKey: (
+        shopId: string,
+        payload: CheckoutUpdatedPayloadV2,
+      ) => string;
+    }
+  | {
+      eventType: typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED;
       queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.queueName;
       normalize: (
         payload: Record<string, unknown>,
-      ) => ShopifyOrderCompletedPayload | null;
+      ) => OrderCompletedPayloadV2 | null;
       buildOrderingKey: (
         shopId: string,
-        payload: ShopifyOrderCompletedPayload,
+        payload: OrderCompletedPayloadV2,
       ) => string;
     };
 
@@ -123,45 +139,101 @@ export async function ingestShopifyWebhook(
       return new Response(null, { status: 200 });
     }
 
-    const normalizedPayload = plan.normalize(input.payload);
-    if (!normalizedPayload) {
-      logShopifyWebhookOutcome({
-        topic: metadata.providerTopic,
-        deliveryId: metadata.deliveryId,
-        eventId: metadata.eventId,
-        queue: plan.queue,
-        jobId: null,
-        outcome:
-          plan.eventType === SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
-            ? "REJECTED_INVALID_CHECKOUT_PAYLOAD"
-            : "REJECTED_INVALID_ORDER_PAYLOAD",
-        shopId: shop.id,
-        shopDomain: shop.domain,
-        ackMs: Date.now() - ackStartedAt,
+    let publication;
+
+    if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
+      const normalizedPayload = plan.normalize(input.payload);
+      if (!normalizedPayload) {
+        logShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: plan.queue,
+          jobId: null,
+          outcome: "REJECTED_INVALID_CHECKOUT_PAYLOAD",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+
+        return new Response(null, { status: 400 });
+      }
+
+      const event = buildShopifyEventEnvelope({
+        requestId,
+        metadata,
+        shop,
+        eventType: plan.eventType,
+        orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
+        payload: normalizedPayload,
       });
 
-      return new Response(null, { status: 400 });
+      publication = await publishShopifyCheckoutCreatedEvent({
+        event: parseShopifyRecoveryEventV2(event),
+        recoveryDelayMinutes:
+          shop.settings?.recoveryDelayMinutes ?? DEFAULT_RECOVERY_DELAY_MINUTES,
+      });
+    } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
+      const normalizedPayload = plan.normalize(input.payload);
+      if (!normalizedPayload) {
+        logShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: plan.queue,
+          jobId: null,
+          outcome: "REJECTED_INVALID_CHECKOUT_PAYLOAD",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+
+        return new Response(null, { status: 400 });
+      }
+
+      const event = buildShopifyEventEnvelope({
+        requestId,
+        metadata,
+        shop,
+        eventType: plan.eventType,
+        orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
+        payload: normalizedPayload,
+      });
+
+      publication = await publishShopifyCheckoutUpdatedEvent({
+        event: parseShopifyRecoveryEventV2(event),
+      });
+    } else {
+      const normalizedPayload = plan.normalize(input.payload);
+      if (!normalizedPayload) {
+        logShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: plan.queue,
+          jobId: null,
+          outcome: "REJECTED_INVALID_ORDER_PAYLOAD",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+
+        return new Response(null, { status: 400 });
+      }
+
+      const event = buildShopifyEventEnvelope({
+        requestId,
+        metadata,
+        shop,
+        eventType: plan.eventType,
+        orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
+        payload: normalizedPayload,
+      });
+
+      publication = await publishShopifyOrderCompletedEvent({
+        event: parseShopifyRecoveryEventV2(event),
+      });
     }
-
-    const event = buildShopifyEventEnvelope({
-      requestId,
-      metadata,
-      shop,
-      eventType: plan.eventType,
-      orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
-      payload: normalizedPayload,
-    });
-
-    const publication =
-      plan.eventType === SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
-        ? await publishShopifyCheckoutObservedEvent({
-            event: parseShopifyCommerceEvent(event),
-            recoveryDelayMinutes:
-              shop.settings?.recoveryDelayMinutes ?? DEFAULT_RECOVERY_DELAY_MINUTES,
-          })
-        : await publishShopifyOrderCompletedEvent({
-            event: parseShopifyCommerceEvent(event),
-          });
 
     logShopifyWebhookOutcome({
       topic: metadata.providerTopic,
@@ -220,13 +292,17 @@ function buildShopifyEventEnvelope({
   };
   shop: { id: string; domain: string };
   eventType:
-    | typeof SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED
-    | typeof SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED;
+    | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED
+    | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED
+    | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED;
   orderingKey: string;
-  payload: ShopifyCheckoutObservedPayload | ShopifyOrderCompletedPayload;
+  payload:
+    | CheckoutCreatedPayloadV2
+    | CheckoutUpdatedPayloadV2
+    | OrderCompletedPayloadV2;
 }) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     receiptId: requestId,
     deliveryId: metadata.deliveryId,
     eventId: metadata.eventId,
@@ -256,25 +332,38 @@ function classifyWebhookTopic(
     .replaceAll("-", "_");
 
   if (
-    canonicalTopic === "CHECKOUTS_CREATE" ||
-    canonicalTopic === "CHECKOUTS_UPDATE"
+    canonicalTopic === "CHECKOUTS_CREATE"
   ) {
     return {
-      eventType: SHOPIFY_COMMERCE_EVENT_TYPES.CHECKOUT_OBSERVED,
+      eventType: SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED,
       queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName,
-      normalize: normalizeCheckoutObservedPayload,
+      normalize: normalizeCheckoutCreatedPayload,
       buildOrderingKey: (shopId, payload) =>
-        createShopifyCommerceOrderingKey(shopId, payload.checkoutToken),
+        createShopifyPendingRecoveryOrderingKey(shopId, payload.checkoutToken),
+    };
+  }
+
+  if (canonicalTopic === "CHECKOUTS_UPDATE") {
+    return {
+      eventType: SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED,
+      queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.queueName,
+      normalize: normalizeCheckoutUpdatedPayload,
+      buildOrderingKey: (shopId, payload) =>
+        createShopifyPendingRecoveryOrderingKey(shopId, payload.checkoutToken),
     };
   }
 
   if (canonicalTopic === "ORDERS_CREATE") {
     return {
-      eventType: SHOPIFY_COMMERCE_EVENT_TYPES.ORDER_COMPLETED,
+      eventType: SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED,
       queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.queueName,
       normalize: normalizeOrderCompletedPayload,
       buildOrderingKey: (shopId, payload) =>
-        createShopifyOrderOrderingKey(shopId, payload.orderId),
+        createShopifyOrderCorrelationOrderingKey({
+          shopId,
+          orderId: payload.orderId,
+          checkoutToken: payload.checkoutToken,
+        }),
     };
   }
 
