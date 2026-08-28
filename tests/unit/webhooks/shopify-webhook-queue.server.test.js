@@ -3,7 +3,7 @@ import {
   parseShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
-  createShopifyCheckoutJobId,
+  createShopifyWebhookJobId,
   createShopifyOrderJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
@@ -29,8 +29,9 @@ class FakeJob {
 }
 
 class FakeQueue {
-  constructor(name) {
+  constructor(name, options = {}) {
     this.name = name;
+    this.options = options;
     this.jobs = new Map();
     this.addCalls = [];
   }
@@ -54,8 +55,14 @@ const queues = {
 
 const bullmqMock = {
   Queue: class {
-    constructor(name) {
-      return name === "checkout-events" ? queues.checkout : queues.order;
+    constructor(name, options) {
+      const queue = new FakeQueue(name, options);
+      if (name === "checkout-events") {
+        queues.checkout = queue;
+      } else {
+        queues.order = queue;
+      }
+      return queue;
     }
   },
 };
@@ -76,17 +83,17 @@ beforeEach(async () => {
 });
 
 describe("shopify webhook queue helpers", () => {
-  it("creates deterministic checkout and order job ids", () => {
-    const checkoutId = createShopifyCheckoutJobId("shop_1", "checkout_1");
+  it("creates deterministic delivery and order job ids", () => {
+    const checkoutId = createShopifyWebhookJobId("shop_1", "delivery_1");
     const orderId = createShopifyOrderJobId("shop_1", "gid://shopify/Order/1");
 
-    expect(checkoutId).toMatch(/^checkout-/);
+    expect(checkoutId).toMatch(/^shopify-/);
     expect(orderId).toMatch(/^order-created-/);
     expect(checkoutId).not.toContain(":");
     expect(orderId).not.toContain(":");
   });
 
-  it("coalesces a newer pending checkout update into the existing delayed job", async () => {
+  it("publishes checkout-created work immediately and deduplicates duplicate delivery", async () => {
     const baseEvent = {
       schemaVersion: 2,
       receiptId: "r1",
@@ -108,38 +115,20 @@ describe("shopify webhook queue helpers", () => {
       },
     };
 
-    await queueModule.publishShopifyCheckoutCreatedEvent({
+    const first = await queueModule.publishShopifyCheckoutCreatedEvent({
       event: parseShopifyRecoveryEventV2(baseEvent),
-      recoveryDelayMinutes: 45,
     });
 
-    const jobId = createShopifyCheckoutJobId("shop_1", "checkout_1");
-    const existingJob = await queues.checkout.getJob(jobId);
-    existingJob.state = "delayed";
-
-    const updatedEvent = {
-      ...baseEvent,
-      receiptId: "r2",
-      deliveryId: "d2",
-      eventId: "e2",
-      occurredAt: "2026-08-28T00:10:00.000Z",
-      receivedAt: "2026-08-28T00:10:01.000Z",
-      payload: {
-        ...baseEvent.payload,
-        abandonedCheckoutUrl: "https://shop.example/recovery",
-      },
-    };
-
-    const result = await queueModule.publishShopifyCheckoutCreatedEvent({
-      event: parseShopifyRecoveryEventV2(updatedEvent),
-      recoveryDelayMinutes: 45,
+    const second = await queueModule.publishShopifyCheckoutCreatedEvent({
+      event: parseShopifyRecoveryEventV2(baseEvent),
     });
 
-    expect(result.outcome).toBe("coalesced");
-    expect(existingJob.updatedData.payload.abandonedCheckoutUrl).toBe(
-      "https://shop.example/recovery",
-    );
-    expect(existingJob.delayChanges).toEqual([45 * 60 * 1000]);
+    const jobId = createShopifyWebhookJobId("shop_1", "d1");
+    expect(first.outcome).toBe("enqueued");
+    expect(second.outcome).toBe("duplicate");
+    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(queues.checkout.addCalls[0].opts.jobId).toBe(jobId);
+    expect(queues.checkout.addCalls[0].opts.delay).toBeUndefined();
   });
 
   it("publishes checkout update work as a distinct job contract", async () => {
@@ -208,6 +197,43 @@ describe("shopify webhook queue helpers", () => {
     expect(first.outcome).toBe("enqueued");
     expect(second.outcome).toBe("duplicate");
     expect(queues.order.addCalls).toHaveLength(1);
+  });
+
+  it("configures bounded retries and retains failed jobs", async () => {
+    const checkoutEvent = {
+      schemaVersion: 2,
+      receiptId: "r-bounded-1",
+      deliveryId: "d-bounded-1",
+      eventId: "e-bounded-1",
+      source: "shopify",
+      providerTopic: "CHECKOUTS_CREATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-08-28T01:00:00.000Z",
+      receivedAt: "2026-08-28T01:00:01.000Z",
+      traceId: "r-bounded-1",
+      orderingKey: "shop_1:checkout_1",
+      eventType: "checkout.created",
+      payload: {
+        checkoutToken: "checkout_1",
+        cartToken: null,
+        abandonedCheckoutUrl: null,
+        checkoutCreatedAt: "2026-08-28T01:00:00Z",
+      },
+    };
+
+    await queueModule.publishShopifyCheckoutCreatedEvent({
+      event: parseShopifyRecoveryEventV2(checkoutEvent),
+    });
+
+    expect(queues.checkout.options.defaultJobOptions).toMatchObject({
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 1000,
+      },
+      removeOnComplete: true,
+      removeOnFail: false,
+    });
   });
 
   it("fails publication when Redis is unavailable", async () => {

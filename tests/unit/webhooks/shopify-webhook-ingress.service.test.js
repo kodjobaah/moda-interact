@@ -61,9 +61,6 @@ function activeShop() {
     id: "shop_1",
     domain: "shop.myshopify.com",
     status: "ACTIVE",
-    settings: {
-      recoveryDelayMinutes: 45,
-    },
   };
 }
 
@@ -144,7 +141,7 @@ describe("shopify webhook ingress", () => {
     expect(source).not.toContain("SHOPIFY_COMMERCE_EVENTS");
   });
 
-  it("publishes checkout events with the configured delay and normalized payload", async () => {
+  it("publishes checkout-created events immediately with normalized payload", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(checkoutInput());
@@ -153,7 +150,6 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledTimes(1);
     expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        recoveryDelayMinutes: 45,
         event: expect.objectContaining({
           schemaVersion: 2,
           eventType: "checkout.created",

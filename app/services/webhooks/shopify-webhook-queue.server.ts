@@ -1,14 +1,13 @@
 import { Queue } from "bullmq";
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
-  parseShopifyRecoveryEventV2,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
   type ShopifyOrderCompletedEventV2,
   type ShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
-  createShopifyCheckoutJobId,
+  createShopifyWebhookJobId,
   createShopifyOrderJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
@@ -23,7 +22,7 @@ type ShopifyWebhookQueueJobName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName;
 
-type ShopifyWebhookPublicationOutcome = "enqueued" | "coalesced" | "duplicate";
+type ShopifyWebhookPublicationOutcome = "enqueued" | "duplicate";
 
 export class ShopifyWebhookPublicationError extends Error {
   code: "REDIS_UNAVAILABLE" | "PUBLICATION_TIMEOUT" | "QUEUE_ADD_FAILED";
@@ -90,9 +89,13 @@ function getCheckoutQueue() {
       {
         connection: getQueueConnection(),
         defaultJobOptions: {
-          attempts: 1,
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 1000,
+          },
           removeOnComplete: true,
-          removeOnFail: true,
+          removeOnFail: false,
         },
       },
     );
@@ -108,9 +111,13 @@ function getOrderQueue() {
       {
         connection: getQueueConnection(),
         defaultJobOptions: {
-          attempts: 1,
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 1000,
+          },
           removeOnComplete: true,
-          removeOnFail: true,
+          removeOnFail: false,
         },
       },
     );
@@ -143,45 +150,6 @@ function isDuplicateJobError(error: unknown): boolean {
     error instanceof Error &&
     /already exists|already been added|job has been added/i.test(error.message)
   );
-}
-
-function toMillis(value: string | null | undefined): number {
-  if (!value) {
-    return 0;
-  }
-
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
-function getCheckoutCreateSortKey(event: ShopifyRecoveryEventV2): number {
-  if (event.eventType !== "checkout.created") {
-    return 0;
-  }
-
-  return Math.max(
-    toMillis(event.payload.checkoutCreatedAt),
-    toMillis(event.occurredAt),
-    toMillis(event.receivedAt),
-  );
-}
-
-function mergeCheckoutCreatedEvent(
-  current: ShopifyCheckoutCreatedEventV2,
-  next: ShopifyCheckoutCreatedEventV2,
-): ShopifyCheckoutCreatedEventV2 {
-  return {
-    ...next,
-    payload: {
-      ...next.payload,
-      checkoutToken: next.payload.checkoutToken || current.payload.checkoutToken,
-      cartToken: next.payload.cartToken ?? current.payload.cartToken,
-      abandonedCheckoutUrl:
-        next.payload.abandonedCheckoutUrl ?? current.payload.abandonedCheckoutUrl,
-      checkoutCreatedAt:
-        next.payload.checkoutCreatedAt ?? current.payload.checkoutCreatedAt,
-    },
-  };
 }
 
 async function addJobWithTimeout(
@@ -220,49 +188,19 @@ async function addJobWithTimeout(
 
 export async function publishShopifyCheckoutCreatedEvent(input: {
   event: ShopifyCheckoutCreatedEventV2;
-  recoveryDelayMinutes: number;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
-  const jobId = createShopifyCheckoutJobId(
+  const jobId = createShopifyWebhookJobId(
     input.event.tenant.shopId,
-    input.event.payload.checkoutToken,
+    input.event.deliveryId,
   );
 
   const existingJob = await queue.getJob(jobId);
   if (existingJob) {
-    const currentEvent = parseShopifyRecoveryEventV2(existingJob.data);
-    if (currentEvent.eventType !== "checkout.created") {
-      return {
-        queue: queue.name as ShopifyWebhookQueueName,
-        jobId,
-        outcome: "duplicate",
-      };
-    }
-
-    const currentSortKey = getCheckoutCreateSortKey(currentEvent);
-    const candidateSortKey = getCheckoutCreateSortKey(input.event);
-
-    if (candidateSortKey <= currentSortKey) {
-      return {
-        queue: queue.name as ShopifyWebhookQueueName,
-        jobId,
-        outcome: "duplicate",
-      };
-    }
-
-    const state = await existingJob.getState();
-    const mergedEvent = mergeCheckoutCreatedEvent(currentEvent, input.event);
-
-    await existingJob.updateData(mergedEvent);
-
-    if (state === "delayed") {
-      await existingJob.changeDelay(input.recoveryDelayMinutes * 60_000);
-    }
-
     return {
       queue: queue.name as ShopifyWebhookQueueName,
       jobId,
-      outcome: "coalesced",
+      outcome: "duplicate",
     };
   }
 
@@ -270,10 +208,7 @@ export async function publishShopifyCheckoutCreatedEvent(input: {
     queue,
     SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName,
     input.event,
-    {
-      jobId,
-      delay: input.recoveryDelayMinutes * 60_000,
-    },
+    { jobId },
   );
 
   return {
@@ -287,7 +222,10 @@ export async function publishShopifyCheckoutUpdatedEvent(input: {
   event: ShopifyCheckoutUpdatedEventV2;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
-  const jobId = `${input.event.tenant.shopId}:${input.event.deliveryId}`;
+  const jobId = createShopifyWebhookJobId(
+    input.event.tenant.shopId,
+    input.event.deliveryId,
+  );
 
   const existingJob = await queue.getJob(jobId);
   if (existingJob) {

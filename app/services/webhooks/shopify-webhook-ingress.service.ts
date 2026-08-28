@@ -1,10 +1,10 @@
-import crypto from "node:crypto";
-
 import db from "../../db.server";
 import {
   SHOPIFY_RECOVERY_EVENT_TYPES_V2,
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
-  parseShopifyRecoveryEventV2,
+  ShopifyCheckoutCreatedEventV2Schema,
+  ShopifyCheckoutUpdatedEventV2Schema,
+  ShopifyOrderCompletedEventV2Schema,
   createShopifyPendingRecoveryOrderingKey,
   createShopifyOrderCorrelationOrderingKey,
   type CheckoutCreatedPayloadV2,
@@ -69,13 +69,11 @@ type IngressInput = ShopifyWebhookAuthContext & {
   payload: Record<string, unknown>;
 };
 
-const DEFAULT_RECOVERY_DELAY_MINUTES = 30;
-
 export async function ingestShopifyWebhook(
   input: IngressInput,
 ): Promise<Response> {
   const ackStartedAt = Date.now();
-  const requestId = crypto.randomUUID();
+  const requestId = globalThis.crypto.randomUUID();
   const plan = classifyWebhookTopic(input.topic);
 
   let metadata;
@@ -104,7 +102,6 @@ export async function ingestShopifyWebhook(
   try {
     const shop = await db.shop.findUnique({
       where: { domain: metadata.shopDomain },
-      include: { settings: true },
     });
 
     if (!shop || shop.status !== "ACTIVE") {
@@ -169,9 +166,7 @@ export async function ingestShopifyWebhook(
       });
 
       publication = await publishShopifyCheckoutCreatedEvent({
-        event: parseShopifyRecoveryEventV2(event),
-        recoveryDelayMinutes:
-          shop.settings?.recoveryDelayMinutes ?? DEFAULT_RECOVERY_DELAY_MINUTES,
+        event: ShopifyCheckoutCreatedEventV2Schema.parse(event),
       });
     } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
       const normalizedPayload = plan.normalize(input.payload);
@@ -201,7 +196,7 @@ export async function ingestShopifyWebhook(
       });
 
       publication = await publishShopifyCheckoutUpdatedEvent({
-        event: parseShopifyRecoveryEventV2(event),
+        event: ShopifyCheckoutUpdatedEventV2Schema.parse(event),
       });
     } else {
       const normalizedPayload = plan.normalize(input.payload);
@@ -231,7 +226,7 @@ export async function ingestShopifyWebhook(
       });
 
       publication = await publishShopifyOrderCompletedEvent({
-        event: parseShopifyRecoveryEventV2(event),
+        event: ShopifyOrderCompletedEventV2Schema.parse(event),
       });
     }
 
@@ -242,11 +237,7 @@ export async function ingestShopifyWebhook(
       queue: publication.queue,
       jobId: publication.jobId,
       outcome:
-        publication.outcome === "coalesced"
-          ? "COALESCED"
-          : publication.outcome === "duplicate"
-            ? "DUPLICATE"
-            : "ENQUEUED",
+        publication.outcome === "duplicate" ? "DUPLICATE" : "ENQUEUED",
       shopId: shop.id,
       shopDomain: shop.domain,
       ackMs: Date.now() - ackStartedAt,
