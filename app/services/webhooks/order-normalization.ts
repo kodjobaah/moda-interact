@@ -1,4 +1,5 @@
 import type { OrderCompletedPayloadV2 } from "@modainteract/moda-interact-shared/shopify";
+import { normalizeTimestamp } from "./webhook-normalization-utils";
 
 export function normalizeOrderCompletedPayload(
   payload: Record<string, unknown>,
@@ -10,12 +11,13 @@ export function normalizeOrderCompletedPayload(
       ? payload.admin_graphql_api_id
       : null;
 
+  // Prefer updated_at when created_at is absent; either way the provider
+  // timestamp is normalised to canonical UTC ISO so the shared v2 contract is
+  // satisfied. completedAt is required, so an unparseable timestamp rejects
+  // the order payload rather than emitting a malformed event.
   const completedAt =
-    typeof payload.created_at === "string"
-      ? payload.created_at
-      : typeof payload.updated_at === "string"
-        ? payload.updated_at
-        : null;
+    normalizeTimestamp(payload.created_at) ??
+    normalizeTimestamp(payload.updated_at);
 
   if (!orderId || !completedAt) {
     return null;

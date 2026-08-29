@@ -1,5 +1,6 @@
 import db from "../../db.server";
 import {
+  SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
   SHOPIFY_RECOVERY_EVENT_TYPES_V2,
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   ShopifyCheckoutCreatedEventV2Schema,
@@ -293,7 +294,7 @@ function buildShopifyEventEnvelope({
     | OrderCompletedPayloadV2;
 }) {
   return {
-    schemaVersion: 2,
+    schemaVersion: SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
     receiptId: requestId,
     deliveryId: metadata.deliveryId,
     eventId: metadata.eventId,
@@ -370,3 +371,4 @@ function isCartTopic(providerTopic: string): boolean {
     .replaceAll("-", "_")
     .startsWith("CART");
 }
+

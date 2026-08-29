@@ -158,13 +158,45 @@ describe("shopify webhook ingress", () => {
             checkoutToken: "checkout-token-1",
             cartToken: "cart-token-1",
             abandonedCheckoutUrl: "https://shop.example/checkout",
-            checkoutCreatedAt: "2024-01-01T00:00:00Z",
+            checkoutCreatedAt: "2024-01-01T00:00:00.000Z",
           },
         }),
       }),
     );
   });
 
+  it("publishes checkout-created with a provider offset timestamp normalised to UTC ISO", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    // Real Shopify fixture value: -05:00 offset, not a UTC `Z` datetime.
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        payload: {
+          token: "checkout-token-1",
+          cart_token: "cart-token-1",
+          created_at: "2021-12-31T19:00:00-05:00",
+          abandoned_checkout_url: "https://shop.example/checkout",
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          schemaVersion: 2,
+          eventType: "checkout.created",
+          payload: {
+            checkoutToken: "checkout-token-1",
+            cartToken: "cart-token-1",
+            abandonedCheckoutUrl: "https://shop.example/checkout",
+            checkoutCreatedAt: "2022-01-01T00:00:00.000Z",
+          },
+        }),
+      }),
+    );
+  });
   it("publishes checkout update events without basket payload", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 

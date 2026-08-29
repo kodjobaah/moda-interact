@@ -2,6 +2,7 @@ import type {
   CheckoutCreatedPayloadV2,
   CheckoutUpdatedPayloadV2,
 } from "@modainteract/moda-interact-shared/shopify";
+import { normalizeTimestamp } from "./webhook-normalization-utils";
 
 function toStringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
@@ -20,7 +21,7 @@ export function normalizeCheckoutCreatedPayload(
     checkoutToken,
     cartToken: toStringOrNull(payload.cart_token),
     abandonedCheckoutUrl: toStringOrNull(payload.abandoned_checkout_url),
-    checkoutCreatedAt: toStringOrNull(payload.created_at),
+    checkoutCreatedAt: normalizeTimestamp(payload.created_at),
   };
 }
 
@@ -37,3 +38,4 @@ export function normalizeCheckoutUpdatedPayload(
     checkoutToken,
   };
 }
+
