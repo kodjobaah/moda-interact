@@ -407,6 +407,36 @@ The hosted application is currently deployed on Render:
 
 The background service is deployed independently so web traffic and worker workloads can scale separately.
 
+## Operational endpoints
+
+### `GET /health` — process liveness
+
+- **Purpose:** process liveness.
+- **Returns:** `200` when the application process is alive.
+- **Dependencies:** none. `/health` performs no Redis, PostgreSQL, Shopify or
+  other provider calls, so it stays cheap even when dependencies are down.
+
+### `GET /ready` — dependency readiness
+
+- **Purpose:** dependency readiness.
+- **Returns:** `200` only when the required Redis and PostgreSQL dependencies
+  are ready; `503` otherwise.
+- **Checks:** bounded and non-mutating (Redis `PING`, PostgreSQL `SELECT 1`).
+- **Provider calls:** none (no Shopify or other provider API calls).
+- **Response:** only check names and booleans — never connection strings,
+  credentials or raw dependency errors.
+
+### Render deployment health path
+
+Use `/ready` as the Render deployment health path, with `/health` retained as
+process-liveness diagnostics.
+
+### Environment behaviour
+
+The same health/readiness contract applies in both test and production. Only
+environment-specific dependency configuration (e.g. `REDIS_URL` and
+`DATABASE_URL`) differs.
+
 ## Privacy and security
 
 Moda Interact handles merchant and customer commerce data, so:
