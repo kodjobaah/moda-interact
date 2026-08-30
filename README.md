@@ -348,19 +348,58 @@ Commit the generated migration to the database repository.
 
 ### Deploy migrations
 
-For hosted environments:
+Migration is a pre-deploy step, run once per deployment before replicas start:
 
 ```bash
-npm run prisma:migrate:deploy
+npm run migrate
 ```
+
+The equivalent lower-level command `npm run prisma:migrate:deploy` is also
+available. Migration uses the environment's configured `DATABASE_URL` and is
+never executed by normal replica startup.
 
 Do **not** use `prisma migrate dev` against a managed production database.
 
 ### Seed reference data
 
+Seeding is an explicit, controlled initialization command and is never executed
+automatically by a service restart, horizontal scale-out or rolling deploy:
+
 ```bash
-npm run prisma:seed
+npm run seed
 ```
+
+The equivalent lower-level command `npm run prisma:seed` is also available.
+
+## Deployment lifecycle
+
+`moda-interact` separates database setup from normal web-process startup so a
+horizontally scaled replica can restart without running migration or seed.
+
+The lifecycle has four distinguishable phases:
+
+| Phase | Command | When it runs |
+| --- | --- | --- |
+| build | `npm run build` | Once, when the deployable artifact is created |
+| migrate | `npm run migrate` | Once per deployment, before replicas start (Render `preDeployCommand`) |
+| seed | `npm run seed` | Explicitly and manually when reference data is needed; never automatic |
+| start | `npm run start` | Every normal replica start, restart, horizontal scale-out and rolling deploy |
+
+Normal replica startup runs **only** `npm run start` (the web runtime). It never
+executes migration or seed. The Docker container starts the web runtime only:
+
+```dockerfile
+CMD ["npm", "run", "start"]
+```
+
+All lifecycle commands are environment-neutral. They use the environment's
+configured `DATABASE_URL`, and no command hard-codes a test or production
+database URL, so the same application artifact and command contract can be
+deployed to both test and production.
+
+The environment-specific Render `preDeployCommand` wiring (migration-only, seed
+excluded) is owned by the gateway deployment topology
+(`ARCH-002-GATEWAY-003`).
 
 ## Useful commands
 
@@ -368,8 +407,8 @@ npm run prisma:seed
 shopify app dev
 npm run prisma:generate
 npm run prisma:status
-npm run prisma:migrate:deploy
-npm run prisma:seed
+npm run migrate
+npm run seed
 npm run build
 ```
 

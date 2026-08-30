@@ -10,7 +10,8 @@
     "config:use": "shopify app config use",
     "env": "shopify app env",
     "start": "react-router-serve ./build/server/index.js",
-    "docker-start": "npm run setup && npm run start",
+    "migrate": "npm run prisma:migrate:deploy",
+    "seed": "npm run prisma:seed",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
     "shopify": "shopify",
     "prisma": "prisma",
@@ -23,7 +24,6 @@
     "prisma:status": "prisma migrate status --schema database/prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema database/prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma",
-    "setup": "npm run prisma:migrate:deploy && npm run prisma:seed",
     "prisma:seed": "node database/prisma/seed.mjs"
   },
   "type": "module",

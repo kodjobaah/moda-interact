@@ -15,4 +15,7 @@ COPY . .
 
 RUN npm run build
 
-CMD ["npm", "run", "docker-start"]
+# Start the web runtime only. Database migration is a separate pre-deploy step
+# (`npm run migrate`) and seeding is an explicit manual command (`npm run seed`);
+# neither runs on a normal replica start, restart or scale-out.
+CMD ["npm", "run", "start"]
