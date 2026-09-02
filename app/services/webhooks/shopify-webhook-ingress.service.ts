@@ -23,7 +23,8 @@ import {
   publishShopifyCheckoutUpdatedEvent,
   publishShopifyOrderCompletedEvent,
 } from "./shopify-webhook-queue.server";
-import { logShopifyWebhookOutcome } from "./shopify-webhook-logger";
+import { recordShopifyWebhookOutcome } from "./shopify-webhook-observability.server";
+import { getActiveTraceId } from "../otel/otel.runtime";
 import {
   normalizeCheckoutCreatedPayload,
   normalizeCheckoutUpdatedPayload,
@@ -82,7 +83,7 @@ export async function ingestShopifyWebhook(
     metadata = parseShopifyWebhookMetadata(input.request.headers, input);
   } catch (error) {
     if (error instanceof ShopifyWebhookMetadataError) {
-      logShopifyWebhookOutcome({
+      recordShopifyWebhookOutcome({
         topic: input.topic,
         deliveryId: "unknown",
         eventId: null,
@@ -106,7 +107,7 @@ export async function ingestShopifyWebhook(
     });
 
     if (!shop || shop.status !== "ACTIVE") {
-      logShopifyWebhookOutcome({
+      recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
@@ -122,7 +123,7 @@ export async function ingestShopifyWebhook(
     }
 
     if (!plan) {
-      logShopifyWebhookOutcome({
+      recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
@@ -142,7 +143,7 @@ export async function ingestShopifyWebhook(
     if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
-        logShopifyWebhookOutcome({
+        recordShopifyWebhookOutcome({
           topic: metadata.providerTopic,
           deliveryId: metadata.deliveryId,
           eventId: metadata.eventId,
@@ -172,7 +173,7 @@ export async function ingestShopifyWebhook(
     } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
-        logShopifyWebhookOutcome({
+        recordShopifyWebhookOutcome({
           topic: metadata.providerTopic,
           deliveryId: metadata.deliveryId,
           eventId: metadata.eventId,
@@ -202,7 +203,7 @@ export async function ingestShopifyWebhook(
     } else {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
-        logShopifyWebhookOutcome({
+        recordShopifyWebhookOutcome({
           topic: metadata.providerTopic,
           deliveryId: metadata.deliveryId,
           eventId: metadata.eventId,
@@ -231,7 +232,7 @@ export async function ingestShopifyWebhook(
       });
     }
 
-    logShopifyWebhookOutcome({
+    recordShopifyWebhookOutcome({
       topic: metadata.providerTopic,
       deliveryId: metadata.deliveryId,
       eventId: metadata.eventId,
@@ -247,7 +248,7 @@ export async function ingestShopifyWebhook(
     return new Response(null, { status: 200 });
   } catch (error) {
     if (error instanceof ShopifyWebhookPublicationError) {
-      logShopifyWebhookOutcome({
+      recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
@@ -307,7 +308,7 @@ function buildShopifyEventEnvelope({
     },
     occurredAt: metadata.triggeredAt ? metadata.triggeredAt.toISOString() : null,
     receivedAt: metadata.receivedAt.toISOString(),
-    traceId: requestId,
+    traceId: getActiveTraceId(requestId),
     orderingKey,
     payload,
   };

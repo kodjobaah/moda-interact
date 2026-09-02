@@ -9,6 +9,10 @@ const packageJson = JSON.parse(
   readFileSync(resolve(repoRoot, "package.json"), "utf8"),
 );
 const dockerfile = readFileSync(resolve(repoRoot, "Dockerfile"), "utf8");
+const observabilityPreload = readFileSync(
+  resolve(repoRoot, "observability.mjs"),
+  "utf8",
+);
 
 const { build, migrate, seed, start } = packageJson.scripts;
 
@@ -20,8 +24,21 @@ describe("deployment lifecycle command contract", () => {
   });
 
   it("starts only the web runtime and never runs migration or seed", () => {
-    expect(start).toContain("react-router-serve");
+    expect(start).toContain("@react-router/serve/bin.js");
     expect(start).not.toMatch(/(docker-start|\bsetup\b|migrate|seed)/i);
+  });
+
+  it("preloads the shared observability runtime before React Router", () => {
+    expect(start).toMatch(
+      /^node --import \.\/observability\.mjs .*react-router\/serve\/bin\.js/,
+    );
+    expect(observabilityPreload).toContain(
+      "@modainteract/moda-interact-shared/observability/node",
+    );
+    expect(observabilityPreload).toContain('serviceName: "moda-interact"');
+    expect(observabilityPreload).toContain(
+      "instrument: { http: true, fetch: true, prisma: true }",
+    );
   });
 
   it("runs migration as an independently callable command that does not seed", () => {

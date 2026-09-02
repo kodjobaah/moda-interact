@@ -1,4 +1,5 @@
 import { Queue } from "bullmq";
+import { createBullMQTelemetry } from "@modainteract/moda-interact-shared/observability/bullmq";
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   type ShopifyCheckoutCreatedEventV2,
@@ -12,6 +13,9 @@ import {
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 const JOB_PUBLISH_TIMEOUT_MS = 3_500;
+const bullMQTelemetry = createBullMQTelemetry({
+  serviceName: "moda-interact",
+});
 
 type ShopifyWebhookQueueName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName
@@ -88,6 +92,7 @@ function getCheckoutQueue() {
       SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName,
       {
         connection: getQueueConnection(),
+        telemetry: bullMQTelemetry,
         defaultJobOptions: {
           attempts: 3,
           backoff: {
@@ -110,6 +115,7 @@ function getOrderQueue() {
       SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.queueName,
       {
         connection: getQueueConnection(),
+        telemetry: bullMQTelemetry,
         defaultJobOptions: {
           attempts: 3,
           backoff: {

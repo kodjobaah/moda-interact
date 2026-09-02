@@ -308,7 +308,7 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
   });
 
-  it("logs structured PII-safe output", async () => {
+  it("logs a structured PII-safe record through the shared logging boundary", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
     const infoSpy = vi.spyOn(console, "info").mockImplementation(() => {});
 
@@ -325,18 +325,44 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
-    const logLine = infoSpy.mock.calls
-      .map((call) => call.map(String).join(" "))
-      .join("\n");
+    // The shared logger's default sink emits one JSON LogRecord per call.
+    const records = infoSpy.mock.calls
+      .flat()
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
 
-    expect(logLine).toContain("shopify_webhook");
-    expect(logLine).toContain("topic");
-    expect(logLine).toContain("queue");
-    expect(logLine).toContain("jobId");
-    expect(logLine).toContain("outcome");
-    expect(logLine).toContain("ackMs");
-    expect(logLine).not.toContain("customer@example.com");
-    expect(logLine).not.toContain("+15555550100");
+    const record = records.find((r) => r.event === "shopify.webhook.outcome");
+    expect(record).toBeDefined();
+    expect(record.level).toBe("info");
+
+    // Canonical telemetry identity is supplied by moda-interact.
+    expect(record["service.namespace"]).toBe("moda-interact");
+    expect(record["service.name"]).toBe("moda-interact");
+    expect(record["deployment.environment.name"]).toBe("test");
+
+    // Only the PII-safe observation fields are logged.
+    expect(record.data).toMatchObject({
+      topic: "CHECKOUTS_CREATE",
+      deliveryId: "delivery-1",
+      queue: "checkout-events",
+      jobId: "checkout-created-job",
+      outcome: "ENQUEUED",
+      shopId: "shop_1",
+      shopDomain: "shop.myshopify.com",
+    });
+    expect(typeof record.data.ackMs).toBe("number");
+
+    // Sensitive payload/PII never reaches the log output.
+    const raw = JSON.stringify(records);
+    expect(raw).not.toContain("customer@example.com");
+    expect(raw).not.toContain("+15555550100");
+    expect(raw).not.toContain("checkout-token-1");
 
     infoSpy.mockRestore();
   });

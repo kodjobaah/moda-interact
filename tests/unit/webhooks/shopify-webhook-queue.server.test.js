@@ -7,6 +7,15 @@ import {
   createShopifyOrderJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
+const bullMQTelemetry = { tracer: "shared-bullmq-telemetry" };
+
+vi.mock(
+  "@modainteract/moda-interact-shared/observability/bullmq",
+  () => ({
+    createBullMQTelemetry: vi.fn(() => bullMQTelemetry),
+  }),
+);
+
 class FakeJob {
   constructor(data, state = "delayed") {
     this.data = data;
@@ -234,6 +243,35 @@ describe("shopify webhook queue helpers", () => {
       removeOnComplete: true,
       removeOnFail: false,
     });
+    expect(queues.checkout.options.telemetry).toBe(bullMQTelemetry);
+  });
+
+  it("uses the same shared telemetry object without changing job data", async () => {
+    const event = parseShopifyRecoveryEventV2({
+      schemaVersion: 2,
+      receiptId: "r-telemetry-1",
+      deliveryId: "d-telemetry-1",
+      eventId: "e-telemetry-1",
+      source: "shopify",
+      providerTopic: "ORDERS_CREATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-08-28T00:00:00.000Z",
+      receivedAt: "2026-08-28T00:00:01.000Z",
+      traceId: "trace-telemetry-1",
+      orderingKey: "shop_1:gid://shopify/Order/telemetry-1",
+      eventType: "order.completed",
+      payload: {
+        orderId: "gid://shopify/Order/telemetry-1",
+        checkoutToken: null,
+        cartToken: null,
+        completedAt: "2026-08-28T00:00:00Z",
+      },
+    });
+
+    await queueModule.publishShopifyOrderCompletedEvent({ event });
+
+    expect(queues.order.options.telemetry).toBe(bullMQTelemetry);
+    expect(queues.order.addCalls[0].data).toEqual(event);
   });
 
   it("fails publication when Redis is unavailable", async () => {
