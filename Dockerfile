@@ -5,15 +5,17 @@ EXPOSE 3000
 
 WORKDIR /app
 
-ENV NODE_ENV=production
-
 COPY package.json package-lock.json* ./
 
-RUN npm ci --omit=dev && npm cache clean --force
+RUN npm ci --include=dev
 
 COPY . .
 
 RUN npm run build
+
+ENV NODE_ENV=production
+
+RUN npm cache clean --force
 
 # Start the web runtime only. Database migration is a separate pre-deploy step
 # (`npm run migrate`) and seeding is an explicit manual command (`npm run seed`);

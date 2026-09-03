@@ -63,6 +63,20 @@ describe("deployment lifecycle command contract", () => {
     expect(cmd).not.toMatch(/(docker-start|setup|migrate|seed)/i);
   });
 
+  it("installs build and migration tooling before enabling production mode", () => {
+    expect(dockerfile).toMatch(/RUN npm ci --include=dev/);
+    expect(dockerfile.indexOf("RUN npm ci --include=dev")).toBeLessThan(
+      dockerfile.indexOf("RUN npm run build"),
+    );
+    expect(dockerfile).toMatch(/ENV NODE_ENV=production/);
+    expect(dockerfile.indexOf("RUN npm run build")).toBeLessThan(
+      dockerfile.indexOf("ENV NODE_ENV=production"),
+    );
+    expect(dockerfile).not.toMatch(/npm ci --omit=dev/);
+    expect(packageJson.devDependencies.prisma).toBeTruthy();
+    expect(migrate).toContain("prisma:migrate:deploy");
+  });
+
   it("keeps lifecycle commands environment-neutral", () => {
     for (const script of [build, migrate, seed, start]) {
       expect(script).not.toMatch(/postgres(ql)?:\/\/|DATABASE_URL=/i);
