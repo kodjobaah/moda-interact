@@ -102,6 +102,16 @@ describe("shopify webhook queue helpers", () => {
     expect(orderId).not.toContain(":");
   });
 
+  it("formats tenant-readable job ids without changing the legacy suffix", () => {
+    expect(queueModule.createTenantReadableJobId("shop_1", "shopify-abc")).toBe(
+      "shop_1--shopify-abc",
+    );
+    expect(queueModule.createTenantReadableJobId("shop_1", "order-created-abc")).toBe(
+      "shop_1--order-created-abc",
+    );
+    expect(queueModule.createTenantReadableJobId("shop_1", "shopify-abc")).not.toContain(":");
+  });
+
   it("publishes checkout-created work immediately and deduplicates duplicate delivery", async () => {
     const baseEvent = {
       schemaVersion: 2,
@@ -132,12 +142,18 @@ describe("shopify webhook queue helpers", () => {
       event: parseShopifyRecoveryEventV2(baseEvent),
     });
 
-    const jobId = createShopifyWebhookJobId("shop_1", "d1");
+    const legacyJobId = createShopifyWebhookJobId("shop_1", "d1");
+    const jobId = queueModule.createTenantReadableJobId("shop_1", legacyJobId);
     expect(first.outcome).toBe("enqueued");
+    expect(first.jobId).toBe(jobId);
     expect(second.outcome).toBe("duplicate");
+    expect(second.jobId).toBe(jobId);
     expect(queues.checkout.addCalls).toHaveLength(1);
     expect(queues.checkout.addCalls[0].opts.jobId).toBe(jobId);
     expect(queues.checkout.addCalls[0].opts.delay).toBeUndefined();
+    expect(queues.checkout.addCalls[0].data).toEqual(expect.objectContaining({
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+    }));
   });
 
   it("publishes checkout update work as a distinct job contract", async () => {
@@ -171,6 +187,9 @@ describe("shopify webhook queue helpers", () => {
     expect(second.outcome).toBe("duplicate");
     expect(queues.checkout.addCalls).toHaveLength(1);
     expect(queues.checkout.addCalls[0].jobName).toBe("checkout-updated");
+    const legacyJobId = createShopifyWebhookJobId("shop_1", "delivery-up-1");
+    expect(first.jobId).toBe(queueModule.createTenantReadableJobId("shop_1", legacyJobId));
+    expect(first.jobId).toMatch(/^shop_1--/);
   });
 
   it("keeps order publication immediate and suppresses duplicate order work", async () => {
@@ -205,6 +224,85 @@ describe("shopify webhook queue helpers", () => {
 
     expect(first.outcome).toBe("enqueued");
     expect(second.outcome).toBe("duplicate");
+    expect(queues.order.addCalls).toHaveLength(1);
+    const legacyJobId = createShopifyOrderJobId("shop_1", "gid://shopify/Order/1");
+    expect(first.jobId).toBe(queueModule.createTenantReadableJobId("shop_1", legacyJobId));
+    expect(first.jobId).toMatch(/^shop_1--/);
+  });
+
+  it("suppresses checkout publication when only the legacy id exists", async () => {
+    const event = parseShopifyRecoveryEventV2({
+      schemaVersion: 2,
+      receiptId: "r-legacy-checkout",
+      deliveryId: "d-legacy-checkout",
+      eventId: "e-legacy-checkout",
+      source: "shopify",
+      providerTopic: "CHECKOUTS_CREATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-08-28T00:00:00.000Z",
+      receivedAt: "2026-08-28T00:00:01.000Z",
+      traceId: "r-legacy-checkout",
+      orderingKey: "shop_1:checkout_legacy",
+      eventType: "checkout.created",
+      payload: {
+        checkoutToken: "checkout_legacy",
+        cartToken: null,
+        abandonedCheckoutUrl: null,
+        checkoutCreatedAt: "2026-08-28T00:00:00Z",
+      },
+    });
+    const first = await queueModule.publishShopifyCheckoutCreatedEvent({ event });
+    const legacyJobId = createShopifyWebhookJobId("shop_1", event.deliveryId);
+    const newJobId = queueModule.createTenantReadableJobId("shop_1", legacyJobId);
+    queues.checkout.jobs.delete(newJobId);
+    queues.checkout.jobs.set(legacyJobId, new FakeJob(event));
+
+    const second = await queueModule.publishShopifyCheckoutCreatedEvent({ event });
+
+    expect(first.outcome).toBe("enqueued");
+    expect(second).toEqual({
+      queue: "checkout-events",
+      jobId: legacyJobId,
+      outcome: "duplicate",
+    });
+    expect(queues.checkout.addCalls).toHaveLength(1);
+  });
+
+  it("suppresses order publication when only the legacy id exists", async () => {
+    const event = parseShopifyRecoveryEventV2({
+      schemaVersion: 2,
+      receiptId: "r-legacy-order",
+      deliveryId: "d-legacy-order",
+      eventId: "e-legacy-order",
+      source: "shopify",
+      providerTopic: "ORDERS_CREATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-08-28T00:00:00.000Z",
+      receivedAt: "2026-08-28T00:00:01.000Z",
+      traceId: "r-legacy-order",
+      orderingKey: "shop_1:gid://shopify/Order/legacy",
+      eventType: "order.completed",
+      payload: {
+        orderId: "gid://shopify/Order/legacy",
+        checkoutToken: null,
+        cartToken: null,
+        completedAt: "2026-08-28T00:00:00Z",
+      },
+    });
+    const first = await queueModule.publishShopifyOrderCompletedEvent({ event });
+    const legacyJobId = createShopifyOrderJobId("shop_1", event.payload.orderId);
+    const newJobId = queueModule.createTenantReadableJobId("shop_1", legacyJobId);
+    queues.order.jobs.delete(newJobId);
+    queues.order.jobs.set(legacyJobId, new FakeJob(event));
+
+    const second = await queueModule.publishShopifyOrderCompletedEvent({ event });
+
+    expect(first.outcome).toBe("enqueued");
+    expect(second).toEqual({
+      queue: "order-events",
+      jobId: legacyJobId,
+      outcome: "duplicate",
+    });
     expect(queues.order.addCalls).toHaveLength(1);
   });
 

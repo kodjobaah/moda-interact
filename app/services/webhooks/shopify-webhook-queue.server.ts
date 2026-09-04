@@ -158,6 +158,29 @@ function isDuplicateJobError(error: unknown): boolean {
   );
 }
 
+export function createTenantReadableJobId(
+  shopId: string,
+  legacyJobId: string,
+): string {
+  if (!shopId || !legacyJobId) {
+    throw new Error("Tenant-readable job IDs require non-empty values");
+  }
+
+  return `${shopId}--${legacyJobId}`;
+}
+
+async function findExistingJobId(
+  queue: Queue<ShopifyRecoveryEventV2, void, ShopifyWebhookQueueJobName>,
+  newJobId: string,
+  legacyJobId: string,
+): Promise<string | null> {
+  const existingNewJob = await queue.getJob(newJobId);
+  if (existingNewJob) return newJobId;
+
+  const existingLegacyJob = await queue.getJob(legacyJobId);
+  return existingLegacyJob ? legacyJobId : null;
+}
+
 async function addJobWithTimeout(
   queue: Queue<ShopifyRecoveryEventV2, void, ShopifyWebhookQueueJobName>,
   jobName: ShopifyWebhookQueueJobName,
@@ -196,26 +219,38 @@ export async function publishShopifyCheckoutCreatedEvent(input: {
   event: ShopifyCheckoutCreatedEventV2;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
-  const jobId = createShopifyWebhookJobId(
+  const legacyJobId = createShopifyWebhookJobId(
     input.event.tenant.shopId,
     input.event.deliveryId,
   );
+  const jobId = createTenantReadableJobId(
+    input.event.tenant.shopId,
+    legacyJobId,
+  );
 
-  const existingJob = await queue.getJob(jobId);
-  if (existingJob) {
+  const existingJobId = await findExistingJobId(queue, jobId, legacyJobId);
+  if (existingJobId) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId: existingJobId,
+      outcome: "duplicate",
+    };
+  }
+
+  const addedJob = await addJobWithTimeout(
+    queue,
+    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName,
+    input.event,
+    { jobId },
+  );
+
+  if (!addedJob) {
     return {
       queue: queue.name as ShopifyWebhookQueueName,
       jobId,
       outcome: "duplicate",
     };
   }
-
-  await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName,
-    input.event,
-    { jobId },
-  );
 
   return {
     queue: queue.name as ShopifyWebhookQueueName,
@@ -228,26 +263,38 @@ export async function publishShopifyCheckoutUpdatedEvent(input: {
   event: ShopifyCheckoutUpdatedEventV2;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
-  const jobId = createShopifyWebhookJobId(
+  const legacyJobId = createShopifyWebhookJobId(
     input.event.tenant.shopId,
     input.event.deliveryId,
   );
+  const jobId = createTenantReadableJobId(
+    input.event.tenant.shopId,
+    legacyJobId,
+  );
 
-  const existingJob = await queue.getJob(jobId);
-  if (existingJob) {
+  const existingJobId = await findExistingJobId(queue, jobId, legacyJobId);
+  if (existingJobId) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId: existingJobId,
+      outcome: "duplicate",
+    };
+  }
+
+  const addedJob = await addJobWithTimeout(
+    queue,
+    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName,
+    input.event,
+    { jobId },
+  );
+
+  if (!addedJob) {
     return {
       queue: queue.name as ShopifyWebhookQueueName,
       jobId,
       outcome: "duplicate",
     };
   }
-
-  await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName,
-    input.event,
-    { jobId },
-  );
 
   return {
     queue: queue.name as ShopifyWebhookQueueName,
@@ -260,26 +307,38 @@ export async function publishShopifyOrderCompletedEvent(input: {
   event: ShopifyOrderCompletedEventV2;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getOrderQueue();
-  const jobId = createShopifyOrderJobId(
+  const legacyJobId = createShopifyOrderJobId(
     input.event.tenant.shopId,
     input.event.payload.orderId,
   );
+  const jobId = createTenantReadableJobId(
+    input.event.tenant.shopId,
+    legacyJobId,
+  );
 
-  const existingJob = await queue.getJob(jobId);
-  if (existingJob) {
+  const existingJobId = await findExistingJobId(queue, jobId, legacyJobId);
+  if (existingJobId) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId: existingJobId,
+      outcome: "duplicate",
+    };
+  }
+
+  const addedJob = await addJobWithTimeout(
+    queue,
+    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName,
+    input.event,
+    { jobId },
+  );
+
+  if (!addedJob) {
     return {
       queue: queue.name as ShopifyWebhookQueueName,
       jobId,
       outcome: "duplicate",
     };
   }
-
-  await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName,
-    input.event,
-    { jobId },
-  );
 
   return {
     queue: queue.name as ShopifyWebhookQueueName,
