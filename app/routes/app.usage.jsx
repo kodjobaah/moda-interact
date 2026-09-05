@@ -31,10 +31,10 @@ export const loader = async ({ request }) => {
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
   const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
   const selectedUsageWhere = selectedPeriod ? { shopId: shop.id, billingPeriodId: selectedPeriod.id } : usageWhere;
-  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { firstName: true, lastName: true, email: true } }, conversations: { include: { messages: { select: { id: true } } } } } });
+  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { firstName: true, lastName: true, email: true } }, conversation: { include: { messages: { select: { id: true } } } } } });
   const recoveryBySourceId = new Map();
   for (const recovery of recoveries) {
-    const conversation = recovery.conversations[0];
+    const conversation = recovery.conversation;
     const customerName = [recovery.customer?.firstName, recovery.customer?.lastName].filter(Boolean).join(" ") || recovery.customer?.email || "Guest";
     recoveryBySourceId.set(recovery.id, { recoveryId: recovery.id, customerName });
     if (conversation) {

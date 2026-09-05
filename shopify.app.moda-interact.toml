@@ -2,9 +2,14 @@
 
 client_id = "c323c5bd8585d875719db7570b91460e"
 name = "moda-interact"
-application_url = "https://moda-interact.onrender.com"
+application_url = "https://app-test.modainteract.com"
 embedded = true
 handle = "moda-interact"
+[auth]
+redirect_urls = [
+  "https://app-test.modainteract.com"
+]
+
 
 [build]
 automatically_update_urls_on_dev = true
@@ -40,5 +45,3 @@ scopes = "read_customers,read_orders,read_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
-[auth]
-redirect_urls = [ ]

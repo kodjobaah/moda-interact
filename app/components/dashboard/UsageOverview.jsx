@@ -2,6 +2,7 @@ import { arc, pie, scaleOrdinal, schemeTableau10 } from "d3";
 import PropTypes from "prop-types";
 import { Link, useNavigate } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
+import PendingRecoveries from "./PendingRecoveries";
 
 const colors = scaleOrdinal(schemeTableau10);
 const metricLabels = { checkout_recovery: "Checkout recovery", conversation: "Conversation", agent_message: "Agent message", whatsapp_message: "WhatsApp message" };
@@ -30,7 +31,7 @@ function UsagePie({ title, events }) {
   );
 }
 
-export default function UsageOverview({ usageSummary, billingPeriods }) {
+export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt }) {
   const navigate = useNavigate();
   const pastPeriods = billingPeriods.filter((period) => period.status === "PAID");
   return (
@@ -54,9 +55,10 @@ export default function UsageOverview({ usageSummary, billingPeriods }) {
           </div>
         </div>
       </s-section>
+      <PendingRecoveries pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} />
     </s-page>
   );
 }
 
 UsagePie.propTypes = { title: PropTypes.string, events: PropTypes.arrayOf(PropTypes.object) };
-UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object) };
+UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string };

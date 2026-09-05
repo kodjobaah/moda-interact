@@ -318,6 +318,108 @@ body {
   text-decoration: none;
 }
 
+.pending-recoveries-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: #286b50;
+  font-weight: 700;
+}
+
+.pending-recoveries-header > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.pending-recoveries-header button {
+  padding: 6px 12px;
+  border: 1px solid #286b50;
+  border-radius: 4px;
+  background: #fff;
+  color: #286b50;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.pending-recoveries-header button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.pending-recoveries-updated {
+  color: #616161;
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.pending-recoveries-message {
+  margin: 0;
+  color: #616161;
+}
+
+.pending-recoveries-table-wrap {
+  overflow-x: auto;
+}
+
+.pending-recoveries-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: #173d32;
+}
+
+.pending-recoveries-table th,
+.pending-recoveries-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid rgb(40 107 80 / 16%);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pending-recoveries-table th {
+  color: #616161;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pending-recovery-status {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #e3f0e8;
+  color: #286b50;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.pending-recovery-status-active {
+  background: #fff3dc;
+  color: #8a5b00;
+}
+
+.pending-recoveries-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 18px;
+  color: #616161;
+}
+
+.pending-recoveries-pagination a {
+  color: #286b50;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pending-recoveries-pagination span[aria-disabled="true"] {
+  color: #a0aaa4;
+}
+
 .usage-detail-actions,
 .usage-view-switcher {
   display: flex;

@@ -19,6 +19,7 @@ import {
 import {
   billingService,
 } from "@/services/billing/billing.service";
+import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 
 import db from "../db.server";
 
@@ -31,6 +32,7 @@ export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
   const requestedBillId = url.searchParams.get("billId");
+  const pendingPage = Number.parseInt(url.searchParams.get("pendingPage") ?? "1", 10);
 
   /*
    * Resolve Shopify's shop into our
@@ -63,6 +65,8 @@ console.log("Resolved shop settings:", settings);
       settings: null,
       subscription: null,
       recoveries: [],
+      pendingRecoveries: { available: false, page: Number.isInteger(pendingPage) && pendingPage > 0 ? pendingPage : 1, pageSize: 10, total: 0, totalPages: 0, items: [] },
+      pendingRecoveriesUpdatedAt: null,
       billingPeriods: [],
       usageSummary: { current: [], past: [] },
 
@@ -86,12 +90,21 @@ console.log("Resolved shop settings:", settings);
       shop.id,
     );
 
+  console.log("Resolved subscription:", subscription);
   if (!subscription) {
     throw redirect("/app/billing");
   }
 
-  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversations: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
+  const pendingRecoveries = await readPendingRecoveries({
+    shopId: shop.id,
+    shopDomain: shop.domain,
+    page: pendingPage,
+  });
+
+  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
+  console.log("Resolved recoveries:", recoveries);
   const allUsageWhere = { shopId: shop.id };
+  
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
   const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
   const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
@@ -100,10 +113,10 @@ console.log("Resolved shop settings:", settings);
     db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
   ]);
   const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
-  const messagesSent = recoveries.reduce((total, recovery) => total + (recovery.conversations[0]?.messages.length ?? 0), 0);
+  const messagesSent = recoveries.reduce((total, recovery) => total + (recovery.conversation?.messages.length ?? 0), 0);
   const recoveryBySourceId = new Map();
   for (const recovery of recoveries) {
-    const conversation = recovery.conversations[0];
+    const conversation = recovery.conversation;
     const customerName = [recovery.customer?.firstName, recovery.customer?.lastName].filter(Boolean).join(" ") || recovery.customer?.email || "Guest";
     recoveryBySourceId.set(recovery.id, { recoveryId: recovery.id, customerName });
     if (conversation) {
@@ -114,6 +127,7 @@ console.log("Resolved shop settings:", settings);
     }
   }
 
+  console.log(recoveryBySourceId);
 
   return {
     settings,
@@ -136,12 +150,14 @@ console.log("Resolved shop settings:", settings);
       messagesSent,
     },
     recoveries: recoveries.map((recovery) => {
-      const conversation = recovery.conversations[0];
+      const conversation = recovery.conversation;
       const messageIds = conversation?.messages.map((message) => message.id) ?? [];
       const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === conversation?.id || messageIds.includes(event.sourceId));
       return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? "GBP", detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: conversation?.messages.length ?? 0, conversations: conversation ? [{ id: conversation.id, type: conversation.type, summary: conversation.summary }] : [], messages: conversation?.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() })) ?? [], billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
     }),
     billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
+    pendingRecoveries,
+    pendingRecoveriesUpdatedAt: pendingRecoveries.available ? new Date().toISOString() : null,
     usagePagination: { view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
     usageSummary: { current: currentUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })), past: paidUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })) },
   };
@@ -155,6 +171,8 @@ export default function Index() {
     recoveries,
     billingPeriods,
     usageSummary,
+    pendingRecoveries,
+    pendingRecoveriesUpdatedAt,
     usageView,
     usagePagination,
   } = useLoaderData();
@@ -165,7 +183,7 @@ export default function Index() {
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} />;
   }
 
   return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} />;
