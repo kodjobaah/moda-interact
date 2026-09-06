@@ -1,31 +1,36 @@
-export default function Onboarding() {
+import PropTypes from "prop-types";
+import { createMerchantI18n } from "../../utils/merchant-i18n";
+
+export default function Onboarding({ merchantUi }) {
+  const i18n = createMerchantI18n(merchantUi);
+
   return (
-    <s-page heading="Welcome to Moda Interact">
+    <s-page heading={i18n.t("onboarding.title")}>
       <s-section>
         <s-heading>
-          Recover more abandoned checkouts
+          {i18n.t("onboarding.heading")}
         </s-heading>
 
         <s-paragraph>
-          Moda Interact helps you reconnect with customers who leave before
-          completing their purchase.
+          {i18n.t("onboarding.description")}
         </s-paragraph>
       </s-section>
 
       <s-section>
         <s-heading>
-          Get started
+          {i18n.t("onboarding.getStarted")}
         </s-heading>
 
         <s-paragraph>
-          Choose the plan that works best for your store to start using
-          Moda Interact.
+          {i18n.t("onboarding.planDescription")}
         </s-paragraph>
 
-        <s-button href="/app/billing">
-          Choose a plan
-        </s-button>
+        <s-button href="/app/billing">{i18n.t("onboarding.choosePlan")}</s-button>
       </s-section>
     </s-page>
   );
 }
+
+Onboarding.propTypes = {
+  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+};

@@ -1,49 +1,49 @@
 import RecoveryChart from "./RecoveryChart";
 import PropTypes from "prop-types";
+import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 export default function Stats({
   abandonedCheckouts = 0,
   recoveredCheckouts = 0,
-  recoveredRevenue = 0,
   messagesSent = 0,
   recoveries = [],
+  recoveredRevenueByCurrency = {},
+  merchantUi,
 }) {
+  const i18n = createMerchantI18n(merchantUi);
   const recoveryRate =
     abandonedCheckouts > 0
       ? ((recoveredCheckouts / abandonedCheckouts) * 100).toFixed(1)
       : "0.0";
 
-  const formattedRevenue = new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(recoveredRevenue);
+  const formattedRevenue = Object.entries(recoveredRevenueByCurrency).map(([currency, value]) => i18n.formatMoney(value, currency)).join(", ") || i18n.t("common.unavailable");
 
   const stats = [
     {
-      label: "Abandoned checkouts",
+      label: i18n.t("dashboard.abandonedCheckouts"),
       value: abandonedCheckouts,
     },
     {
-      label: "Recovered checkouts",
+      label: i18n.t("dashboard.recoveredCheckouts"),
       value: recoveredCheckouts,
     },
     {
-      label: "Recovery rate",
-      value: `${recoveryRate}%`,
+      label: i18n.t("dashboard.recoveryRate"),
+      value: i18n.formatPercent(Number(recoveryRate) / 100),
     },
     {
-      label: "Recovered revenue",
+      label: i18n.t("dashboard.recoveredRevenue"),
       value: formattedRevenue,
     },
     {
-      label: "Messages sent",
+      label: i18n.t("dashboard.messagesSent"),
       value: messagesSent,
     },
   ];
 
   return (
     <>
-      <s-section heading="Performance">
+      <s-section heading={i18n.t("dashboard.performance")}>
       <s-stack direction="inline" gap="base">
         {stats.map((stat) => (
           <s-box
@@ -62,7 +62,7 @@ export default function Stats({
       </s-stack>
       </s-section>
 
-      <RecoveryChart recoveries={recoveries} />
+      <RecoveryChart recoveries={recoveries} merchantUi={merchantUi} />
     </>
   );
 }
@@ -73,4 +73,6 @@ Stats.propTypes = {
   recoveredRevenue: PropTypes.number,
   messagesSent: PropTypes.number,
   recoveries: PropTypes.arrayOf(PropTypes.object),
+  recoveredRevenueByCurrency: PropTypes.object,
+  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
 };

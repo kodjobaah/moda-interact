@@ -7,6 +7,7 @@ import { billingService } from "@/services/billing/billing.service";
 import { shopService } from "@/services/shop/shop.service";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
+import { createMerchantI18n, merchantUiContext } from "../utils/merchant-i18n";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -21,7 +22,7 @@ export const loader = async ({ request }) => {
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
 
   if (!settings?.onboardingCompleted) {
-    return { settings: null, usageEvents: [], usagePagination: { page: 1, pageSize, total: 0, totalQuantity: 0 }, billingPeriods: [], usageView };
+    return { settings: null, merchantUi: merchantUiContext(null, session), usageEvents: [], usagePagination: { page: 1, pageSize, total: 0, totalQuantity: 0 }, billingPeriods: [], usageView };
   }
 
   const subscription = await billingService.getSubscription(shop.id);
@@ -51,6 +52,7 @@ export const loader = async ({ request }) => {
 
   return {
     settings,
+    merchantUi: merchantUiContext(settings, session),
     usageEvents: usageEvents.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, sourceType: event.sourceType, sourceId: event.sourceId, sourceRecovery: event.sourceId ? recoveryBySourceId.get(event.sourceId) ?? null : null, occurredAt: event.occurredAt.toISOString() })),
     usagePagination: { page, pageSize, total: usageCount, totalQuantity: Number(usageAggregate._sum.quantity ?? 0), view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
     billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
@@ -59,18 +61,20 @@ export const loader = async ({ request }) => {
 };
 
 export default function UsagePage() {
-  const { settings, usageEvents, usagePagination, usageView, billingPeriods } = useLoaderData();
-  const periodLabel = usagePagination.periodStart && usagePagination.periodEnd
-    ? `${new Date(usagePagination.periodStart).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} - ${new Date(usagePagination.periodEnd).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}`
-    : "Billing period";
+  const { settings, merchantUi, usageEvents, usagePagination, usageView, billingPeriods } = useLoaderData();
   const dashboardUrl = `/app?view=detail&bill=${usageView}${usagePagination.billId ? `&billId=${usagePagination.billId}` : ""}`;
 
   if (!settings) return null;
 
+  const i18n = createMerchantI18n(merchantUi);
+  const periodLabel = usagePagination.periodStart && usagePagination.periodEnd
+    ? `${i18n.formatDate(usagePagination.periodStart)} - ${i18n.formatDate(usagePagination.periodEnd)}`
+    : i18n.t("dashboard.billingPeriod");
+
   return (
-    <s-page heading="Billable usage">
-      <Breadcrumbs current="Billable usage" parent={periodLabel} parentHref={dashboardUrl} />
-      <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} />
+    <s-page heading={i18n.t("usage.billable")}>
+      <Breadcrumbs current={i18n.t("usage.billable")} parent={periodLabel} parentHref={dashboardUrl} merchantUi={merchantUi} />
+      <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} merchantUi={merchantUi} />
     </s-page>
   );
 }

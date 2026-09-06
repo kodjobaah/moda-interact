@@ -1,30 +1,7 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Link, useFetcher } from "react-router";
-
-const statusLabels = {
-  delayed: "Scheduled",
-  waiting: "Waiting",
-  active: "Processing",
-};
-
-function formatDate(value) {
-  if (!value) return "Not available";
-  return new Date(value).toLocaleString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatTime(value) {
-  if (!value) return "Not available";
-  return new Date(value).toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 function pageHref(page) {
   return `/app?pendingPage=${page}`;
@@ -37,7 +14,8 @@ export function getPendingRecoveriesDisplayState(pendingRecoveries, pendingRecov
   };
 }
 
-export default function PendingRecoveries({ pendingRecoveries, pendingRecoveriesUpdatedAt }) {
+export default function PendingRecoveries({ pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi }) {
+  const i18n = createMerchantI18n(merchantUi);
   const fetcher = useFetcher();
   const initialDisplayState = getPendingRecoveriesDisplayState(pendingRecoveries, pendingRecoveriesUpdatedAt);
   const [displayData, setDisplayData] = useState(initialDisplayState.displayData);
@@ -63,44 +41,44 @@ export default function PendingRecoveries({ pendingRecoveries, pendingRecoveries
 
   if (!displayData?.available) {
     return (
-      <s-section heading="Pending recoveries">
+      <s-section heading={i18n.t("pending.title")}>
         <div className="pending-recoveries-header">
-          <span>Unavailable</span>
-          <button type="button" onClick={refresh} disabled={isRefreshing}>{isRefreshing ? "Refreshing..." : "Refresh"}</button>
+          <span>{i18n.t("pending.unavailable")}</span>
+          <button type="button" onClick={refresh} disabled={isRefreshing}>{isRefreshing ? i18n.t("pending.refreshing") : i18n.t("pending.refresh")}</button>
         </div>
-        <p className="pending-recoveries-message">Pending recovery status is temporarily unavailable.</p>
+        <p className="pending-recoveries-message" dir={i18n.direction}>{i18n.t("pending.unavailableMessage")}</p>
       </s-section>
     );
   }
 
   const { items, page, total, totalPages } = displayData;
   return (
-    <s-section heading="Pending recoveries">
+    <s-section heading={i18n.t("pending.title")}>
       <div className="pending-recoveries-header">
         <div>
-          <span>{total} active</span>
-          <span className="pending-recoveries-updated">Last updated {formatTime(lastUpdated)}</span>
+          <span>{i18n.t("pending.active", { count: total })}</span>
+          <span className="pending-recoveries-updated">{i18n.t("pending.lastUpdated", { time: lastUpdated ? i18n.formatTime(lastUpdated) : i18n.t("common.unavailable") })}</span>
         </div>
-        <button type="button" onClick={refresh} disabled={isRefreshing}>{isRefreshing ? "Refreshing..." : "Refresh"}</button>
+        <button type="button" onClick={refresh} disabled={isRefreshing}>{isRefreshing ? i18n.t("pending.refreshing") : i18n.t("pending.refresh")}</button>
       </div>
       {items.length === 0 ? (
-        <p className="pending-recoveries-message">No active pending recoveries.</p>
+        <p className="pending-recoveries-message" dir={i18n.direction}>{i18n.t("pending.empty")}</p>
       ) : (
         <div className="pending-recoveries-table-wrap">
           <table className="pending-recoveries-table">
             <thead>
               <tr>
-                <th scope="col">Last activity</th>
-                <th scope="col">Recovery scheduled</th>
-                <th scope="col">Status</th>
+                <th scope="col">{i18n.t("pending.lastActivity")}</th>
+                <th scope="col">{i18n.t("pending.scheduled")}</th>
+                <th scope="col">{i18n.t("pending.status")}</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{formatDate(item.lastActivityAt)}</td>
-                  <td>{formatDate(item.scheduledFor)}</td>
-                  <td><span className={`pending-recovery-status pending-recovery-status-${item.status}`}>{statusLabels[item.status]}</span></td>
+                  <td>{item.lastActivityAt ? i18n.formatDateTime(item.lastActivityAt) : i18n.t("common.unavailable")}</td>
+                  <td>{i18n.formatDateTime(item.scheduledFor)}</td>
+                  <td><span className={`pending-recovery-status pending-recovery-status-${item.status}`}>{i18n.t(`pending.${item.status}Status`)}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -108,10 +86,10 @@ export default function PendingRecoveries({ pendingRecoveries, pendingRecoveries
         </div>
       )}
       {totalPages > 1 && (
-        <nav className="pending-recoveries-pagination" aria-label="Pending recoveries pages">
-          {page > 1 ? <Link to={pageHref(page - 1)}>Previous</Link> : <span aria-disabled="true">Previous</span>}
-          <span>Page {page} of {totalPages}</span>
-          {page < totalPages ? <Link to={pageHref(page + 1)}>Next</Link> : <span aria-disabled="true">Next</span>}
+        <nav className="pending-recoveries-pagination" aria-label={i18n.t("pending.title")}>
+          {page > 1 ? <Link to={pageHref(page - 1)}>{i18n.t("pending.previous")}</Link> : <span aria-disabled="true">{i18n.t("pending.previous")}</span>}
+          <span>{i18n.t("pending.page", { page: i18n.formatNumber(page), totalPages: i18n.formatNumber(totalPages) })}</span>
+          {page < totalPages ? <Link to={pageHref(page + 1)}>{i18n.t("pending.next")}</Link> : <span aria-disabled="true">{i18n.t("pending.next")}</span>}
         </nav>
       )}
     </s-section>
@@ -133,4 +111,5 @@ PendingRecoveries.propTypes = {
     })),
   }),
   pendingRecoveriesUpdatedAt: PropTypes.string,
+  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
 };

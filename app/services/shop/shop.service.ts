@@ -5,6 +5,11 @@ import type {
 import type {
   Shop,
 } from "@prisma/client";
+import {
+  canonicaliseLanguageTag,
+  normalizeCountryCode,
+  normalizeTimeZone,
+} from "@modainteract/moda-interact-shared/internationalization";
 
 import prisma from "../../db.server";
 
@@ -20,7 +25,16 @@ interface ShopifyShopResponse {
     shop?: {
       shopifyShopId?: string | null;
       myshopifyDomain?: string | null;
+      ianaTimezone?: string | null;
+      shopAddress?: {
+        countryCodeV2?: string | null;
+      } | null;
     } | null;
+    shopLocales?: Array<{
+      locale?: string | null;
+      primary?: boolean | null;
+      published?: boolean | null;
+    }> | null;
   };
 }
 
@@ -36,6 +50,15 @@ export class ShopService {
           shop {
             shopifyShopId: id
             myshopifyDomain
+            ianaTimezone
+            shopAddress {
+              countryCodeV2
+            }
+          }
+          shopLocales {
+            locale
+            primary
+            published
           }
         }
       `,
@@ -73,7 +96,7 @@ export class ShopService {
    
     const shopifyShopId = shopifyGraphqlShop.shopifyShopId;
 
-    return prisma.shop.upsert({
+    const shop = await prisma.shop.upsert({
       where: {
         domain:
           shopifyGraphqlShop.myshopifyDomain,
@@ -98,6 +121,35 @@ export class ShopService {
         uninstalledAt: null,
       },
     });
+
+    const primaryLocale =
+      result.data?.shopLocales?.find(
+        (shopLocale) => shopLocale.primary === true,
+      )?.locale;
+
+    await prisma.shopSettings.upsert({
+      where: {
+        shopId: shop.id,
+      },
+      create: {
+        shopId: shop.id,
+        defaultLanguageTag: normalizeOptional(
+          primaryLocale,
+          canonicaliseLanguageTag,
+        ),
+        defaultTimeZone: normalizeOptional(
+          shopifyGraphqlShop.ianaTimezone,
+          normalizeTimeZone,
+        ),
+        defaultCountryCode: normalizeOptional(
+          shopifyGraphqlShop.shopAddress?.countryCodeV2,
+          normalizeCountryCode,
+        ),
+      },
+      update: {},
+    });
+
+    return shop;
   }
 
 
@@ -148,6 +200,22 @@ function normalizeShopDomain(
   return domain
     .trim()
     .toLowerCase();
+}
+
+
+function normalizeOptional(
+  value: string | null | undefined,
+  normalize: (value: string) => string,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return normalize(value);
+  } catch {
+    return null;
+  }
 }
 
 

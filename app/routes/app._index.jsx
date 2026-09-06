@@ -20,6 +20,7 @@ import {
   billingService,
 } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
+import { merchantUiContext } from "../utils/merchant-i18n";
 
 import db from "../db.server";
 
@@ -63,6 +64,7 @@ console.log("Resolved shop settings:", settings);
   if (!settings) {
     return {
       settings: null,
+      merchantUi: merchantUiContext(null, session),
       subscription: null,
       recoveries: [],
       pendingRecoveries: { available: false, page: Number.isInteger(pendingPage) && pendingPage > 0 ? pendingPage : 1, pageSize: 10, total: 0, totalPages: 0, items: [] },
@@ -113,6 +115,11 @@ console.log("Resolved shop settings:", settings);
     db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
   ]);
   const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
+  const recoveredRevenueByCurrency = recoveries.reduce((totals, recovery) => {
+    if (recovery.status !== "COMPLETED" || !recovery.currency) return totals;
+    totals[recovery.currency] = (totals[recovery.currency] ?? 0) + Number(recovery.totalPrice ?? 0);
+    return totals;
+  }, {});
   const messagesSent = recoveries.reduce((total, recovery) => total + (recovery.conversation?.messages.length ?? 0), 0);
   const recoveryBySourceId = new Map();
   for (const recovery of recoveries) {
@@ -131,6 +138,7 @@ console.log("Resolved shop settings:", settings);
 
   return {
     settings,
+    merchantUi: merchantUiContext(settings, session),
 
     subscription: {
       status: subscription.status,
@@ -147,13 +155,14 @@ console.log("Resolved shop settings:", settings);
       abandonedCheckouts: recoveries.length,
       recoveredCheckouts: completedRecoveries.length,
       recoveredRevenue: completedRecoveries.reduce((total, recovery) => total + Number(recovery.totalPrice ?? 0), 0),
+      recoveredRevenueByCurrency,
       messagesSent,
     },
     recoveries: recoveries.map((recovery) => {
       const conversation = recovery.conversation;
       const messageIds = conversation?.messages.map((message) => message.id) ?? [];
       const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === conversation?.id || messageIds.includes(event.sourceId));
-      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? "GBP", detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: conversation?.messages.length ?? 0, conversations: conversation ? [{ id: conversation.id, type: conversation.type, summary: conversation.summary }] : [], messages: conversation?.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() })) ?? [], billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
+      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? null, detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: conversation?.messages.length ?? 0, conversations: conversation ? [{ id: conversation.id, type: conversation.type, summary: conversation.summary }] : [], messages: conversation?.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() })) ?? [], billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
     }),
     billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
     pendingRecoveries,
@@ -167,6 +176,7 @@ console.log("Resolved shop settings:", settings);
 export default function Index() {
   const {
     settings,
+    merchantUi,
     stats,
     recoveries,
     billingPeriods,
@@ -179,14 +189,14 @@ export default function Index() {
   const [searchParams] = useSearchParams();
 
   if (!settings?.onboardingCompleted) {
-    return <Onboarding />;
+    return <Onboarding merchantUi={merchantUi} />;
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} />;
   }
 
-  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} />;
+  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} />;
 }
 
 
