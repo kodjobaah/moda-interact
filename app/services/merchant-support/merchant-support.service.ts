@@ -52,7 +52,7 @@ function clampPageSize(value: number): number {
   return Math.min(Math.max(Number.isInteger(value) ? value : 25, 1), MAX_PAGE_SIZE);
 }
 
-function trustedLanguageTag(value: string | null | undefined): string {
+export function trustedSupportLanguageTag(value: string | null | undefined): string {
   if (!value) return PLATFORM_SUPPORT_LANGUAGE_TAG;
   try {
     return canonicaliseLanguageTag(value);
@@ -80,7 +80,7 @@ async function getQueue(): Promise<SupportQueue | null> {
   return queue;
 }
 
-async function enqueueTranslationBestEffort(
+export async function enqueueTranslationBestEffort(
   translationId: string,
   injectedQueue?: SupportQueue | null,
 ): Promise<void> {
@@ -115,7 +115,7 @@ export async function composeMerchantMessage(input: ComposeMerchantMessageInput)
       FROM "shopify"."ShopSettings"
       WHERE "shopId" = ${input.shopId}
     `);
-    const displayLanguageTag = trustedLanguageTag(settings[0]?.defaultLanguageTag);
+    const displayLanguageTag = trustedSupportLanguageTag(settings[0]?.defaultLanguageTag);
     const needsTranslation = requiresMerchantTranslation(
       displayLanguageTag,
       PLATFORM_SUPPORT_LANGUAGE_TAG,
