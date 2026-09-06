@@ -13,8 +13,8 @@ export const loader = async ({ request }) => {
     page: pendingPage,
   });
 
-  return {
+  return Response.json({
     pendingRecoveries,
     refreshedAt: pendingRecoveries.available ? new Date().toISOString() : null,
-  };
+  });
 };

@@ -71,6 +71,7 @@ describe("pending recovery reader", () => {
         shopId: "shop-1",
         shopDomain: "SHOP-1.MYSHOPIFY.COM",
         checkoutCreatedAt: "2026-09-05T08:00:00Z",
+        lastActivityAt: "2026-09-05T08:30:00Z",
         checkoutToken: "secret-checkout",
         cartToken: "secret-cart",
         abandonedCheckoutUrl: "https://secret.example/recovery",
@@ -103,11 +104,35 @@ describe("pending recovery reader", () => {
       id: "job-active",
       status: "active",
       checkoutCreatedAt: "2026-09-05T08:00:00Z",
+      lastActivityAt: "2026-09-05T08:30:00Z",
       scheduledFor: "2023-11-14T22:13:20.000Z",
     }]);
     expect(JSON.stringify(result)).not.toContain("secret-checkout");
     expect(JSON.stringify(result)).not.toContain("secret-cart");
     expect(JSON.stringify(result)).not.toContain("secret.example");
+  });
+
+  it("falls back to checkout creation for legacy candidate jobs", async () => {
+    zsets.set("pending-recovery:index:shop:shop-1", [["job-legacy", 1_700_000_000_000]]);
+    jobs.set("job-legacy", {
+      name: "evaluate-pending-recovery",
+      state: "delayed",
+      data: {
+        shopId: "shop-1",
+        shopDomain: "shop-1.myshopify.com",
+        checkoutCreatedAt: "2026-09-05T08:00:00Z",
+      },
+    });
+
+    const result = await readPendingRecoveries({
+      shopId: "shop-1",
+      shopDomain: "shop-1.myshopify.com",
+      page: 1,
+    });
+
+    expect(result.items).toEqual([expect.objectContaining({
+      lastActivityAt: "2026-09-05T08:00:00Z",
+    })]);
   });
 
   it("uses a shop-scoped page of ten members and clamps invalid pages", async () => {

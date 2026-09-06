@@ -32,6 +32,11 @@ const publicationMock = {
     jobId: "checkout-updated-job",
     outcome: "enqueued",
   })),
+  publishShopifyCartActivityEvent: vi.fn(async () => ({
+    queue: "checkout-events",
+    jobId: "cart-activity-job",
+    outcome: "enqueued",
+  })),
   publishShopifyOrderCompletedEvent: vi.fn(async () => ({
     queue: "order-events",
     jobId: "order-job",
@@ -52,6 +57,7 @@ function resetState() {
   dbMock.shop.findUnique.mockClear();
   publicationMock.publishShopifyCheckoutCreatedEvent.mockClear();
   publicationMock.publishShopifyCheckoutUpdatedEvent.mockClear();
+  publicationMock.publishShopifyCartActivityEvent.mockClear();
   publicationMock.publishShopifyOrderCompletedEvent.mockClear();
   delete process.env.REDIS_URL;
 }
@@ -197,6 +203,38 @@ describe("shopify webhook ingress", () => {
       }),
     );
   });
+
+  it("emits independent buyer context on checkout-created events", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    await ingestShopifyWebhook(
+      checkoutInput({
+        payload: {
+          token: "checkout-token-1",
+          customer_locale: "fr-CA",
+          billing_address: { country_code: "CA" },
+          shipping_address: { country_code: "US" },
+          presentment_currency: "USD",
+          currency: "CAD",
+        },
+      }),
+    );
+
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          internationalContext: {
+            languageTag: "fr-CA",
+            languageSource: "shopify",
+            countryCode: "CA",
+            currencyCode: "USD",
+            timeZone: null,
+          },
+        }),
+      }),
+    );
+  });
+
   it("publishes checkout update events without basket payload", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
@@ -221,6 +259,38 @@ describe("shopify webhook ingress", () => {
           orderingKey: "shop_1:checkout-token-1",
           payload: {
             checkoutToken: "checkout-token-1",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("emits updated buyer context without changing checkout ordering", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CHECKOUTS_UPDATE",
+        payload: {
+          token: "checkout-token-1",
+          customer_locale: "en-GB",
+          billing_address: { country_code: "GB" },
+          shipping_address: { country_code: "FR" },
+          presentment_currency: "GBP",
+        },
+      }),
+    );
+
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          orderingKey: "shop_1:checkout-token-1",
+          internationalContext: {
+            languageTag: "en-GB",
+            languageSource: "shopify",
+            countryCode: "GB",
+            currencyCode: "GBP",
+            timeZone: null,
           },
         }),
       }),
@@ -263,6 +333,40 @@ describe("shopify webhook ingress", () => {
     );
   });
 
+  it("emits billing buyer context on orders without using shipping geography", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    await ingestShopifyWebhook(
+      orderInput({
+        payload: {
+          admin_graphql_api_id: "gid://shopify/Order/789",
+          checkout_token: "checkout-token-1",
+          cart_token: null,
+          customer_locale: null,
+          billing_address: { country_code: "DE" },
+          shipping_address: { country_code: "FR" },
+          presentment_currency: "EUR",
+          currency: "USD",
+          created_at: "2024-01-03T00:00:00Z",
+        },
+      }),
+    );
+
+    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          internationalContext: {
+            languageTag: null,
+            languageSource: null,
+            countryCode: "DE",
+            currencyCode: "EUR",
+            timeZone: null,
+          },
+        }),
+      }),
+    );
+  });
+
   it("rejects checkout payloads without a checkout token", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
@@ -292,20 +396,79 @@ describe("shopify webhook ingress", () => {
     expect(response.status).toBe(503);
   });
 
-  it("ignores cart topics without publishing", async () => {
+  it.each([
+    ["CARTS_CREATE", []],
+    ["CARTS_UPDATE", [{ id: "line-1" }]],
+  ])("publishes %s as cart activity", async (topic, lineItems) => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
       checkoutInput({
-        topic: "CARTS_CREATE",
-        payload: { cart_id: "cart-1" },
+        topic,
+        payload: { token: "cart-token-1", line_items: lineItems },
       }),
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
-    expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCartActivityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          eventType: "cart.activity",
+          orderingKey: "cart:6:shop_1:12:cart-token-1",
+          tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+          payload: { cartToken: "cart-token-1", isEmpty: lineItems.length === 0 },
+        }),
+      }),
+    );
+  });
+
+  it("does not add international context to cart events", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CARTS_UPDATE",
+        payload: {
+          token: "cart-token-1",
+          line_items: [],
+          customer_locale: "fr-CA",
+          billing_address: { country_code: "CA" },
+          presentment_currency: "CAD",
+        },
+      }),
+    );
+
+    expect(
+      publicationMock.publishShopifyCartActivityEvent.mock.calls[0][0].event,
+    ).not.toHaveProperty("internationalContext");
+  });
+
+  it("publishes cart activity with unknown emptiness when line items are unavailable", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(
+      checkoutInput({ topic: "carts/update", payload: { token: "cart-token-1" } }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyCartActivityEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          payload: { cartToken: "cart-token-1", isEmpty: null },
+        }),
+      }),
+    );
+  });
+
+  it("rejects cart payloads without a valid cart token", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(
+      checkoutInput({ topic: "CARTS_CREATE", payload: { line_items: [] } }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(publicationMock.publishShopifyCartActivityEvent).not.toHaveBeenCalled();
   });
 
   it("logs a structured PII-safe record through the shared logging boundary", async () => {

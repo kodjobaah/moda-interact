@@ -90,7 +90,7 @@ export default function PendingRecoveries({ pendingRecoveries, pendingRecoveries
           <table className="pending-recoveries-table">
             <thead>
               <tr>
-                <th scope="col">Checkout created</th>
+                <th scope="col">Last activity</th>
                 <th scope="col">Recovery scheduled</th>
                 <th scope="col">Status</th>
               </tr>
@@ -98,7 +98,7 @@ export default function PendingRecoveries({ pendingRecoveries, pendingRecoveries
             <tbody>
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{formatDate(item.checkoutCreatedAt)}</td>
+                  <td>{formatDate(item.lastActivityAt)}</td>
                   <td>{formatDate(item.scheduledFor)}</td>
                   <td><span className={`pending-recovery-status pending-recovery-status-${item.status}`}>{statusLabels[item.status]}</span></td>
                 </tr>
@@ -128,6 +128,7 @@ PendingRecoveries.propTypes = {
       id: PropTypes.string,
       status: PropTypes.oneOf(["delayed", "waiting", "active"]),
       checkoutCreatedAt: PropTypes.string,
+      lastActivityAt: PropTypes.string,
       scheduledFor: PropTypes.string,
     })),
   }),

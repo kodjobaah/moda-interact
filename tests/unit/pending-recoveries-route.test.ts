@@ -50,7 +50,33 @@ describe("pending recoveries resource loader", () => {
       shopDomain: "merchant.myshopify.com",
       page: 2,
     });
-    expect(response.pendingRecoveries).toMatchObject({ page: 2, total: 11 });
-    expect(response.refreshedAt).toEqual(expect.any(String));
+    expect(response.headers.get("Content-Type")).toMatch(/application\/json/i);
+
+    const data = await response.json();
+    expect(data).toMatchObject({
+      pendingRecoveries: { page: 2, total: 11 },
+      refreshedAt: expect.any(String),
+    });
+  });
+
+  it("returns a null refresh timestamp when pending data is unavailable", async () => {
+    readPendingRecoveries.mockResolvedValue({
+      available: false,
+      page: 1,
+      pageSize: 10,
+      total: 0,
+      totalPages: 0,
+      items: [],
+    });
+
+    const response = await loader({
+      request: new Request("https://example.test/app/pending-recoveries"),
+    });
+
+    expect(response.headers.get("Content-Type")).toMatch(/application\/json/i);
+    await expect(response.json()).resolves.toMatchObject({
+      pendingRecoveries: { available: false },
+      refreshedAt: null,
+    });
   });
 });

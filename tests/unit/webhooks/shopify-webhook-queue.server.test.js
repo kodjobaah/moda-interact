@@ -192,6 +192,43 @@ describe("shopify webhook queue helpers", () => {
     expect(first.jobId).toMatch(/^shop_1--/);
   });
 
+  it("publishes cart activity to checkout-events and deduplicates delivery", async () => {
+    const cartEvent = parseShopifyRecoveryEventV2({
+      schemaVersion: 2,
+      receiptId: "r-cart-1",
+      deliveryId: "delivery-cart-1",
+      eventId: "e-cart-1",
+      source: "shopify",
+      providerTopic: "CARTS_UPDATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-08-28T00:20:00.000Z",
+      receivedAt: "2026-08-28T00:20:01.000Z",
+      traceId: "r-cart-1",
+      orderingKey: "cart:6:shop_1:12:cart-token-1",
+      eventType: "cart.activity",
+      payload: { cartToken: "cart-token-1", isEmpty: null },
+    });
+
+    const first = await queueModule.publishShopifyCartActivityEvent({
+      event: cartEvent,
+    });
+    const second = await queueModule.publishShopifyCartActivityEvent({
+      event: cartEvent,
+    });
+
+    expect(first.outcome).toBe("enqueued");
+    expect(second.outcome).toBe("duplicate");
+    expect(first.queue).toBe("checkout-events");
+    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(queues.checkout.addCalls[0].jobName).toBe("cart-activity");
+    expect(first.jobId).toBe(
+      queueModule.createTenantReadableJobId(
+        "shop_1",
+        createShopifyWebhookJobId("shop_1", "delivery-cart-1"),
+      ),
+    );
+  });
+
   it("keeps order publication immediate and suppresses duplicate order work", async () => {
     const orderEvent = {
       schemaVersion: 2,

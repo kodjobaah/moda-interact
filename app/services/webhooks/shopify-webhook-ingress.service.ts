@@ -5,12 +5,15 @@ import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   ShopifyCheckoutCreatedEventV2Schema,
   ShopifyCheckoutUpdatedEventV2Schema,
+  ShopifyCartActivityEventV2Schema,
   ShopifyOrderCompletedEventV2Schema,
   createShopifyPendingRecoveryOrderingKey,
   createShopifyOrderCorrelationOrderingKey,
+  createShopifyCartActivityOrderingKey,
   type CheckoutCreatedPayloadV2,
   type CheckoutUpdatedPayloadV2,
   type OrderCompletedPayloadV2,
+  type ShopifyCartActivityPayloadV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   parseShopifyWebhookMetadata,
@@ -21,6 +24,7 @@ import {
   ShopifyWebhookPublicationError,
   publishShopifyCheckoutCreatedEvent,
   publishShopifyCheckoutUpdatedEvent,
+  publishShopifyCartActivityEvent,
   publishShopifyOrderCompletedEvent,
 } from "./shopify-webhook-queue.server";
 import { recordShopifyWebhookOutcome } from "./shopify-webhook-observability.server";
@@ -30,8 +34,21 @@ import {
   normalizeCheckoutUpdatedPayload,
 } from "./checkout-normalization";
 import { normalizeOrderCompletedPayload } from "./order-normalization";
+import { normalizeCartActivityPayload } from "./cart-activity-normalization";
+import { normalizeShopifyInternationalContext } from "./international-context-normalization";
 
 type SupportedWebhookPlan =
+  | {
+      eventType: typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY;
+      queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.queueName;
+      normalize: (
+        payload: Record<string, unknown>,
+      ) => ShopifyCartActivityPayloadV2 | null;
+      buildOrderingKey: (
+        shopId: string,
+        payload: ShopifyCartActivityPayloadV2,
+      ) => string;
+    }
   | {
       eventType: typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED;
       queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName;
@@ -140,7 +157,37 @@ export async function ingestShopifyWebhook(
 
     let publication;
 
-    if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
+    if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
+      const normalizedPayload = plan.normalize(input.payload);
+      if (!normalizedPayload) {
+        recordShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: plan.queue,
+          jobId: null,
+          outcome: "REJECTED_INVALID_CART_PAYLOAD",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+
+        return new Response(null, { status: 400 });
+      }
+
+      const event = buildShopifyEventEnvelope({
+        requestId,
+        metadata,
+        shop,
+        eventType: plan.eventType,
+        orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
+        payload: normalizedPayload,
+      });
+
+      publication = await publishShopifyCartActivityEvent({
+        event: ShopifyCartActivityEventV2Schema.parse(event),
+      });
+    } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -165,6 +212,7 @@ export async function ingestShopifyWebhook(
         eventType: plan.eventType,
         orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
         payload: normalizedPayload,
+        internationalContext: normalizeShopifyInternationalContext(input.payload),
       });
 
       publication = await publishShopifyCheckoutCreatedEvent({
@@ -195,6 +243,7 @@ export async function ingestShopifyWebhook(
         eventType: plan.eventType,
         orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
         payload: normalizedPayload,
+        internationalContext: normalizeShopifyInternationalContext(input.payload),
       });
 
       publication = await publishShopifyCheckoutUpdatedEvent({
@@ -225,6 +274,7 @@ export async function ingestShopifyWebhook(
         eventType: plan.eventType,
         orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
         payload: normalizedPayload,
+        internationalContext: normalizeShopifyInternationalContext(input.payload),
       });
 
       publication = await publishShopifyOrderCompletedEvent({
@@ -274,6 +324,7 @@ function buildShopifyEventEnvelope({
   eventType,
   orderingKey,
   payload,
+  internationalContext,
 }: {
   requestId: string;
   metadata: {
@@ -285,14 +336,17 @@ function buildShopifyEventEnvelope({
   };
   shop: { id: string; domain: string };
   eventType:
+    | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY
     | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED
     | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED
     | typeof SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED;
   orderingKey: string;
   payload:
+    | ShopifyCartActivityPayloadV2
     | CheckoutCreatedPayloadV2
     | CheckoutUpdatedPayloadV2
     | OrderCompletedPayloadV2;
+  internationalContext?: ReturnType<typeof normalizeShopifyInternationalContext>;
 }) {
   return {
     schemaVersion: SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
@@ -311,6 +365,7 @@ function buildShopifyEventEnvelope({
     traceId: getActiveTraceId(requestId),
     orderingKey,
     payload,
+    ...(internationalContext ? { internationalContext } : {}),
   };
 }
 
@@ -333,6 +388,16 @@ function classifyWebhookTopic(
       normalize: normalizeCheckoutCreatedPayload,
       buildOrderingKey: (shopId, payload) =>
         createShopifyPendingRecoveryOrderingKey(shopId, payload.checkoutToken),
+    };
+  }
+
+  if (canonicalTopic === "CARTS_CREATE" || canonicalTopic === "CARTS_UPDATE") {
+    return {
+      eventType: SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY,
+      queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.queueName,
+      normalize: normalizeCartActivityPayload,
+      buildOrderingKey: (shopId, payload) =>
+        createShopifyCartActivityOrderingKey(shopId, payload.cartToken),
     };
   }
 

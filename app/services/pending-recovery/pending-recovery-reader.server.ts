@@ -11,6 +11,7 @@ type PendingRecoveryJobData = {
   shopId?: unknown;
   shopDomain?: unknown;
   checkoutCreatedAt?: unknown;
+  lastActivityAt?: unknown;
 };
 
 type PendingRecoveryJob = {
@@ -24,6 +25,7 @@ export type PendingRecoveryRow = {
   id: string;
   status: "delayed" | "waiting" | "active";
   checkoutCreatedAt: string | null;
+  lastActivityAt: string | null;
   scheduledFor: string;
 };
 
@@ -129,6 +131,9 @@ export async function readPendingRecoveries({
         id: jobId,
         status: state as PendingRecoveryRow["status"],
         checkoutCreatedAt: typeof job.data.checkoutCreatedAt === "string" ? job.data.checkoutCreatedAt : null,
+        lastActivityAt: typeof job.data.lastActivityAt === "string"
+          ? job.data.lastActivityAt
+          : typeof job.data.checkoutCreatedAt === "string" ? job.data.checkoutCreatedAt : null,
         scheduledFor: new Date(score).toISOString(),
       });
     }

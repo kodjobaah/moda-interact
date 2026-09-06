@@ -4,6 +4,7 @@ import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
+  type ShopifyCartActivityEventV2,
   type ShopifyOrderCompletedEventV2,
   type ShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
@@ -24,6 +25,7 @@ type ShopifyWebhookQueueName =
 type ShopifyWebhookQueueJobName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName;
 
 type ShopifyWebhookPublicationOutcome = "enqueued" | "duplicate";
@@ -300,6 +302,42 @@ export async function publishShopifyCheckoutUpdatedEvent(input: {
     queue: queue.name as ShopifyWebhookQueueName,
     jobId,
     outcome: "enqueued",
+  };
+}
+
+export async function publishShopifyCartActivityEvent(input: {
+  event: ShopifyCartActivityEventV2;
+}): Promise<ShopifyWebhookPublicationResult> {
+  const queue = getCheckoutQueue();
+  const legacyJobId = createShopifyWebhookJobId(
+    input.event.tenant.shopId,
+    input.event.deliveryId,
+  );
+  const jobId = createTenantReadableJobId(
+    input.event.tenant.shopId,
+    legacyJobId,
+  );
+
+  const existingJobId = await findExistingJobId(queue, jobId, legacyJobId);
+  if (existingJobId) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId: existingJobId,
+      outcome: "duplicate",
+    };
+  }
+
+  const addedJob = await addJobWithTimeout(
+    queue,
+    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName,
+    input.event,
+    { jobId },
+  );
+
+  return {
+    queue: queue.name as ShopifyWebhookQueueName,
+    jobId,
+    outcome: addedJob ? "enqueued" : "duplicate",
   };
 }
 

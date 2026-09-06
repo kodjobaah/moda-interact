@@ -4,6 +4,80 @@ import {
   normalizeCheckoutUpdatedPayload,
 } from "../../../app/services/webhooks/checkout-normalization";
 import { normalizeOrderCompletedPayload } from "../../../app/services/webhooks/order-normalization";
+import { normalizeCartActivityPayload } from "../../../app/services/webhooks/cart-activity-normalization";
+import { normalizeShopifyInternationalContext } from "../../../app/services/webhooks/international-context-normalization";
+
+describe("normalizeShopifyInternationalContext", () => {
+  it("preserves language, billing country and presentment currency independently", () => {
+    expect(
+      normalizeShopifyInternationalContext({
+        customer_locale: "en-GB",
+        billing_address: { country_code: "GB" },
+        shipping_address: { country_code: "FR" },
+        presentment_currency: "GBP",
+        currency: "USD",
+      }),
+    ).toEqual({
+      languageTag: "en-GB",
+      languageSource: "shopify",
+      countryCode: "GB",
+      currencyCode: "GBP",
+      timeZone: null,
+    });
+  });
+
+  it("keeps valid dimensions when other provider fields are invalid", () => {
+    expect(
+      normalizeShopifyInternationalContext({
+        customer_locale: "not a locale",
+        billing_address: { country_code: "DE" },
+        shipping_address: { country_code: "FR" },
+        presentment_currency: "not-a-currency",
+        currency: "USD",
+      }),
+    ).toEqual({
+      languageTag: null,
+      languageSource: null,
+      countryCode: "DE",
+      currencyCode: null,
+      timeZone: null,
+    });
+  });
+
+  it("omits context when authoritative buyer fields are absent", () => {
+    expect(
+      normalizeShopifyInternationalContext({
+        currency: "USD",
+        shipping_address: { country_code: "FR" },
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe("normalizeCartActivityPayload", () => {
+  it("uses the cart token and proves empty or non-empty state from line_items", () => {
+    expect(normalizeCartActivityPayload({ token: "cart-1", line_items: [] })).toEqual({
+      cartToken: "cart-1",
+      isEmpty: true,
+    });
+    expect(normalizeCartActivityPayload({ token: "cart-1", line_items: [{ id: 1 }] })).toEqual({
+      cartToken: "cart-1",
+      isEmpty: false,
+    });
+  });
+
+  it("leaves emptiness unknown when line_items is unavailable", () => {
+    expect(normalizeCartActivityPayload({ token: "cart-1" })).toEqual({
+      cartToken: "cart-1",
+      isEmpty: null,
+    });
+  });
+
+  it("rejects a missing or non-string cart token", () => {
+    expect(normalizeCartActivityPayload({ line_items: [] })).toBeNull();
+    expect(normalizeCartActivityPayload({ token: 123, line_items: [] })).toBeNull();
+  });
+});
 
 describe("normalizeCheckoutCreatedPayload", () => {
   it("returns a stable target payload shape", () => {
