@@ -43,7 +43,7 @@ export default function PendingRecoveries({ pendingRecoveries, pendingRecoveries
     return (
       <s-section heading={i18n.t("pending.title")}>
         <div className="pending-recoveries-header">
-          <span>{i18n.t("pending.unavailable")}</span>
+          <span>{i18n.t("common.unavailable")}</span>
           <button type="button" onClick={refresh} disabled={isRefreshing}>{isRefreshing ? i18n.t("pending.refreshing") : i18n.t("pending.refresh")}</button>
         </div>
         <p className="pending-recoveries-message" dir={i18n.direction}>{i18n.t("pending.unavailableMessage")}</p>

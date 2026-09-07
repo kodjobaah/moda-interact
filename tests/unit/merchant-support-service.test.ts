@@ -1,10 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
 
 import {
   AuthoredSupportBodySchema,
 } from "@modainteract/moda-interact-shared/merchant-communications";
 
-import { composeMerchantMessage } from "../../app/services/merchant-support/merchant-support.service";
+import {
+  composeMerchantMessage,
+  markMerchantSupportMessageRead,
+} from "../../app/services/merchant-support/merchant-support.service";
+
+const supportServiceSource = await readFile(
+  new URL("../../app/services/merchant-support/merchant-support.service.ts", import.meta.url),
+  "utf8",
+);
 
 function databaseFor(languageTag: string) {
   const transaction = {
@@ -77,5 +86,53 @@ describe("merchant support compose", () => {
       database,
     })).rejects.toThrow();
     expect(database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("uses one merchant-visible predicate for history and total pagination", () => {
+    expect(supportServiceSource).toContain('const MERCHANT_VISIBLE_MESSAGE_PREDICATE = Prisma.sql`');
+    expect(supportServiceSource).toContain('m."kind" = \'MERCHANT\'');
+    expect(supportServiceSource).toContain('m."state" = \'AVAILABLE\'');
+    expect(supportServiceSource.match(/AND \$\{MERCHANT_VISIBLE_MESSAGE_PREDICATE\}/g)).toHaveLength(2);
+    expect(supportServiceSource).toContain('m."kind" IN (\'ADMINISTRATIVE\', \'SYSTEM\')');
+  });
+
+  it("only exposes an outbound source body when its required translation is available", () => {
+    expect(supportServiceSource).toContain('originalBody: !translationRequired || message.translationStatus === "AVAILABLE"');
+    expect(supportServiceSource).toContain('message.translationStatus === "AVAILABLE" ? message.translatedBody : null');
+  });
+
+  it("returns true only for tenant-owned AVAILABLE outbound messages", async () => {
+    const executeRaw = vi.fn().mockResolvedValue(1);
+    const queryRaw = vi.fn().mockResolvedValue([{ id: "message-1" }]);
+    const database = {
+      $transaction: vi.fn(async (callback) => callback({ $queryRaw: queryRaw, $executeRaw: executeRaw })),
+    };
+
+    await expect(markMerchantSupportMessageRead({
+      shopId: "shop-1",
+      messageId: "message-1",
+      database,
+    })).resolves.toBe(true);
+
+    expect(queryRaw.mock.calls[0][0].sql).toContain('m."kind" IN (\'ADMINISTRATIVE\', \'SYSTEM\')');
+    expect(queryRaw.mock.calls[0][0].sql).toContain('m."state" = \'AVAILABLE\'');
+    expect(executeRaw.mock.calls[0][0].sql).toContain('"readAt" = COALESCE("readAt", NOW())');
+
+    queryRaw.mockResolvedValue([]);
+    await expect(markMerchantSupportMessageRead({
+      shopId: "shop-1",
+      messageId: "merchant-message",
+      database,
+    })).resolves.toBe(false);
+    await expect(markMerchantSupportMessageRead({
+      shopId: "shop-1",
+      messageId: "processing-message",
+      database,
+    })).resolves.toBe(false);
+    await expect(markMerchantSupportMessageRead({
+      shopId: "other-shop",
+      messageId: "message-1",
+      database,
+    })).resolves.toBe(false);
   });
 });

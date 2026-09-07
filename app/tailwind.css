@@ -51,6 +51,97 @@ body {
   border-bottom: 1px solid rgb(40 107 80 / 18%);
 }
 
+.merchant-support-thread {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.merchant-support-message {
+  max-width: 720px;
+  padding: 16px;
+  border: 1px solid rgb(40 107 80 / 24%);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.merchant-support-message-system {
+  border-left: 4px solid #a65f2b;
+}
+
+.merchant-support-message-administrative {
+  border-left: 4px solid #286b50;
+}
+
+.merchant-support-message-merchant {
+  margin-left: auto;
+  border-right: 4px solid #286b50;
+  background: #e3f0e8;
+}
+
+.merchant-support-message-header,
+.merchant-support-compose {
+  display: grid;
+  gap: 8px;
+}
+
+.merchant-support-message-header {
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+}
+
+.merchant-support-message-header time {
+  color: #616161;
+  font-size: 0.8rem;
+}
+
+.merchant-support-compose textarea {
+  min-height: 120px;
+  resize: vertical;
+  padding: 10px;
+  border: 2px solid #286b50;
+  border-radius: 8px;
+  font: inherit;
+}
+
+.merchant-support-compose button,
+.merchant-support-message button {
+  width: fit-content;
+  min-height: 40px;
+  padding: 8px 16px;
+  border: 1px solid #286b50;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #173d32;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.merchant-support-compose button {
+  background: #286b50;
+  color: #ffffff;
+}
+
+.merchant-support-compose button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.merchant-support-pagination {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.merchant-support-pagination a {
+  color: #286b50;
+  font-weight: 700;
+}
+
 .dashboard-table {
   width: 100%;
   overflow: hidden;

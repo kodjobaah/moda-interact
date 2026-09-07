@@ -41,6 +41,13 @@ type MessageRow = {
   readAt: Date | null;
 };
 
+const MERCHANT_VISIBLE_MESSAGE_PREDICATE = Prisma.sql`
+  (
+    m."kind" = 'MERCHANT'
+    OR (m."kind" IN ('ADMINISTRATIVE', 'SYSTEM') AND m."state" = 'AVAILABLE')
+  )
+`;
+
 let queue: Queue | null = null;
 let queueUrl: string | null = null;
 
@@ -183,6 +190,7 @@ export type MerchantSupportPage = {
     state: MessageRow["state"];
     originalBody: string;
     displayBody: string | null;
+    isTranslated: boolean;
     sourceLanguageTag: string;
     displayLanguageTag: string | null;
     createdAt: string;
@@ -217,6 +225,7 @@ export async function readMerchantSupportMessages(input: {
         LIMIT 1
       ) tr ON true
       WHERE t."shopId" = ${input.shopId}
+        AND ${MERCHANT_VISIBLE_MESSAGE_PREDICATE}
       ORDER BY m."createdAt" ASC, m."id" ASC
       LIMIT ${pageSize} OFFSET ${offset}
     `);
@@ -225,6 +234,7 @@ export async function readMerchantSupportMessages(input: {
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
       WHERE t."shopId" = ${input.shopId}
+        AND ${MERCHANT_VISIBLE_MESSAGE_PREDICATE}
     `);
     const [{ unread }] = await transaction.$queryRaw<[{ unread: bigint }]>(Prisma.sql`
       SELECT COUNT(*)::bigint AS "unread"
@@ -251,10 +261,13 @@ export async function readMerchantSupportMessages(input: {
         id: message.id,
         kind: message.kind,
         state: message.state,
-        originalBody: message.originalBody,
+        originalBody: !translationRequired || message.translationStatus === "AVAILABLE"
+          ? message.originalBody
+          : "",
         displayBody: translationRequired
           ? message.translationStatus === "AVAILABLE" ? message.translatedBody : null
           : message.originalBody,
+        isTranslated: translationRequired && message.translationStatus === "AVAILABLE" && message.translatedBody !== null,
         sourceLanguageTag: message.sourceLanguageTag,
         displayLanguageTag: message.displayLanguageTag,
         createdAt: message.createdAt.toISOString(),
@@ -275,7 +288,10 @@ export async function markMerchantSupportMessageRead(input: {
       SELECT m."id"
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
-      WHERE m."id" = ${input.messageId} AND t."shopId" = ${input.shopId}
+      WHERE m."id" = ${input.messageId}
+        AND t."shopId" = ${input.shopId}
+        AND m."kind" IN ('ADMINISTRATIVE', 'SYSTEM')
+        AND m."state" = 'AVAILABLE'
     `);
     if (!rows[0]) return false;
     await transaction.$executeRaw(Prisma.sql`

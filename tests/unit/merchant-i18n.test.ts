@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFile } from "node:fs/promises";
 
 import {
   CATALOGUE_KEYS,
@@ -13,6 +14,10 @@ import { groupRecoveriesByCustomer } from "../../app/components/dashboard/Recove
 
 const rawCatalogues = sourceCatalogues as Record<string, Record<string, string>>;
 const registeredCatalogues = catalogues as Record<string, Record<string, string>>;
+const pendingRecoveriesSource = await readFile(
+  new URL("../../app/components/dashboard/PendingRecoveries.jsx", import.meta.url),
+  "utf8",
+);
 
 describe("merchant UI internationalisation", () => {
   it("falls back to the default locale and catalogue for invalid values", () => {
@@ -123,5 +128,13 @@ describe("merchant UI internationalisation", () => {
     expect(customer.totalsByCurrency.GBP).not.toBe(60);
     expect(customer.totalsByCurrency.USD).toBeUndefined();
     expect(createMerchantI18n({ locale: "fr-FR" }).formatMoney(12.5, "USD")).toContain("12,50");
+  });
+
+  it("uses canonical unavailable labels without changing locale catalogues", () => {
+    const i18n = createMerchantI18n({ locale: "en-GB" });
+    expect(i18n.t("common.unavailable")).toBe("Unavailable");
+    expect(i18n.t("pending.unavailableMessage")).toBeTruthy();
+    expect(pendingRecoveriesSource).not.toContain('i18n.t("pending.unavailable")');
+    expect(pendingRecoveriesSource).toContain('i18n.t("pending.unavailableMessage")');
   });
 });
