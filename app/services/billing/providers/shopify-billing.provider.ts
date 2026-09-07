@@ -19,7 +19,18 @@ interface ShopifyActiveSubscriptionResponse {
       items: Array<{
         handle: string | null;
         description: string | null;
+        price: ShopifyPrice | null;
+        usage: {
+          quantity: number | null;
+          cost: { amount: string; currencyCode: string } | null;
+        } | null;
       }>;
+
+      pendingUpdate: {
+        billingPeriod: string | null;
+        items: Array<{ handle: string | null; price: ShopifyPrice | null }>;
+        legacySubscriptionId: string | null;
+      } | null;
 
       legacySubscriptionId: string | null;
     } | null;
@@ -29,6 +40,10 @@ interface ShopifyActiveSubscriptionResponse {
     message: string;
   }>;
 }
+
+type ShopifyPrice =
+  | { __typename: "FlatRatePrice"; active: boolean; currency: string | null; amount: string }
+  | { __typename: "TieredPrice"; active: boolean; currency: string | null; tiersMode: string; tiers: Array<{ upTo: number | null; amountPerUnit: string; amount: string }> };
 
 export class ShopifyBillingProvider
   implements BillingProvider {
@@ -84,6 +99,29 @@ export class ShopifyBillingProvider
                 items {
                   handle
                   description
+                  price {
+                    __typename
+                    active
+                    currency
+                    ... on FlatRatePrice { amount }
+                    ... on TieredPrice { tiersMode tiers { upTo amountPerUnit amount } }
+                  }
+                  usage { quantity cost { amount currencyCode } }
+                }
+
+                pendingUpdate {
+                  billingPeriod
+                  items {
+                    handle
+                    price {
+                      __typename
+                      active
+                      currency
+                      ... on FlatRatePrice { amount }
+                      ... on TieredPrice { tiersMode tiers { upTo amountPerUnit amount } }
+                    }
+                  }
+                  legacySubscriptionId
                 }
 
                 legacySubscriptionId
@@ -123,27 +161,31 @@ export class ShopifyBillingProvider
       return null;
     }
 
-    /*
-     * For a simple fixed-plan setup, the recurring
-     * subscription item handle is our plan handle.
-     *
-     * Later, if you have multiple usage-meter items,
-     * we can explicitly distinguish plan items from
-     * event-meter handles.
-     */
-    const planHandle =
-      subscription.items
-        .map((item) => item.handle)
-        .find(
-          (handle): handle is string =>
-            Boolean(handle),
-        );
+    const flatRateItems = subscription.items.filter(
+      (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+    );
+    const tieredItems = subscription.items.filter(
+      (item) => item.handle && item.price?.__typename === "TieredPrice" && item.price.active,
+    );
+    const planHandle = flatRateItems[0]?.handle;
 
-    if (!planHandle) {
+    if (!planHandle || flatRateItems.length !== 1) {
       throw new Error(
-        "Active Shopify subscription has no plan handle",
+        "Active Shopify subscription must have exactly one active flat-rate plan handle",
       );
     }
+
+    const pendingFlatRateItems = subscription.pendingUpdate?.items.filter(
+      (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+    ) ?? [];
+
+    if (pendingFlatRateItems.length > 1) {
+      throw new Error(
+        "Pending Shopify subscription update must have at most one active flat-rate plan handle",
+      );
+    }
+
+    const pendingPlanHandle = pendingFlatRateItems[0]?.handle ?? null;
 
     const trialEndsAt =
       subscription.trialEndsAt
@@ -182,6 +224,16 @@ export class ShopifyBillingProvider
 
       providerSubscriptionId:
         subscription.legacySubscriptionId,
+
+      usageEventHandles: tieredItems.flatMap((item) => item.handle ? [item.handle] : []),
+      pendingPlanHandle,
+      pendingEffectiveAt: pendingPlanHandle ? currentPeriodEnd : null,
+      providerUsageSnapshot: tieredItems.flatMap((item) => item.handle ? [{
+        handle: item.handle,
+        quantity: item.usage?.quantity ?? null,
+        costAmount: item.usage?.cost?.amount ?? null,
+        costCurrency: item.usage?.cost?.currencyCode ?? null,
+      }] : []),
     };
   }
 }

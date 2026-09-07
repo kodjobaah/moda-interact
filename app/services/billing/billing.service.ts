@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
 import type {
   Subscription,
 } from "@prisma/client";
-import { Prisma } from "@prisma/client";
+import {
+  BillingPeriodStatus,
+  BillingPlanKind,
+  Prisma,
+  SubscriptionProjectionStatus,
+} from "@prisma/client";
 import {
   PLATFORM_SUPPORT_LANGUAGE_TAG,
   requiresMerchantTranslation,
@@ -33,8 +38,7 @@ type SubscriptionLifecycle = {
 };
 
 type SubscriptionIdentityFacts = {
-  planHandle: string;
-  provider: string;
+  observedShopifyPlanHandle: string | null;
   providerSubscriptionId: string | null;
   currentPeriodStart: Date | null;
   currentPeriodEnd: Date | null;
@@ -55,7 +59,7 @@ function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): strin
     subscription.trialEndsAt?.toISOString(),
   ];
   if (cycleFacts.every((fact) => !fact)) return null;
-  return `cycle:${subscription.planHandle}:${cycleFacts.map((fact) => fact ?? "none").join(":")}`;
+  return `cycle:${subscription.observedShopifyPlanHandle ?? "unknown"}:${cycleFacts.map((fact) => fact ?? "none").join(":")}`;
 }
 
 export function renderSubscriptionEndedMessage(planHandle: string): string {
@@ -194,26 +198,14 @@ export class BillingService {
 async getSubscription(
   shopId: string,
 ) {
-  return this.database.subscription.findFirst({
-    where: {
-      shopId,
+    const subscription = await this.database.subscription.findUnique({
+      where: { shopId },
+      include: { plan: true },
+    });
 
-      status: {
-        in: [
-          "ACTIVE",
-          "TRIALING",
-        ],
-      },
-    },
-
-    include: {
-      plan: true,
-    },
-
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
+    return subscription && [SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(subscription.status)
+      ? subscription
+      : null;
 }
 
 
@@ -252,61 +244,53 @@ async getSubscription(
      */
     if (!providerSubscription) {
       const lifecycle = await this.database.$transaction(async (transaction) => {
-        const current = await transaction.subscription.findFirst({
-          where: {
-            shopId,
-            status: {
-              in: ["ACTIVE", "TRIALING"],
-            },
-          },
-          orderBy: {
-            createdAt: "desc",
-          },
-          select: {
-            id: true,
-            planHandle: true,
-            provider: true,
-            providerSubscriptionId: true,
-            currentPeriodStart: true,
-            currentPeriodEnd: true,
-            trialEndsAt: true,
-          },
-        });
-
-        const subscription = current ?? await transaction.subscription.findUnique({
+        const current = await transaction.subscription.findUnique({
           where: { shopId },
           select: {
             status: true,
-            planHandle: true,
-            provider: true,
+            observedShopifyPlanHandle: true,
             providerSubscriptionId: true,
             currentPeriodStart: true,
             currentPeriodEnd: true,
             trialEndsAt: true,
           },
         });
-        if (!subscription) return null;
+        const now = new Date();
 
-        if (current) {
-          const cancelled = await transaction.subscription.updateMany({
-            where: {
-              shopId,
-              status: {
-                in: ["ACTIVE", "TRIALING"],
-              },
-            },
-            data: {
-              status: "CANCELLED",
-              lastSyncedAt: new Date(),
-            },
-          });
-          if (cancelled.count !== 1) return null;
+        await transaction.subscription.upsert({
+          where: { shopId },
+          update: {
+            planId: null,
+            observedShopifyPlanHandle: null,
+            status: SubscriptionProjectionStatus.NO_CONTRACT,
+            billingPeriodId: null,
+            currentPeriodStart: null,
+            currentPeriodEnd: null,
+            trialEndsAt: null,
+            cancelAtPeriodEnd: false,
+            providerSubscriptionId: null,
+            lastSyncedAt: now,
+            lastSyncErrorCode: null,
+            lastSyncErrorAt: null,
+            pendingShopifyPlanHandle: null,
+            pendingPlanId: null,
+            pendingEffectiveAt: null,
+          },
+          create: {
+            shopId,
+            status: SubscriptionProjectionStatus.NO_CONTRACT,
+            lastSyncedAt: now,
+          },
+        });
+
+        if (!current || ![SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(current.status)) {
+          return null;
         }
 
         return {
-          planHandle: subscription.planHandle,
-          provider: subscription.provider,
-          lifecycleIdentity: deriveLifecycleIdentity(subscription),
+          planHandle: current.observedShopifyPlanHandle ?? "unknown",
+          provider: "SHOPIFY",
+          lifecycleIdentity: deriveLifecycleIdentity(current),
         };
       });
 
@@ -332,89 +316,99 @@ async getSubscription(
       return null;
     }
 
-    /*
-     * Translate Shopify's plan handle into
-     * our own BillingPlan.
-     */
     const plan =
       await this.database.billingPlan.findUnique({
         where: {
-          handle:
+          shopifyPlanHandle:
             providerSubscription.planHandle,
         },
       });
 
-    if (!plan) {
-      throw new Error(
-        `No BillingPlan exists for Shopify plan '${providerSubscription.planHandle}'`,
-      );
-    }
+    const planIsUsable = Boolean(plan?.active);
+    const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
+      || Boolean(plan.shopifyUsageEventHandle && providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle));
+    const status = !planIsUsable
+      ? SubscriptionProjectionStatus.UNMAPPED
+      : !paidMeterIsPresent
+        ? SubscriptionProjectionStatus.SYNC_ERROR
+        : providerSubscription.status === "TRIALING"
+          ? SubscriptionProjectionStatus.TRIALING
+          : SubscriptionProjectionStatus.ACTIVE;
+    const syncErrorCode = status === SubscriptionProjectionStatus.UNMAPPED
+      ? "UNMAPPED_PLAN_HANDLE"
+      : status === SubscriptionProjectionStatus.SYNC_ERROR
+        ? "MISSING_USAGE_METER"
+        : null;
+    const now = new Date();
 
-    if (!plan.active) {
-      throw new Error(
-        `Billing plan '${plan.handle}' is inactive`,
-      );
-    }
+    return this.database.$transaction(async (transaction) => {
+      const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
+        ? await transaction.billingPeriod.upsert({
+            where: {
+              shopId_periodStart_periodEnd: {
+                shopId,
+                periodStart: providerSubscription.currentPeriodStart,
+                periodEnd: providerSubscription.currentPeriodEnd,
+              },
+            },
+            update: { status: BillingPeriodStatus.OPEN },
+            create: {
+              shopId,
+              periodStart: providerSubscription.currentPeriodStart,
+              periodEnd: providerSubscription.currentPeriodEnd,
+              status: BillingPeriodStatus.OPEN,
+            },
+          })
+        : null;
+      const pendingPlan = providerSubscription.pendingPlanHandle
+        ? await transaction.billingPlan.findUnique({
+            where: { shopifyPlanHandle: providerSubscription.pendingPlanHandle },
+            select: { id: true, active: true },
+          })
+        : null;
 
-    /*
-     * There should be one current subscription
-     * for the shop.
-     *
-     * Because we're retaining subscription history,
-     * don't overwrite unrelated old subscriptions.
-     */
-    const existing = await this.database.subscription.findUnique({
-      where: { shopId },
-    });
-
-    const data = {
-      planId: plan.id,
-
-      provider:
-        providerSubscription.provider,
-
-      planHandle:
-        providerSubscription.planHandle,
-
-      status:
-        providerSubscription.status,
-
-      currentPeriodStart:
-        providerSubscription.currentPeriodStart,
-
-      currentPeriodEnd:
-        providerSubscription.currentPeriodEnd,
-
-      trialEndsAt:
-        providerSubscription.trialEndsAt,
-
-      cancelAtPeriodEnd:
-        providerSubscription.cancelAtPeriodEnd,
-
-      providerSubscriptionId:
-        providerSubscription.providerSubscriptionId,
-
-      lastSyncedAt:
-        new Date(),
-    };
-
-    if (existing) {
-      return this.database.subscription.update({
-        where: {
-          id: existing.id,
+      return transaction.subscription.upsert({
+        where: { shopId },
+        update: {
+          planId: planIsUsable ? plan?.id ?? null : null,
+          observedShopifyPlanHandle: providerSubscription.planHandle,
+          status,
+          billingPeriodId: billingPeriod?.id ?? null,
+          currentPeriodStart: providerSubscription.currentPeriodStart,
+          currentPeriodEnd: providerSubscription.currentPeriodEnd,
+          trialEndsAt: providerSubscription.trialEndsAt,
+          cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
+          providerSubscriptionId: providerSubscription.providerSubscriptionId,
+          lastSyncedAt: now,
+          lastSyncErrorCode: syncErrorCode,
+          lastSyncErrorAt: syncErrorCode ? now : null,
+          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
+          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
+          pendingEffectiveAt: providerSubscription.pendingPlanHandle
+            ? providerSubscription.currentPeriodEnd
+            : null,
         },
-
-        data,
+        create: {
+          shopId,
+          planId: planIsUsable ? plan?.id ?? null : null,
+          observedShopifyPlanHandle: providerSubscription.planHandle,
+          status,
+          billingPeriodId: billingPeriod?.id ?? null,
+          currentPeriodStart: providerSubscription.currentPeriodStart,
+          currentPeriodEnd: providerSubscription.currentPeriodEnd,
+          trialEndsAt: providerSubscription.trialEndsAt,
+          cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
+          providerSubscriptionId: providerSubscription.providerSubscriptionId,
+          lastSyncedAt: now,
+          lastSyncErrorCode: syncErrorCode,
+          lastSyncErrorAt: syncErrorCode ? now : null,
+          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
+          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
+          pendingEffectiveAt: providerSubscription.pendingPlanHandle
+            ? providerSubscription.currentPeriodEnd
+            : null,
+        },
       });
-    }
-
-    return this.database.subscription.upsert({
-      where: { shopId },
-      update: data,
-      create: {
-        shopId,
-        ...data,
-      },
     });
   }
 }

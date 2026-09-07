@@ -108,7 +108,7 @@ console.log("Resolved shop settings:", settings);
   const allUsageWhere = { shopId: shop.id };
   
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
+  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
   const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
   const [currentUsageEvents, paidUsageEvents] = await Promise.all([
     db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: null }, orderBy: { occurredAt: "desc" } }),
@@ -144,11 +144,11 @@ console.log("Resolved shop settings:", settings);
       status: subscription.status,
 
       planHandle:
-        subscription.planHandle,
+        subscription.observedShopifyPlanHandle,
 
       planName:
         subscription.plan?.name ??
-        subscription.planHandle,
+        subscription.observedShopifyPlanHandle,
     },
 
     stats: {

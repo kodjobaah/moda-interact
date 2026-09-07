@@ -3,6 +3,10 @@ export interface ProviderSubscription {
 
   planHandle: string;
 
+  usageEventHandles: string[];
+  pendingPlanHandle: string | null;
+  pendingEffectiveAt: Date | null;
+
   status:
     | "TRIALING"
     | "ACTIVE";
@@ -15,6 +19,15 @@ export interface ProviderSubscription {
   cancelAtPeriodEnd: boolean;
 
   providerSubscriptionId: string | null;
+
+  providerUsageSnapshot: ProviderUsageSnapshot[];
+}
+
+export interface ProviderUsageSnapshot {
+  handle: string;
+  quantity: number | null;
+  costAmount: string | null;
+  costCurrency: string | null;
 }
 
 export interface BillingProvider {

@@ -1,0 +1,934 @@
+diff --git a/app/components/dashboard/UsageEvents.jsx b/app/components/dashboard/UsageEvents.jsx
+index 15b266b..61f67be 100644
+--- a/app/components/dashboard/UsageEvents.jsx
++++ b/app/components/dashboard/UsageEvents.jsx
+@@ -28,7 +28,7 @@ export default function UsageEvents({ usageEvents, usagePagination, usageView, b
+       {usageView === "past" && <label className="usage-bill-select" htmlFor="usage-bill-select">
+         <span>{i18n.t("usage.selectPastBill")}</span>
+         <select id="usage-bill-select" value={usagePagination.billId ?? ""} onChange={(event) => { const nextParams = new URLSearchParams(searchParams); nextParams.set("billId", event.target.value); nextParams.set("page", "1"); setSearchParams(nextParams, { preventScrollReset: true }); }}>
+-          {billingPeriods.filter((period) => period.status === "PAID").map((period) => <option key={period.id} value={period.id}>{i18n.formatDate(period.periodStart, { day: undefined, month: "long", year: "numeric" })} · {i18n.t("usage.actions", { quantity: period.totalQuantity })}</option>)}
++          {billingPeriods.filter((period) => period.status === "CLOSED").map((period) => <option key={period.id} value={period.id}>{i18n.formatDate(period.periodStart, { day: undefined, month: "long", year: "numeric" })} · {i18n.t("usage.actions", { quantity: period.totalQuantity })}</option>)}
+         </select>
+       </label>}
+       <s-stack direction="inline" gap="base" alignment="center" className="usage-toolbar">
+diff --git a/app/components/dashboard/UsageOverview.jsx b/app/components/dashboard/UsageOverview.jsx
+index f62b603..342d40d 100644
+--- a/app/components/dashboard/UsageOverview.jsx
++++ b/app/components/dashboard/UsageOverview.jsx
+@@ -35,7 +35,7 @@ function UsagePie({ title, events, i18n }) {
+ export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi }) {
+   const i18n = createMerchantI18n(merchantUi);
+   const navigate = useNavigate();
+-  const pastPeriods = billingPeriods.filter((period) => period.status === "PAID");
++  const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
+   return (
+     <s-page heading={i18n.t("usage.title")}>
+       <Breadcrumbs current={i18n.t("usage.title")} merchantUi={merchantUi} />
+diff --git a/app/routes/app._index.jsx b/app/routes/app._index.jsx
+index e08db79..9413479 100644
+--- a/app/routes/app._index.jsx
++++ b/app/routes/app._index.jsx
+@@ -108,7 +108,7 @@ console.log("Resolved shop settings:", settings);
+   const allUsageWhere = { shopId: shop.id };
+   
+   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
+-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
++  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+   const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
+   const [currentUsageEvents, paidUsageEvents] = await Promise.all([
+     db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: null }, orderBy: { occurredAt: "desc" } }),
+@@ -144,11 +144,11 @@ console.log("Resolved shop settings:", settings);
+       status: subscription.status,
+ 
+       planHandle:
+-        subscription.planHandle,
++        subscription.observedShopifyPlanHandle,
+ 
+       planName:
+         subscription.plan?.name ??
+-        subscription.planHandle,
++        subscription.observedShopifyPlanHandle,
+     },
+ 
+     stats: {
+diff --git a/app/routes/app.billing.callback.tsx b/app/routes/app.billing.callback.tsx
+index 59aadbf..789becb 100644
+--- a/app/routes/app.billing.callback.tsx
++++ b/app/routes/app.billing.callback.tsx
+@@ -1,6 +1,12 @@
+ import type {
+   LoaderFunctionArgs,
+ } from "react-router";
++import {
++  SubscriptionProjectionStatus,
++} from "@prisma/client";
++import type {
++  Subscription,
++} from "@prisma/client";
+ 
+ import { authenticate } from "../shopify.server";
+ 
+@@ -9,6 +15,39 @@ import {
+ } from "../services/billing/billing.service";
+ import { shopService } from "../services/shop/shop.service";
+ 
++type BillingCallbackSubscription = Pick<
++  Subscription,
++  | "status"
++  | "observedShopifyPlanHandle"
++  | "planId"
++  | "pendingShopifyPlanHandle"
++  | "pendingPlanId"
++  | "pendingEffectiveAt"
++>;
++
++export function isVerifiedBillingCallback(
++  subscription: BillingCallbackSubscription | null,
++  requestedPlanHandle: string | null,
++): boolean {
++  if (!subscription || !requestedPlanHandle) return false;
++
++  const activeProjectionStatuses: SubscriptionProjectionStatus[] = [
++    SubscriptionProjectionStatus.ACTIVE,
++    SubscriptionProjectionStatus.TRIALING,
++  ];
++  if (!activeProjectionStatuses.includes(subscription.status)) return false;
++
++  const currentPlanMatches =
++    subscription.observedShopifyPlanHandle === requestedPlanHandle &&
++    subscription.planId !== null;
++  const pendingPlanMatches =
++    subscription.pendingShopifyPlanHandle === requestedPlanHandle &&
++    subscription.pendingPlanId !== null &&
++    subscription.pendingEffectiveAt !== null;
++
++  return currentPlanMatches || pendingPlanMatches;
++}
++
+ 
+ export async function loader({
+   request,
+@@ -42,26 +81,12 @@ export async function loader({
+       shop.id,
+     );
+ 
+-  if (!subscription) {
++  if (!isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
+     return redirect(
+       "/app/billing?billing=inactive",
+     );
+   }
+ 
+-  if (
+-    requestedPlanHandle !==
+-    subscription.planHandle
+-  ) {
+-    console.warn(
+-      "Billing plan mismatch",
+-      {
+-        requestedPlanHandle,
+-        activePlanHandle:
+-          subscription.planHandle,
+-      },
+-    );
+-  }
+-
+   return redirect(
+     "/app/billing?billing=success",
+   );
+diff --git a/app/routes/app.usage.jsx b/app/routes/app.usage.jsx
+index 93314b3..9a70b28 100644
+--- a/app/routes/app.usage.jsx
++++ b/app/routes/app.usage.jsx
+@@ -30,7 +30,7 @@ export const loader = async ({ request }) => {
+ 
+   const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
+   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
+-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "PAID" : period.status === "OPEN");
++  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+   const selectedUsageWhere = selectedPeriod ? { shopId: shop.id, billingPeriodId: selectedPeriod.id } : usageWhere;
+   const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { firstName: true, lastName: true, email: true } }, conversation: { include: { messages: { select: { id: true } } } } } });
+   const recoveryBySourceId = new Map();
+diff --git a/app/services/billing/billing.service.ts b/app/services/billing/billing.service.ts
+index aaff287..c90e5c2 100644
+--- a/app/services/billing/billing.service.ts
++++ b/app/services/billing/billing.service.ts
+@@ -3,7 +3,12 @@ import { randomUUID } from "node:crypto";
+ import type {
+   Subscription,
+ } from "@prisma/client";
+-import { Prisma } from "@prisma/client";
++import {
++  BillingPeriodStatus,
++  BillingPlanKind,
++  Prisma,
++  SubscriptionProjectionStatus,
++} from "@prisma/client";
+ import {
+   PLATFORM_SUPPORT_LANGUAGE_TAG,
+   requiresMerchantTranslation,
+@@ -33,8 +38,7 @@ type SubscriptionLifecycle = {
+ };
+ 
+ type SubscriptionIdentityFacts = {
+-  planHandle: string;
+-  provider: string;
++  observedShopifyPlanHandle: string | null;
+   providerSubscriptionId: string | null;
+   currentPeriodStart: Date | null;
+   currentPeriodEnd: Date | null;
+@@ -55,7 +59,7 @@ function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): strin
+     subscription.trialEndsAt?.toISOString(),
+   ];
+   if (cycleFacts.every((fact) => !fact)) return null;
+-  return `cycle:${subscription.planHandle}:${cycleFacts.map((fact) => fact ?? "none").join(":")}`;
++  return `cycle:${subscription.observedShopifyPlanHandle ?? "unknown"}:${cycleFacts.map((fact) => fact ?? "none").join(":")}`;
+ }
+ 
+ export function renderSubscriptionEndedMessage(planHandle: string): string {
+@@ -194,26 +198,14 @@ export class BillingService {
+ async getSubscription(
+   shopId: string,
+ ) {
+-  return this.database.subscription.findFirst({
+-    where: {
+-      shopId,
++    const subscription = await this.database.subscription.findUnique({
++      where: { shopId },
++      include: { plan: true },
++    });
+ 
+-      status: {
+-        in: [
+-          "ACTIVE",
+-          "TRIALING",
+-        ],
+-      },
+-    },
+-
+-    include: {
+-      plan: true,
+-    },
+-
+-    orderBy: {
+-      createdAt: "desc",
+-    },
+-  });
++    return subscription && [SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(subscription.status)
++      ? subscription
++      : null;
+ }
+ 
+ 
+@@ -252,61 +244,53 @@ async getSubscription(
+      */
+     if (!providerSubscription) {
+       const lifecycle = await this.database.$transaction(async (transaction) => {
+-        const current = await transaction.subscription.findFirst({
+-          where: {
+-            shopId,
+-            status: {
+-              in: ["ACTIVE", "TRIALING"],
+-            },
+-          },
+-          orderBy: {
+-            createdAt: "desc",
+-          },
++        const current = await transaction.subscription.findUnique({
++          where: { shopId },
+           select: {
+-            id: true,
+-            planHandle: true,
+-            provider: true,
++            status: true,
++            observedShopifyPlanHandle: true,
+             providerSubscriptionId: true,
+             currentPeriodStart: true,
+             currentPeriodEnd: true,
+             trialEndsAt: true,
+           },
+         });
++        const now = new Date();
+ 
+-        const subscription = current ?? await transaction.subscription.findUnique({
++        await transaction.subscription.upsert({
+           where: { shopId },
+-          select: {
+-            status: true,
+-            planHandle: true,
+-            provider: true,
+-            providerSubscriptionId: true,
+-            currentPeriodStart: true,
+-            currentPeriodEnd: true,
+-            trialEndsAt: true,
++          update: {
++            planId: null,
++            observedShopifyPlanHandle: null,
++            status: SubscriptionProjectionStatus.NO_CONTRACT,
++            billingPeriodId: null,
++            currentPeriodStart: null,
++            currentPeriodEnd: null,
++            trialEndsAt: null,
++            cancelAtPeriodEnd: false,
++            providerSubscriptionId: null,
++            lastSyncedAt: now,
++            lastSyncErrorCode: null,
++            lastSyncErrorAt: null,
++            pendingShopifyPlanHandle: null,
++            pendingPlanId: null,
++            pendingEffectiveAt: null,
++          },
++          create: {
++            shopId,
++            status: SubscriptionProjectionStatus.NO_CONTRACT,
++            lastSyncedAt: now,
+           },
+         });
+-        if (!subscription) return null;
+ 
+-        if (current) {
+-          const cancelled = await transaction.subscription.updateMany({
+-            where: {
+-              shopId,
+-              status: {
+-                in: ["ACTIVE", "TRIALING"],
+-              },
+-            },
+-            data: {
+-              status: "CANCELLED",
+-              lastSyncedAt: new Date(),
+-            },
+-          });
+-          if (cancelled.count !== 1) return null;
++        if (!current || ![SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(current.status)) {
++          return null;
+         }
+ 
+         return {
+-          planHandle: subscription.planHandle,
+-          provider: subscription.provider,
+-          lifecycleIdentity: deriveLifecycleIdentity(subscription),
++          planHandle: current.observedShopifyPlanHandle ?? "unknown",
++          provider: "SHOPIFY",
++          lifecycleIdentity: deriveLifecycleIdentity(current),
+         };
+       });
+ 
+@@ -332,89 +316,99 @@ async getSubscription(
+       return null;
+     }
+ 
+-    /*
+-     * Translate Shopify's plan handle into
+-     * our own BillingPlan.
+-     */
+     const plan =
+       await this.database.billingPlan.findUnique({
+         where: {
+-          handle:
++          shopifyPlanHandle:
+             providerSubscription.planHandle,
+         },
+       });
+ 
+-    if (!plan) {
+-      throw new Error(
+-        `No BillingPlan exists for Shopify plan '${providerSubscription.planHandle}'`,
+-      );
+-    }
+-
+-    if (!plan.active) {
+-      throw new Error(
+-        `Billing plan '${plan.handle}' is inactive`,
+-      );
+-    }
+-
+-    /*
+-     * There should be one current subscription
+-     * for the shop.
+-     *
+-     * Because we're retaining subscription history,
+-     * don't overwrite unrelated old subscriptions.
+-     */
+-    const existing = await this.database.subscription.findUnique({
+-      where: { shopId },
+-    });
+-
+-    const data = {
+-      planId: plan.id,
+-
+-      provider:
+-        providerSubscription.provider,
+-
+-      planHandle:
+-        providerSubscription.planHandle,
+-
+-      status:
+-        providerSubscription.status,
+-
+-      currentPeriodStart:
+-        providerSubscription.currentPeriodStart,
+-
+-      currentPeriodEnd:
+-        providerSubscription.currentPeriodEnd,
+-
+-      trialEndsAt:
+-        providerSubscription.trialEndsAt,
+-
+-      cancelAtPeriodEnd:
+-        providerSubscription.cancelAtPeriodEnd,
+-
+-      providerSubscriptionId:
+-        providerSubscription.providerSubscriptionId,
+-
+-      lastSyncedAt:
+-        new Date(),
+-    };
++    const planIsUsable = Boolean(plan?.active);
++    const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
++      || Boolean(plan.shopifyUsageEventHandle && providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle));
++    const status = !planIsUsable
++      ? SubscriptionProjectionStatus.UNMAPPED
++      : !paidMeterIsPresent
++        ? SubscriptionProjectionStatus.SYNC_ERROR
++        : providerSubscription.status === "TRIALING"
++          ? SubscriptionProjectionStatus.TRIALING
++          : SubscriptionProjectionStatus.ACTIVE;
++    const syncErrorCode = status === SubscriptionProjectionStatus.UNMAPPED
++      ? "UNMAPPED_PLAN_HANDLE"
++      : status === SubscriptionProjectionStatus.SYNC_ERROR
++        ? "MISSING_USAGE_METER"
++        : null;
++    const now = new Date();
+ 
+-    if (existing) {
+-      return this.database.subscription.update({
+-        where: {
+-          id: existing.id,
++    return this.database.$transaction(async (transaction) => {
++      const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
++        ? await transaction.billingPeriod.upsert({
++            where: {
++              shopId_periodStart_periodEnd: {
++                shopId,
++                periodStart: providerSubscription.currentPeriodStart,
++                periodEnd: providerSubscription.currentPeriodEnd,
++              },
++            },
++            update: { status: BillingPeriodStatus.OPEN },
++            create: {
++              shopId,
++              periodStart: providerSubscription.currentPeriodStart,
++              periodEnd: providerSubscription.currentPeriodEnd,
++              status: BillingPeriodStatus.OPEN,
++            },
++          })
++        : null;
++      const pendingPlan = providerSubscription.pendingPlanHandle
++        ? await transaction.billingPlan.findUnique({
++            where: { shopifyPlanHandle: providerSubscription.pendingPlanHandle },
++            select: { id: true, active: true },
++          })
++        : null;
++
++      return transaction.subscription.upsert({
++        where: { shopId },
++        update: {
++          planId: planIsUsable ? plan?.id ?? null : null,
++          observedShopifyPlanHandle: providerSubscription.planHandle,
++          status,
++          billingPeriodId: billingPeriod?.id ?? null,
++          currentPeriodStart: providerSubscription.currentPeriodStart,
++          currentPeriodEnd: providerSubscription.currentPeriodEnd,
++          trialEndsAt: providerSubscription.trialEndsAt,
++          cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
++          providerSubscriptionId: providerSubscription.providerSubscriptionId,
++          lastSyncedAt: now,
++          lastSyncErrorCode: syncErrorCode,
++          lastSyncErrorAt: syncErrorCode ? now : null,
++          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
++          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
++          pendingEffectiveAt: providerSubscription.pendingPlanHandle
++            ? providerSubscription.currentPeriodEnd
++            : null,
++        },
++        create: {
++          shopId,
++          planId: planIsUsable ? plan?.id ?? null : null,
++          observedShopifyPlanHandle: providerSubscription.planHandle,
++          status,
++          billingPeriodId: billingPeriod?.id ?? null,
++          currentPeriodStart: providerSubscription.currentPeriodStart,
++          currentPeriodEnd: providerSubscription.currentPeriodEnd,
++          trialEndsAt: providerSubscription.trialEndsAt,
++          cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
++          providerSubscriptionId: providerSubscription.providerSubscriptionId,
++          lastSyncedAt: now,
++          lastSyncErrorCode: syncErrorCode,
++          lastSyncErrorAt: syncErrorCode ? now : null,
++          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
++          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
++          pendingEffectiveAt: providerSubscription.pendingPlanHandle
++            ? providerSubscription.currentPeriodEnd
++            : null,
+         },
+-
+-        data,
+       });
+-    }
+-
+-    return this.database.subscription.upsert({
+-      where: { shopId },
+-      update: data,
+-      create: {
+-        shopId,
+-        ...data,
+-      },
+     });
+   }
+ }
+diff --git a/tests/unit/services/billing.service.test.ts b/tests/unit/services/billing.service.test.ts
+index e49f1e6..8ddfbd2 100644
+--- a/tests/unit/services/billing.service.test.ts
++++ b/tests/unit/services/billing.service.test.ts
+@@ -1,294 +1,180 @@
+ import { describe, expect, it, vi } from "vitest";
+ 
+-import {
+-  BillingService,
+-  renderSubscriptionEndedMessage,
+-} from "../../../app/services/billing/billing.service";
+-
+-type State = {
+-  languageTag: string;
+-  active: boolean;
+-  subscription: {
+-    planHandle: string;
+-    provider: string;
+-    providerSubscriptionId: string | null;
+-    currentPeriodStart: Date | null;
+-    currentPeriodEnd: Date | null;
+-    trialEndsAt: Date | null;
++import { BillingService } from "../../../app/services/billing/billing.service";
++
++const periodStart = new Date("2026-09-01T00:00:00.000Z");
++const periodEnd = new Date("2026-10-01T00:00:00.000Z");
++
++function providerSubscription(overrides: Record<string, unknown> = {}) {
++  return {
++    provider: "SHOPIFY",
++    planHandle: "growth",
++    usageEventHandles: ["message-meter"],
++    pendingPlanHandle: null,
++    pendingEffectiveAt: null,
++    status: "ACTIVE",
++    currentPeriodStart: periodStart,
++    currentPeriodEnd: periodEnd,
++    trialEndsAt: null,
++    cancelAtPeriodEnd: false,
++    providerSubscriptionId: "provider-1",
++    providerUsageSnapshot: [],
++    ...overrides,
+   };
+-  existingMessage: boolean;
+-  existingTranslation: boolean;
+-  failSupport: boolean;
+-  sourceKeys: string[];
+-  supportWrites: number;
+-  translationLookupMisses?: boolean;
+-  translationInsertConflict?: boolean;
+-  translationInsertAttempts?: number;
+-};
+-
+-function createDatabase(state: State) {
+-  const database = {
+-    shop: {
+-      findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }),
+-    },
+-    subscription: {
+-      findFirst: vi.fn().mockImplementation(async () => state.active
+-        ? { id: "subscription-row-1", ...state.subscription }
+-        : null),
+-      findUnique: vi.fn().mockResolvedValue({
+-        id: "subscription-row-1", status: "CANCELLED", ...state.subscription,
+-      }),
+-      updateMany: vi.fn().mockImplementation(async () => {
+-        if (!state.active) return { count: 0 };
+-        state.active = false;
+-        return { count: 1 };
+-      }),
+-      upsert: vi.fn().mockResolvedValue({ id: "subscription-row-1" }),
+-      update: vi.fn(),
+-      create: vi.fn(),
+-    },
+-    billingPlan: {
+-      findUnique: vi.fn().mockResolvedValue({ id: "plan-1", handle: "growth", active: true }),
+-    },
+-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => {
+-      if (callback.toString().includes("subscription.findFirst")) {
+-        return callback({ subscription: database.subscription });
+-      }
+-      if (state.failSupport) {
+-        state.failSupport = false;
+-        throw new Error("support database unavailable");
+-      }
+-      const transaction = {
+-        subscription: database.subscription,
+-        $queryRaw: vi.fn().mockImplementation(async (query: { sql: string; values: unknown[] }) => {
+-          const sourceKey = query.values.find((value): value is string =>
+-            typeof value === "string" && value.startsWith("subscription-ended%3Av1:"),
+-          );
+-          if (sourceKey && !state.sourceKeys.includes(sourceKey)) state.sourceKeys.push(sourceKey);
+-          if (query.sql.includes('"ShopSettings"')) return [{ defaultLanguageTag: state.languageTag }];
+-          if (query.sql.includes('"MerchantSupportMessage"') && query.sql.includes('"sourceKey"')) {
+-            if (query.sql.includes("INSERT INTO")) {
+-              if (state.existingMessage) return [];
+-              state.existingMessage = true;
+-              state.supportWrites += 1;
+-              return [{ id: "message-new" }];
+-            }
+-            return state.existingMessage ? [{ id: "message-existing" }] : [];
+-          }
+-          if (query.sql.includes('"MerchantSupportThread"') && query.sql.includes('RETURNING')) return [{ id: "thread-1" }];
+-          if (query.sql.includes('"MerchantMessageTranslation"')) {
+-            if (query.sql.includes("INSERT INTO")) {
+-              state.translationInsertAttempts = (state.translationInsertAttempts ?? 0) + 1;
+-              if (state.translationInsertConflict) return [];
+-              if (state.existingTranslation) return [];
+-              state.existingTranslation = true;
+-              state.supportWrites += 1;
+-              return [{ id: "translation-new" }];
+-            }
+-            if (state.translationLookupMisses) return [];
+-            return state.existingTranslation ? [{ id: "translation-existing" }] : [];
+-          }
+-          return [];
+-        }),
+-        $executeRaw: vi.fn().mockImplementation(async (query: { sql: string; values: unknown[] }) => {
+-          state.supportWrites += 1;
+-          return 1;
+-        }),
+-      };
+-      return callback(transaction);
++}
++
++function createDatabase({ plan = null, pendingPlan = null, current = null } = {}) {
++  const state = { current };
++  const subscription = {
++    findUnique: vi.fn().mockImplementation(async () => state.current),
++    upsert: vi.fn().mockImplementation(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
++      state.current = { id: "subscription-1", ...(state.current ?? create), ...update };
++      return state.current;
++    }),
++  };
++  const billingPlan = {
++    findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => {
++      if (where.shopifyPlanHandle === "growth") return plan;
++      if (where.shopifyPlanHandle === "starter") return pendingPlan;
++      return null;
+     }),
+   };
+-  return database;
++  const billingPeriod = {
++    upsert: vi.fn().mockResolvedValue({ id: "period-1", periodStart, periodEnd }),
++  };
++  const database = {
++    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
++    subscription,
++    billingPlan,
++    billingPeriod,
++    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, billingPeriod })),
++  };
++  return { database, state };
+ }
+ 
+-function inactiveProvider() {
+-  return { getActiveSubscription: vi.fn().mockResolvedValue(null) };
+-}
++describe("BillingService subscription projection", () => {
++  it("persists a mapped free plan without requiring a usage meter", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "free-1", shopifyPlanHandle: "growth", kind: "FREE", active: true, shopifyUsageEventHandle: null },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+ 
+-describe("BillingService subscription-ended notification", () => {
+-  it("renders factual source copy from the plan handle", () => {
+-    expect(renderSubscriptionEndedMessage("growth")).toBe(
+-      "Your growth subscription has ended and is no longer active.",
+-    );
++    await service.syncSubscription("shop-1");
++
++    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "free-1", observedShopifyPlanHandle: "growth" });
++    expect(database.billingPeriod.upsert).toHaveBeenCalledWith(expect.objectContaining({
++      where: { shopId_periodStart_periodEnd: { shopId: "shop-1", periodStart, periodEnd } },
++    }));
+   });
+ 
+-  it("keeps cancellation committed when support persistence fails, then repairs it", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: true,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: false, existingTranslation: false, failSupport: true,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const service = new BillingService(inactiveProvider(), database as never, vi.fn());
+-
+-    await expect(service.syncSubscription("shop-1")).resolves.toBeNull();
+-    expect(state.active).toBe(false);
+-    expect(state.existingMessage).toBe(false);
+-    await service.syncSubscription("shop-1");
++  it("fails closed when a paid plan omits its configured usage meter", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "paid-1", shopifyPlanHandle: "growth", kind: "PAID_METERED", active: true, shopifyUsageEventHandle: "message-meter" },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: [] })) }, database as never);
++
+     await service.syncSubscription("shop-1");
+-    expect(state.existingMessage).toBe(true);
+-    expect(state.sourceKeys).toEqual([
+-      "subscription-ended%3Av1:shop-1:SHOPIFY:provider%3Aprovider-1",
+-    ]);
++
++    expect(state.current).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "MISSING_USAGE_METER" });
+   });
+ 
+-  it("uses one deterministic message per later provider lifecycle", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: true,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const service = new BillingService(inactiveProvider(), database as never, vi.fn());
++  it("persists a mapped paid plan and clears stale sync errors", async () => {
++    const { database, state } = createDatabase({
++      current: { id: "subscription-1", shopId: "shop-1", status: "SYNC_ERROR", lastSyncErrorCode: "MISSING_USAGE_METER" },
++      plan: { id: "paid-1", shopifyPlanHandle: "growth", kind: "PAID_METERED", active: true, shopifyUsageEventHandle: "message-meter" },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ status: "TRIALING" })) }, database as never);
+ 
+-    await service.syncSubscription("shop-1");
+-    state.active = true;
+-    state.subscription.providerSubscriptionId = "provider-2";
+-    state.existingMessage = false;
+     await service.syncSubscription("shop-1");
+ 
+-    expect(state.sourceKeys).toEqual([
+-      "subscription-ended%3Av1:shop-1:SHOPIFY:provider%3Aprovider-1",
+-      "subscription-ended%3Av1:shop-1:SHOPIFY:provider%3Aprovider-2",
+-    ]);
+-    expect(state.sourceKeys[0]).toContain("shop-1:SHOPIFY:");
+-    expect(state.sourceKeys[1]).toContain("shop-1:SHOPIFY:");
++    expect(state.current).toMatchObject({
++      status: "TRIALING",
++      planId: "paid-1",
++      observedShopifyPlanHandle: "growth",
++      billingPeriodId: "period-1",
++      lastSyncErrorCode: null,
++      lastSyncErrorAt: null,
++    });
++    expect(database.billingPeriod.upsert).toHaveBeenCalledWith(expect.objectContaining({
++      create: expect.objectContaining({ status: "OPEN" }),
++    }));
+   });
+ 
+-  it("reuses the unique subscription row when a cancelled shop reactivates", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: false,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: true, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const provider = {
+-      getActiveSubscription: vi.fn().mockResolvedValue({
+-        planHandle: "growth", provider: "SHOPIFY", status: "ACTIVE", providerSubscriptionId: "provider-2",
+-      }),
+-    };
+-    await new BillingService(provider, database as never, vi.fn()).syncSubscription("shop-1");
+-
+-    expect(database.subscription.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "subscription-row-1" } }));
+-    expect(database.subscription.create).not.toHaveBeenCalled();
+-  });
++  it("treats an inactive mapped plan as unmapped", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: false },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+ 
+-  it("keeps English available without translation dispatch", async () => {
+-    const state: State = {
+-      languageTag: "en-US", active: true,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const dispatch = vi.fn();
+-    await new BillingService(inactiveProvider(), createDatabase(state) as never, dispatch).syncSubscription("shop-1");
+-    expect(dispatch).not.toHaveBeenCalled();
+-  });
++    await service.syncSubscription("shop-1");
+ 
+-  it("creates one pending non-English translation and dispatches after commit", async () => {
+-    const state: State = {
+-      languageTag: "fr-FR", active: true,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const dispatch = vi.fn().mockResolvedValue(undefined);
+-    await new BillingService(inactiveProvider(), database as never, dispatch).syncSubscription("shop-1");
+-    expect(dispatch).toHaveBeenCalledTimes(1);
+-    expect(dispatch).toHaveBeenCalledWith("translation-new");
+-    expect(state.supportWrites).toBe(3);
++    expect(state.current).toMatchObject({ status: "UNMAPPED", planId: null, lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+   });
+ 
+-  it("isolates translation dispatch failure after durable support state", async () => {
+-    const state: State = {
+-      languageTag: "fr-FR", active: true,
+-      subscription: { planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const dispatch = vi.fn().mockRejectedValue(new Error("Redis unavailable"));
+-    await expect(new BillingService(inactiveProvider(), database as never, dispatch).syncSubscription("shop-1")).resolves.toBeNull();
+-    expect(state.active).toBe(false);
+-    expect(state.existingMessage).toBe(true);
+-    expect(state.existingTranslation).toBe(true);
++  it("persists an unknown current Shopify handle as unmapped", async () => {
++    const { database, state } = createDatabase();
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ planHandle: "unknown" })) }, database as never);
++
++    await service.syncSubscription("shop-1");
++
++    expect(state.current).toMatchObject({ status: "UNMAPPED", planId: null, observedShopifyPlanHandle: "unknown", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+   });
+ 
+-  it("uses stable cycle facts when the provider subscription ID is nullable", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: true,
+-      subscription: {
+-        planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: null,
+-        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+-        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"), trialEndsAt: null,
+-      },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    await new BillingService(inactiveProvider(), createDatabase(state) as never, vi.fn()).syncSubscription("shop-1");
+-    expect(state.existingMessage).toBe(true);
+-    expect(state.sourceKeys[0]).toContain("cycle%3Agrowth%3A2026-09-01T00%3A00%3A00.000Z");
++  it("maps a pending plan and stores the current cycle end as its effective boundary", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: true },
++      pendingPlan: { id: "starter-1", shopifyPlanHandle: "starter", active: true },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ pendingPlanHandle: "starter", pendingEffectiveAt: periodEnd })) }, database as never);
++
++    await service.syncSubscription("shop-1");
++
++    expect(state.current).toMatchObject({ pendingShopifyPlanHandle: "starter", pendingPlanId: "starter-1", pendingEffectiveAt: periodEnd });
+   });
+ 
+-  it("creates a distinct fallback key for a later cycle on the same shop", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: true,
+-      subscription: {
+-        planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: null,
+-        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+-        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"), trialEndsAt: null,
+-      },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    const database = createDatabase(state);
+-    const service = new BillingService(inactiveProvider(), database as never, vi.fn());
++  it("stores an unknown pending handle without inventing a pending plan id", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: true },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ pendingPlanHandle: "unknown-pending" })) }, database as never);
++
+     await service.syncSubscription("shop-1");
+-    state.active = true;
+-    state.existingMessage = false;
+-    state.subscription.currentPeriodStart = new Date("2026-10-01T00:00:00.000Z");
+-    state.subscription.currentPeriodEnd = new Date("2026-11-01T00:00:00.000Z");
++
++    expect(state.current).toMatchObject({ pendingShopifyPlanHandle: "unknown-pending", pendingPlanId: null });
++  });
++
++  it("projects trial status and leaves period fields null when Shopify omits the cycle", async () => {
++    const { database, state } = createDatabase({
++      plan: { id: "free-1", shopifyPlanHandle: "growth", kind: "FREE", active: true },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ status: "TRIALING", currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: new Date("2026-09-15T00:00:00.000Z") })) }, database as never);
++
+     await service.syncSubscription("shop-1");
+-    expect(state.sourceKeys).toHaveLength(2);
+-    expect(state.sourceKeys[0]).not.toBe(state.sourceKeys[1]);
++
++    expect(state.current).toMatchObject({ status: "TRIALING", trialEndsAt: new Date("2026-09-15T00:00:00.000Z"), billingPeriodId: null });
++    expect(database.billingPeriod.upsert).not.toHaveBeenCalled();
+   });
+ 
+-  it("does not dispatch when the translation insert loses a concurrent unique-key race", async () => {
+-    const state: State = {
+-      languageTag: "fr-FR", active: false,
+-      subscription: {
+-        planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: "provider-1",
+-        currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null,
+-      },
+-      existingMessage: true, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-      translationLookupMisses: true,
+-      translationInsertConflict: true,
+-    };
+-    const dispatch = vi.fn();
+-    const database = createDatabase(state);
+-    await new BillingService(inactiveProvider(), database as never, dispatch).syncSubscription("shop-1");
+-    expect(state.translationInsertAttempts).toBe(1);
+-    expect(dispatch).not.toHaveBeenCalled();
++  it("projects no contract and clears current and pending plan state", async () => {
++    const { database, state } = createDatabase({
++      current: { id: "subscription-1", shopId: "shop-1", status: "ACTIVE", observedShopifyPlanHandle: "growth", providerSubscriptionId: "provider-1" },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(null) }, database as never);
++
++    await service.syncSubscription("shop-1");
++
++    expect(state.current).toMatchObject({ status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingPlanId: null, pendingShopifyPlanHandle: null });
+   });
+ 
+-  it("fails explicitly when no durable lifecycle identity exists", async () => {
+-    const state: State = {
+-      languageTag: "en-GB", active: true,
+-      subscription: {
+-        planHandle: "growth", provider: "SHOPIFY", providerSubscriptionId: null,
+-        currentPeriodStart: null, currentPeriodEnd: null, trialEndsAt: null,
+-      },
+-      existingMessage: false, existingTranslation: false, failSupport: false,
+-      sourceKeys: [], supportWrites: 0,
+-    };
+-    await expect(
+-      new BillingService(inactiveProvider(), createDatabase(state) as never, vi.fn()).syncSubscription("shop-1"),
+-    ).rejects.toThrow("Unable to derive a durable subscription lifecycle identity.");
+-    expect(state.active).toBe(false);
++  it("clears a stale sync error after a valid projection", async () => {
++    const { database, state } = createDatabase({
++      current: { id: "subscription-1", shopId: "shop-1", status: "SYNC_ERROR", lastSyncErrorCode: "MISSING_USAGE_METER" },
++      plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: true },
++    });
++    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
++
++    await service.syncSubscription("shop-1");
++
++    expect(state.current).toMatchObject({ status: "ACTIVE", lastSyncErrorCode: null, lastSyncErrorAt: null });
+   });
+ });

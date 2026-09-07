@@ -3,8 +3,6 @@ import { Link, useLoaderData, useRouteError } from "react-router";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
-import { Form } from "react-router";
-
 import { authenticate } from "../shopify.server";
 
 import { billingService } from "../services/billing/billing.service";
@@ -28,9 +26,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
           status: subscription.status,
 
-          planHandle: subscription.planHandle,
+          planHandle: subscription.observedShopifyPlanHandle,
 
-          planName: subscription.plan?.name ?? subscription.planHandle,
+          planName: subscription.plan?.name ?? subscription.observedShopifyPlanHandle,
 
           trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
 

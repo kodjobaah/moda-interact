@@ -35,7 +35,7 @@ function UsagePie({ title, events, i18n }) {
 export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi }) {
   const i18n = createMerchantI18n(merchantUi);
   const navigate = useNavigate();
-  const pastPeriods = billingPeriods.filter((period) => period.status === "PAID");
+  const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
   return (
     <s-page heading={i18n.t("usage.title")}>
       <Breadcrumbs current={i18n.t("usage.title")} merchantUi={merchantUi} />

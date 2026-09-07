@@ -28,7 +28,7 @@ export default function UsageEvents({ usageEvents, usagePagination, usageView, b
       {usageView === "past" && <label className="usage-bill-select" htmlFor="usage-bill-select">
         <span>{i18n.t("usage.selectPastBill")}</span>
         <select id="usage-bill-select" value={usagePagination.billId ?? ""} onChange={(event) => { const nextParams = new URLSearchParams(searchParams); nextParams.set("billId", event.target.value); nextParams.set("page", "1"); setSearchParams(nextParams, { preventScrollReset: true }); }}>
-          {billingPeriods.filter((period) => period.status === "PAID").map((period) => <option key={period.id} value={period.id}>{i18n.formatDate(period.periodStart, { day: undefined, month: "long", year: "numeric" })} · {i18n.t("usage.actions", { quantity: period.totalQuantity })}</option>)}
+          {billingPeriods.filter((period) => period.status === "CLOSED").map((period) => <option key={period.id} value={period.id}>{i18n.formatDate(period.periodStart, { day: undefined, month: "long", year: "numeric" })} · {i18n.t("usage.actions", { quantity: period.totalQuantity })}</option>)}
         </select>
       </label>}
       <s-stack direction="inline" gap="base" alignment="center" className="usage-toolbar">
