@@ -35,6 +35,8 @@ type MessageRow = {
   originalBody: string;
   sourceLanguageTag: string;
   displayLanguageTag: string | null;
+  systemCode: string | null;
+  systemVersion: string | null;
   translatedBody: string | null;
   translationStatus: "AVAILABLE" | null;
   createdAt: Date;
@@ -193,6 +195,8 @@ export type MerchantSupportPage = {
     isTranslated: boolean;
     sourceLanguageTag: string;
     displayLanguageTag: string | null;
+    systemCode: string | null;
+    systemVersion: string | null;
     createdAt: string;
     readAt: string | null;
   }>;
@@ -211,7 +215,7 @@ export async function readMerchantSupportMessages(input: {
   const rows = await database.$transaction(async (transaction) => {
     const messages = await transaction.$queryRaw<MessageRow[]>(Prisma.sql`
       SELECT m."id", m."kind", m."state", m."originalBody", m."sourceLanguageTag",
-        m."displayLanguageTag", m."createdAt", m."readAt",
+        m."displayLanguageTag", m."systemCode", m."systemVersion", m."createdAt", m."readAt",
         tr."translatedBody", tr."status" AS "translationStatus"
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
@@ -270,6 +274,8 @@ export async function readMerchantSupportMessages(input: {
         isTranslated: translationRequired && message.translationStatus === "AVAILABLE" && message.translatedBody !== null,
         sourceLanguageTag: message.sourceLanguageTag,
         displayLanguageTag: message.displayLanguageTag,
+        systemCode: message.systemCode,
+        systemVersion: message.systemVersion,
         createdAt: message.createdAt.toISOString(),
         readAt: message.readAt?.toISOString() ?? null,
       };

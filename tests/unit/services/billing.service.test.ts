@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { BILLING_SYSTEM_MESSAGE_CODES } from "@modainteract/moda-interact-shared/billing";
 
 import { BillingService } from "../../../app/services/billing/billing.service";
+import { getMerchantSystemMessageAction } from "../../../app/services/merchant-support/system-message-actions";
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
@@ -53,6 +55,56 @@ function createDatabase({ plan = null, pendingPlan = null, current = null } = {}
 }
 
 describe("BillingService subscription projection", () => {
+  it("persists the canonical subscription-ended code that maps to the billing CTA", async () => {
+    const current = {
+      status: "ACTIVE",
+      observedShopifyPlanHandle: "growth",
+      providerSubscriptionId: "provider-1",
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      trialEndsAt: null,
+    };
+    const subscription = {
+      findUnique: vi.fn().mockResolvedValue(current),
+      upsert: vi.fn().mockResolvedValue({}),
+    };
+    const persistenceQueryRaw = vi.fn()
+      .mockResolvedValueOnce([{ defaultLanguageTag: "en-US" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: "thread-1" }])
+      .mockResolvedValueOnce([{ id: "message-1" }]);
+    const persistenceTransaction = {
+      $queryRaw: persistenceQueryRaw,
+      $executeRaw: vi.fn().mockResolvedValue(1),
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+      $transaction: vi.fn()
+        .mockImplementationOnce(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
+          subscription,
+        }))
+        .mockImplementationOnce(async (callback: (transaction: unknown) => Promise<unknown>) => callback(persistenceTransaction)),
+    };
+    const service = new BillingService(
+      { getActiveSubscription: vi.fn().mockResolvedValue(null) },
+      database as never,
+    );
+
+    await service.syncSubscription("shop-1");
+
+    const messageInsert = persistenceQueryRaw.mock.calls[3][0];
+    const persistedSystemCode = messageInsert.values.find(
+      (value: unknown) => typeof value === "string" && value.startsWith("BILLING_"),
+    );
+    expect(persistedSystemCode).toBe(BILLING_SYSTEM_MESSAGE_CODES.SUBSCRIPTION_ENDED);
+    expect(persistedSystemCode).toBe("BILLING_SUBSCRIPTION_ENDED");
+    expect(getMerchantSystemMessageAction(persistedSystemCode)).toEqual({
+      href: "/app/billing",
+      labelKey: "billing.viewPlans",
+    });
+    expect(getMerchantSystemMessageAction("SUBSCRIPTION_ENDED")).toBeNull();
+  });
+
   it("persists a mapped free plan without requiring a usage meter", async () => {
     const { database, state } = createDatabase({
       plan: { id: "free-1", shopifyPlanHandle: "growth", kind: "FREE", active: true, shopifyUsageEventHandle: null },

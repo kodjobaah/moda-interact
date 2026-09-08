@@ -113,6 +113,12 @@ describe("merchant support resource route", () => {
     expect(merchantSupportRouteSource).toContain("[unreadMessageIds, revalidate]");
   });
 
+  it("renders billing CTAs from system metadata rather than translated body URLs", () => {
+    expect(merchantSupportRouteSource).toContain("getMerchantSystemMessageAction");
+    expect(merchantSupportRouteSource).toContain('message.kind === "SYSTEM"');
+    expect(merchantSupportRouteSource).not.toContain('message.originalBody.includes("http");');
+  });
+
   it("does not post or revalidate when there are no unread IDs", async () => {
     const fetchImpl = vi.fn();
     const revalidate = vi.fn();

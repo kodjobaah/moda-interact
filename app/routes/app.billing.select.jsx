@@ -19,8 +19,6 @@ export async function loader(/** @type {import("react-router").LoaderFunctionArg
     `https://admin.shopify.com/store/${storeHandle}` +
     `/charges/${appHandle}/pricing_plans`;
 
-  console.log("Redirecting to Shopify pricing:", pricingUrl);
-
   return redirect(pricingUrl, {
     target: "_top",
   });

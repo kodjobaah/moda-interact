@@ -1,5 +1,5 @@
 import type { HeadersArgs, LoaderFunctionArgs } from "react-router";
-import { Link, useLoaderData, useRouteError } from "react-router";
+import { Link, redirect, useLoaderData, useRouteError } from "react-router";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -8,6 +8,8 @@ import { authenticate } from "../shopify.server";
 import { billingService } from "../services/billing/billing.service";
 
 import { shopService } from "../services/shop/shop.service";
+import { merchantUiContext, createMerchantI18n } from "../utils/merchant-i18n";
+import db from "../db.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
@@ -17,32 +19,37 @@ export async function loader({ request }: LoaderFunctionArgs) {
     domain: session.shop,
   });
 
-  const subscription = await billingService.getSubscription(shop.id);
+  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const state = await billingService.getMerchantBillingState(shop.id);
+
+  if (!state.subscription || state.subscription.status === "NO_CONTRACT") {
+    throw redirect("/app/billing/select");
+  }
 
   return {
-    subscription: subscription
-      ? {
-          id: subscription.id,
-
-          status: subscription.status,
-
-          planHandle: subscription.observedShopifyPlanHandle,
-
-          planName: subscription.plan?.name ?? subscription.observedShopifyPlanHandle,
-
-          trialEndsAt: subscription.trialEndsAt?.toISOString() ?? null,
-
-          currentPeriodEnd:
-            subscription.currentPeriodEnd?.toISOString() ?? null,
-
-          cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        }
-      : null,
+    merchantUi: merchantUiContext(settings, session),
+    subscription: {
+      status: state.subscription.status,
+      planKind: state.subscription.plan?.kind ?? null,
+      planName: state.subscription.plan?.name ?? state.subscription.observedShopifyPlanHandle,
+      currentPeriodStart: state.subscription.currentPeriodStart?.toISOString() ?? null,
+      currentPeriodEnd: state.subscription.currentPeriodEnd?.toISOString() ?? null,
+      trialEndsAt: state.subscription.trialEndsAt?.toISOString() ?? null,
+      cancelAtPeriodEnd: state.subscription.cancelAtPeriodEnd,
+      pendingPlanName: state.subscription.pendingPlan?.name ?? state.subscription.pendingShopifyPlanHandle,
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt?.toISOString() ?? null,
+    },
+    allowance: state.allowance,
+    remaining: state.remaining,
+    usageQuantity: state.usageQuantity,
   };
 }
 
 export default function BillingRoute() {
-  const { subscription } = useLoaderData<typeof loader>();
+  const { merchantUi, subscription, allowance, remaining, usageQuantity } = useLoaderData<typeof loader>();
+  const i18n = createMerchantI18n(merchantUi);
+  const isFree = subscription.planKind === "FREE";
+  const isSafeProjection = ["ACTIVE", "TRIALING"].includes(subscription.status);
 
   return (
     <div
@@ -52,50 +59,43 @@ export default function BillingRoute() {
         padding: 24,
       }}
     >
-      <h1>Billing</h1>
+      <h1>{i18n.t("billing.title")}</h1>
 
-      {subscription ? (
-        <>
-          <p>
-            Current plan: <strong>{subscription.planName}</strong>
-          </p>
-
-          <p>
-            Status: <strong>{subscription.status}</strong>
-          </p>
-
-          {subscription.trialEndsAt && (
-            <p>
-              Trial ends:{" "}
-              {new Date(subscription.trialEndsAt).toLocaleDateString()}
-            </p>
-          )}
-
-          {subscription.currentPeriodEnd && (
-            <p>
-              Billing period ends:{" "}
-              {new Date(subscription.currentPeriodEnd).toLocaleDateString()}
-            </p>
-          )}
-
-          {subscription.cancelAtPeriodEnd && (
-            <p>
-              This subscription will end at the end of the current billing
-              period.
-            </p>
-          )}
-        </>
+      {!isSafeProjection ? (
+        <section>
+          <h2>{i18n.t("billing.configurationUnavailable")}</h2>
+          <p>{i18n.t("billing.configurationUnavailableDescription")}</p>
+        </section>
       ) : (
         <>
-          <h2>No active plan</h2>
+          <p>{i18n.t("billing.currentPlan")}: <strong>{subscription.planName ?? i18n.t("billing.unknownPlan")}</strong></p>
+          <p>{i18n.t("billing.status")}: <strong>{subscription.status}</strong></p>
 
-          <p>Choose a plan to activate Moda Interact.</p>
+          {isFree && allowance !== null ? (
+            <p>{i18n.t("billing.freeAllowance", { remaining, allowance })}</p>
+          ) : (
+            <p>{i18n.t("billing.paidUsage", { quantity: usageQuantity })}</p>
+          )}
+
+          {subscription.currentPeriodStart && subscription.currentPeriodEnd ? (
+            <p>{i18n.t("billing.currentPeriod", {
+              start: i18n.formatDate(subscription.currentPeriodStart),
+              end: i18n.formatDate(subscription.currentPeriodEnd),
+            })}</p>
+          ) : null}
+          {subscription.trialEndsAt ? <p>{i18n.t("billing.trialEnds", { date: i18n.formatDate(subscription.trialEndsAt) })}</p> : null}
+          {subscription.cancelAtPeriodEnd ? <p>{i18n.t("billing.cancelAtPeriodEnd")}</p> : null}
+
+          {subscription.pendingPlanName && subscription.pendingEffectiveAt ? (
+            <p>{i18n.t("billing.pendingChange", {
+              plan: subscription.pendingPlanName,
+              date: i18n.formatDate(subscription.pendingEffectiveAt),
+            })}</p>
+          ) : null}
         </>
       )}
 
-      <Link to="/app/billing/select">
-        {subscription ? "Change plan" : "Choose a plan"}
-      </Link>
+      <Link to="/app/billing/select">{i18n.t(isFree ? "billing.viewPlans" : "billing.changePlan")}</Link>
     </div>
   );
 }

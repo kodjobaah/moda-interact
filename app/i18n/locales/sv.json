@@ -96,5 +96,20 @@
   "onboarding.description": "Moda Interact hjälper dig att återknyta kontakten med kunder som lämnar innan de slutför sitt köp.",
   "onboarding.getStarted": "Kom igång",
   "onboarding.planDescription": "Välj den plan som passar din butik bäst för att börja använda Moda Interact.",
-  "onboarding.choosePlan": "Välj en plan"
+  "onboarding.choosePlan": "Välj en plan",
+  "billing.title": "Billing",
+  "billing.currentPlan": "Current plan",
+  "billing.status": "Status",
+  "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
+  "billing.paidUsage": "Recovery conversations used: {quantity}",
+  "billing.currentPeriod": "Current billing period: {start} to {end}",
+  "billing.trialEnds": "Trial ends: {date}",
+  "billing.cancelAtPeriodEnd": "This subscription will end at the end of the current billing period.",
+  "billing.pendingChange": "Pending change to {plan}, effective {date}",
+  "billing.viewPlans": "View plans",
+  "billing.upgradePlan": "Upgrade plan",
+  "billing.changePlan": "Change plan",
+  "billing.unknownPlan": "Unknown plan",
+  "billing.configurationUnavailable": "Billing configuration unavailable",
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
 }

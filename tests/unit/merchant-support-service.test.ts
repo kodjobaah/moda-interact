@@ -99,6 +99,9 @@ describe("merchant support compose", () => {
   it("only exposes an outbound source body when its required translation is available", () => {
     expect(supportServiceSource).toContain('originalBody: !translationRequired || message.translationStatus === "AVAILABLE"');
     expect(supportServiceSource).toContain('message.translationStatus === "AVAILABLE" ? message.translatedBody : null');
+    expect(supportServiceSource).toContain('m."systemCode", m."systemVersion"');
+    expect(supportServiceSource).toContain("systemCode: message.systemCode");
+    expect(supportServiceSource).toContain("systemVersion: message.systemVersion");
   });
 
   it("returns true only for tenant-owned AVAILABLE outbound messages", async () => {

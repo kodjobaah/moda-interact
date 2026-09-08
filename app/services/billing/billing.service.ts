@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 
 import type {
+  PrismaClient,
   Subscription,
 } from "@prisma/client";
 import {
   BillingPeriodStatus,
   BillingPlanKind,
+  EntitlementCounter,
   Prisma,
   SubscriptionProjectionStatus,
 } from "@prisma/client";
@@ -13,6 +15,7 @@ import {
   PLATFORM_SUPPORT_LANGUAGE_TAG,
   requiresMerchantTranslation,
 } from "@modainteract/moda-interact-shared/merchant-communications";
+import { BILLING_SYSTEM_MESSAGE_CODES } from "@modainteract/moda-interact-shared/billing";
 
 
 
@@ -67,7 +70,7 @@ export function renderSubscriptionEndedMessage(planHandle: string): string {
 }
 
 async function persistSubscriptionEndedNotification(
-  database: typeof prisma,
+  database: PrismaClient,
   shopId: string,
   lifecycle: SubscriptionLifecycle,
 ): Promise<string | null> {
@@ -129,7 +132,7 @@ async function persistSubscriptionEndedNotification(
           ${needsTranslation ? "PROCESSING" : "AVAILABLE"},
           ${renderSubscriptionEndedMessage(lifecycle.planHandle)},
           ${PLATFORM_SUPPORT_LANGUAGE_TAG}, ${displayLanguageTag},
-          'SUBSCRIPTION_ENDED', '1', ${sourceKey},
+          ${BILLING_SYSTEM_MESSAGE_CODES.SUBSCRIPTION_ENDED}, '1', ${sourceKey},
           ${needsTranslation ? null : now}, ${now}, ${now}
         ) ON CONFLICT ("sourceKey") DO NOTHING
         RETURNING "id"
@@ -190,7 +193,7 @@ export class BillingService {
   constructor(
     private readonly provider: BillingProvider =
       new ShopifyBillingProvider(),
-    private readonly database = prisma,
+    private readonly database: PrismaClient = prisma,
     private readonly dispatchTranslation: TranslationDispatch =
       enqueueTranslationBestEffort,
   ) {}
@@ -203,10 +206,48 @@ async getSubscription(
       include: { plan: true },
     });
 
-    return subscription && [SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(subscription.status)
+    return subscription && (subscription.status === SubscriptionProjectionStatus.ACTIVE || subscription.status === SubscriptionProjectionStatus.TRIALING)
       ? subscription
       : null;
 }
+
+  async getMerchantBillingState(shopId: string) {
+    const [subscription, counter, adjustmentTotal, usageTotal] = await Promise.all([
+      this.database.subscription.findUnique({
+        where: { shopId },
+        include: { plan: true, pendingPlan: true, billingPeriod: true },
+      }),
+      this.database.shopEntitlementCounter.findUnique({
+        where: {
+          shopId_counter: {
+            shopId,
+            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
+          },
+        },
+      }),
+      this.database.billingAllowanceAdjustment.aggregate({
+        where: { shopId, counter: EntitlementCounter.FREE_RECOVERY_LIFETIME },
+        _sum: { quantity: true },
+      }),
+      this.database.usageEvent.aggregate({
+        where: { shopId, metric: "RECOVERY_CONVERSATION" },
+        _sum: { quantity: true },
+      }),
+    ]);
+
+    const allowance = subscription?.plan?.kind === BillingPlanKind.FREE
+      ? (subscription.plan.freeLifetimeConversationAllowance ?? 0) + (adjustmentTotal._sum.quantity ?? 0)
+      : null;
+    const committed = counter?.committedQuantity ?? 0;
+
+    return {
+      subscription,
+      allowance,
+      committed,
+      remaining: allowance === null ? null : Math.max(allowance - committed, 0),
+      usageQuantity: Number(usageTotal._sum.quantity ?? 0),
+    };
+  }
 
 
   async syncSubscription(
@@ -283,7 +324,7 @@ async getSubscription(
           },
         });
 
-        if (!current || ![SubscriptionProjectionStatus.ACTIVE, SubscriptionProjectionStatus.TRIALING].includes(current.status)) {
+        if (!current || (current.status !== SubscriptionProjectionStatus.ACTIVE && current.status !== SubscriptionProjectionStatus.TRIALING)) {
           return null;
         }
 

@@ -96,5 +96,20 @@
   "onboarding.description": "Moda Interact vous aide à renouer avec les clients qui quittent votre boutique avant de finaliser leur achat.",
   "onboarding.getStarted": "Commencer",
   "onboarding.planDescription": "Choisissez le forfait qui convient le mieux à votre boutique pour commencer à utiliser Moda Interact.",
-  "onboarding.choosePlan": "Choisir un forfait"
+  "onboarding.choosePlan": "Choisir un forfait",
+  "billing.title": "Facturation",
+  "billing.currentPlan": "Forfait actuel",
+  "billing.status": "Statut",
+  "billing.freeAllowance": "Crédit gratuit : {remaining} conversation(s) de récupération restantes sur {allowance}",
+  "billing.paidUsage": "Conversations de récupération utilisées : {quantity}",
+  "billing.currentPeriod": "Période actuelle : du {start} au {end}",
+  "billing.trialEnds": "L’essai se termine le {date}",
+  "billing.cancelAtPeriodEnd": "Cet abonnement prendra fin à la fin de la période actuelle.",
+  "billing.pendingChange": "Modification vers {plan}, effective le {date}",
+  "billing.viewPlans": "Voir les forfaits",
+  "billing.upgradePlan": "Mettre à niveau",
+  "billing.changePlan": "Modifier le forfait",
+  "billing.unknownPlan": "Forfait inconnu",
+  "billing.configurationUnavailable": "Configuration de facturation indisponible",
+  "billing.configurationUnavailableDescription": "Votre abonnement ne peut pas être associé de manière sûre. Contactez le support Moda avant d’utiliser les fonctionnalités payantes."
 }

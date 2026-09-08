@@ -14,6 +14,7 @@ import {
   markMerchantSupportMessageRead,
   readMerchantSupportMessages,
 } from "../services/merchant-support/merchant-support.service";
+import { getMerchantSystemMessageAction } from "../services/merchant-support/system-message-actions";
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
@@ -166,6 +167,9 @@ function MessageCard({ message, i18n }) {
   const hasTranslation = message.isTranslated === true;
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
+  const systemAction = message.kind === "SYSTEM"
+    ? getMerchantSystemMessageAction(message.systemCode)
+    : null;
 
   return (
     <li className={`merchant-support-message merchant-support-message-${message.kind.toLowerCase()}`}>
@@ -175,6 +179,11 @@ function MessageCard({ message, i18n }) {
       </div>
       {unavailable ? <p role="status">{message.state === "FAILED" ? "Translation unavailable. Please try again later." : "Translation is processing."}</p> : <p dir="auto">{showOriginal ? message.originalBody : message.displayBody}</p>}
       {hasTranslation ? <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "View translation" : "View original"}</button> : null}
+      {systemAction ? (
+        <Link to={systemAction.href}>
+          {i18n.t(systemAction.labelKey)}
+        </Link>
+      ) : null}
     </li>
   );
 }
@@ -187,6 +196,8 @@ MessageCard.propTypes = {
     originalBody: PropTypes.string.isRequired,
     displayBody: PropTypes.string,
     isTranslated: PropTypes.bool,
+    systemCode: PropTypes.string,
+    systemVersion: PropTypes.string,
     createdAt: PropTypes.string.isRequired,
   }).isRequired,
   i18n: PropTypes.shape({

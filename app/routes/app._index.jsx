@@ -58,6 +58,7 @@ export const loader = async ({ request }) => {
     });
 
 console.log("Resolved shop settings:", settings);
+console.log("process.env.DATABASE_URL:", process.env.DATABASE_URL);
   /*
    * Let the merchant complete onboarding first.
    */
