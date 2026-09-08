@@ -9,8 +9,14 @@ const shop = {
 };
 
 const dbMock = {
+  $transaction: vi.fn(),
   shop: {
+    findUnique: vi.fn(),
     upsert: vi.fn(),
+    updateMany: vi.fn(),
+  },
+  subscription: {
+    updateMany: vi.fn(),
   },
   shopSettings: {
     upsert: vi.fn(),
@@ -39,11 +45,46 @@ function adminFor(shopData: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  dbMock.$transaction.mockReset();
+  dbMock.shop.findUnique.mockReset();
   dbMock.shop.upsert.mockReset();
+  dbMock.shop.updateMany.mockReset();
+  dbMock.subscription.updateMany.mockReset();
   dbMock.shopSettings.upsert.mockReset();
+  dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
   dbMock.shop.upsert.mockResolvedValue(shop);
   dbMock.shopSettings.upsert.mockResolvedValue({
     shopId: shop.id,
+  });
+});
+
+describe("ShopService.markUninstalled", () => {
+  it("marks the shop and disables new subscription admission", async () => {
+    dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
+    const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
+
+    await new ShopService().markUninstalled(shop.domain, uninstalledAt);
+
+    expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: shop.id, uninstalledAt: null },
+      data: { status: "UNINSTALLED", uninstalledAt },
+    });
+    expect(dbMock.subscription.updateMany).toHaveBeenCalledWith({
+      where: { shopId: shop.id },
+      data: { status: "NO_CONTRACT" },
+    });
+  });
+
+  it("uses a conditional cutoff write for duplicate delivery", async () => {
+    dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
+    const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
+
+    await new ShopService().markUninstalled(shop.domain, uninstalledAt);
+
+    expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: shop.id, uninstalledAt: null },
+      data: { status: "UNINSTALLED", uninstalledAt },
+    });
   });
 });
 

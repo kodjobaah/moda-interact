@@ -178,17 +178,40 @@ export class ShopService {
 
   async markUninstalled(
     domain: string,
+    uninstalledAt: Date,
   ): Promise<void> {
-    await prisma.shop.updateMany({
-      where: {
-        domain:
-          normalizeShopDomain(domain),
-      },
+    const normalizedDomain = normalizeShopDomain(domain);
 
-      data: {
-        status: "UNINSTALLED",
-        uninstalledAt: new Date(),
-      },
+    await prisma.$transaction(async (transaction) => {
+      const shop = await transaction.shop.findUnique({
+        where: { domain: normalizedDomain },
+        select: { id: true },
+      });
+
+      if (!shop) {
+        return;
+      }
+
+      await transaction.shop.updateMany({
+        where: {
+          id: shop.id,
+          uninstalledAt: null,
+        },
+        data: {
+          status: "UNINSTALLED",
+          uninstalledAt,
+        },
+      });
+
+      await transaction.shop.updateMany({
+        where: { id: shop.id },
+        data: { status: "UNINSTALLED" },
+      });
+
+      await transaction.subscription.updateMany({
+        where: { shopId: shop.id },
+        data: { status: "NO_CONTRACT" },
+      });
     });
   }
 }
