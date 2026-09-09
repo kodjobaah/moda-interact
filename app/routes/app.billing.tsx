@@ -128,14 +128,15 @@ export default function BillingRoute() {
             })}</p>
           ) : null}
 
-          {recoveryCreditPackEnabled && recoveryCreditsPerPack !== null && recoveryCreditsPerPack > 0 && recoveryCreditPackMeter && recoveryCreditPackMeterVerified ? (
-            <section>
-              <p>{i18n.t("billing.purchasedRecoveryCredits", {
-                granted: purchasedRecoveryCredits.grantedQuantity,
-                committed: purchasedRecoveryCredits.committedQuantity,
-                reserved: purchasedRecoveryCredits.reservedQuantity,
-                available: purchasedRecoveryCredits.available,
-              })}</p>
+          <section>
+            <p>{i18n.t("billing.purchasedRecoveryCredits", {
+              granted: purchasedRecoveryCredits.grantedQuantity,
+              committed: purchasedRecoveryCredits.committedQuantity,
+              reserved: purchasedRecoveryCredits.reservedQuantity,
+              available: purchasedRecoveryCredits.available,
+            })}</p>
+            {recoveryCreditPackEnabled && recoveryCreditsPerPack !== null && recoveryCreditsPerPack > 0 && recoveryCreditPackMeter && recoveryCreditPackMeterVerified ? (
+              <>
               <p>{i18n.t("billing.recoveryCreditPackDescription", { quantity: recoveryCreditsPerPack })}</p>
               <p>{i18n.t("billing.recoveryCreditPackShopifyMeter")}</p>
               {fetcher.data?.purchasePending ? (
@@ -149,8 +150,9 @@ export default function BillingRoute() {
                   </button>
                 </fetcher.Form>
               )}
-            </section>
-          ) : null}
+              </>
+            ) : null}
+          </section>
         </>
       )}
 

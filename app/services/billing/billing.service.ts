@@ -15,7 +15,10 @@ import {
   PLATFORM_SUPPORT_LANGUAGE_TAG,
   requiresMerchantTranslation,
 } from "@modainteract/moda-interact-shared/merchant-communications";
-import { BILLING_SYSTEM_MESSAGE_CODES } from "@modainteract/moda-interact-shared/billing";
+import {
+  BILLING_SYSTEM_MESSAGE_CODES,
+  createShopifyUsageIdempotencyKey,
+} from "@modainteract/moda-interact-shared/billing";
 
 
 
@@ -52,10 +55,6 @@ const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
-
-export function createShopifyUsageIdempotencyKey(shopId: string, usageEventId: string): string {
-  return `shopify:${shopId}:${usageEventId}`.slice(0, 64);
-}
 
 function assertPurchaseId(purchaseId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
@@ -314,6 +313,15 @@ async getSubscription(
     }
     assertPurchaseId(purchaseId);
 
+    const existingPurchase = await this.database.recoveryCreditPurchase.findUnique({
+      where: { id: purchaseId },
+      include: { usageEvent: true },
+    });
+    if (existingPurchase) {
+      if (existingPurchase.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+      return existingPurchase;
+    }
+
     const [shop, subscription] = await Promise.all([
       this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
@@ -353,13 +361,39 @@ async getSubscription(
         return existing;
       }
 
+      const currentSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        include: { plan: true, billingPeriod: true },
+      });
+      const currentPlan = currentSubscription?.plan;
+      const currentPackMeter = currentPlan?.shopifyRecoveryCreditPackEventHandle?.trim();
+      if (
+        !currentSubscription ||
+        !currentPlan ||
+        (currentSubscription.status !== SubscriptionProjectionStatus.ACTIVE && currentSubscription.status !== SubscriptionProjectionStatus.TRIALING) ||
+        !currentPlan.active ||
+        !currentPlan.recoveryCreditPackEnabled ||
+        !currentPackMeter ||
+        !currentPlan.recoveryCreditsPerPack ||
+        currentPlan.recoveryCreditsPerPack <= 0 ||
+        currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
+        currentPackMeter !== packMeter ||
+        currentPlan.recoveryCreditsPerPack !== creditsGranted ||
+        (currentPlan.kind === BillingPlanKind.PAID_METERED &&
+          (!currentPlan.shopifyUsageEventHandle ||
+            currentPlan.shopifyUsageEventHandle === currentPackMeter ||
+            !providerSubscription.usageEventHandles.includes(currentPlan.shopifyUsageEventHandle)))
+      ) {
+        throw new Error("Recovery credit pack configuration changed during purchase request.");
+      }
+
       const usageEventId = randomUUID();
       const idempotencyKey = `recovery-credit-pack:${shopId}:${purchaseId}`;
       const usageEvent = await transaction.usageEvent.create({
         data: {
           id: usageEventId,
           shopId,
-          billingPeriodId: subscription.billingPeriodId,
+          billingPeriodId: currentSubscription.billingPeriodId,
           metric: "RECOVERY_CREDIT_PACK_PURCHASE",
           quantity: 1,
           idempotencyKey,
@@ -374,8 +408,8 @@ async getSubscription(
         data: {
           id: purchaseId,
           shopId,
-          planId: plan.id,
-          shopifyPlanHandleSnapshot: plan.shopifyPlanHandle,
+          planId: currentPlan.id,
+          shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
           shopifyEventHandleSnapshot: packMeter,
           creditsGranted,
           usageEventId: usageEvent.id,
