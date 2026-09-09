@@ -31,22 +31,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const settings = await db.shopSettings.findUnique({
     where: { shopId: shop.id },
   });
-  const url = new URL(request.url);
-
-  if (
-    !settings?.onboardingCompleted &&
-    url.searchParams.get("onboarding") === "complete"
-  ) {
-    await db.shopSettings.update({
-      where: {
-        shopId: shop.id,
-      },
-      data: {
-        onboardingCompleted: true,
-      },
-    });
-  }
-
   const state = await billingService.getMerchantBillingState(shop.id);
 
   if (!state.subscription || state.subscription.status === "NO_CONTRACT") {
