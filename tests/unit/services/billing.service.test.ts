@@ -241,6 +241,10 @@ describe("BillingService subscription projection", () => {
 function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
   const purchases = new Map<string, Record<string, unknown>>();
   const usageEvents: Record<string, unknown>[] = [];
+  const shopEntitlementCounter = {
+    update: vi.fn(),
+    upsert: vi.fn(),
+  };
   const plan = {
     id: "growth-1",
     shopifyPlanHandle: "growth",
