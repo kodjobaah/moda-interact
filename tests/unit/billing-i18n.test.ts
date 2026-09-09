@@ -32,11 +32,12 @@ describe("ARCH-007 billing translations", () => {
   it("preserves ICU placeholders and resolves every task key through the merchant runtime", () => {
     const english = catalogues.en as Record<string, string>;
     const placeholders = (value: string) => [...value.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g)].map((match) => match[1]).sort();
-    const i18n = createMerchantI18n({ locale: "en", fallbackLocale: "en", timeZone: "UTC" });
 
     expect(CATALOGUE_KEYS).toEqual(expect.arrayContaining(taskKeys));
     for (const locale of Object.keys(catalogues)) {
       const catalogue = catalogues[locale as keyof typeof catalogues] as Record<string, string>;
+      const i18n = createMerchantI18n({ locale, fallbackLocale: "en", timeZone: "UTC" });
+      expect(i18n.catalogueLocale).toBe(locale);
       for (const key of taskKeys) {
         expect(placeholders(catalogue[key])).toEqual(placeholders(english[key]));
         expect(i18n.t(key, {

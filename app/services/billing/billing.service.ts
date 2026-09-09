@@ -62,6 +62,15 @@ function assertPurchaseId(purchaseId: string): void {
   }
 }
 
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002",
+  );
+}
+
 function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
   if (subscription.providerSubscriptionId?.trim()) {
     return `provider:${subscription.providerSubscriptionId.trim()}`;
@@ -351,7 +360,8 @@ async getSubscription(
       throw new Error("The recovery usage meter could not be verified with Shopify.");
     }
 
-    return this.database.$transaction(async (transaction) => {
+    try {
+      return await this.database.$transaction(async (transaction) => {
       const existing = await transaction.recoveryCreditPurchase.findUnique({
         where: { id: purchaseId },
         include: { usageEvent: true },
@@ -416,7 +426,22 @@ async getSubscription(
         },
         include: { usageEvent: true },
       });
-    });
+      });
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        const replay = await this.database.recoveryCreditPurchase.findUnique({
+          where: { id: purchaseId },
+          include: { usageEvent: true },
+        });
+        if (replay) {
+          if (replay.shopId !== shopId) {
+            throw new Error("Recovery credit purchase belongs to another shop.");
+          }
+          return replay;
+        }
+      }
+      throw error;
+    }
   }
 
 

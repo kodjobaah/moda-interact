@@ -47,6 +47,10 @@ function createDatabase({ plan = null, pendingPlan = null, current = null } = {}
   const billingPeriod = {
     upsert: vi.fn().mockResolvedValue({ id: "period-1", periodStart, periodEnd }),
   };
+  const shopEntitlementCounter = {
+    update: vi.fn(),
+    upsert: vi.fn(),
+  };
   const database = {
     shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
     subscription,
@@ -282,9 +286,10 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
           return data;
         }),
       },
+      shopEntitlementCounter,
     })),
   };
-  return { database, purchases, usageEvents };
+  return { database, purchases, usageEvents, shopEntitlementCounter };
 }
 
 describe("BillingService recovery credit packs", () => {
@@ -292,7 +297,7 @@ describe("BillingService recovery credit packs", () => {
     ["FREE", { kind: "FREE", shopifyUsageEventHandle: null }],
     ["PAID_METERED", { kind: "PAID_METERED" }],
   ])("creates a pending pack request for a mapped %s plan", async (_name, planOverrides) => {
-    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase(planOverrides);
+    const { database, usageEvents, shopEntitlementCounter } = createRecoveryCreditPurchaseDatabase(planOverrides);
     const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
     const service = new BillingService(provider, database as never);
 
@@ -312,6 +317,8 @@ describe("BillingService recovery credit packs", () => {
     expect(usageEvents[0].shopifyIdempotencyKey).toBe(
       createShopifyUsageIdempotencyKey("shop-1", String(usageEvents[0].id)),
     );
+    expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
   });
 
   it("returns the existing purchase without creating another usage event", async () => {
@@ -419,6 +426,74 @@ describe("BillingService recovery credit packs", () => {
       shopifyEventHandle: "credit-pack-meter",
       quantity: 1,
     });
+  });
+
+  it("creates no usage event for an unsafe subscription projection", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const current = await database.subscription.findUnique({ where: { shopId: "shop-1" } });
+    database.subscription.findUnique.mockResolvedValue({
+      ...current,
+      status: "UNMAPPED",
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn() }, database as never);
+
+    await expect(
+      service.requestRecoveryCreditPack(
+        "shop-1",
+        "BUY_RECOVERY_CREDIT_PACK",
+        "abababab-abab-4bab-8bab-abababababab",
+      ),
+    ).rejects.toThrow("unavailable for this subscription");
+    expect(usageEvents).toHaveLength(0);
+  });
+
+  it("recovers a concurrent same-id unique conflict by returning the committed purchase", async () => {
+    const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }),
+      ),
+    };
+    const purchaseId = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
+    const winningUsageEvent = {
+      id: "winner-usage-event",
+      shopId: "shop-1",
+      metric: "RECOVERY_CREDIT_PACK_PURCHASE",
+      quantity: 1,
+      shopifyReportState: "PENDING",
+      shopifyEventHandle: "credit-pack-meter",
+    };
+    const winningPurchase = {
+      id: purchaseId,
+      shopId: "shop-1",
+      status: "PENDING_BILLING",
+      creditsGranted: 100,
+      usageEvent: winningUsageEvent,
+    };
+
+    database.$transaction = vi.fn(async () => {
+      usageEvents.push(winningUsageEvent);
+      purchases.set(purchaseId, winningPurchase);
+      throw { code: "P2002" };
+    });
+
+    const service = new BillingService(provider, database as never);
+
+    await expect(
+      service.requestRecoveryCreditPack(
+        "shop-1",
+        "BUY_RECOVERY_CREDIT_PACK",
+        purchaseId,
+      ),
+    ).resolves.toMatchObject({
+      id: purchaseId,
+      shopId: "shop-1",
+      status: "PENDING_BILLING",
+    });
+
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(usageEvents).toHaveLength(1);
+    expect(purchases).toHaveLength(1);
   });
 
   it("verifies Shopify before opening the Prisma write transaction", async () => {
