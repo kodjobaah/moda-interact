@@ -173,10 +173,42 @@ describe("merchant billing UI", () => {
 
   it("presents purchased balance independently from pack purchase eligibility", () => {
     expect(billingRouteSource).toContain('i18n.t("billing.purchasedRecoveryCredits"');
-    expect(billingRouteSource).toContain("recoveryCreditPackEnabled && recoveryCreditsPerPack !== null");
+    expect(billingRouteSource).toContain("recoveryCreditPackPurchaseEligible && recoveryCreditPackEnabled");
     expect(billingRouteSource.indexOf('i18n.t("billing.purchasedRecoveryCredits"')).toBeLessThan(
-      billingRouteSource.indexOf("recoveryCreditPackEnabled && recoveryCreditsPerPack !== null"),
+      billingRouteSource.indexOf("recoveryCreditPackPurchaseEligible && recoveryCreditPackEnabled"),
     );
+  });
+
+  it("returns ineligible state while preserving the purchased balance", async () => {
+    getMerchantBillingState.mockResolvedValue({
+      subscription: {
+        ...activeFreeSubscription,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      },
+      allowance: 10,
+      remaining: 10,
+      usageQuantity: 0,
+      purchasedRecoveryCredits: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 0,
+        available: 80,
+      },
+      recoveryCreditPackEnabled: true,
+      recoveryCreditsPerPack: 100,
+      recoveryCreditPackMeter: "credit-pack-meter",
+      recoveryCreditPackMeterVerified: true,
+      recoveryCreditPackPurchaseEligible: false,
+    });
+
+    const result = await loader({ request: new Request("https://example.test/app/billing") } as never);
+
+    expect(result).toMatchObject({
+      purchasedRecoveryCredits: { available: 80 },
+      recoveryCreditPackPurchaseEligible: false,
+    });
+    expect(billingRouteSource).toContain("recoveryCreditPackPurchaseEligible &&");
   });
 
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {

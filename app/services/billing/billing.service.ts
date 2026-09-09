@@ -51,15 +51,14 @@ type SubscriptionIdentityFacts = {
   trialEndsAt: Date | null;
 };
 
-function hasMatchingBillingCycle(
-  subscription: {
-    billingPeriodId: string | null;
-    currentPeriodStart: Date | null;
-    currentPeriodEnd: Date | null;
-    billingPeriod?: { id: string; periodStart: Date; periodEnd: Date } | null;
-  },
-  providerSubscription: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
-): boolean {
+type DurableBillingCycle = {
+  billingPeriodId: string | null;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  billingPeriod?: { id: string; periodStart: Date; periodEnd: Date } | null;
+};
+
+function hasDurableBillingPeriod(subscription: DurableBillingCycle): boolean {
   return Boolean(
     subscription.billingPeriodId &&
     subscription.currentPeriodStart &&
@@ -67,12 +66,20 @@ function hasMatchingBillingCycle(
     subscription.billingPeriod &&
     subscription.billingPeriod.id === subscription.billingPeriodId &&
     subscription.billingPeriod.periodStart.getTime() === subscription.currentPeriodStart.getTime() &&
-    subscription.billingPeriod.periodEnd.getTime() === subscription.currentPeriodEnd.getTime() &&
-    providerSubscription.currentPeriodStart &&
-    providerSubscription.currentPeriodEnd &&
-    providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart.getTime() &&
-    providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd.getTime(),
+    subscription.billingPeriod.periodEnd.getTime() === subscription.currentPeriodEnd.getTime(),
   );
+}
+
+function hasMatchingBillingCycle(
+  subscription: DurableBillingCycle,
+  providerSubscription: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
+  expectedBillingPeriodId?: string,
+): boolean {
+  if (!hasDurableBillingPeriod(subscription)) return false;
+  if (expectedBillingPeriodId && subscription.billingPeriodId !== expectedBillingPeriodId) return false;
+  if (!providerSubscription.currentPeriodStart || !providerSubscription.currentPeriodEnd) return false;
+  return providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart!.getTime() &&
+    providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd!.getTime();
 }
 
 const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
@@ -380,6 +387,13 @@ async getSubscription(
     if (!plan.active || !plan.recoveryCreditPackEnabled || !packMeter || !creditsGranted || creditsGranted <= 0) {
       throw new Error("Recovery credit packs are not enabled for this plan.");
     }
+    if (!hasDurableBillingPeriod(subscription)) {
+      throw new Error("The current local billing cycle could not be verified.");
+    }
+    const verifiedBillingPeriodId = subscription.billingPeriodId;
+    if (!verifiedBillingPeriodId) {
+      throw new Error("The current local billing cycle could not be verified.");
+    }
     if (plan.kind === BillingPlanKind.PAID_METERED && (!plan.shopifyUsageEventHandle || plan.shopifyUsageEventHandle === packMeter)) {
       throw new Error("The recovery credit pack meter is not safely mapped.");
     }
@@ -388,7 +402,7 @@ async getSubscription(
     if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerSubscription.usageEventHandles.includes(packMeter)) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
-    if (!hasMatchingBillingCycle(subscription, providerSubscription)) {
+    if (!hasMatchingBillingCycle(subscription, providerSubscription, verifiedBillingPeriodId)) {
       throw new Error("The current Shopify billing cycle could not be verified.");
     }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
@@ -421,7 +435,7 @@ async getSubscription(
         !currentPackMeter ||
         !currentPlan.recoveryCreditsPerPack ||
         currentPlan.recoveryCreditsPerPack <= 0 ||
-        !hasMatchingBillingCycle(currentSubscription, providerSubscription) ||
+        !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
         currentPackMeter !== packMeter ||
         currentPlan.recoveryCreditsPerPack !== creditsGranted ||
