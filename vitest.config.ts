@@ -1,12 +1,21 @@
+import { fileURLToPath, URL } from "node:url";
+
+import tsconfigPaths from "vite-tsconfig-paths";
 import { defineConfig } from "vitest/config";
 
-// The server build already bundles OpenTelemetry packages via
-// `ssr.noExternal` in vite.config.js. Vitest needs the equivalent
-// `server.deps.inline`, otherwise it externalizes @opentelemetry/* and Node's
-// ESM loader chokes on the extensionless relative imports in
-// @opentelemetry/api's ESM build, e.g.
-// "Cannot find module .../build/esm/baggage/utils".
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@": fileURLToPath(
+        new URL("./app", import.meta.url),
+      ),
+    },
+  },
+
+  plugins: [
+    tsconfigPaths(),
+  ],
+
   test: {
     server: {
       deps: {

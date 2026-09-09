@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-const { loader } = await import("../../../app/routes/health");
+const { loader } = await import("../../../app/routes/system/health/route");
 
 afterEach(() => {
   delete process.env.REDIS_URL;

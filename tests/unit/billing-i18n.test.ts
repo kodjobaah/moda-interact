@@ -52,7 +52,7 @@ describe("ARCH-007 billing translations", () => {
   });
 
   it("keeps task-visible billing copy in the merchant i18n path", async () => {
-    const source = await readFile(new URL("../../app/routes/app.billing.tsx", import.meta.url), "utf8");
+    const source = await readFile(new URL("../../app/routes/app/billing/route.tsx", import.meta.url), "utf8");
 
     expect(source).toContain('i18n.t("billing.purchasedRecoveryCredits"');
     expect(source).toContain('i18n.t("billing.recoveryCreditPackDescription"');

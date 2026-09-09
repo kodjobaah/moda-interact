@@ -17,7 +17,7 @@ vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
 }));
 
-import { loader } from "../../../app/routes/app.billing.callback";
+import { loader } from "../../../app/routes/app/billing/callback/route";
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
