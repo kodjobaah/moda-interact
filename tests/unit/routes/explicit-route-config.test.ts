@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 const source = await readFile(
@@ -37,6 +37,20 @@ describe("explicit route configuration", () => {
       "webhooks/shop/redact",
     ]) {
       expect(source).toContain('"' + pathname + '"');
+    }
+  });
+
+  it("does not retain retired flat route modules", async () => {
+    for (const relativePath of [
+      "app/routes/app._index.jsx",
+      "app/routes/app.billing.tsx",
+      "app/routes/app.billing.callback.tsx",
+      "app/routes/app.billing.select.jsx",
+      "app/routes/app.merchant-support.jsx",
+      "app/routes/app.pending-recoveries.jsx",
+      "app/routes/app.usage.jsx",
+    ]) {
+      await expect(access(new URL(`../../../${relativePath}`, import.meta.url))).rejects.toThrow();
     }
   });
 });
