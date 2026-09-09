@@ -48,6 +48,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recoveryCreditsPerPack: state.recoveryCreditsPerPack,
     recoveryCreditPackMeter: state.recoveryCreditPackMeter,
     recoveryCreditPackMeterVerified: state.recoveryCreditPackMeterVerified,
+    recoveryCreditPackPurchaseEligible: state.recoveryCreditPackPurchaseEligible,
     purchaseId: randomUUID(),
   };
 }
@@ -79,6 +80,7 @@ export default function BillingRoute() {
     recoveryCreditsPerPack,
     recoveryCreditPackMeter,
     recoveryCreditPackMeterVerified,
+    recoveryCreditPackPurchaseEligible,
     purchaseId,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -135,7 +137,7 @@ export default function BillingRoute() {
               reserved: purchasedRecoveryCredits.reservedQuantity,
               available: purchasedRecoveryCredits.available,
             })}</p>
-            {recoveryCreditPackEnabled && recoveryCreditsPerPack !== null && recoveryCreditsPerPack > 0 && recoveryCreditPackMeter && recoveryCreditPackMeterVerified ? (
+            {recoveryCreditPackPurchaseEligible && recoveryCreditPackEnabled && recoveryCreditsPerPack !== null && recoveryCreditsPerPack > 0 && recoveryCreditPackMeter && recoveryCreditPackMeterVerified ? (
               <>
               <p>{i18n.t("billing.recoveryCreditPackDescription", { quantity: recoveryCreditsPerPack })}</p>
               <p>{i18n.t("billing.recoveryCreditPackShopifyMeter")}</p>

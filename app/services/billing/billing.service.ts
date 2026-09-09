@@ -51,6 +51,30 @@ type SubscriptionIdentityFacts = {
   trialEndsAt: Date | null;
 };
 
+function hasMatchingBillingCycle(
+  subscription: {
+    billingPeriodId: string | null;
+    currentPeriodStart: Date | null;
+    currentPeriodEnd: Date | null;
+    billingPeriod?: { id: string; periodStart: Date; periodEnd: Date } | null;
+  },
+  providerSubscription: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
+): boolean {
+  return Boolean(
+    subscription.billingPeriodId &&
+    subscription.currentPeriodStart &&
+    subscription.currentPeriodEnd &&
+    subscription.billingPeriod &&
+    subscription.billingPeriod.id === subscription.billingPeriodId &&
+    subscription.billingPeriod.periodStart.getTime() === subscription.currentPeriodStart.getTime() &&
+    subscription.billingPeriod.periodEnd.getTime() === subscription.currentPeriodEnd.getTime() &&
+    providerSubscription.currentPeriodStart &&
+    providerSubscription.currentPeriodEnd &&
+    providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart.getTime() &&
+    providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd.getTime(),
+  );
+}
+
 const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
@@ -266,6 +290,7 @@ async getSubscription(
 
     const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
     let recoveryCreditPackMeterVerified = false;
+    let recoveryCreditPackPurchaseEligible = false;
     if (
       shop?.shopifyShopId &&
       subscription?.plan?.active &&
@@ -281,6 +306,12 @@ async getSubscription(
           providerSubscription &&
           providerSubscription.planHandle === subscription.plan.shopifyPlanHandle &&
           providerSubscription.usageEventHandles.includes(packMeter),
+        );
+        recoveryCreditPackPurchaseEligible = Boolean(
+          recoveryCreditPackMeterVerified &&
+          subscription &&
+          providerSubscription &&
+          hasMatchingBillingCycle(subscription, providerSubscription),
         );
       } catch {
         recoveryCreditPackMeterVerified = false;
@@ -313,6 +344,7 @@ async getSubscription(
       recoveryCreditsPerPack: subscription?.plan?.recoveryCreditsPerPack ?? null,
       recoveryCreditPackMeter: packMeter,
       recoveryCreditPackMeterVerified,
+      recoveryCreditPackPurchaseEligible,
     };
   }
 
@@ -356,6 +388,9 @@ async getSubscription(
     if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerSubscription.usageEventHandles.includes(packMeter)) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
+    if (!hasMatchingBillingCycle(subscription, providerSubscription)) {
+      throw new Error("The current Shopify billing cycle could not be verified.");
+    }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
     }
@@ -386,6 +421,7 @@ async getSubscription(
         !currentPackMeter ||
         !currentPlan.recoveryCreditsPerPack ||
         currentPlan.recoveryCreditsPerPack <= 0 ||
+        !hasMatchingBillingCycle(currentSubscription, providerSubscription) ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
         currentPackMeter !== packMeter ||
         currentPlan.recoveryCreditsPerPack !== creditsGranted ||
@@ -403,7 +439,7 @@ async getSubscription(
         data: {
           id: usageEventId,
           shopId,
-          billingPeriodId: currentSubscription.billingPeriodId,
+          billingPeriodId: currentSubscription.billingPeriodId as string,
           metric: "RECOVERY_CREDIT_PACK_PURCHASE",
           quantity: 1,
           idempotencyKey,

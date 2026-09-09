@@ -262,6 +262,9 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
       findUnique: vi.fn().mockResolvedValue({
         status: "ACTIVE",
         billingPeriodId: "period-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        billingPeriod: { id: "period-1", periodStart, periodEnd },
         plan,
       }),
     },
@@ -273,6 +276,9 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
         findUnique: vi.fn().mockResolvedValue({
           status: "ACTIVE",
           billingPeriodId: "period-1",
+          currentPeriodStart: periodStart,
+          currentPeriodEnd: periodEnd,
+          billingPeriod: { id: "period-1", periodStart, periodEnd },
           plan,
         }),
       },
@@ -356,6 +362,25 @@ describe("BillingService recovery credit packs", () => {
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555"))
       .rejects.toThrow("could not be verified");
+    expect(usageEvents).toHaveLength(0);
+  });
+
+  it("fails closed when the current billing cycle is not durable", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const plan = (await database.subscription.findUnique({ where: { shopId: "shop-1" } })).plan;
+    database.subscription.findUnique.mockResolvedValue({
+      status: "ACTIVE",
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      billingPeriod: null,
+      plan,
+    });
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "12121212-1212-4121-8121-121212121212"))
+      .rejects.toThrow("current Shopify billing cycle");
     expect(usageEvents).toHaveLength(0);
   });
 
