@@ -15,7 +15,10 @@ import {
   PLATFORM_SUPPORT_LANGUAGE_TAG,
   requiresMerchantTranslation,
 } from "@modainteract/moda-interact-shared/merchant-communications";
-import { BILLING_SYSTEM_MESSAGE_CODES } from "@modainteract/moda-interact-shared/billing";
+import {
+  BILLING_SYSTEM_MESSAGE_CODES,
+  createShopifyUsageIdempotencyKey,
+} from "@modainteract/moda-interact-shared/billing";
 
 
 
@@ -50,6 +53,23 @@ type SubscriptionIdentityFacts = {
 
 const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
+
+const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
+
+function assertPurchaseId(purchaseId: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
+    throw new Error("A valid recovery credit purchase ID is required.");
+  }
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002",
+  );
+}
 
 function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
   if (subscription.providerSubscriptionId?.trim()) {
@@ -212,7 +232,8 @@ async getSubscription(
 }
 
   async getMerchantBillingState(shopId: string) {
-    const [subscription, counter, adjustmentTotal, usageTotal] = await Promise.all([
+    const [shop, subscription, counter, adjustmentTotal, usageTotal, purchasedCounter] = await Promise.all([
+      this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
         where: { shopId },
         include: { plan: true, pendingPlan: true, billingPeriod: true },
@@ -233,7 +254,38 @@ async getSubscription(
         where: { shopId, metric: "RECOVERY_CONVERSATION" },
         _sum: { quantity: true },
       }),
+      this.database.shopEntitlementCounter.findUnique({
+        where: {
+          shopId_counter: {
+            shopId,
+            counter: EntitlementCounter.PURCHASED_RECOVERY_CREDITS,
+          },
+        },
+      }),
     ]);
+
+    const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
+    let recoveryCreditPackMeterVerified = false;
+    if (
+      shop?.shopifyShopId &&
+      subscription?.plan?.active &&
+      subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
+      subscription.plan.recoveryCreditPackEnabled &&
+      packMeter
+    ) {
+      try {
+        const providerSubscription = await this.provider.getActiveSubscription({
+          shopifyShopId: shop.shopifyShopId,
+        });
+        recoveryCreditPackMeterVerified = Boolean(
+          providerSubscription &&
+          providerSubscription.planHandle === subscription.plan.shopifyPlanHandle &&
+          providerSubscription.usageEventHandles.includes(packMeter),
+        );
+      } catch {
+        recoveryCreditPackMeterVerified = false;
+      }
+    }
 
     const allowance = subscription?.plan?.kind === BillingPlanKind.FREE
       ? (subscription.plan.freeLifetimeConversationAllowance ?? 0) + (adjustmentTotal._sum.quantity ?? 0)
@@ -246,7 +298,150 @@ async getSubscription(
       committed,
       remaining: allowance === null ? null : Math.max(allowance - committed, 0),
       usageQuantity: Number(usageTotal._sum.quantity ?? 0),
+      purchasedRecoveryCredits: {
+        grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
+        committedQuantity: purchasedCounter?.committedQuantity ?? 0,
+        reservedQuantity: purchasedCounter?.reservedQuantity ?? 0,
+        available: Math.max(
+          (purchasedCounter?.grantedQuantity ?? 0)
+            - (purchasedCounter?.committedQuantity ?? 0)
+            - (purchasedCounter?.reservedQuantity ?? 0),
+          0,
+        ),
+      },
+      recoveryCreditPackEnabled: subscription?.plan?.recoveryCreditPackEnabled ?? false,
+      recoveryCreditsPerPack: subscription?.plan?.recoveryCreditsPerPack ?? null,
+      recoveryCreditPackMeter: packMeter,
+      recoveryCreditPackMeterVerified,
     };
+  }
+
+  async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string) {
+    if (intent !== RECOVERY_CREDIT_PURCHASE_INTENT) {
+      throw new Error("Unsupported billing action.");
+    }
+    assertPurchaseId(purchaseId);
+
+    const existingPurchase = await this.database.recoveryCreditPurchase.findUnique({
+      where: { id: purchaseId },
+      include: { usageEvent: true },
+    });
+    if (existingPurchase) {
+      if (existingPurchase.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+      return existingPurchase;
+    }
+
+    const [shop, subscription] = await Promise.all([
+      this.database.shop.findUnique({ where: { id: shopId } }),
+      this.database.subscription.findUnique({
+        where: { shopId },
+        include: { plan: true, billingPeriod: true },
+      }),
+    ]);
+    if (!shop?.shopifyShopId || !subscription?.plan || (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING)) {
+      throw new Error("Recovery credit packs are unavailable for this subscription.");
+    }
+
+    const plan = subscription.plan;
+    const packMeter = plan.shopifyRecoveryCreditPackEventHandle?.trim();
+    const creditsGranted = plan.recoveryCreditsPerPack;
+    if (!plan.active || !plan.recoveryCreditPackEnabled || !packMeter || !creditsGranted || creditsGranted <= 0) {
+      throw new Error("Recovery credit packs are not enabled for this plan.");
+    }
+    if (plan.kind === BillingPlanKind.PAID_METERED && (!plan.shopifyUsageEventHandle || plan.shopifyUsageEventHandle === packMeter)) {
+      throw new Error("The recovery credit pack meter is not safely mapped.");
+    }
+
+    const providerSubscription = await this.provider.getActiveSubscription({ shopifyShopId: shop.shopifyShopId });
+    if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerSubscription.usageEventHandles.includes(packMeter)) {
+      throw new Error("The recovery credit pack meter could not be verified with Shopify.");
+    }
+    if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
+      throw new Error("The recovery usage meter could not be verified with Shopify.");
+    }
+
+    try {
+      return await this.database.$transaction(async (transaction) => {
+      const existing = await transaction.recoveryCreditPurchase.findUnique({
+        where: { id: purchaseId },
+        include: { usageEvent: true },
+      });
+      if (existing) {
+        if (existing.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+        return existing;
+      }
+
+      const currentSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        include: { plan: true, billingPeriod: true },
+      });
+      const currentPlan = currentSubscription?.plan;
+      const currentPackMeter = currentPlan?.shopifyRecoveryCreditPackEventHandle?.trim();
+      if (
+        !currentSubscription ||
+        !currentPlan ||
+        (currentSubscription.status !== SubscriptionProjectionStatus.ACTIVE && currentSubscription.status !== SubscriptionProjectionStatus.TRIALING) ||
+        !currentPlan.active ||
+        !currentPlan.recoveryCreditPackEnabled ||
+        !currentPackMeter ||
+        !currentPlan.recoveryCreditsPerPack ||
+        currentPlan.recoveryCreditsPerPack <= 0 ||
+        currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
+        currentPackMeter !== packMeter ||
+        currentPlan.recoveryCreditsPerPack !== creditsGranted ||
+        (currentPlan.kind === BillingPlanKind.PAID_METERED &&
+          (!currentPlan.shopifyUsageEventHandle ||
+            currentPlan.shopifyUsageEventHandle === currentPackMeter ||
+            !providerSubscription.usageEventHandles.includes(currentPlan.shopifyUsageEventHandle)))
+      ) {
+        throw new Error("Recovery credit pack configuration changed during purchase request.");
+      }
+
+      const usageEventId = randomUUID();
+      const idempotencyKey = `recovery-credit-pack:${shopId}:${purchaseId}`;
+      const usageEvent = await transaction.usageEvent.create({
+        data: {
+          id: usageEventId,
+          shopId,
+          billingPeriodId: currentSubscription.billingPeriodId,
+          metric: "RECOVERY_CREDIT_PACK_PURCHASE",
+          quantity: 1,
+          idempotencyKey,
+          sourceType: "RECOVERY_CREDIT_PURCHASE",
+          sourceId: purchaseId,
+          shopifyReportState: "PENDING",
+          shopifyEventHandle: packMeter,
+          shopifyIdempotencyKey: createShopifyUsageIdempotencyKey(shopId, usageEventId),
+        },
+      });
+      return transaction.recoveryCreditPurchase.create({
+        data: {
+          id: purchaseId,
+          shopId,
+          planId: currentPlan.id,
+          shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
+          shopifyEventHandleSnapshot: packMeter,
+          creditsGranted,
+          usageEventId: usageEvent.id,
+        },
+        include: { usageEvent: true },
+      });
+      });
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        const replay = await this.database.recoveryCreditPurchase.findUnique({
+          where: { id: purchaseId },
+          include: { usageEvent: true },
+        });
+        if (replay) {
+          if (replay.shopId !== shopId) {
+            throw new Error("Recovery credit purchase belongs to another shop.");
+          }
+          return replay;
+        }
+      }
+      throw error;
+    }
   }
 
 

@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "Satın alınan kurtarma kredileri: {granted} - {committed} - {reserved} ({available} kullanılabilir)",
+  "billing.recoveryCreditPackDescription": "{quantity} kurtarma kredilik bir paket talep edin.",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify, bu paketi mevcut planınız için yapılandırılmış Kurtarma Kredisi Paketi sayacına göre ücretlendirir.",
+  "billing.buyRecoveryCreditPack": "Kurtarma kredisi paketi satın al",
+  "billing.recoveryCreditPurchasePending": "Kurtarma kredisi satın alımı Shopify tarafından onaylanıyor."
 }

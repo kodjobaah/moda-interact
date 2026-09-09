@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "Zakoupené kredity pro obnovení: {granted} - {committed} - {reserved} ({available} k dispozici)",
+  "billing.recoveryCreditPackDescription": "Požádejte o balíček {quantity} kreditů pro obnovení.",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify účtuje tento balíček podle měřiče balíčků kreditů pro obnovení nakonfigurovaného pro váš aktuální tarif.",
+  "billing.buyRecoveryCreditPack": "Koupit balíček kreditů pro obnovení",
+  "billing.recoveryCreditPurchasePending": "Shopify potvrzuje nákup kreditů pro obnovení."
 }

@@ -1,5 +1,6 @@
-import type { HeadersArgs, LoaderFunctionArgs } from "react-router";
-import { Link, redirect, useLoaderData, useRouteError } from "react-router";
+import type { ActionFunctionArgs, HeadersArgs, LoaderFunctionArgs } from "react-router";
+import { Link, redirect, useFetcher, useLoaderData, useRouteError } from "react-router";
+import { randomUUID } from "node:crypto";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
@@ -42,11 +43,45 @@ export async function loader({ request }: LoaderFunctionArgs) {
     allowance: state.allowance,
     remaining: state.remaining,
     usageQuantity: state.usageQuantity,
+    purchasedRecoveryCredits: state.purchasedRecoveryCredits,
+    recoveryCreditPackEnabled: state.recoveryCreditPackEnabled,
+    recoveryCreditsPerPack: state.recoveryCreditsPerPack,
+    recoveryCreditPackMeter: state.recoveryCreditPackMeter,
+    recoveryCreditPackMeterVerified: state.recoveryCreditPackMeterVerified,
+    purchaseId: randomUUID(),
   };
 }
 
+export async function action({ request }: ActionFunctionArgs) {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
+  const formData = await request.formData();
+  const purchase = await billingService.requestRecoveryCreditPack(
+    shop.id,
+    String(formData.get("intent") ?? ""),
+    String(formData.get("purchaseId") ?? ""),
+  );
+  return { purchasePending: purchase.status === "PENDING_BILLING" };
+}
+
 export default function BillingRoute() {
-  const { merchantUi, subscription, allowance, remaining, usageQuantity } = useLoaderData<typeof loader>();
+  const {
+    merchantUi,
+    subscription,
+    allowance,
+    remaining,
+    usageQuantity,
+    purchasedRecoveryCredits,
+    recoveryCreditPackEnabled,
+    recoveryCreditsPerPack,
+    recoveryCreditPackMeter,
+    recoveryCreditPackMeterVerified,
+    purchaseId,
+  } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher<typeof action>();
   const i18n = createMerchantI18n(merchantUi);
   const isFree = subscription.planKind === "FREE";
   const isSafeProjection = ["ACTIVE", "TRIALING"].includes(subscription.status);
@@ -92,6 +127,32 @@ export default function BillingRoute() {
               date: i18n.formatDate(subscription.pendingEffectiveAt),
             })}</p>
           ) : null}
+
+          <section>
+            <p>{i18n.t("billing.purchasedRecoveryCredits", {
+              granted: purchasedRecoveryCredits.grantedQuantity,
+              committed: purchasedRecoveryCredits.committedQuantity,
+              reserved: purchasedRecoveryCredits.reservedQuantity,
+              available: purchasedRecoveryCredits.available,
+            })}</p>
+            {recoveryCreditPackEnabled && recoveryCreditsPerPack !== null && recoveryCreditsPerPack > 0 && recoveryCreditPackMeter && recoveryCreditPackMeterVerified ? (
+              <>
+              <p>{i18n.t("billing.recoveryCreditPackDescription", { quantity: recoveryCreditsPerPack })}</p>
+              <p>{i18n.t("billing.recoveryCreditPackShopifyMeter")}</p>
+              {fetcher.data?.purchasePending ? (
+                <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p>
+              ) : (
+                <fetcher.Form method="post">
+                  <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
+                  <input type="hidden" name="purchaseId" value={purchaseId} />
+                  <button type="submit" disabled={fetcher.state !== "idle"}>
+                    {i18n.t(fetcher.state === "idle" ? "billing.buyRecoveryCreditPack" : "billing.recoveryCreditPurchasePending")}
+                  </button>
+                </fetcher.Form>
+              )}
+              </>
+            ) : null}
+          </section>
         </>
       )}
 

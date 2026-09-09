@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "Créditos de recuperación comprados: {granted} - {committed} - {reserved} ({available} disponibles)",
+  "billing.recoveryCreditPackDescription": "Solicita un paquete de {quantity} créditos de recuperación.",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify factura este paquete según el medidor de paquetes de créditos de recuperación configurado para tu plan actual.",
+  "billing.buyRecoveryCreditPack": "Comprar paquete de créditos de recuperación",
+  "billing.recoveryCreditPurchasePending": "Shopify está confirmando la compra de créditos de recuperación."
 }

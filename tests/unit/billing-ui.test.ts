@@ -171,6 +171,14 @@ describe("merchant billing UI", () => {
     expect(billingRouteSource).toContain("billing.configurationUnavailable");
   });
 
+  it("presents purchased balance independently from pack purchase eligibility", () => {
+    expect(billingRouteSource).toContain('i18n.t("billing.purchasedRecoveryCredits"');
+    expect(billingRouteSource).toContain("recoveryCreditPackEnabled && recoveryCreditsPerPack !== null");
+    expect(billingRouteSource.indexOf('i18n.t("billing.purchasedRecoveryCredits"')).toBeLessThan(
+      billingRouteSource.indexOf("recoveryCreditPackEnabled && recoveryCreditsPerPack !== null"),
+    );
+  });
+
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {
     expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING")).toEqual({
       href: "/app/billing/select",

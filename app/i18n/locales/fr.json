@@ -111,5 +111,10 @@
   "billing.changePlan": "Modifier le forfait",
   "billing.unknownPlan": "Forfait inconnu",
   "billing.configurationUnavailable": "Configuration de facturation indisponible",
-  "billing.configurationUnavailableDescription": "Votre abonnement ne peut pas être associé de manière sûre. Contactez le support Moda avant d’utiliser les fonctionnalités payantes."
+  "billing.configurationUnavailableDescription": "Votre abonnement ne peut pas être associé de manière sûre. Contactez le support Moda avant d’utiliser les fonctionnalités payantes.",
+  "billing.purchasedRecoveryCredits": "Crédits de récupération achetés : {granted} - {committed} - {reserved} ({available} disponibles)",
+  "billing.recoveryCreditPackDescription": "Demander un pack de {quantity} crédits de récupération.",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify facture ce pack selon le compteur de packs de crédits de récupération configuré pour votre forfait actuel.",
+  "billing.buyRecoveryCreditPack": "Acheter un pack de crédits de récupération",
+  "billing.recoveryCreditPurchasePending": "L’achat de crédits de récupération est en cours de confirmation par Shopify."
 }
