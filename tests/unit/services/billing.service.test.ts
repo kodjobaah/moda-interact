@@ -230,3 +230,112 @@ describe("BillingService subscription projection", () => {
     expect(state.current).toMatchObject({ status: "ACTIVE", lastSyncErrorCode: null, lastSyncErrorAt: null });
   });
 });
+
+function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
+  const purchases = new Map<string, Record<string, unknown>>();
+  const usageEvents: Record<string, unknown>[] = [];
+  const plan = {
+    id: "growth-1",
+    shopifyPlanHandle: "growth",
+    kind: "PAID_METERED",
+    active: true,
+    recoveryCreditPackEnabled: true,
+    recoveryCreditsPerPack: 100,
+    shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+    shopifyUsageEventHandle: "message-meter",
+    ...planOverrides,
+  };
+  const database = {
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    subscription: {
+      findUnique: vi.fn().mockResolvedValue({
+        status: "ACTIVE",
+        billingPeriodId: "period-1",
+        plan,
+      }),
+    },
+    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
+      recoveryCreditPurchase: {
+        findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
+        create: vi.fn().mockImplementation(async ({ data, include }: { data: Record<string, unknown>; include: unknown }) => {
+          const purchase = { ...data, status: "PENDING_BILLING", usageEvent: usageEvents.at(-1) };
+          purchases.set(String(data.id), purchase);
+          return purchase;
+        }),
+      },
+      usageEvent: {
+        create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+          usageEvents.push(data);
+          return data;
+        }),
+      },
+    })),
+  };
+  return { database, purchases, usageEvents };
+}
+
+describe("BillingService recovery credit packs", () => {
+  it.each([
+    ["FREE", { kind: "FREE", shopifyUsageEventHandle: null }],
+    ["PAID_METERED", { kind: "PAID_METERED" }],
+  ])("creates a pending pack request for a mapped %s plan", async (_name, planOverrides) => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase(planOverrides);
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const service = new BillingService(provider, database as never);
+
+    const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "11111111-1111-4111-8111-111111111111");
+
+    expect(purchase).toMatchObject({ id: "11111111-1111-4111-8111-111111111111", creditsGranted: 100, status: "PENDING_BILLING" });
+    expect(usageEvents).toHaveLength(1);
+    expect(usageEvents[0]).toMatchObject({
+      metric: "RECOVERY_CREDIT_PACK_PURCHASE",
+      quantity: 1,
+      shopifyReportState: "PENDING",
+      shopifyEventHandle: "credit-pack-meter",
+      billingPeriodId: "period-1",
+    });
+  });
+
+  it("returns the existing purchase without creating another usage event", async () => {
+    const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const service = new BillingService(provider, database as never);
+    const purchaseId = "22222222-2222-4222-8222-222222222222";
+
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+
+    expect(purchases).toHaveLength(1);
+    expect(usageEvents).toHaveLength(1);
+  });
+
+  it("allows repeated purchases with different purchase IDs", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const service = new BillingService(provider, database as never);
+
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "33333333-3333-4333-8333-333333333333");
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "44444444-4444-4444-8444-444444444444");
+
+    expect(usageEvents).toHaveLength(2);
+  });
+
+  it("fails closed without creating an event when the pack meter is not verified", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter"] })) };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555"))
+      .rejects.toThrow("could not be verified");
+    expect(usageEvents).toHaveLength(0);
+  });
+
+  it("rejects client-supplied invalid purchase identities before persistence", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const service = new BillingService({ getActiveSubscription: vi.fn() }, database as never);
+
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "not-a-uuid"))
+      .rejects.toThrow("valid recovery credit purchase ID");
+    expect(usageEvents).toHaveLength(0);
+  });
+});
