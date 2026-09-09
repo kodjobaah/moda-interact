@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "เครดิตการกู้คืนที่ซื้อแล้ว: {granted} - {committed} - {reserved} (พร้อมใช้ {available})",
+  "billing.recoveryCreditPackDescription": "ขอแพ็กเครดิตการกู้คืนจำนวน {quantity} เครดิต",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify จะเรียกเก็บเงินสำหรับแพ็กนี้ตามมิเตอร์แพ็กเครดิตการกู้คืนที่กำหนดค่าไว้สำหรับแผนปัจจุบันของคุณ",
+  "billing.buyRecoveryCreditPack": "ซื้อแพ็กเครดิตการกู้คืน",
+  "billing.recoveryCreditPurchasePending": "Shopify กำลังยืนยันการซื้อเครดิตการกู้คืน"
 }

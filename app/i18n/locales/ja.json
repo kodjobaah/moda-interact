@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "購入済みリカバリークレジット: {granted} - {committed} - {reserved}（利用可能 {available}）",
+  "billing.recoveryCreditPackDescription": "{quantity} リカバリークレジットのパックをリクエストします。",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify は、現在のプランに設定されているリカバリークレジットパックのメーターに基づいて、このパックを請求します。",
+  "billing.buyRecoveryCreditPack": "リカバリークレジットパックを購入",
+  "billing.recoveryCreditPurchasePending": "リカバリークレジットの購入を Shopify が確認しています。"
 }

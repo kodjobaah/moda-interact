@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "Ostetut palautuskrediitit: {granted} - {committed} - {reserved} ({available} käytettävissä)",
+  "billing.recoveryCreditPackDescription": "Pyydä {quantity} palautuskrediitin paketti.",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify veloittaa tämän paketin nykyiselle sopimuksellesi määritetyn palautuskrediittipaketin mittarin mukaisesti.",
+  "billing.buyRecoveryCreditPack": "Osta palautuskrediittipaketti",
+  "billing.recoveryCreditPurchasePending": "Shopify vahvistaa palautuskrediittien ostoa."
 }

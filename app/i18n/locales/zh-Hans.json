@@ -111,5 +111,10 @@
   "billing.changePlan": "Change plan",
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
-  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features."
+  "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
+  "billing.purchasedRecoveryCredits": "已购买的挽回额度：{granted} - {committed} - {reserved}（{available} 可用）",
+  "billing.recoveryCreditPackDescription": "申请一个包含 {quantity} 个挽回额度的额度包。",
+  "billing.recoveryCreditPackShopifyMeter": "Shopify 会根据您当前方案中配置的“挽回额度包”计量项对此额度包计费。",
+  "billing.buyRecoveryCreditPack": "购买挽回额度包",
+  "billing.recoveryCreditPurchasePending": "Shopify 正在确认挽回额度购买。"
 }
