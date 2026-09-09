@@ -14,18 +14,18 @@ async function readRoute(route) {
 
 describe("dashboard CheckoutRecovery conversation relation", () => {
   it("uses the singular Prisma relation while preserving the dashboard DTO", async () => {
-    const source = await readRoute("app._index.jsx");
+    const source = await readRoute("app/home/route.jsx");
 
     expect(source).toMatch(/conversation: \{ include: \{ messages: true \} \}/);
     expect(source).not.toMatch(/conversations: \{\s*include:/);
     expect(source).toMatch(/recovery\.conversation/);
     expect(source).not.toMatch(/recovery\.conversations\[0\]/);
-    expect(source).toMatch(/conversations: conversation \?/);
+    expect(source).toMatch(/conversations:\s*conversation\s*\?/);
     expect(source).toMatch(/conversation\?\.messages\.length \?\?/);
   });
 
   it("uses the singular relation for usage source resolution", async () => {
-    const source = await readRoute("app.usage.jsx");
+    const source = await readRoute("app/usage/route.jsx");
 
     expect(source).toMatch(
       /conversation: \{ include: \{ messages: \{ select: \{ id: true \} \} \} \}/,

@@ -7,7 +7,7 @@ const readMerchantSupportMessages = vi.fn();
 const composeMerchantMessage = vi.fn();
 const markMerchantSupportMessageRead = vi.fn();
 const merchantSupportRouteSource = await readFile(
-  new URL("../../app/routes/app.merchant-support.jsx", import.meta.url),
+  new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url),
   "utf8",
 );
 
@@ -23,7 +23,7 @@ vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({
   markMerchantSupportMessageRead,
 }));
 
-const { action, loader, countGraphemes, markUnreadMessages } = await import("../../app/routes/app.merchant-support");
+const { action, loader, countGraphemes, markUnreadMessages } = await import("../../app/routes/app/merchant-support/route");
 
 describe("merchant support resource route", () => {
   beforeEach(() => {

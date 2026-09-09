@@ -5,7 +5,7 @@ vi.mock("../../../app/services/health/health-check.server", () => ({
   checkReadiness: checkReadinessMock,
 }));
 
-const { loader } = await import("../../../app/routes/ready");
+const { loader } = await import("../../../app/routes/system/ready/route");
 
 beforeEach(() => {
   vi.clearAllMocks();

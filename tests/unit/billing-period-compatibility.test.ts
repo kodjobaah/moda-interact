@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const consumerFiles = [
-  "app/routes/app._index.jsx",
-  "app/routes/app.usage.jsx",
+  "app/routes/app/home/route.jsx",
+  "app/routes/app/usage/route.jsx",
   "app/components/dashboard/UsageOverview.jsx",
   "app/components/dashboard/UsageEvents.jsx",
 ];

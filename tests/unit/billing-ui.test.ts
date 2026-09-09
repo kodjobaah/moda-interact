@@ -7,7 +7,7 @@ const getMerchantBillingState = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingRouteSource = await readFile(
-  new URL("../../app/routes/app.billing.tsx", import.meta.url),
+  new URL("../../app/routes/app/billing/route.tsx", import.meta.url),
   "utf8",
 );
 
@@ -24,11 +24,11 @@ vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
-const { loader } = await import("../../app/routes/app.billing");
-const { loader: billingSelectLoader } = await import("../../app/routes/app.billing.select");
-const { getMerchantSystemMessageAction } = await import(
-  "../../app/services/merchant-support/system-message-actions"
-);
+const { loader } = await import("../../app/routes/app/billing/route");
+const { loader: billingSelectLoader } =
+  await import("../../app/routes/app/billing/select/route");
+const { getMerchantSystemMessageAction } =
+  await import("../../app/services/merchant-support/system-message-actions");
 
 const activeFreeSubscription = {
   status: "ACTIVE",
@@ -63,13 +63,21 @@ describe("merchant billing UI", () => {
       usageQuantity: 0,
     });
 
-    const responsePromise = loader({ request: new Request("https://example.test/app/billing") } as never);
-
-    await expect(responsePromise).rejects.toMatchObject({
+    const redirectResponse = new Response(null, {
       status: 302,
-      headers: expect.any(Headers),
+      headers: {
+        Location: "/app/billing/select",
+      },
     });
-    await expect(responsePromise.catch((response) => response.headers.get("Location"))).resolves.toBe("/app/billing/select");
+
+    hostedPricingRedirect.mockReturnValue(redirectResponse);
+
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
+
+    expect(result).toBe(redirectResponse);
+    expect(hostedPricingRedirect).toHaveBeenCalledWith("/app/billing/select");
   });
 
   it("redirects the selection route to Shopify pricing with a top-level target", async () => {
@@ -77,7 +85,9 @@ describe("merchant billing UI", () => {
     hostedPricingRedirect.mockReturnValue({ type: "redirect" });
 
     await expect(
-      billingSelectLoader({ request: new Request("https://example.test/app/billing/select") } as never),
+      billingSelectLoader({
+        request: new Request("https://example.test/app/billing/select"),
+      } as never),
     ).resolves.toEqual({ type: "redirect" });
 
     expect(hostedPricingRedirect).toHaveBeenCalledWith(
@@ -99,7 +109,9 @@ describe("merchant billing UI", () => {
       usageQuantity: 3,
     });
 
-    const result = await loader({ request: new Request("https://example.test/app/billing") } as never);
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
 
     expect(result.subscription).toMatchObject({
       status: "ACTIVE",
@@ -108,7 +120,11 @@ describe("merchant billing UI", () => {
       pendingPlanName: "Basic",
       pendingEffectiveAt: "2026-10-01T00:00:00.000Z",
     });
-    expect(result).toMatchObject({ allowance: 7, remaining: 4, usageQuantity: 3 });
+    expect(result).toMatchObject({
+      allowance: 7,
+      remaining: 4,
+      usageQuantity: 3,
+    });
   });
 
   it("keeps the paid entitlement current while presenting a pending Free downgrade", async () => {
@@ -130,7 +146,9 @@ describe("merchant billing UI", () => {
       usageQuantity: 12,
     });
 
-    const result = await loader({ request: new Request("https://example.test/app/billing") } as never);
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
 
     expect(result.subscription).toMatchObject({
       status: "ACTIVE",
@@ -160,7 +178,9 @@ describe("merchant billing UI", () => {
       usageQuantity: 0,
     });
 
-    const result = await loader({ request: new Request("https://example.test/app/billing") } as never);
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
 
     expect(result.subscription).toMatchObject({
       status: "UNMAPPED",
@@ -172,11 +192,26 @@ describe("merchant billing UI", () => {
   });
 
   it("presents purchased balance independently from pack purchase eligibility", () => {
-    expect(billingRouteSource).toContain('i18n.t("billing.purchasedRecoveryCredits"');
-    expect(billingRouteSource).toContain("recoveryCreditPackPurchaseEligible && recoveryCreditPackEnabled");
-    expect(billingRouteSource.indexOf('i18n.t("billing.purchasedRecoveryCredits"')).toBeLessThan(
-      billingRouteSource.indexOf("recoveryCreditPackPurchaseEligible && recoveryCreditPackEnabled"),
+    const purchasedBalanceMarker = 'i18n.t("billing.purchasedRecoveryCredits"';
+
+    const eligibilityMarker = "recoveryCreditPackPurchaseEligible &&";
+
+    expect(billingRouteSource).toContain(purchasedBalanceMarker);
+
+    expect(billingRouteSource).toMatch(
+      /recoveryCreditPackPurchaseEligible\s*&&\s*recoveryCreditPackEnabled/,
     );
+
+    const purchasedBalanceIndex = billingRouteSource.indexOf(
+      purchasedBalanceMarker,
+    );
+
+    const eligibilityIndex = billingRouteSource.indexOf(eligibilityMarker);
+
+    expect(purchasedBalanceIndex).toBeGreaterThanOrEqual(0);
+    expect(eligibilityIndex).toBeGreaterThanOrEqual(0);
+
+    expect(purchasedBalanceIndex).toBeLessThan(eligibilityIndex);
   });
 
   it("returns ineligible state while preserving the purchased balance", async () => {
@@ -202,25 +237,35 @@ describe("merchant billing UI", () => {
       recoveryCreditPackPurchaseEligible: false,
     });
 
-    const result = await loader({ request: new Request("https://example.test/app/billing") } as never);
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
 
     expect(result).toMatchObject({
       purchasedRecoveryCredits: { available: 80 },
       recoveryCreditPackPurchaseEligible: false,
     });
-    expect(billingRouteSource).toContain("recoveryCreditPackPurchaseEligible &&");
+    expect(billingRouteSource).toContain(
+      "recoveryCreditPackPurchaseEligible &&",
+    );
   });
 
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {
-    expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING")).toEqual({
+    expect(
+      getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING"),
+    ).toEqual({
       href: "/app/billing/select",
       labelKey: "billing.viewPlans",
     });
-    expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_EXHAUSTED")).toEqual({
+    expect(
+      getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_EXHAUSTED"),
+    ).toEqual({
       href: "/app/billing/select",
       labelKey: "billing.upgradePlan",
     });
-    expect(getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED")).toEqual({
+    expect(
+      getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED"),
+    ).toEqual({
       href: "/app/billing",
       labelKey: "billing.viewPlans",
     });

@@ -5,11 +5,6 @@ name = "moda-interact"
 application_url = "https://app-test.modainteract.com"
 embedded = true
 handle = "moda-interact"
-[auth]
-redirect_urls = [
-  "https://app-test.modainteract.com"
-]
-
 
 [build]
 automatically_update_urls_on_dev = true
@@ -20,11 +15,11 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks"
   topics = [
-  "orders/create",
-  "carts/create",
   "checkouts/create",
+  "carts/create",
+  "carts/update",
   "checkouts/update",
-  "carts/update"
+  "orders/create"
 ]
 
   [[webhooks.subscriptions]]
@@ -41,7 +36,9 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_orders,read_products,read_locales,read_markets"
+scopes = "read_customers,read_locales,read_markets,read_orders,read_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
+[auth]
+redirect_urls = [ "https://app-test.modainteract.com" ]

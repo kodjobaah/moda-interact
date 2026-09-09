@@ -13,7 +13,7 @@ vi.mock("../../../app/services/webhooks/shopify-webhook-ingress.service", () => 
   ingestShopifyWebhook: ingestShopifyWebhookMock,
 }));
 
-const { action } = await import("../../../app/routes/webhooks.jsx");
+const { action } = await import("../../../app/routes/webhooks/root/route.jsx");
 
 beforeEach(() => {
   vi.clearAllMocks();

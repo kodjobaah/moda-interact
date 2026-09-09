@@ -14,7 +14,7 @@ vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", ()
   readPendingRecoveries,
 }));
 
-const { loader } = await import("../../app/routes/app.pending-recoveries");
+const { loader } = await import("../../app/routes/app/pending-recoveries/route");
 
 describe("pending recoveries resource loader", () => {
   beforeEach(() => {
