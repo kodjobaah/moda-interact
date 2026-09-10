@@ -387,22 +387,24 @@ async getSubscription(
     }
     assertRequestId(requestId, "subscription cancellation request ID");
 
+    let attemptedRequestKey: string | null = null;
     try {
       const result = await this.database.$transaction(async (transaction) => {
         const subscription = await transaction.subscription.findUnique({
-        where: { shopId },
-      });
-      if (
-        !subscription ||
-        (subscription.status !== SubscriptionProjectionStatus.ACTIVE &&
-          subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
-        !subscription.providerSubscriptionId ||
-        !subscription.observedShopifyPlanHandle
-      ) {
-        throw new Error("Cancellation is unavailable for this subscription.");
-      }
+          where: { shopId },
+        });
+        if (
+          !subscription ||
+          (subscription.status !== SubscriptionProjectionStatus.ACTIVE &&
+            subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
+          !subscription.providerSubscriptionId ||
+          !subscription.observedShopifyPlanHandle
+        ) {
+          throw new Error("Cancellation is unavailable for this subscription.");
+        }
 
-      const requestKey = `subscription-cancel:${shopId}:${subscription.providerSubscriptionId}`;
+        const requestKey = `subscription-cancel:${shopId}:${subscription.providerSubscriptionId}`;
+        attemptedRequestKey = requestKey;
         const existing = await transaction.subscriptionCancellationRequest.findUnique({
           where: { requestKey },
         });
@@ -429,12 +431,12 @@ async getSubscription(
       });
         return { request, translationId };
       });
-      if (result.translationId) await this.dispatchTranslation(result.translationId);
+      if (result.translationId) await this.dispatchTranslationBestEffort(result.translationId);
       return result.request;
     } catch (error) {
-      if (isPrismaUniqueConstraintError(error)) {
+      if (isPrismaUniqueConstraintError(error) && attemptedRequestKey) {
         const replay = await this.database.subscriptionCancellationRequest.findUnique({
-          where: { requestKey: `subscription-cancel:${shopId}:${(await this.database.subscription.findUnique({ where: { shopId } }))?.providerSubscriptionId ?? ""}` },
+          where: { requestKey: attemptedRequestKey },
         });
         if (replay) return replay;
       }
@@ -500,7 +502,7 @@ async getSubscription(
       });
       return { request, translationId };
       });
-      if (result.translationId) await this.dispatchTranslation(result.translationId);
+      if (result.translationId) await this.dispatchTranslationBestEffort(result.translationId);
       return result.request;
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {
@@ -564,6 +566,14 @@ async getSubscription(
       return translation.id;
     }
     return null;
+  }
+
+  private async dispatchTranslationBestEffort(translationId: string): Promise<void> {
+    try {
+      await this.dispatchTranslation(translationId);
+    } catch {
+      return;
+    }
   }
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string) {

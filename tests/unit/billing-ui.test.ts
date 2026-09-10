@@ -4,6 +4,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getMerchantBillingState = vi.fn();
+const requestSubscriptionCancellation = vi.fn();
+const requestRecoveryCreditRefund = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingRouteSource = await readFile(
@@ -18,13 +20,17 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getMerchantBillingState },
+  billingService: {
+    getMerchantBillingState,
+    requestSubscriptionCancellation,
+    requestRecoveryCreditRefund,
+  },
 }));
 vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
-const { loader } = await import("../../app/routes/app/billing/route");
+const { action, loader } = await import("../../app/routes/app/billing/route");
 const { loader: billingSelectLoader } =
   await import("../../app/routes/app/billing/select/route");
 const { getMerchantSystemMessageAction } =
@@ -159,6 +165,66 @@ describe("merchant billing UI", () => {
     });
   });
 
+  it("exposes distinct hosted Change plan and Switch to Free actions", () => {
+    expect(billingRouteSource).toContain('<Link to="/app/billing/select">{i18n.t("billing.changePlan")}</Link>');
+    expect(billingRouteSource).toContain('<Link to="/app/billing/select">{i18n.t("billing.switchToFree")}</Link>');
+  });
+
+  it("does not use forbidden plan-creation or billing APIs", () => {
+    expect(billingRouteSource).not.toMatch(/appSubscriptionCreate|billing\.request\s*\(|appPurchaseOneTimeCreate/);
+  });
+
+  it("passes only the server-approved cancellation contract", async () => {
+    requestSubscriptionCancellation.mockResolvedValue({ status: "REQUESTED" });
+
+    await action({
+      request: new Request("https://example.test/app/billing", {
+        method: "POST",
+        body: new URLSearchParams({
+          intent: "REQUEST_SUBSCRIPTION_CANCELLATION",
+          requestId: "31313131-3131-4131-8131-313131313131",
+          mode: "IMMEDIATE_PRORATED",
+          providerSubscriptionId: "forged-provider",
+          plan: "forged-plan",
+        }),
+      }),
+    } as never);
+
+    expect(requestSubscriptionCancellation).toHaveBeenCalledWith(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "31313131-3131-4131-8131-313131313131",
+    );
+  });
+
+  it("passes only the purchase identity for refund requests", async () => {
+    requestRecoveryCreditRefund.mockResolvedValue({ status: "REQUESTED" });
+
+    await action({
+      request: new Request("https://example.test/app/billing", {
+        method: "POST",
+        body: new URLSearchParams({
+          intent: "REQUEST_RECOVERY_CREDIT_REFUND",
+          refundRequestId: "32323232-3232-4232-8232-323232323232",
+          purchaseId: "purchase-1",
+          credits: "999999",
+          price: "0.01",
+          plan: "forged-plan",
+          meter: "forged-meter",
+          billingPeriod: "forged-period",
+          settlementMode: "IMMEDIATE",
+        }),
+      }),
+    } as never);
+
+    expect(requestRecoveryCreditRefund).toHaveBeenCalledWith(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      "32323232-3232-4232-8232-323232323232",
+      "purchase-1",
+    );
+  });
+
   it("fails closed for an unmapped projection instead of presenting paid entitlement", async () => {
     getMerchantBillingState.mockResolvedValue({
       subscription: {
@@ -269,6 +335,9 @@ describe("merchant billing UI", () => {
       href: "/app/billing",
       labelKey: "billing.viewPlans",
     });
+    expect(
+      getMerchantSystemMessageAction("BILLING_PLAN_CHANGE_ACTION_REQUIRED"),
+    ).toEqual({ href: "/app/billing", labelKey: "billing.changePlan" });
     expect(getMerchantSystemMessageAction("UNKNOWN_BILLING_CODE")).toBeNull();
   });
 });

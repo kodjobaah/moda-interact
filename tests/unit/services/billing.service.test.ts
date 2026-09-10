@@ -316,6 +316,42 @@ function createLifecycleDatabase({
 }
 
 describe("BillingService merchant billing requests", () => {
+  it("does not mutate entitlement counters while reading a paid billing state", async () => {
+    const counter = {
+      grantedQuantity: 100,
+      committedQuantity: 20,
+      reservedQuantity: 5,
+      refundingQuantity: 10,
+    };
+    const shopEntitlementCounter = {
+      findUnique: vi.fn().mockResolvedValue(counter),
+      update: vi.fn(),
+      upsert: vi.fn(),
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      subscription: {
+        findUnique: vi.fn().mockResolvedValue({
+          status: "ACTIVE",
+          plan: { kind: "PAID_METERED", recoveryCreditPackEnabled: false },
+          billingPeriod: null,
+        }),
+      },
+      subscriptionCancellationRequest: { findFirst: vi.fn().mockResolvedValue(null) },
+      shopEntitlementCounter,
+      recoveryCreditPurchase: { findMany: vi.fn().mockResolvedValue([]) },
+      billingAllowanceAdjustment: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+    };
+    const service = new BillingService({} as never, database as never);
+
+    const state = await service.getMerchantBillingState("shop-1");
+
+    expect(state.purchasedRecoveryCredits).toMatchObject({ available: 65, refundingQuantity: 10 });
+    expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
+  });
+
   it("bounds active recovery-credit purchases with deterministic ordering", async () => {
     const recoveryCreditPurchase = {
       findMany: vi.fn().mockResolvedValue([]),
@@ -364,6 +400,90 @@ describe("BillingService merchant billing requests", () => {
     expect(dispatchTranslation).toHaveBeenCalledWith("translation-1");
   });
 
+  it("returns a committed cancellation when translation dispatch rejects", async () => {
+    const lifecycle = createLifecycleDatabase();
+    const service = new BillingService(
+      {} as never,
+      lifecycle.database as never,
+      vi.fn().mockRejectedValue(new Error("queue unavailable")),
+    );
+
+    await expect(service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "12121212-1212-4121-8121-121212121212",
+    )).resolves.toMatchObject({ status: "REQUESTED" });
+  });
+
+  it("replays one cancellation request and one system message", async () => {
+    let persistedRequest: Record<string, unknown> | null = null;
+    const lifecycle = createLifecycleDatabase({
+      createCancellation: (data) => {
+        persistedRequest = { id: "cancellation-1", ...data };
+        return persistedRequest;
+      },
+    });
+    lifecycle.transaction.subscriptionCancellationRequest.findUnique.mockImplementation(
+      async () => persistedRequest,
+    );
+    const service = new BillingService({} as never, lifecycle.database as never);
+
+    await service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "13131313-1313-4131-8131-131313131313",
+    );
+    await service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "14141414-1414-4141-8141-141414141414",
+    );
+
+    expect(lifecycle.transaction.subscriptionCancellationRequest.create).toHaveBeenCalledTimes(1);
+    expect(lifecycle.transaction.merchantSupportMessage.create).toHaveBeenCalledTimes(1);
+    expect(lifecycle.transaction.merchantMessageTranslation.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers a cancellation race using the original key after projection changes", async () => {
+    const replay = { id: "cancellation-1", status: "REQUESTED" };
+    const lifecycle = createLifecycleDatabase({
+      createCancellation: () => {
+        lifecycle.transaction.subscription.findUnique.mockResolvedValue({
+          status: SubscriptionProjectionStatus.ACTIVE,
+          providerSubscriptionId: "provider-2",
+          observedShopifyPlanHandle: "growth",
+          currentPeriodEnd: periodEnd,
+        });
+        throw { code: "P2002" };
+      },
+    });
+    lifecycle.database.subscriptionCancellationRequest.findUnique.mockResolvedValue(replay);
+    const service = new BillingService({} as never, lifecycle.database as never);
+
+    await expect(service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "15151515-1515-4151-8151-151515151515",
+    )).resolves.toEqual(replay);
+    expect(lifecycle.database.subscriptionCancellationRequest.findUnique).toHaveBeenCalledWith({
+      where: { requestKey: "subscription-cancel:shop-1:provider-1" },
+    });
+  });
+
+  it("does not call a provider for cancellation requests", async () => {
+    const provider = { getActiveSubscription: vi.fn() };
+    const lifecycle = createLifecycleDatabase();
+    const service = new BillingService(provider, lifecycle.database as never);
+
+    await service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "16161616-1616-4161-8161-161616161616",
+    );
+
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+  });
+
   it("persists a refund request from the purchase snapshot and replays a duplicate", async () => {
     const lifecycle = createLifecycleDatabase();
     const dispatchTranslation = vi.fn().mockResolvedValue(undefined);
@@ -394,6 +514,80 @@ describe("BillingService merchant billing requests", () => {
     );
     expect(replay).toEqual(request);
     expect(dispatchTranslation).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a committed refund when translation dispatch rejects", async () => {
+    const lifecycle = createLifecycleDatabase();
+    const service = new BillingService(
+      {} as never,
+      lifecycle.database as never,
+      vi.fn().mockRejectedValue(new Error("queue unavailable")),
+    );
+
+    await expect(service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      "17171717-1717-4171-8171-171717171717",
+      "purchase-1",
+    )).resolves.toMatchObject({ status: "REQUESTED" });
+  });
+
+  it("rejects a refund for a purchase owned by another shop", async () => {
+    const lifecycle = createLifecycleDatabase();
+    lifecycle.transaction.recoveryCreditPurchase.findUnique.mockResolvedValue({
+      ...lifecycle.purchase,
+      shopId: "other-shop",
+    });
+    const service = new BillingService({} as never, lifecycle.database as never);
+
+    await expect(service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      "18181818-1818-4181-8181-181818181818",
+      "purchase-1",
+    )).rejects.toThrow("another shop");
+  });
+
+  it("recovers a same-shop refund request after a unique-key race", async () => {
+    const replay = { id: "refund-1", shopId: "shop-1", status: "REQUESTED" };
+    const lifecycle = createLifecycleDatabase({
+      createRefund: () => {
+        throw { code: "P2002" };
+      },
+    });
+    lifecycle.database.recoveryCreditRefund.findUnique.mockResolvedValue(replay);
+    const service = new BillingService({} as never, lifecycle.database as never);
+
+    await expect(service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      "19191919-1919-4191-8191-191919191919",
+      "purchase-1",
+    )).resolves.toEqual(replay);
+  });
+
+  it("does not mutate counters, usage, settlement, or providers on refund request", async () => {
+    const lifecycle = createLifecycleDatabase();
+    const provider = { getActiveSubscription: vi.fn() };
+    const counter = { update: vi.fn(), upsert: vi.fn() };
+    const usageEvent = { create: vi.fn() };
+    const service = new BillingService(provider, {
+      ...lifecycle.database,
+      shopEntitlementCounter: counter,
+      usageEvent,
+    } as never);
+
+    await service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      "20202020-2020-4202-8202-202020202020",
+      "purchase-1",
+    );
+
+    expect(counter.update).not.toHaveBeenCalled();
+    expect(counter.upsert).not.toHaveBeenCalled();
+    expect(usageEvent.create).not.toHaveBeenCalled();
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
   });
 
   it("recovers a cancellation request after a unique-key race", async () => {
