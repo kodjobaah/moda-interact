@@ -17,6 +17,7 @@ import {
 } from "@modainteract/moda-interact-shared/merchant-communications";
 import {
   BILLING_SYSTEM_MESSAGE_CODES,
+  availablePurchasedRecoveryCredits,
   createShopifyUsageIdempotencyKey,
 } from "@modainteract/moda-interact-shared/billing";
 
@@ -86,10 +87,18 @@ const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
+const SUBSCRIPTION_CANCELLATION_INTENT = "REQUEST_SUBSCRIPTION_CANCELLATION";
+const RECOVERY_CREDIT_REFUND_INTENT = "REQUEST_RECOVERY_CREDIT_REFUND";
 
 function assertPurchaseId(purchaseId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
     throw new Error("A valid recovery credit purchase ID is required.");
+  }
+}
+
+function assertRequestId(requestId: string, label: string): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(requestId)) {
+    throw new Error(`A valid ${label} is required.`);
   }
 }
 
@@ -263,7 +272,7 @@ async getSubscription(
 }
 
   async getMerchantBillingState(shopId: string) {
-    const [shop, subscription, counter, adjustmentTotal, usageTotal, purchasedCounter] = await Promise.all([
+    const [shop, subscription, counter, purchasedCreditPurchases, adjustmentTotal, usageTotal, purchasedCounter] = await Promise.all([
       this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
         where: { shopId },
@@ -276,6 +285,11 @@ async getSubscription(
             counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
           },
         },
+      }),
+      this.database.recoveryCreditPurchase.findMany({
+        where: { shopId, status: "ACTIVE" },
+        orderBy: { createdAt: "desc" },
+        include: { usageEvent: true, refund: true },
       }),
       this.database.billingAllowanceAdjustment.aggregate({
         where: { shopId, counter: EntitlementCounter.FREE_RECOVERY_LIFETIME },
@@ -340,19 +354,187 @@ async getSubscription(
         grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
         committedQuantity: purchasedCounter?.committedQuantity ?? 0,
         reservedQuantity: purchasedCounter?.reservedQuantity ?? 0,
-        available: Math.max(
-          (purchasedCounter?.grantedQuantity ?? 0)
-            - (purchasedCounter?.committedQuantity ?? 0)
-            - (purchasedCounter?.reservedQuantity ?? 0),
-          0,
-        ),
+        refundingQuantity: purchasedCounter?.refundingQuantity ?? 0,
+        available: availablePurchasedRecoveryCredits({
+          grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
+          committedQuantity: purchasedCounter?.committedQuantity ?? 0,
+          reservedQuantity: purchasedCounter?.reservedQuantity ?? 0,
+          refundingQuantity: purchasedCounter?.refundingQuantity ?? 0,
+        }),
       },
+      recoveryCreditPurchases: purchasedCreditPurchases,
+      cancellationRequest: await this.database.subscriptionCancellationRequest.findFirst({
+        where: { shopId },
+        orderBy: { createdAt: "desc" },
+      }),
       recoveryCreditPackEnabled: subscription?.plan?.recoveryCreditPackEnabled ?? false,
       recoveryCreditsPerPack: subscription?.plan?.recoveryCreditsPerPack ?? null,
       recoveryCreditPackMeter: packMeter,
       recoveryCreditPackMeterVerified,
       recoveryCreditPackPurchaseEligible,
     };
+  }
+
+  async requestSubscriptionCancellation(
+    shopId: string,
+    intent: string,
+    requestId: string,
+    requestedByShopifyUserId?: string | null,
+  ) {
+    if (intent !== SUBSCRIPTION_CANCELLATION_INTENT) {
+      throw new Error("Unsupported billing action.");
+    }
+    assertRequestId(requestId, "subscription cancellation request ID");
+
+    return this.database.$transaction(async (transaction) => {
+      const subscription = await transaction.subscription.findUnique({
+        where: { shopId },
+      });
+      if (
+        !subscription ||
+        (subscription.status !== SubscriptionProjectionStatus.ACTIVE &&
+          subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
+        !subscription.providerSubscriptionId ||
+        !subscription.observedShopifyPlanHandle
+      ) {
+        throw new Error("Cancellation is unavailable for this subscription.");
+      }
+
+      const requestKey = `subscription-cancel:${shopId}:${subscription.providerSubscriptionId}`;
+      const existing = await transaction.subscriptionCancellationRequest.findUnique({
+        where: { requestKey },
+      });
+      if (existing) return existing;
+
+      const request = await transaction.subscriptionCancellationRequest.create({
+        data: {
+          shopId,
+          source: "MERCHANT_UI",
+          requestedByShopifyUserId: requestedByShopifyUserId ?? null,
+          providerSubscriptionIdSnapshot: subscription.providerSubscriptionId,
+          planHandleSnapshot: subscription.observedShopifyPlanHandle,
+          currentPeriodEndSnapshot: subscription.currentPeriodEnd,
+          mode: "END_OF_CYCLE",
+          status: "REQUESTED",
+          requestKey,
+        },
+      });
+      await this.createBillingSystemMessage(transaction, {
+        shopId,
+        systemCode: BILLING_SYSTEM_MESSAGE_CODES.CANCELLATION_REQUEST_RECEIVED,
+        sourceKey: `billing-cancellation-request:${request.id}`,
+        body: "Your cancellation request was received.",
+      });
+      return request;
+    });
+  }
+
+  async requestRecoveryCreditRefund(
+    shopId: string,
+    intent: string,
+    refundRequestId: string,
+    purchaseId: string,
+    requestedByShopifyUserId?: string | null,
+  ) {
+    if (intent !== RECOVERY_CREDIT_REFUND_INTENT) {
+      throw new Error("Unsupported billing action.");
+    }
+    assertRequestId(refundRequestId, "recovery credit refund request ID");
+    if (!purchaseId.trim()) throw new Error("A recovery credit purchase is required.");
+
+    return this.database.$transaction(async (transaction) => {
+      const requestKey = `recovery-credit-refund:${purchaseId}`;
+      const existing = await transaction.recoveryCreditRefund.findUnique({
+        where: { requestKey },
+      });
+      if (existing) {
+        if (existing.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+        return existing;
+      }
+
+      const purchase = await transaction.recoveryCreditPurchase.findUnique({
+        where: { id: purchaseId },
+        include: { usageEvent: true },
+      });
+      if (!purchase || purchase.shopId !== shopId) {
+        throw new Error("Recovery credit purchase belongs to another shop.");
+      }
+      if (purchase.status !== "ACTIVE") {
+        throw new Error("Only active recovery credit packs can be refunded.");
+      }
+
+      const request = await transaction.recoveryCreditRefund.create({
+        data: {
+          shopId,
+          purchaseId: purchase.id,
+          source: "MERCHANT_UI",
+          requestedByShopifyUserId: requestedByShopifyUserId ?? null,
+          originalUsageEventIdSnapshot: purchase.usageEventId,
+          billingPeriodIdSnapshot: purchase.usageEvent.billingPeriodId,
+          planHandleSnapshot: purchase.shopifyPlanHandleSnapshot,
+          eventHandleSnapshot: purchase.shopifyEventHandleSnapshot,
+          creditsSnapshot: purchase.creditsGranted,
+          status: "REQUESTED",
+          requestKey,
+        },
+      });
+      await this.createBillingSystemMessage(transaction, {
+        shopId,
+        systemCode: BILLING_SYSTEM_MESSAGE_CODES.REFUND_REQUEST_RECEIVED,
+        sourceKey: `billing-refund-request:${request.id}`,
+        body: "Your recovery credit refund request was received.",
+      });
+      return request;
+    });
+  }
+
+  private async createBillingSystemMessage(
+    transaction: Prisma.TransactionClient,
+    input: { shopId: string; systemCode: string; sourceKey: string; body: string },
+  ): Promise<void> {
+    const settings = await transaction.shopSettings.findUnique({
+      where: { shopId: input.shopId },
+      select: { defaultLanguageTag: true },
+    });
+    const displayLanguageTag = trustedSupportLanguageTag(
+      settings?.defaultLanguageTag,
+    );
+    const needsTranslation = requiresMerchantTranslation(
+      PLATFORM_SUPPORT_LANGUAGE_TAG,
+      displayLanguageTag,
+    );
+    const now = new Date();
+    const thread = await transaction.merchantSupportThread.upsert({
+      where: { shopId: input.shopId },
+      update: { lastMessageAt: now, updatedAt: now },
+      create: { shopId: input.shopId, lastMessageAt: now },
+    });
+    const message = await transaction.merchantSupportMessage.create({
+      data: {
+        threadId: thread.id,
+        kind: "SYSTEM",
+        state: needsTranslation ? "PROCESSING" : "AVAILABLE",
+        originalBody: input.body,
+        sourceLanguageTag: PLATFORM_SUPPORT_LANGUAGE_TAG,
+        displayLanguageTag,
+        systemCode: input.systemCode,
+        systemVersion: "1",
+        sourceKey: input.sourceKey,
+        availableAt: needsTranslation ? null : now,
+      },
+    });
+    if (needsTranslation) {
+      const translation = await transaction.merchantMessageTranslation.create({
+        data: {
+          messageId: message.id,
+          direction: "SYSTEM_TO_MERCHANT",
+          sourceLanguageTag: PLATFORM_SUPPORT_LANGUAGE_TAG,
+          targetLanguageTag: displayLanguageTag,
+          status: "PENDING",
+        },
+      });
+      await this.dispatchTranslation(translation.id);
+    }
   }
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string) {

@@ -68,6 +68,22 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recoveryCreditPackPurchaseEligible:
       state.recoveryCreditPackPurchaseEligible,
     purchaseId: randomUUID(),
+    cancellationRequest: state.cancellationRequest
+      ? {
+          status: state.cancellationRequest.status,
+          mode: state.cancellationRequest.mode,
+          currentPeriodEnd:
+            state.cancellationRequest.currentPeriodEndSnapshot?.toISOString() ?? null,
+        }
+      : null,
+    recoveryCreditPurchases: (state.recoveryCreditPurchases ?? []).map((purchase) => ({
+      id: purchase.id,
+      creditsGranted: purchase.creditsGranted,
+      createdAt: purchase.createdAt.toISOString(),
+      refundStatus: purchase.refund?.status ?? null,
+    })),
+    cancellationRequestId: randomUUID(),
+    refundRequestId: randomUUID(),
   };
 }
 
@@ -78,12 +94,33 @@ export async function action({ request }: ActionFunctionArgs) {
     domain: session.shop,
   });
   const formData = await request.formData();
-  const purchase = await billingService.requestRecoveryCreditPack(
-    shop.id,
-    String(formData.get("intent") ?? ""),
-    String(formData.get("purchaseId") ?? ""),
-  );
-  return { purchasePending: purchase.status === "PENDING_BILLING" };
+  const intent = String(formData.get("intent") ?? "");
+  if (intent === "BUY_RECOVERY_CREDIT_PACK") {
+    const purchase = await billingService.requestRecoveryCreditPack(
+      shop.id,
+      intent,
+      String(formData.get("purchaseId") ?? ""),
+    );
+    return { purchasePending: purchase.status === "PENDING_BILLING" };
+  }
+  if (intent === "REQUEST_SUBSCRIPTION_CANCELLATION") {
+    await billingService.requestSubscriptionCancellation(
+      shop.id,
+      intent,
+      String(formData.get("requestId") ?? ""),
+    );
+    return { cancellationRequested: true };
+  }
+  if (intent === "REQUEST_RECOVERY_CREDIT_REFUND") {
+    await billingService.requestRecoveryCreditRefund(
+      shop.id,
+      intent,
+      String(formData.get("refundRequestId") ?? ""),
+      String(formData.get("purchaseId") ?? ""),
+    );
+    return { refundRequested: true };
+  }
+  throw new Error("Unsupported billing action.");
 }
 
 export default function BillingRoute() {
@@ -100,6 +137,10 @@ export default function BillingRoute() {
     recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible,
     purchaseId,
+    cancellationRequest,
+    recoveryCreditPurchases,
+    cancellationRequestId,
+    refundRequestId,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const i18n = createMerchantI18n(merchantUi);
@@ -168,6 +209,25 @@ export default function BillingRoute() {
           ) : null}
 
           <section>
+            <h2>{i18n.t("billing.planActions")}</h2>
+            <p>{i18n.t("billing.planActionsDescription")}</p>
+            <Link to="/app/billing/select">
+              {i18n.t(isFree ? "billing.viewPlans" : "billing.changePlan")}
+            </Link>
+            {isFree ? null : cancellationRequest?.status === "REQUESTED" ? (
+              <p>{i18n.t("billing.cancellationRequested")}</p>
+            ) : (
+              <fetcher.Form method="post">
+                <input type="hidden" name="intent" value="REQUEST_SUBSCRIPTION_CANCELLATION" />
+                <input type="hidden" name="requestId" value={cancellationRequestId} />
+                <button type="submit" disabled={fetcher.state !== "idle"}>
+                  {i18n.t("billing.requestCancellation")}
+                </button>
+              </fetcher.Form>
+            )}
+          </section>
+
+          <section>
             <p>
               {i18n.t("billing.purchasedRecoveryCredits", {
                 granted: purchasedRecoveryCredits.grantedQuantity,
@@ -209,6 +269,29 @@ export default function BillingRoute() {
                   </fetcher.Form>
                 )}
               </>
+            ) : null}
+            {recoveryCreditPurchases.length > 0 ? (
+              <div>
+                <h2>{i18n.t("billing.refundTitle")}</h2>
+                <p>{i18n.t("billing.fullPackRefundOnly")}</p>
+                {recoveryCreditPurchases.map((purchase) => (
+                  <div key={purchase.id}>
+                    <span>{i18n.t("billing.recoveryCreditPackQuantity", { quantity: purchase.creditsGranted })}</span>
+                    {purchase.refundStatus ? (
+                      <span>{i18n.t("billing.refundRequested")}</span>
+                    ) : (
+                      <fetcher.Form method="post">
+                        <input type="hidden" name="intent" value="REQUEST_RECOVERY_CREDIT_REFUND" />
+                        <input type="hidden" name="refundRequestId" value={refundRequestId} />
+                        <input type="hidden" name="purchaseId" value={purchase.id} />
+                        <button type="submit" disabled={fetcher.state !== "idle"}>
+                          {i18n.t("billing.requestRefund")}
+                        </button>
+                      </fetcher.Form>
+                    )}
+                  </div>
+                ))}
+              </div>
             ) : null}
           </section>
         </>

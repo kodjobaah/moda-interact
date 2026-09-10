@@ -12,6 +12,15 @@ describe("ARCH-007 billing translations", () => {
     "billing.recoveryCreditPackShopifyMeter",
     "billing.buyRecoveryCreditPack",
     "billing.recoveryCreditPurchasePending",
+    "billing.planActions",
+    "billing.planActionsDescription",
+    "billing.requestCancellation",
+    "billing.cancellationRequested",
+    "billing.refundTitle",
+    "billing.fullPackRefundOnly",
+    "billing.requestRefund",
+    "billing.refundRequested",
+    "billing.recoveryCreditPackQuantity",
   ];
 
   it("defines every billing key in every locale catalogue", async () => {
