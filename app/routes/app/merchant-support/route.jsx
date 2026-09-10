@@ -48,7 +48,7 @@ export async function action({ request }) {
   }
 
   if (intent !== "compose") {
-    return Response.json({ error: "Unsupported merchant support action." }, { status: 400 });
+    return Response.json({ errorKey: "merchantSupport.error.unsupportedAction" }, { status: 400 });
   }
 
   try {
@@ -58,7 +58,13 @@ export async function action({ request }) {
       shopifyUserId: session.userId ?? null,
     }));
   } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to send message." }, { status: 400 });
+    const errorMessage = error instanceof Error ? error.message : null;
+    return Response.json(
+      errorMessage
+        ? { error: errorMessage }
+        : { errorKey: "merchantSupport.error.sendFailed" },
+      { status: 400 },
+    );
   }
 }
 
@@ -93,7 +99,7 @@ export default function MerchantSupport() {
     try {
       AuthoredSupportBodySchema.parse(body);
     } catch {
-      setValidationError("Message must contain between 1 and 500 graphemes.");
+      setValidationError(i18n.t("merchantSupport.compose.validationError"));
       return;
     }
     setValidationError("");
@@ -103,23 +109,23 @@ export default function MerchantSupport() {
 
   return (
     <s-page heading={i18n.t("dashboard.messagesSent")}>
-      <s-section heading="Support thread">
-        {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
+      <s-section heading={i18n.t("merchantSupport.thread.title")}>
+        {messages.length === 0 ? <p>{i18n.t("merchantSupport.thread.empty")}</p> : <ol className="merchant-support-thread">
           {messages.map((message) => <MessageCard key={message.id} message={message} i18n={i18n} />)}
         </ol>}
-        {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
-          {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
-          <span>Page {support.page} of {support.totalPages}</span>
-          {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>Next</Link> : <span aria-disabled="true">Next</span>}
+        {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label={i18n.t("merchantSupport.pagination.label")}>
+          {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>{i18n.t("merchantSupport.pagination.previous")}</Link> : <span aria-disabled="true">{i18n.t("merchantSupport.pagination.previous")}</span>}
+          <span>{i18n.t("merchantSupport.pagination.pageOf", { page: support.page, totalPages: support.totalPages })}</span>
+          {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>{i18n.t("merchantSupport.pagination.next")}</Link> : <span aria-disabled="true">{i18n.t("merchantSupport.pagination.next")}</span>}
         </nav> : null}
       </s-section>
-      <s-section heading="Contact Moda Support">
+      <s-section heading={i18n.t("merchantSupport.compose.title")}>
         <form className="merchant-support-compose" onSubmit={submitMessage} noValidate>
-          <label htmlFor="message-body">Message</label>
+          <label htmlFor="message-body">{i18n.t("merchantSupport.compose.messageLabel")}</label>
           <textarea id="message-body" value={body} onChange={(event) => setBody(event.target.value)} aria-describedby="message-count message-error" required />
           <div id="message-count" aria-live="polite">{graphemeCount}/500</div>
-          {validationError || fetcher.data?.error ? <p id="message-error" role="alert">{validationError || fetcher.data.error}</p> : null}
-          <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? "Sending..." : "Send"}</button>
+          {validationError || fetcher.data?.error || fetcher.data?.errorKey ? <p id="message-error" role="alert">{validationError || fetcher.data?.error || i18n.t(fetcher.data.errorKey)}</p> : null}
+          <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? i18n.t("merchantSupport.compose.sending") : i18n.t("merchantSupport.compose.send")}</button>
         </form>
       </s-section>
     </s-page>
@@ -166,7 +172,11 @@ export async function markUnreadMessages({
 
 function MessageCard({ message, i18n }) {
   const isMerchant = message.kind === "MERCHANT";
-  const label = isMerchant ? "You" : message.kind === "SYSTEM" ? "System" : "Moda Support";
+  const label = isMerchant
+    ? i18n.t("merchantSupport.message.you")
+    : message.kind === "SYSTEM"
+      ? i18n.t("merchantSupport.message.system")
+      : i18n.t("merchantSupport.message.modaSupport");
   const hasTranslation = message.isTranslated === true;
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
@@ -180,8 +190,8 @@ function MessageCard({ message, i18n }) {
         <strong>{label}</strong>
         <time dateTime={message.createdAt}>{i18n.formatDateTime(message.createdAt)}</time>
       </div>
-      {unavailable ? <p role="status">{message.state === "FAILED" ? "Translation unavailable. Please try again later." : "Translation is processing."}</p> : <p dir="auto">{showOriginal ? message.originalBody : message.displayBody}</p>}
-      {hasTranslation ? <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "View translation" : "View original"}</button> : null}
+      {unavailable ? <p role="status">{message.state === "FAILED" ? i18n.t("merchantSupport.message.translationUnavailable") : i18n.t("merchantSupport.message.translationProcessing")}</p> : <p dir="auto">{showOriginal ? message.originalBody : message.displayBody}</p>}
+      {hasTranslation ? <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? i18n.t("merchantSupport.message.viewTranslation") : i18n.t("merchantSupport.message.viewOriginal")}</button> : null}
       {systemAction ? (
         <Link to={systemAction.href}>
           {i18n.t(systemAction.labelKey)}

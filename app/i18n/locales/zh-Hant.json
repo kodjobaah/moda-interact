@@ -156,6 +156,7 @@
   "billingCommerce.plans.currentButton": "目前方案",
   "billingCommerce.plans.upgradeAction": "升級至",
   "billingCommerce.plans.downgradeAction": "降級至",
+  "billingCommerce.actions.manageCapacity": "管理方案和復原容量",
   "merchantSupport.thread.title": "支援對話",
   "merchantSupport.thread.empty": "尚無訊息。",
   "merchantSupport.pagination.label": "支援對話頁面",
