@@ -211,9 +211,10 @@ export default function BillingRoute() {
           <section>
             <h2>{i18n.t("billing.planActions")}</h2>
             <p>{i18n.t("billing.planActionsDescription")}</p>
-            <Link to="/app/billing/select">
-              {i18n.t(isFree ? "billing.viewPlans" : "billing.changePlan")}
-            </Link>
+            <Link to="/app/billing/select">{i18n.t("billing.changePlan")}</Link>
+            {isFree ? null : (
+              <Link to="/app/billing/select">{i18n.t("billing.switchToFree")}</Link>
+            )}
             {isFree ? null : cancellationRequest?.status === "REQUESTED" ? (
               <p>{i18n.t("billing.cancellationRequested")}</p>
             ) : (
@@ -229,10 +230,11 @@ export default function BillingRoute() {
 
           <section>
             <p>
-              {i18n.t("billing.purchasedRecoveryCredits", {
+              {i18n.t("billing.purchasedRecoveryCreditsDetailed", {
                 granted: purchasedRecoveryCredits.grantedQuantity,
                 committed: purchasedRecoveryCredits.committedQuantity,
                 reserved: purchasedRecoveryCredits.reservedQuantity,
+                refunding: purchasedRecoveryCredits.refundingQuantity,
                 available: purchasedRecoveryCredits.available,
               })}
             </p>
@@ -274,11 +276,12 @@ export default function BillingRoute() {
               <div>
                 <h2>{i18n.t("billing.refundTitle")}</h2>
                 <p>{i18n.t("billing.fullPackRefundOnly")}</p>
+                <p>{i18n.t("billing.refundAvailabilityWarning")}</p>
                 {recoveryCreditPurchases.map((purchase) => (
                   <div key={purchase.id}>
                     <span>{i18n.t("billing.recoveryCreditPackQuantity", { quantity: purchase.creditsGranted })}</span>
                     {purchase.refundStatus ? (
-                      <span>{i18n.t("billing.refundRequested")}</span>
+                      <span>{i18n.t("billing.pendingRefund")}</span>
                     ) : (
                       <fetcher.Form method="post">
                         <input type="hidden" name="intent" value="REQUEST_RECOVERY_CREDIT_REFUND" />

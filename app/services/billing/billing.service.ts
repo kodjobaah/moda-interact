@@ -288,7 +288,8 @@ async getSubscription(
       }),
       this.database.recoveryCreditPurchase.findMany({
         where: { shopId, status: "ACTIVE" },
-        orderBy: { createdAt: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 20,
         include: { usageEvent: true, refund: true },
       }),
       this.database.billingAllowanceAdjustment.aggregate({
@@ -386,8 +387,9 @@ async getSubscription(
     }
     assertRequestId(requestId, "subscription cancellation request ID");
 
-    return this.database.$transaction(async (transaction) => {
-      const subscription = await transaction.subscription.findUnique({
+    try {
+      const result = await this.database.$transaction(async (transaction) => {
+        const subscription = await transaction.subscription.findUnique({
         where: { shopId },
       });
       if (
@@ -401,10 +403,10 @@ async getSubscription(
       }
 
       const requestKey = `subscription-cancel:${shopId}:${subscription.providerSubscriptionId}`;
-      const existing = await transaction.subscriptionCancellationRequest.findUnique({
-        where: { requestKey },
-      });
-      if (existing) return existing;
+        const existing = await transaction.subscriptionCancellationRequest.findUnique({
+          where: { requestKey },
+        });
+        if (existing) return { request: existing, translationId: null };
 
       const request = await transaction.subscriptionCancellationRequest.create({
         data: {
@@ -419,14 +421,25 @@ async getSubscription(
           requestKey,
         },
       });
-      await this.createBillingSystemMessage(transaction, {
+        const translationId = await this.createBillingSystemMessage(transaction, {
         shopId,
         systemCode: BILLING_SYSTEM_MESSAGE_CODES.CANCELLATION_REQUEST_RECEIVED,
         sourceKey: `billing-cancellation-request:${request.id}`,
         body: "Your cancellation request was received.",
       });
-      return request;
-    });
+        return { request, translationId };
+      });
+      if (result.translationId) await this.dispatchTranslation(result.translationId);
+      return result.request;
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        const replay = await this.database.subscriptionCancellationRequest.findUnique({
+          where: { requestKey: `subscription-cancel:${shopId}:${(await this.database.subscription.findUnique({ where: { shopId } }))?.providerSubscriptionId ?? ""}` },
+        });
+        if (replay) return replay;
+      }
+      throw error;
+    }
   }
 
   async requestRecoveryCreditRefund(
@@ -442,14 +455,15 @@ async getSubscription(
     assertRequestId(refundRequestId, "recovery credit refund request ID");
     if (!purchaseId.trim()) throw new Error("A recovery credit purchase is required.");
 
-    return this.database.$transaction(async (transaction) => {
+    try {
+      const result = await this.database.$transaction(async (transaction) => {
       const requestKey = `recovery-credit-refund:${purchaseId}`;
       const existing = await transaction.recoveryCreditRefund.findUnique({
         where: { requestKey },
       });
       if (existing) {
         if (existing.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
-        return existing;
+        return { request: existing, translationId: null };
       }
 
       const purchase = await transaction.recoveryCreditPurchase.findUnique({
@@ -478,20 +492,34 @@ async getSubscription(
           requestKey,
         },
       });
-      await this.createBillingSystemMessage(transaction, {
+      const translationId = await this.createBillingSystemMessage(transaction, {
         shopId,
         systemCode: BILLING_SYSTEM_MESSAGE_CODES.REFUND_REQUEST_RECEIVED,
         sourceKey: `billing-refund-request:${request.id}`,
         body: "Your recovery credit refund request was received.",
       });
-      return request;
-    });
+      return { request, translationId };
+      });
+      if (result.translationId) await this.dispatchTranslation(result.translationId);
+      return result.request;
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        const replay = await this.database.recoveryCreditRefund.findUnique({
+          where: { requestKey: `recovery-credit-refund:${purchaseId}` },
+        });
+        if (replay) {
+          if (replay.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+          return replay;
+        }
+      }
+      throw error;
+    }
   }
 
   private async createBillingSystemMessage(
     transaction: Prisma.TransactionClient,
     input: { shopId: string; systemCode: string; sourceKey: string; body: string },
-  ): Promise<void> {
+  ): Promise<string | null> {
     const settings = await transaction.shopSettings.findUnique({
       where: { shopId: input.shopId },
       select: { defaultLanguageTag: true },
@@ -533,8 +561,9 @@ async getSubscription(
           status: "PENDING",
         },
       });
-      await this.dispatchTranslation(translation.id);
+      return translation.id;
     }
+    return null;
   }
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string) {

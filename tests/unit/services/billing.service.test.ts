@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { SubscriptionProjectionStatus } from "@prisma/client";
 import {
   BILLING_SYSTEM_MESSAGE_CODES,
   createShopifyUsageIdempotencyKey,
@@ -235,6 +236,181 @@ describe("BillingService subscription projection", () => {
     await service.syncSubscription("shop-1");
 
     expect(state.current).toMatchObject({ status: "ACTIVE", lastSyncErrorCode: null, lastSyncErrorAt: null });
+  });
+});
+
+function createLifecycleDatabase({
+  cancellationRequest = null,
+  refundRequest = null,
+  createCancellation,
+  createRefund,
+  languageTag = "fr-FR",
+}: {
+  cancellationRequest?: Record<string, unknown> | null;
+  refundRequest?: Record<string, unknown> | null;
+  createCancellation?: (data: Record<string, unknown>) => Record<string, unknown>;
+  createRefund?: (data: Record<string, unknown>) => Record<string, unknown>;
+  languageTag?: string;
+} = {}) {
+  const subscription = {
+    status: SubscriptionProjectionStatus.ACTIVE,
+    providerSubscriptionId: "provider-1",
+    observedShopifyPlanHandle: "growth",
+    currentPeriodEnd: periodEnd,
+  };
+  const purchase = {
+    id: "purchase-1",
+    shopId: "shop-1",
+    status: "ACTIVE",
+    usageEventId: "usage-1",
+    usageEvent: { billingPeriodId: "period-1" },
+    shopifyPlanHandleSnapshot: "growth",
+    shopifyEventHandleSnapshot: "credit-pack-meter",
+    creditsGranted: 100,
+  };
+  const transaction = {
+    subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+    subscriptionCancellationRequest: {
+      findUnique: vi.fn().mockResolvedValue(cancellationRequest),
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        if (createCancellation) return createCancellation(data);
+        return { id: "cancellation-1", ...data };
+      }),
+    },
+    recoveryCreditRefund: {
+      findUnique: vi.fn().mockResolvedValue(refundRequest),
+      create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        if (createRefund) return createRefund(data);
+        return { id: "refund-1", ...data };
+      }),
+    },
+    recoveryCreditPurchase: {
+      findUnique: vi.fn().mockResolvedValue(purchase),
+    },
+    shopSettings: {
+      findUnique: vi.fn().mockResolvedValue({ defaultLanguageTag: languageTag }),
+    },
+    merchantSupportThread: {
+      upsert: vi.fn().mockResolvedValue({ id: "thread-1" }),
+    },
+    merchantSupportMessage: {
+      create: vi.fn().mockResolvedValue({ id: "message-1" }),
+    },
+    merchantMessageTranslation: {
+      create: vi.fn().mockResolvedValue({ id: "translation-1" }),
+    },
+  };
+  const database = {
+    subscription: {
+      findUnique: vi.fn().mockResolvedValue(subscription),
+    },
+    subscriptionCancellationRequest: {
+      findUnique: vi.fn().mockResolvedValue(cancellationRequest),
+    },
+    recoveryCreditRefund: {
+      findUnique: vi.fn().mockResolvedValue(refundRequest),
+    },
+    $transaction: vi.fn(async (callback: (value: unknown) => Promise<unknown>) => callback(transaction)),
+  };
+  return { database, transaction, purchase };
+}
+
+describe("BillingService merchant billing requests", () => {
+  it("bounds active recovery-credit purchases with deterministic ordering", async () => {
+    const recoveryCreditPurchase = {
+      findMany: vi.fn().mockResolvedValue([]),
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      subscription: { findUnique: vi.fn().mockResolvedValue(null) },
+      subscriptionCancellationRequest: { findFirst: vi.fn().mockResolvedValue(null) },
+      shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
+      recoveryCreditPurchase,
+      billingAllowanceAdjustment: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+    };
+    const service = new BillingService({} as never, database as never);
+
+    await service.getMerchantBillingState("shop-1");
+
+    expect(recoveryCreditPurchase.findMany).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", status: "ACTIVE" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: 20,
+      include: { usageEvent: true, refund: true },
+    });
+  });
+
+  it("persists cancellation and dispatches translation only after commit", async () => {
+    let committed = false;
+    const dispatchTranslation = vi.fn(async () => {
+      expect(committed).toBe(true);
+    });
+    const lifecycle = createLifecycleDatabase();
+    lifecycle.database.$transaction.mockImplementation(async (callback: (value: unknown) => Promise<unknown>) => {
+      const result = await callback(lifecycle.transaction);
+      committed = true;
+      return result;
+    });
+    const service = new BillingService({} as never, lifecycle.database as never, dispatchTranslation);
+
+    const request = await service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(request).toMatchObject({ status: "REQUESTED", mode: "END_OF_CYCLE" });
+    expect(dispatchTranslation).toHaveBeenCalledWith("translation-1");
+  });
+
+  it("persists a refund request from the purchase snapshot and replays a duplicate", async () => {
+    const lifecycle = createLifecycleDatabase();
+    const dispatchTranslation = vi.fn().mockResolvedValue(undefined);
+    const service = new BillingService({} as never, lifecycle.database as never, dispatchTranslation);
+    const requestId = "22222222-2222-4222-8222-222222222222";
+
+    const request = await service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      requestId,
+      "purchase-1",
+    );
+
+    expect(request).toMatchObject({
+      status: "REQUESTED",
+      purchaseId: "purchase-1",
+      creditsSnapshot: 100,
+      billingPeriodIdSnapshot: "period-1",
+    });
+    expect(dispatchTranslation).toHaveBeenCalledWith("translation-1");
+
+    lifecycle.transaction.recoveryCreditRefund.findUnique.mockResolvedValue(request);
+    const replay = await service.requestRecoveryCreditRefund(
+      "shop-1",
+      "REQUEST_RECOVERY_CREDIT_REFUND",
+      requestId,
+      "purchase-1",
+    );
+    expect(replay).toEqual(request);
+    expect(dispatchTranslation).toHaveBeenCalledTimes(1);
+  });
+
+  it("recovers a cancellation request after a unique-key race", async () => {
+    const replay = { id: "cancellation-1", status: "REQUESTED" };
+    const lifecycle = createLifecycleDatabase({
+      createCancellation: () => {
+        throw { code: "P2002" };
+      },
+    });
+    lifecycle.database.subscriptionCancellationRequest.findUnique.mockResolvedValue(replay);
+    const service = new BillingService({} as never, lifecycle.database as never);
+
+    await expect(service.requestSubscriptionCancellation(
+      "shop-1",
+      "REQUEST_SUBSCRIPTION_CANCELLATION",
+      "33333333-3333-4333-8333-333333333333",
+    )).resolves.toEqual(replay);
   });
 });
 

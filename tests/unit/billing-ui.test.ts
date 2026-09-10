@@ -192,7 +192,7 @@ describe("merchant billing UI", () => {
   });
 
   it("presents purchased balance independently from pack purchase eligibility", () => {
-    const purchasedBalanceMarker = 'i18n.t("billing.purchasedRecoveryCredits"';
+    const purchasedBalanceMarker = 'i18n.t("billing.purchasedRecoveryCreditsDetailed"';
 
     const eligibilityMarker = "recoveryCreditPackPurchaseEligible &&";
 

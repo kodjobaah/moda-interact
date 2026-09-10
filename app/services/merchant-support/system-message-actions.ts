@@ -5,7 +5,7 @@ export const BILLING_SELECT_ROUTE = "/app/billing/select";
 
 export type MerchantSystemMessageAction = {
   href: string;
-  labelKey: "billing.viewPlans" | "billing.upgradePlan";
+  labelKey: "billing.viewPlans" | "billing.upgradePlan" | "billing.changePlan";
 };
 
 export function getMerchantSystemMessageAction(
@@ -19,6 +19,8 @@ export function getMerchantSystemMessageAction(
       return { href: BILLING_SELECT_ROUTE, labelKey: "billing.viewPlans" };
     case "BILLING_FREE_ALLOWANCE_EXHAUSTED":
       return { href: BILLING_SELECT_ROUTE, labelKey: "billing.upgradePlan" };
+    case "BILLING_PLAN_CHANGE_ACTION_REQUIRED":
+      return { href: BILLING_ROUTE, labelKey: "billing.changePlan" };
     case "BILLING_PLAN_UPGRADED":
     case "BILLING_PLAN_DOWNGRADE_SCHEDULED":
     case "BILLING_SUBSCRIPTION_ENDED":

@@ -21,6 +21,10 @@ describe("ARCH-007 billing translations", () => {
     "billing.requestRefund",
     "billing.refundRequested",
     "billing.recoveryCreditPackQuantity",
+    "billing.switchToFree",
+    "billing.pendingRefund",
+    "billing.refundAvailabilityWarning",
+    "billing.purchasedRecoveryCreditsDetailed",
   ];
 
   it("defines every billing key in every locale catalogue", async () => {
@@ -53,6 +57,7 @@ describe("ARCH-007 billing translations", () => {
           granted: 100,
           committed: 20,
           reserved: 5,
+          refunding: 0,
           available: 75,
           quantity: 100,
         })).toEqual(expect.any(String));
@@ -63,7 +68,7 @@ describe("ARCH-007 billing translations", () => {
   it("keeps task-visible billing copy in the merchant i18n path", async () => {
     const source = await readFile(new URL("../../app/routes/app/billing/route.tsx", import.meta.url), "utf8");
 
-    expect(source).toContain('i18n.t("billing.purchasedRecoveryCredits"');
+    expect(source).toContain('i18n.t("billing.purchasedRecoveryCreditsDetailed"');
     expect(source).toContain('i18n.t("billing.recoveryCreditPackDescription"');
     expect(source).toContain('i18n.t("billing.recoveryCreditPackShopifyMeter"');
     expect(source).toContain('"billing.buyRecoveryCreditPack"');
