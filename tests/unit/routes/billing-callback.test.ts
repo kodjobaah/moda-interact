@@ -47,12 +47,12 @@ describe("billing callback verification", () => {
       redirect: mocks.redirect,
       session: { shop: "example.myshopify.com" },
     });
-    mocks.resolveShop.mockResolvedValue({ id: "shop-1" });
+      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
     mocks.syncSubscription.mockResolvedValue(subscription());
 
     await runLoader("growth");
 
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing?billing=success");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it("accepts a verified mapped pending plan without replacing current entitlement", async () => {
@@ -61,7 +61,7 @@ describe("billing callback verification", () => {
       redirect: mocks.redirect,
       session: { shop: "example.myshopify.com" },
     });
-    mocks.resolveShop.mockResolvedValue({ id: "shop-1" });
+      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
     mocks.syncSubscription.mockResolvedValue(subscription({
       observedShopifyPlanHandle: "growth",
       planId: "growth-1",
@@ -72,7 +72,7 @@ describe("billing callback verification", () => {
 
     await runLoader("starter");
 
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing?billing=success");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it.each([
@@ -89,7 +89,7 @@ describe("billing callback verification", () => {
       redirect: mocks.redirect,
       session: { shop: "example.myshopify.com" },
     });
-    mocks.resolveShop.mockResolvedValue({ id: "shop-1" });
+      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
     mocks.syncSubscription.mockResolvedValue(projection);
 
     await runLoader("starter");
@@ -103,7 +103,7 @@ describe("billing callback verification", () => {
       redirect: mocks.redirect,
       session: { shop: "example.myshopify.com" },
     });
-    mocks.resolveShop.mockResolvedValue({ id: "shop-1" });
+      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
     mocks.syncSubscription.mockResolvedValue(subscription());
 
     await runLoader("unknown");

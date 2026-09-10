@@ -39,6 +39,18 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
   return (
     <s-page heading={i18n.t("usage.title")}>
       <Breadcrumbs current={i18n.t("usage.title")} merchantUi={merchantUi} />
+
+      <s-section>
+               <div className="usage-overview-grid">
+        <s-heading>{i18n.t("billing.currentPlan")}</s-heading>
+
+        {/* existing billing information */}
+
+        <s-button href="/app/billing/options" variant="primary">
+          {i18n.t("billingCommerce.actions.manageCapacity")}
+        </s-button>
+      </div>
+      </s-section>
       <s-section>
         <div className="usage-overview-grid">
           <div className="usage-overview-column">
