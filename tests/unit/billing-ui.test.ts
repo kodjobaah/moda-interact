@@ -49,12 +49,12 @@ beforeEach(() => {
     session: { shop: "merchant.myshopify.com", locale: "en-GB" },
     redirect: hostedPricingRedirect,
   });
-  resolveShopifyShop.mockResolvedValue({ id: "shop-1" });
+  resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
   findShopSettings.mockResolvedValue(null);
 });
 
 describe("merchant billing UI", () => {
-  it("redirects a no-contract merchant to hosted plan selection", async () => {
+  it("returns the billing summary for a no-contract merchant", async () => {
     getMerchantBillingState.mockResolvedValue({
       subscription: { status: "NO_CONTRACT" },
       allowance: null,
@@ -63,21 +63,12 @@ describe("merchant billing UI", () => {
       usageQuantity: 0,
     });
 
-    const redirectResponse = new Response(null, {
-      status: 302,
-      headers: {
-        Location: "/app/billing/select",
-      },
-    });
-
-    hostedPricingRedirect.mockReturnValue(redirectResponse);
-
     const result = await loader({
       request: new Request("https://example.test/app/billing"),
     } as never);
 
-    expect(result).toBe(redirectResponse);
-    expect(hostedPricingRedirect).toHaveBeenCalledWith("/app/billing/select");
+    expect(result.subscription).toMatchObject({ status: "NO_CONTRACT" });
+    expect(hostedPricingRedirect).not.toHaveBeenCalled();
   });
 
   it("redirects the selection route to Shopify pricing with a top-level target", async () => {

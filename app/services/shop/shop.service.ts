@@ -115,10 +115,6 @@ export class ShopService {
       update: {
         shopifyShopId:
           shopifyShopId,
-
-        status: "ACTIVE",
-
-        uninstalledAt: null,
       },
     });
 
@@ -171,6 +167,22 @@ export class ShopService {
       where: {
         domain:
           normalizeShopDomain(domain),
+      },
+    });
+  }
+
+
+  async markInstalled(
+    domain: string,
+  ): Promise<void> {
+    await prisma.shop.updateMany({
+      where: {
+        domain: normalizeShopDomain(domain),
+        status: "UNINSTALLED",
+      },
+      data: {
+        status: "ACTIVE",
+        uninstalledAt: null,
       },
     });
   }

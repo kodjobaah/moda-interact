@@ -88,6 +88,29 @@ describe("ShopService.markUninstalled", () => {
   });
 });
 
+describe("ShopService.markInstalled", () => {
+  it("reactivates only an uninstalled shop", async () => {
+    await new ShopService().markInstalled(shop.domain);
+
+    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
+      where: { domain: shop.domain, status: "UNINSTALLED" },
+      data: { status: "ACTIVE", uninstalledAt: null },
+    });
+  });
+
+  it("does not reactivate a suspended shop", async () => {
+    await new ShopService().markInstalled("suspended.myshopify.com");
+
+    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
+      where: {
+        domain: "suspended.myshopify.com",
+        status: "UNINSTALLED",
+      },
+      data: { status: "ACTIVE", uninstalledAt: null },
+    });
+  });
+});
+
 describe("ShopService.resolveShopifyShop", () => {
   it("creates settings from the primary Shopify locale and store context", async () => {
     const admin = adminFor({
@@ -144,6 +167,33 @@ describe("ShopService.resolveShopifyShop", () => {
     expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith(
       expect.objectContaining({ update: {} }),
     );
+  });
+
+  it("does not change the shop lifecycle status during resolution", async () => {
+    const admin = adminFor({
+      shopifyShopId: shop.shopifyShopId,
+      myshopifyDomain: shop.domain,
+      ianaTimezone: "UTC",
+      shopAddress: { countryCodeV2: "GB" },
+      shopLocales: [],
+    });
+
+    await new ShopService().resolveShopifyShop({
+      admin,
+      domain: shop.domain,
+    });
+
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith({
+      where: { domain: shop.domain },
+      create: {
+        domain: shop.domain,
+        shopifyShopId: shop.shopifyShopId,
+        status: "ACTIVE",
+      },
+      update: {
+        shopifyShopId: shop.shopifyShopId,
+      },
+    });
   });
 
   it("stores null for missing or invalid optional Shopify values", async () => {

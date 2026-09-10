@@ -25,6 +25,7 @@ describe("pending recoveries resource loader", () => {
     resolveShopifyShop.mockResolvedValue({
       id: "internal-shop-1",
       domain: "merchant.myshopify.com",
+        status: "ACTIVE",
     });
     readPendingRecoveries.mockResolvedValue({
       available: true,
@@ -78,5 +79,26 @@ describe("pending recoveries resource loader", () => {
       pendingRecoveries: { available: false },
       refreshedAt: null,
     });
+  });
+
+  it("rejects suspended shops before reading pending data", async () => {
+    readPendingRecoveries.mockClear();
+    resolveShopifyShop.mockResolvedValue({
+      id: "internal-shop-1",
+      domain: "merchant.myshopify.com",
+      status: "SUSPENDED",
+    });
+
+    try {
+      await loader({
+        request: new Request("https://example.test/app/pending-recoveries"),
+      });
+    } catch (error) {
+      expect(error).toBeInstanceOf(Response);
+      expect(error.status).toBe(302);
+      expect(error.headers.get("Location")).toBe("/app/merchant-support");
+    }
+
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
   });
 });

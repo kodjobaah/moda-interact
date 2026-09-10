@@ -14,6 +14,7 @@ import {
   billingService,
 } from "@/services/billing/billing.service";
 import { shopService } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
 type BillingCallbackSubscription = Pick<
   Subscription,
@@ -75,6 +76,7 @@ export async function loader({
       admin,
       domain: session.shop,
     });
+  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
   const subscription =
     await billingService.syncSubscription(
@@ -88,7 +90,7 @@ export async function loader({
   }
 
   return redirect(
-    "/app/billing?billing=success",
+    "/app",
   );
 }
 

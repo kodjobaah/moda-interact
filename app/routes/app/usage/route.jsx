@@ -1,10 +1,10 @@
-import { redirect, useLoaderData } from "react-router";
+import { useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import UsageEvents from "@/components/dashboard/UsageEvents";
-import { billingService } from "@/services/billing/billing.service";
 import { shopService } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
@@ -19,14 +19,12 @@ export const loader = async ({ request }) => {
   const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
   const requestedBillId = url.searchParams.get("billId");
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/usage", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
 
   if (!settings?.onboardingCompleted) {
     return { settings: null, merchantUi: merchantUiContext(null, session), usageEvents: [], usagePagination: { page: 1, pageSize, total: 0, totalQuantity: 0 }, billingPeriods: [], usageView };
   }
-
-  const subscription = await billingService.getSubscription(shop.id);
-  if (!subscription) throw redirect("/app/billing");
 
   const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
@@ -72,6 +70,7 @@ export default function UsagePage() {
     : i18n.t("dashboard.billingPeriod");
 
   return (
+    
     <s-page heading={i18n.t("usage.billable")}>
       <Breadcrumbs current={i18n.t("usage.billable")} parent={periodLabel} parentHref={dashboardUrl} merchantUi={merchantUi} />
       <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} merchantUi={merchantUi} />
