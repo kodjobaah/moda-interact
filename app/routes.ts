@@ -33,6 +33,7 @@ export default [
 
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
+  route("app/billing/options", "./routes/app/billing/options/route.tsx"),
   route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),
 
   route("webhooks", "./routes/webhooks/root/route.jsx"),

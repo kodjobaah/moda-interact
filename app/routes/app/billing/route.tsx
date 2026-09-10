@@ -13,6 +13,7 @@ import { authenticate } from "@/shopify.server";
 import { billingService } from "@/services/billing/billing.service";
 
 import { shopService } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import db from "@/db.server";
 
@@ -20,26 +21,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const {
     admin,
     session,
-    redirect: shopifyRedirect,
   } = await authenticate.admin(request);
 
   const shop = await shopService.resolveShopifyShop({
     admin,
     domain: session.shop,
   });
+  assertActiveShop(shop, { route: "/app/billing", capability: "read-billing", redirectTo: "/app/merchant-support" });
 
   const settings = await db.shopSettings.findUnique({
     where: { shopId: shop.id },
   });
-  const state = await billingService.getMerchantBillingState(shop.id);
 
-  if (!state.subscription || state.subscription.status === "NO_CONTRACT") {
-    return shopifyRedirect("/app/billing/select");
-  }
+  const state = await billingService.getMerchantBillingState(shop.id);
 
   return {
     merchantUi: merchantUiContext(settings, session),
-    subscription: {
+    subscription: state.subscription ? {
       status: state.subscription.status,
       planKind: state.subscription.plan?.kind ?? null,
       planName:
@@ -56,7 +54,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         state.subscription.pendingShopifyPlanHandle,
       pendingEffectiveAt:
         state.subscription.pendingEffectiveAt?.toISOString() ?? null,
-    },
+    } : null,
     allowance: state.allowance,
     remaining: state.remaining,
     usageQuantity: state.usageQuantity,
@@ -77,6 +75,7 @@ export async function action({ request }: ActionFunctionArgs) {
     admin,
     domain: session.shop,
   });
+  assertActiveShop(shop, { route: "/app/billing", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
   const formData = await request.formData();
   const purchase = await billingService.requestRecoveryCreditPack(
     shop.id,
@@ -103,8 +102,10 @@ export default function BillingRoute() {
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const i18n = createMerchantI18n(merchantUi);
-  const isFree = subscription.planKind === "FREE";
-  const isSafeProjection = ["ACTIVE", "TRIALING"].includes(subscription.status);
+  const isFree = subscription?.planKind === "FREE";
+  const isSafeProjection = Boolean(
+    subscription && ["ACTIVE", "TRIALING"].includes(subscription.status),
+  );
 
   return (
     <div
@@ -116,7 +117,12 @@ export default function BillingRoute() {
     >
       <h1>{i18n.t("billing.title")}</h1>
 
-      {!isSafeProjection ? (
+      {!subscription || subscription.status === "NO_CONTRACT" ? (
+        <section>
+          <h2>{i18n.t("billing.viewPlans")}</h2>
+          <p>{i18n.t("billing.configurationUnavailableDescription")}</p>
+        </section>
+      ) : !isSafeProjection ? (
         <section>
           <h2>{i18n.t("billing.configurationUnavailable")}</h2>
           <p>{i18n.t("billing.configurationUnavailableDescription")}</p>

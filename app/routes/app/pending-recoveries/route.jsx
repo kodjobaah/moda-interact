@@ -1,10 +1,12 @@
 import { authenticate } from "@/shopify.server";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { shopService } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/pending-recoveries", capability: "read-recoveries", redirectTo: "/app/merchant-support" });
   const url = new URL(request.url);
   const pendingPage = Number.parseInt(url.searchParams.get("pendingPage") ?? "1", 10);
   const pendingRecoveries = await readPendingRecoveries({

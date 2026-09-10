@@ -7,6 +7,7 @@ import {
 } from "@modainteract/moda-interact-shared/merchant-communications";
 import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
+import { assertSupportShop } from "@/services/shop/shop-access-policy";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import db from "@/db.server";
 import {
@@ -19,6 +20,7 @@ import { getMerchantSystemMessageAction } from "@/services/merchant-support/syst
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertSupportShop(shop, { route: "/app/merchant-support", capability: "read-messages", redirectTo: "/auth/login" });
   const url = new URL(request.url);
   const support = await readMerchantSupportMessages({
     shopId: shop.id,
@@ -32,6 +34,7 @@ export async function loader({ request }) {
 export async function action({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertSupportShop(shop, { route: "/app/merchant-support", capability: "send-message", redirectTo: "/auth/login" });
   const formData = await request.formData();
   const intent = String(formData.get("intent") ?? "compose");
 

@@ -14,6 +14,7 @@ import UsageOverview from "@/components/dashboard/UsageOverview";
 import {
   shopService,
 } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
 import {
   billingService,
@@ -45,6 +46,8 @@ const {
       domain: session.shop,
     });
 
+  assertActiveShop(shop, { route: "/app", redirectTo: "/app/merchant-support" });
+
   console.log("Resolved shop:", shop);
   /*
    * ShopSettings is now related using shopId,
@@ -61,26 +64,9 @@ console.log("Resolved shop settings:", settings);
 /*
    * Let the merchant complete onboarding first.
    */
-  if (!settings) {
-    return {
-      settings: null,
-      merchantUi: merchantUiContext(null, session),
-      subscription: null,
-      recoveries: [],
-      pendingRecoveries: { available: false, page: Number.isInteger(pendingPage) && pendingPage > 0 ? pendingPage : 1, pageSize: 10, total: 0, totalPages: 0, items: [] },
-      pendingRecoveriesUpdatedAt: null,
-      billingPeriods: [],
-      usageSummary: { current: [], past: [] },
-
-      stats: {
-        abandonedCheckouts: 0,
-        recoveredCheckouts: 0,
-        recoveredRevenue: 0,
-        messagesSent: 0,
-      },
-    };
+  if (!settings || !settings.onboardingCompleted) {
+    return shopifyRedirect("/app/billing");
   }
-
 
   /*
    * Read local billing state.
@@ -93,14 +79,6 @@ console.log("Resolved shop settings:", settings);
     );
 
   console.log("Resolved subscription:", subscription);
-const isSafeSubscription =
-  subscription &&
-  ["ACTIVE", "TRIALING"].includes(subscription.status);
-
-if (!isSafeSubscription) {
-  return shopifyRedirect("/app/billing");
-}
-
   const pendingRecoveries = await readPendingRecoveries({
     shopId: shop.id,
     shopDomain: shop.domain,
@@ -144,7 +122,7 @@ if (!isSafeSubscription) {
     settings,
     merchantUi: merchantUiContext(settings, session),
 
-    subscription: {
+    subscription: subscription ? {
       status: subscription.status,
 
       planHandle:
@@ -153,7 +131,7 @@ if (!isSafeSubscription) {
       planName:
         subscription.plan?.name ??
         subscription.observedShopifyPlanHandle,
-    },
+    } : null,
 
     stats: {
       abandonedCheckouts: recoveries.length,
