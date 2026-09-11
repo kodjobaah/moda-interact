@@ -14,6 +14,14 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
   return {
     provider: "SHOPIFY",
     planHandle: "growth",
+    billingPeriod: "EVERY_30_DAYS",
+    currentFlatRatePlan: {
+      handle: "growth",
+      description: "growth",
+      price: { amount: "10", currency: "USD" },
+    },
+    pendingFlatRatePlan: null,
+    usageItems: [],
     usageEventHandles: ["message-meter"],
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
@@ -28,8 +36,18 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createDatabase({ plan = null, pendingPlan = null, current = null } = {}) {
-  const state = { current };
+type BillingPlanFixture = Record<string, unknown>;
+
+function createDatabase({
+  plan = null,
+  pendingPlan = null,
+  current = null,
+}: {
+  plan?: BillingPlanFixture | null;
+  pendingPlan?: BillingPlanFixture | null;
+  current?: BillingPlanFixture | null;
+} = {}) {
+  const state: { current: BillingPlanFixture | null } = { current };
   const subscription = {
     findUnique: vi.fn().mockImplementation(async () => state.current),
     upsert: vi.fn().mockImplementation(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
@@ -62,6 +80,141 @@ function createDatabase({ plan = null, pendingPlan = null, current = null } = {}
 }
 
 describe("BillingService subscription projection", () => {
+  it("returns Shopify commercial facts and independent current/pending mappings", async () => {
+    const { database } = createDatabase({
+      plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
+      pendingPlan: { id: "starter-1", name: "Starter", kind: "FREE" },
+    });
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        currentFlatRatePlan: {
+          handle: "growth",
+          description: "Growth monthly",
+          price: { amount: "19.00", currency: "GBP" },
+        },
+        pendingFlatRatePlan: {
+          handle: "starter",
+          price: { amount: "0.00", currency: "GBP" },
+          effectiveAt: periodEnd,
+        },
+        billingPeriod: "ANNUAL",
+        cancelAtPeriodEnd: true,
+      })),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toMatchObject({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "growth",
+        description: "Growth monthly",
+        price: { amount: "19.00", currency: "GBP" },
+        billingPeriod: "ANNUAL",
+        cancelAtEndOfCycle: true,
+        pendingUpdate: {
+          planHandle: "starter",
+          price: { amount: "0.00", currency: "GBP" },
+          effectiveAt: periodEnd.toISOString(),
+        },
+      },
+      mappingStatus: "MAPPED",
+      modaMapping: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
+      pendingModaMapping: { id: "starter-1", name: "Starter", kind: "FREE" },
+    });
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves a mapped Free subscription billing cycle and active usage items", async () => {
+    const { database } = createDatabase({
+      plan: { id: "free-1", name: "Free", kind: "FREE" },
+    });
+    const usageItem = {
+      handle: "recovery-credit-pack",
+      description: "Recovery credit pack",
+      price: {
+        kind: "TIERED" as const,
+        active: true,
+        currency: "GBP",
+        tiersMode: "VOLUME",
+        tiers: [{ upTo: null, amountPerUnit: "0.10", amount: "0.10" }],
+      },
+      usage: { quantity: 2, costAmount: "0.20", costCurrency: "GBP" },
+    };
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        currentFlatRatePlan: {
+          handle: "growth",
+          description: "Free",
+          price: { amount: "0.00", currency: "GBP" },
+        },
+        usageItems: [usageItem],
+      })),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toMatchObject({
+      subscription: {
+        currentPeriodStart: periodStart.toISOString(),
+        currentPeriodEnd: periodEnd.toISOString(),
+        price: { amount: "0.00", currency: "GBP" },
+        usageItems: [usageItem],
+      },
+      modaMapping: { id: "free-1", name: "Free", kind: "FREE" },
+    });
+  });
+
+  it("keeps an independently unmapped pending handle and propagates Partner failures", async () => {
+    const { database } = createDatabase({
+      plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
+    });
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        pendingFlatRatePlan: {
+          handle: "premium_2026",
+          price: { amount: "99.00", currency: "GBP" },
+          effectiveAt: periodEnd,
+        },
+      })),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toMatchObject({
+      mappingStatus: "MAPPED",
+      modaMapping: { id: "growth-1" },
+      pendingModaMapping: null,
+    });
+
+    provider.getActiveSubscription.mockRejectedValue(new Error("Partner unavailable"));
+    await expect(service.getMerchantShopifySubscriptionState("shop-1"))
+      .rejects.toThrow("Partner unavailable");
+  });
+
+  it("preserves an unmapped Shopify contract and returns no active state explicitly", async () => {
+    const { database } = createDatabase();
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+      planHandle: "premium_2026",
+      currentFlatRatePlan: {
+        handle: "premium_2026",
+        description: "Premium",
+        price: { amount: "99", currency: "GBP" },
+      },
+    })) };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toMatchObject({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "premium_2026", price: { amount: "99", currency: "GBP" } },
+      mappingStatus: "UNMAPPED",
+      modaMapping: null,
+    });
+
+    provider.getActiveSubscription.mockResolvedValue(null);
+    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toEqual({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+  });
+
   it("persists the canonical subscription-ended code that maps to the billing CTA", async () => {
     const current = {
       status: "ACTIVE",
