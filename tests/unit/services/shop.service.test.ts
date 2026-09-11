@@ -16,6 +16,7 @@ const dbMock = {
     updateMany: vi.fn(),
   },
   subscription: {
+    upsert: vi.fn(),
     updateMany: vi.fn(),
   },
   shopSettings: {
@@ -50,11 +51,16 @@ beforeEach(() => {
   dbMock.shop.upsert.mockReset();
   dbMock.shop.updateMany.mockReset();
   dbMock.subscription.updateMany.mockReset();
+  dbMock.subscription.upsert.mockReset();
   dbMock.shopSettings.upsert.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
   dbMock.shop.upsert.mockResolvedValue(shop);
   dbMock.shopSettings.upsert.mockResolvedValue({
     shopId: shop.id,
+  });
+  dbMock.subscription.upsert.mockResolvedValue({
+    shopId: shop.id,
+    status: "NO_CONTRACT",
   });
 });
 
@@ -112,6 +118,73 @@ describe("ShopService.markInstalled", () => {
 });
 
 describe("ShopService.resolveShopifyShop", () => {
+  it("creates an idempotent no-contract subscription projection", async () => {
+    const admin = adminFor({
+      shopifyShopId: shop.shopifyShopId,
+      myshopifyDomain: shop.domain,
+      shopLocales: [],
+    });
+
+    const service = new ShopService();
+    await service.resolveShopifyShop({
+      admin,
+      domain: shop.domain,
+    });
+    await service.resolveShopifyShop({
+      admin,
+      domain: shop.domain,
+    });
+
+    expect(dbMock.subscription.upsert).toHaveBeenCalledTimes(2);
+    expect(dbMock.subscription.upsert).toHaveBeenLastCalledWith({
+      where: { shopId: shop.id },
+      create: {
+        shopId: shop.id,
+        status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
+        billingPeriodId: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        providerSubscriptionId: null,
+        pendingShopifyPlanHandle: null,
+        pendingPlanId: null,
+        pendingEffectiveAt: null,
+      },
+      update: {},
+    });
+  });
+
+  it.each(["ACTIVE", "TRIALING"] as const)(
+    "does not reset an existing %s subscription projection",
+    async (status) => {
+      dbMock.subscription.upsert.mockResolvedValue({
+        shopId: shop.id,
+        status,
+        planId: "plan-1",
+      });
+      const admin = adminFor({
+        shopifyShopId: shop.shopifyShopId,
+        myshopifyDomain: shop.domain,
+        shopLocales: [],
+      });
+
+      await new ShopService().resolveShopifyShop({
+        admin,
+        domain: shop.domain,
+      });
+
+      expect(dbMock.subscription.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { shopId: shop.id },
+          update: {},
+        }),
+      );
+    },
+  );
+
   it("creates settings from the primary Shopify locale and store context", async () => {
     const admin = adminFor({
       shopifyShopId: shop.shopifyShopId,
