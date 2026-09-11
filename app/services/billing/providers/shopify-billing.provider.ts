@@ -2,6 +2,7 @@ import type {
   BillingProvider,
   GetActiveSubscriptionInput,
   ProviderSubscription,
+  ProviderUsageItem,
 } from "../billing.types";
 
 interface ShopifyActiveSubscriptionResponse {
@@ -186,6 +187,12 @@ export class ShopifyBillingProvider
     }
 
     const pendingPlanHandle = pendingFlatRateItems[0]?.handle ?? null;
+    const currentFlatRatePrice = flatRateItems[0]?.price?.__typename === "FlatRatePrice"
+      ? flatRateItems[0].price
+      : null;
+    const pendingFlatRatePrice = pendingFlatRateItems[0]?.price?.__typename === "FlatRatePrice"
+      ? pendingFlatRateItems[0].price
+      : null;
 
     const trialEndsAt =
       subscription.trialEndsAt
@@ -209,6 +216,45 @@ export class ShopifyBillingProvider
     return {
       provider: "SHOPIFY",
       planHandle,
+      billingPeriod: subscription.billingPeriod,
+      currentFlatRatePlan: {
+        handle: planHandle,
+        description: flatRateItems[0]?.description ?? null,
+        price: {
+          amount: currentFlatRatePrice?.amount ?? "",
+          currency: currentFlatRatePrice?.currency ?? null,
+        },
+      },
+      pendingFlatRatePlan: pendingFlatRateItems[0]
+        ? {
+            handle: pendingPlanHandle as string,
+            price: {
+              amount: pendingFlatRatePrice?.amount ?? "",
+              currency: pendingFlatRatePrice?.currency ?? null,
+            },
+            effectiveAt: currentPeriodEnd,
+          }
+        : null,
+      usageItems: tieredItems.flatMap((item): ProviderUsageItem[] => item.handle && item.price?.__typename === "TieredPrice"
+        ? [{
+            handle: item.handle,
+            description: item.description,
+            price: {
+              kind: "TIERED",
+              active: item.price.active,
+              currency: item.price.currency,
+              tiersMode: item.price.tiersMode,
+              tiers: item.price.tiers,
+            },
+            usage: item.usage
+              ? {
+                  quantity: item.usage.quantity,
+                  costAmount: item.usage.cost?.amount ?? null,
+                  costCurrency: item.usage.cost?.currencyCode ?? null,
+                }
+              : null,
+          }]
+        : []),
 
       status:
         trialEndsAt && trialEndsAt > new Date()
