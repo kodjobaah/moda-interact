@@ -118,6 +118,28 @@ export class ShopService {
       },
     });
 
+    await prisma.subscription.upsert({
+      where: {
+        shopId: shop.id,
+      },
+      create: {
+        shopId: shop.id,
+        status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
+        billingPeriodId: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        providerSubscriptionId: null,
+        pendingShopifyPlanHandle: null,
+        pendingPlanId: null,
+        pendingEffectiveAt: null,
+      },
+      update: {},
+    });
+
     const primaryLocale =
       result.data?.shopLocales?.find(
         (shopLocale) => shopLocale.primary === true,

@@ -1,10 +1,11 @@
-import { useLoaderData } from "react-router";
+import { redirect, useLoaderData } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import UsageEvents from "@/components/dashboard/UsageEvents";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { billingService } from "@/services/billing/billing.service";
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
@@ -22,8 +23,14 @@ export const loader = async ({ request }) => {
   assertActiveShop(shop, { route: "/app/usage", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
 
-  if (!settings?.onboardingCompleted) {
-    return { settings: null, merchantUi: merchantUiContext(null, session), usageEvents: [], usagePagination: { page: 1, pageSize, total: 0, totalQuantity: 0 }, billingPeriods: [], usageView };
+  const subscription = await billingService.getSubscription(shop.id);
+
+  if (
+    !settings?.onboardingCompleted ||
+    !subscription ||
+    !["ACTIVE", "TRIALING"].includes(subscription.status)
+  ) {
+    throw redirect("/app");
   }
 
   const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };

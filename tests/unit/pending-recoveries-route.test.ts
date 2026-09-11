@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const readPendingRecoveries = vi.fn();
+const getSubscription = vi.fn();
+const findShopSettings = vi.fn();
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -12,6 +14,12 @@ vi.mock("../../app/services/shop/shop.service", () => ({
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries,
+}));
+vi.mock("../../app/services/billing/billing.service", () => ({
+  billingService: { getSubscription },
+}));
+vi.mock("../../app/db.server", () => ({
+  default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
 const { loader } = await import("../../app/routes/app/pending-recoveries/route");
@@ -25,8 +33,10 @@ describe("pending recoveries resource loader", () => {
     resolveShopifyShop.mockResolvedValue({
       id: "internal-shop-1",
       domain: "merchant.myshopify.com",
-        status: "ACTIVE",
+      status: "ACTIVE",
     });
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({ status: "ACTIVE" });
     readPendingRecoveries.mockResolvedValue({
       available: true,
       page: 2,
@@ -94,11 +104,44 @@ describe("pending recoveries resource loader", () => {
         request: new Request("https://example.test/app/pending-recoveries"),
       });
     } catch (error) {
-      expect(error).toBeInstanceOf(Response);
-      expect(error.status).toBe(302);
-      expect(error.headers.get("Location")).toBe("/app/merchant-support");
+      const response = error as Response;
+      expect(response).toBeInstanceOf(Response);
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBe("/app/merchant-support");
     }
 
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an incomplete onboarding shop", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: false });
+    readPendingRecoveries.mockClear();
+
+    const response = await loader({
+      request: new Request("https://example.test/app/pending-recoveries"),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      pendingRecoveries: { available: false, items: [] },
+      refreshedAt: null,
+    });
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a no-contract shop", async () => {
+    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+    readPendingRecoveries.mockClear();
+
+    const response = await loader({
+      request: new Request("https://example.test/app/pending-recoveries"),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      pendingRecoveries: { available: false },
+      refreshedAt: null,
+    });
     expect(readPendingRecoveries).not.toHaveBeenCalled();
   });
 });

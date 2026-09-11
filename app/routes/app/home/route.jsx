@@ -29,7 +29,6 @@ export const loader = async ({ request }) => {
 const {
   admin,
   session,
-  redirect: shopifyRedirect,
 } = await authenticate.admin(request);
   const url = new URL(request.url);
   const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
@@ -61,11 +60,12 @@ const {
     });
 
 console.log("Resolved shop settings:", settings);
+  const merchantUi = merchantUiContext(settings, session);
 /*
    * Let the merchant complete onboarding first.
    */
   if (!settings || !settings.onboardingCompleted) {
-    return shopifyRedirect("/app/billing");
+    return { settings, merchantUi, subscription: null };
   }
 
   /*
@@ -79,6 +79,10 @@ console.log("Resolved shop settings:", settings);
     );
 
   console.log("Resolved subscription:", subscription);
+  if (!subscription || !["ACTIVE", "TRIALING"].includes(subscription.status)) {
+    return { settings, merchantUi, subscription: null };
+  }
+
   const pendingRecoveries = await readPendingRecoveries({
     shopId: shop.id,
     shopDomain: shop.domain,
@@ -120,7 +124,7 @@ console.log("Resolved shop settings:", settings);
 
   return {
     settings,
-    merchantUi: merchantUiContext(settings, session),
+    merchantUi,
 
     subscription: subscription ? {
       status: subscription.status,
@@ -159,6 +163,7 @@ export default function Index() {
   const {
     settings,
     merchantUi,
+    subscription,
     stats,
     recoveries,
     billingPeriods,
@@ -170,7 +175,7 @@ export default function Index() {
   } = useLoaderData();
   const [searchParams] = useSearchParams();
 
-  if (!settings?.onboardingCompleted) {
+  if (!settings?.onboardingCompleted || !subscription) {
     return <Onboarding merchantUi={merchantUi} />;
   }
 
