@@ -68,8 +68,25 @@ describe("ShopifyBillingProvider", () => {
     await expect(new ShopifyBillingProvider().getActiveSubscription({ shopifyShopId: "shop-1" }))
       .resolves.toMatchObject({
         planHandle: "growth",
+        billingPeriod: "EVERY_30_DAYS",
+        currentFlatRatePlan: {
+          handle: "growth",
+          description: "growth",
+          price: { amount: "10", currency: "USD" },
+        },
         usageEventHandles: ["message-meter"],
+        usageItems: [{
+          handle: "message-meter",
+          description: "message-meter",
+          price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
+          usage: { quantity: 4, costAmount: "2", costCurrency: "USD" },
+        }],
         pendingPlanHandle: "starter",
+        pendingFlatRatePlan: {
+          handle: "starter",
+          price: { amount: "10", currency: "USD" },
+          effectiveAt: new Date("2026-10-01T00:00:00Z"),
+        },
         pendingEffectiveAt: new Date("2026-10-01T00:00:00Z"),
         providerUsageSnapshot: [{ handle: "message-meter", quantity: 4, costAmount: "2", costCurrency: "USD" }],
       });

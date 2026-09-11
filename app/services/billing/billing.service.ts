@@ -24,6 +24,7 @@ import {
 
 import type {
   BillingProvider,
+  MerchantShopifySubscriptionState,
 } from "./billing.types";
 
 import {
@@ -261,6 +262,87 @@ async getSubscription(
       ? subscription
       : null;
 }
+
+  async getMerchantShopifySubscriptionState(
+    shopId: string,
+  ): Promise<MerchantShopifySubscriptionState> {
+    const shop = await this.database.shop.findUnique({
+      where: { id: shopId },
+    });
+
+    if (!shop) {
+      throw new Error(`Shop ${shopId} was not found`);
+    }
+    if (!shop.shopifyShopId) {
+      throw new Error(`Shop ${shopId} does not have a Shopify shop ID`);
+    }
+
+    const providerSubscription = await this.provider.getActiveSubscription({
+      shopifyShopId: shop.shopifyShopId,
+    });
+
+    if (!providerSubscription) {
+      return {
+        status: "NO_ACTIVE_SUBSCRIPTION",
+        subscription: null,
+      };
+    }
+
+    const [currentPlan, pendingPlan] = await Promise.all([
+      this.database.billingPlan.findUnique({
+        where: { shopifyPlanHandle: providerSubscription.planHandle },
+        select: { id: true, name: true, kind: true },
+      }),
+      providerSubscription.pendingFlatRatePlan
+        ? this.database.billingPlan.findUnique({
+            where: {
+              shopifyPlanHandle: providerSubscription.pendingFlatRatePlan.handle,
+            },
+            select: { id: true, name: true, kind: true },
+          })
+        : null,
+    ]);
+
+    const mapping = currentPlan
+      ? {
+          id: currentPlan.id,
+          name: currentPlan.name,
+          kind: currentPlan.kind === BillingPlanKind.FREE ? "FREE" as const : "PAID_METERED" as const,
+        }
+      : null;
+    const pendingMapping = pendingPlan
+      ? {
+          id: pendingPlan.id,
+          name: pendingPlan.name,
+          kind: pendingPlan.kind === BillingPlanKind.FREE ? "FREE" as const : "PAID_METERED" as const,
+        }
+      : null;
+
+    return {
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: providerSubscription.currentFlatRatePlan.handle,
+        description: providerSubscription.currentFlatRatePlan.description,
+        price: providerSubscription.currentFlatRatePlan.price,
+        billingPeriod: providerSubscription.billingPeriod,
+        currentPeriodStart: providerSubscription.currentPeriodStart?.toISOString() ?? null,
+        currentPeriodEnd: providerSubscription.currentPeriodEnd?.toISOString() ?? null,
+        trialEndsAt: providerSubscription.trialEndsAt?.toISOString() ?? null,
+        cancelAtEndOfCycle: providerSubscription.cancelAtPeriodEnd,
+        pendingUpdate: providerSubscription.pendingFlatRatePlan
+          ? {
+              planHandle: providerSubscription.pendingFlatRatePlan.handle,
+              price: providerSubscription.pendingFlatRatePlan.price,
+              effectiveAt: providerSubscription.pendingFlatRatePlan.effectiveAt?.toISOString() ?? null,
+            }
+          : null,
+        usageItems: providerSubscription.usageItems,
+      },
+      modaMapping: mapping,
+      mappingStatus: mapping ? "MAPPED" : "UNMAPPED",
+      pendingModaMapping: pendingMapping,
+    };
+  }
 
   async getMerchantBillingState(shopId: string) {
     const [shop, subscription, counter, adjustmentTotal, usageTotal, purchasedCounter] = await Promise.all([
