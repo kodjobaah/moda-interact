@@ -153,6 +153,23 @@ describe("billing callback activation", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
+  it("does not complete an older callback when a newer Free selection is pending", async () => {
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
+      plan: { id: "free-a-id", kind: "FREE", shopifyPlanHandle: "free-a" },
+      observedShopifyPlanHandle: "free-a",
+      planId: "free-a-id",
+      pendingShopifyPlanHandle: "free-b",
+      pendingPlanId: "free-b-id",
+      pendingEffectiveAt: new Date(),
+    }));
+
+    await runLoader("free-a");
+
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
   it("keeps missing plan_handle as a client error", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();

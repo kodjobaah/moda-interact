@@ -50,7 +50,13 @@ export function isVerifiedBillingCallback(
     subscription.planId !== null &&
     subscription.plan?.kind === "FREE";
 
-  return currentPlanMatches;
+  const pendingSelectionConflicts = subscription.pendingShopifyPlanHandle !== null && (
+    subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
+    subscription.pendingPlanId !== subscription.planId ||
+    subscription.pendingEffectiveAt === null
+  );
+
+  return currentPlanMatches && !pendingSelectionConflicts;
 }
 
 

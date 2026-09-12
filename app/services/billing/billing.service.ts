@@ -105,6 +105,24 @@ function isPrismaUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+async function lockInitialFreeActivationState(
+  transaction: Prisma.TransactionClient,
+  shopId: string,
+): Promise<void> {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT "shopId"
+    FROM "shopify"."ShopSettings"
+    WHERE "shopId" = ${shopId}
+    FOR UPDATE
+  `);
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "billing"."Subscription"
+    WHERE "shopId" = ${shopId}
+    FOR UPDATE
+  `);
+}
+
 function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
   if (subscription.providerSubscriptionId?.trim()) {
     return `provider:${subscription.providerSubscriptionId.trim()}`;
@@ -260,20 +278,19 @@ export class BillingService {
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
-      const [currentSubscription, settings] = await Promise.all([
-        transaction.subscription.findUnique({
-          where: { shopId },
-          select: {
-            status: true,
-            planId: true,
-            observedShopifyPlanHandle: true,
-          },
-        }),
-        transaction.shopSettings.findUnique({
-          where: { shopId },
-          select: { onboardingCompleted: true },
-        }),
-      ]);
+      await lockInitialFreeActivationState(transaction, shopId);
+      const currentSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: {
+          status: true,
+          planId: true,
+          observedShopifyPlanHandle: true,
+        },
+      });
+      const settings = await transaction.shopSettings.findUnique({
+        where: { shopId },
+        select: { onboardingCompleted: true },
+      });
       const isVerifiedReplay = currentSubscription?.planId === plan.id &&
         currentSubscription.observedShopifyPlanHandle === planHandle &&
         (currentSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
@@ -335,6 +352,11 @@ export class BillingService {
 
   async completeFreeActivation(shopId: string, requestedPlanHandle: string) {
     return this.database.$transaction(async (transaction) => {
+      await lockInitialFreeActivationState(transaction, shopId);
+      const settings = await transaction.shopSettings.findUnique({
+        where: { shopId },
+        select: { onboardingCompleted: true },
+      });
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         include: { plan: true },
@@ -347,6 +369,13 @@ export class BillingService {
         (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
         subscription.observedShopifyPlanHandle !== requestedPlanHandle
       ) {
+        return false;
+      }
+      if (settings?.onboardingCompleted !== true && (
+        subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
+        subscription.pendingPlanId !== subscription.planId ||
+        !subscription.pendingEffectiveAt
+      )) {
         return false;
       }
 
@@ -760,6 +789,11 @@ async getSubscription(
      */
     if (!providerSubscription) {
       const lifecycle = await this.database.$transaction(async (transaction) => {
+        await lockInitialFreeActivationState(transaction, shopId);
+        const settings = await transaction.shopSettings.findUnique({
+          where: { shopId },
+          select: { onboardingCompleted: true },
+        });
         const current = await transaction.subscription.findUnique({
           where: { shopId },
           select: {
@@ -777,8 +811,8 @@ async getSubscription(
           },
         });
         const now = new Date();
-        const preserveInitialIntent = current !== null &&
-          current.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+        const preserveInitialIntent = settings?.onboardingCompleted !== true &&
+          current !== null &&
           current.pendingShopifyPlanHandle &&
           current.pendingPlanId;
 
@@ -868,6 +902,7 @@ async getSubscription(
     const now = new Date();
 
     return this.database.$transaction(async (transaction) => {
+      await lockInitialFreeActivationState(transaction, shopId);
       const existingSubscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -880,15 +915,38 @@ async getSubscription(
         },
       });
       const subscriptionId = existingSubscription?.id ?? randomUUID();
-      const preserveInitialIntent = existingSubscription?.status === SubscriptionProjectionStatus.NO_CONTRACT &&
-        Boolean(existingSubscription.pendingShopifyPlanHandle) &&
-        !providerSubscription.pendingPlanHandle &&
-        existingSubscription.pendingShopifyPlanHandle !== providerSubscription.planHandle;
+      const settings = await transaction.shopSettings.findUnique({
+        where: { shopId },
+        select: { onboardingCompleted: true },
+      });
+      const pendingPlan = providerSubscription.pendingPlanHandle
+        ? await transaction.billingPlan.findUnique({
+            where: { shopifyPlanHandle: providerSubscription.pendingPlanHandle },
+            select: { id: true, active: true },
+          })
+        : null;
+      const preserveInitialIntent = settings?.onboardingCompleted !== true &&
+        Boolean(existingSubscription?.pendingShopifyPlanHandle) &&
+        Boolean(existingSubscription?.pendingPlanId);
+      const preservedPendingShopifyPlanHandle = preserveInitialIntent
+        ? existingSubscription?.pendingShopifyPlanHandle ?? null
+        : providerSubscription.pendingPlanHandle;
+      const preservedPendingPlanId = preserveInitialIntent
+        ? existingSubscription?.pendingPlanId ?? null
+        : pendingPlan?.active ? pendingPlan.id : null;
+      const preservedPendingEffectiveAt = preserveInitialIntent
+        ? existingSubscription?.pendingEffectiveAt ?? null
+        : providerSubscription.pendingPlanHandle
+          ? providerSubscription.currentPeriodEnd
+          : null;
       const nextReconcileAt = plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
         ? providerSubscription.currentPeriodEnd
           ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
           : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
         : null;
+      const preservedNextReconcileAt = preserveInitialIntent
+        ? existingSubscription?.nextReconcileAt ?? null
+        : nextReconcileAt;
       const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
         ? await transaction.billingPeriod.upsert({
             where: {
@@ -913,13 +971,6 @@ async getSubscription(
             },
           })
         : null;
-      const pendingPlan = providerSubscription.pendingPlanHandle
-        ? await transaction.billingPlan.findUnique({
-            where: { shopifyPlanHandle: providerSubscription.pendingPlanHandle },
-            select: { id: true, active: true },
-          })
-        : null;
-
       return transaction.subscription.upsert({
         where: { shopId },
         update: {
@@ -935,18 +986,10 @@ async getSubscription(
           lastSyncedAt: now,
           lastSyncErrorCode: syncErrorCode,
           lastSyncErrorAt: syncErrorCode ? now : null,
-          pendingShopifyPlanHandle: preserveInitialIntent
-            ? existingSubscription.pendingShopifyPlanHandle
-            : providerSubscription.pendingPlanHandle,
-          pendingPlanId: preserveInitialIntent
-            ? existingSubscription.pendingPlanId
-            : pendingPlan?.active ? pendingPlan.id : null,
-          pendingEffectiveAt: preserveInitialIntent
-            ? existingSubscription.pendingEffectiveAt
-            : providerSubscription.pendingPlanHandle
-              ? providerSubscription.currentPeriodEnd
-              : null,
-          nextReconcileAt: preserveInitialIntent ? existingSubscription.nextReconcileAt : nextReconcileAt,
+          pendingShopifyPlanHandle: preservedPendingShopifyPlanHandle,
+          pendingPlanId: preservedPendingPlanId,
+          pendingEffectiveAt: preservedPendingEffectiveAt,
+          nextReconcileAt: preservedNextReconcileAt,
         },
         create: {
           id: subscriptionId,
@@ -963,18 +1006,10 @@ async getSubscription(
           lastSyncedAt: now,
           lastSyncErrorCode: syncErrorCode,
           lastSyncErrorAt: syncErrorCode ? now : null,
-          pendingShopifyPlanHandle: preserveInitialIntent
-            ? existingSubscription.pendingShopifyPlanHandle
-            : providerSubscription.pendingPlanHandle,
-          pendingPlanId: preserveInitialIntent
-            ? existingSubscription.pendingPlanId
-            : pendingPlan?.active ? pendingPlan.id : null,
-          pendingEffectiveAt: preserveInitialIntent
-            ? existingSubscription.pendingEffectiveAt
-            : providerSubscription.pendingPlanHandle
-              ? providerSubscription.currentPeriodEnd
-              : null,
-          nextReconcileAt: preserveInitialIntent ? existingSubscription.nextReconcileAt : nextReconcileAt,
+          pendingShopifyPlanHandle: preservedPendingShopifyPlanHandle,
+          pendingPlanId: preservedPendingPlanId,
+          pendingEffectiveAt: preservedPendingEffectiveAt,
+          nextReconcileAt: preservedNextReconcileAt,
         },
       });
     });
