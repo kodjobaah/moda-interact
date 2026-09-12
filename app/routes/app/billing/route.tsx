@@ -139,7 +139,7 @@ export default function BillingRoute() {
             {i18n.t("billing.status")}: <strong>{subscription.status}</strong>
           </p>
 
-          {isFree && allowance !== null ? (
+          {allowance !== null ? (
             <p>{i18n.t("billing.freeAllowance", { remaining, allowance })}</p>
           ) : (
             <p>{i18n.t("billing.paidUsage", { quantity: usageQuantity })}</p>

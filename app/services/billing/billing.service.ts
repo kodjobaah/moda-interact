@@ -479,35 +479,6 @@ export class BillingService {
         return null;
       }
 
-      const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
-          },
-        },
-      });
-      if (!lifetimeCounter) {
-        await transaction.$executeRaw(Prisma.sql`
-          INSERT INTO "billing"."ShopEntitlementCounter" (
-            "id", "shopId", "counter", "grantedQuantity"
-          )
-          SELECT ${randomUUID()}, ${shopId}, 'FREE_RECOVERY_LIFETIME',
-            "lifetimeFreeRecoveryAllowance"
-          FROM "billing"."PlatformBillingPolicy"
-          WHERE "id" = 'default'
-          ON CONFLICT ("shopId", "counter") DO NOTHING
-        `);
-      }
-      const ensuredLifetimeCounter = lifetimeCounter ?? await transaction.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
-          },
-        },
-      });
-      if (!ensuredLifetimeCounter) return null;
       await transaction.shopSettings.update({
         where: { shopId },
         data: { onboardingCompleted: true },
@@ -633,7 +604,7 @@ async getSubscription(
   }
 
   async getMerchantBillingState(shopId: string) {
-    const [shop, subscription, counter, adjustmentTotal, usageTotal, purchasedCounter] = await Promise.all([
+    const [shop, subscription, counter, usageTotal, purchasedCounter] = await Promise.all([
       this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
         where: { shopId },
@@ -643,13 +614,9 @@ async getSubscription(
         where: {
           shopId_counter: {
             shopId,
-            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
+            counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS,
           },
         },
-      }),
-      this.database.billingAllowanceAdjustment.aggregate({
-        where: { shopId, counter: EntitlementCounter.FREE_RECOVERY_LIFETIME },
-        _sum: { quantity: true },
       }),
       this.database.usageEvent.aggregate({
         where: { shopId, metric: "RECOVERY_CONVERSATION" },
@@ -695,16 +662,19 @@ async getSubscription(
       }
     }
 
-    const allowance = subscription?.plan?.kind === BillingPlanKind.FREE
-      ? (subscription.plan.freeLifetimeConversationAllowance ?? 0) + (adjustmentTotal._sum.quantity ?? 0)
-      : null;
+    const allowance = counter?.grantedQuantity ?? null;
     const committed = counter?.committedQuantity ?? 0;
+    const reserved = counter?.reservedQuantity ?? 0;
+    const remaining = allowance === null
+      ? null
+      : Math.max(allowance - committed - reserved, 0);
 
     return {
       subscription,
       allowance,
       committed,
-      remaining: allowance === null ? null : Math.max(allowance - committed, 0),
+      reserved,
+      remaining,
       usageQuantity: Number(usageTotal._sum.quantity ?? 0),
       purchasedRecoveryCredits: {
         grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
