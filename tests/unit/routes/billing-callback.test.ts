@@ -173,6 +173,18 @@ describe("billing callback activation", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
+  it("does not enqueue stale retry work when guarded scheduling loses the race", async () => {
+    mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
+    mocks.scheduleInitialFreeReconciliationIfCurrent.mockResolvedValue(null);
+
+    await runLoader("free");
+
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
   it("does not complete an older callback when a newer Free selection is pending", async () => {
     mocks.getSubscriptionProjection.mockResolvedValue(subscription({
       plan: { id: "free-a-id", kind: "FREE", shopifyPlanHandle: "free-a" },

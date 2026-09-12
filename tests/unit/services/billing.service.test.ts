@@ -161,6 +161,9 @@ describe("BillingService subscription projection", () => {
       billingPlan: {
         findUnique: vi.fn().mockResolvedValue(freePlan),
       },
+      recoveryCreditPurchase: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
       shop: {
         findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }),
       },
@@ -185,7 +188,7 @@ describe("BillingService subscription projection", () => {
         $executeRaw: executeRaw,
       })),
     };
-    return { database, state, freePlan, shopSettings, shopEntitlementCounter, billingPeriodEntitlementCounter, platformBillingPolicy: database.platformBillingPolicy, executeRaw };
+    return { database, state, freePlan, shopSettings, shopEntitlementCounter, billingPeriod, billingPeriodEntitlementCounter, platformBillingPolicy: database.platformBillingPolicy, executeRaw };
   }
 
   it("records an initial Free selection without activating entitlement", async () => {
@@ -542,9 +545,161 @@ describe("BillingService subscription projection", () => {
     expect(lockSql[1]).toContain("FOR UPDATE");
   });
 
+  it("ignores a stale token before projecting an active Partner response", async () => {
+    const { database, state, billingPeriod } = createFreeActivationDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn().mockImplementation(async () => {
+        state.currentSubscription = {
+          ...state.currentSubscription,
+          pendingPlanId: "free-b-id",
+          pendingShopifyPlanHandle: "free-b",
+          pendingEffectiveAt: new Date("2026-09-12T10:01:00.000Z"),
+          nextReconcileAt: new Date("2026-09-12T10:01:00.000Z"),
+        };
+        return providerSubscription({ planHandle: "free" });
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+    const activation = await service.prepareFreeActivation("shop-1", "free");
+    if (!activation?.token) throw new Error("Expected an initial activation token.");
+    database.subscription.upsert.mockClear();
+    database.subscription.update.mockClear();
+
+    await service.syncSubscription("shop-1", activation.token);
+
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(database.subscription.upsert).not.toHaveBeenCalled();
+    expect(database.subscription.update).not.toHaveBeenCalled();
+    expect(billingPeriod.upsert).not.toHaveBeenCalled();
+    expect(state.currentSubscription).toMatchObject({
+      pendingPlanId: "free-b-id",
+      pendingShopifyPlanHandle: "free-b",
+    });
+  });
+
+  it("ignores a stale token before projecting a provider-null response", async () => {
+    const { database, state } = createFreeActivationDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn().mockImplementation(async () => {
+        state.onboardingCompleted = true;
+        state.currentSubscription = {
+          ...state.currentSubscription,
+          status: "ACTIVE",
+          planId: "free-b-id",
+          observedShopifyPlanHandle: "free-b",
+          pendingPlanId: null,
+          pendingShopifyPlanHandle: null,
+          pendingEffectiveAt: null,
+          nextReconcileAt: null,
+        };
+        return null;
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+    const activation = await service.prepareFreeActivation("shop-1", "free");
+    if (!activation?.token) throw new Error("Expected an initial activation token.");
+    database.subscription.upsert.mockClear();
+    database.subscription.update.mockClear();
+
+    await service.syncSubscription("shop-1", activation.token);
+
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(database.subscription.upsert).not.toHaveBeenCalled();
+    expect(database.subscription.update).not.toHaveBeenCalled();
+    expect(state.onboardingCompleted).toBe(true);
+    expect(state.currentSubscription).toMatchObject({
+      planId: "free-b-id",
+      pendingPlanId: null,
+    });
+  });
+
+  it("treats a changed initial token schedule as stale", async () => {
+    const { database, state, billingPeriod } = createFreeActivationDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn().mockImplementation(async () => {
+        state.currentSubscription = {
+          ...state.currentSubscription,
+          pendingEffectiveAt: new Date("2026-09-12T10:01:00.000Z"),
+        };
+        return providerSubscription({ planHandle: "free" });
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+    const activation = await service.prepareFreeActivation("shop-1", "free");
+    if (!activation?.token) throw new Error("Expected an initial activation token.");
+    database.subscription.upsert.mockClear();
+    database.subscription.update.mockClear();
+
+    await service.syncSubscription("shop-1", activation.token);
+
+    expect(database.subscription.upsert).not.toHaveBeenCalled();
+    expect(database.subscription.update).not.toHaveBeenCalled();
+    expect(billingPeriod.upsert).not.toHaveBeenCalled();
+  });
+
+  it("makes a stale guarded retry scheduler a full no-op", async () => {
+    const { database, state } = createFreeActivationDatabase();
+    const service = new BillingService({} as never, database as never);
+    const activation = await service.prepareFreeActivation("shop-1", "free");
+    if (!activation?.token) throw new Error("Expected an initial activation token.");
+    state.currentSubscription = {
+      ...state.currentSubscription,
+      pendingPlanId: "free-b-id",
+      pendingShopifyPlanHandle: "free-b",
+    };
+    database.subscription.update.mockClear();
+
+    await expect(service.scheduleInitialFreeReconciliationIfCurrent({
+      shopId: "shop-1",
+      expected: activation.token,
+      nextReconcileAt: new Date("2026-09-12T10:02:00.000Z"),
+      partnerErrorAt: new Date("2026-09-12T10:01:30.000Z"),
+    })).resolves.toBeNull();
+
+    expect(database.subscription.update).not.toHaveBeenCalled();
+    expect(state.currentSubscription).toMatchObject({
+      pendingPlanId: "free-b-id",
+      pendingShopifyPlanHandle: "free-b",
+    });
+  });
+
+  it("commits one guarded Partner-error retry for the current token", async () => {
+    const { database } = createFreeActivationDatabase();
+    const service = new BillingService({} as never, database as never);
+    const activation = await service.prepareFreeActivation("shop-1", "free");
+    if (!activation?.token) throw new Error("Expected an initial activation token.");
+    database.subscription.update.mockClear();
+    const nextReconcileAt = new Date("2026-09-12T10:01:00.000Z");
+    const partnerErrorAt = new Date("2026-09-12T10:00:30.000Z");
+
+    await expect(service.scheduleInitialFreeReconciliationIfCurrent({
+      shopId: "shop-1",
+      expected: activation.token,
+      nextReconcileAt,
+      partnerErrorAt,
+    })).resolves.toEqual({
+      subscriptionId: "subscription-1",
+      nextReconcileAt,
+    });
+
+    expect(database.subscription.update).toHaveBeenCalledWith({
+      where: { shopId: "shop-1" },
+      select: { id: true, nextReconcileAt: true },
+      data: {
+        nextReconcileAt,
+        lastSyncErrorCode: "PARTNER_API_ERROR",
+        lastSyncErrorAt: partnerErrorAt,
+      },
+    });
+  });
+
   it("completes an initial pack-enabled Free activation without a cycle and keeps top-up eligibility closed", async () => {
     const { database, state } = createFreeActivationDatabase({
-      planOverrides: { recoveryCreditPackEnabled: true },
+      planOverrides: {
+        recoveryCreditPackEnabled: true,
+        shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+        recoveryCreditsPerPack: 100,
+      },
     });
     const provider = {
       getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
@@ -576,6 +731,13 @@ describe("BillingService subscription projection", () => {
     expect(nextReconcileAt).toBeInstanceOf(Date);
     if (!(nextReconcileAt instanceof Date)) throw new Error("Expected a retry schedule.");
     expect(nextReconcileAt.getTime()).toBeGreaterThanOrEqual(beforeCompletion + 60_000);
+
+    await expect(service.requestRecoveryCreditPack(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "11111111-1111-4111-8111-111111111111",
+    )).rejects.toThrow("The current local billing cycle could not be verified.");
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
   });
 
   it("returns Shopify commercial facts and independent current/pending mappings", async () => {
