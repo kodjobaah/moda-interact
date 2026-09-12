@@ -164,6 +164,32 @@ describe("merchant billing UI", () => {
     });
   });
 
+  it("returns lifetime capacity for a mapped Paid subscription", async () => {
+    getMerchantBillingState.mockResolvedValue({
+      subscription: {
+        status: "ACTIVE",
+        plan: { kind: "PAID_METERED", name: "Growth" },
+        observedShopifyPlanHandle: "growth",
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        pendingPlan: null,
+        pendingEffectiveAt: null,
+      },
+      allowance: 10,
+      remaining: 3,
+      usageQuantity: 12,
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
+
+    expect(result).toMatchObject({ allowance: 10, remaining: 3 });
+    expect(billingRouteSource).toContain("{allowance !== null ? (");
+  });
+
   it("fails closed for an unmapped projection instead of presenting paid entitlement", async () => {
     getMerchantBillingState.mockResolvedValue({
       subscription: {
