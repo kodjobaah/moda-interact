@@ -73,10 +73,45 @@ export interface ProviderUsageSnapshot {
   costCurrency: string | null;
 }
 
+export type ProviderSubscriptionLifecycleEventType =
+  | "SUBSCRIPTION_CREATED"
+  | "SUBSCRIPTION_UPDATED"
+  | "SUBSCRIPTION_CANCELLATION_SCHEDULED"
+  | "SUBSCRIPTION_CANCELED"
+  | "SUBSCRIPTION_FROZEN"
+  | "SUBSCRIPTION_UNFROZEN";
+
+export type ProviderSubscriptionLifecycleState =
+  | "CREATED"
+  | "UPDATED"
+  | "CANCELLATION_SCHEDULED"
+  | "CANCELED"
+  | "FROZEN"
+  | "UNFROZEN";
+
+export interface ProviderSubscriptionLifecycleEvent {
+  id: string;
+  eventType: ProviderSubscriptionLifecycleEventType;
+  state: ProviderSubscriptionLifecycleState;
+  occurredAt: Date;
+  cancelEffectiveOn: string | null;
+  planHandle: string | null;
+  billingPeriod: string | null;
+}
+
+export interface ProviderSubscriptionLifecycleSnapshot {
+  activeSubscription: ProviderSubscription | null;
+  latestLifecycleEvent: ProviderSubscriptionLifecycleEvent | null;
+}
+
 export interface BillingProvider {
   getActiveSubscription(
     input: GetActiveSubscriptionInput,
   ): Promise<ProviderSubscription | null>;
+
+  getSubscriptionLifecycleSnapshot?(
+    input: GetActiveSubscriptionInput,
+  ): Promise<ProviderSubscriptionLifecycleSnapshot>;
 }
 
 export interface GetActiveSubscriptionInput {
@@ -123,4 +158,35 @@ export type MerchantShopifySubscriptionState =
         name: string;
         kind: "FREE" | "PAID_METERED";
       } | null;
+    };
+
+export type MerchantShopifyLifecycleState =
+  | {
+      state: "ACTIVE";
+      subscription: MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" };
+      latestEvent: ProviderSubscriptionLifecycleEvent | null;
+    }
+  | {
+      state: "FROZEN";
+      subscription: MerchantShopifySubscriptionState | null;
+      latestEvent: ProviderSubscriptionLifecycleEvent;
+      providerPlanHandle: string | null;
+      billingPeriod: string | null;
+      modaMapping: Extract<MerchantShopifySubscriptionState, { status: "ACTIVE_SUBSCRIPTION" }>["modaMapping"];
+      mappingStatus: "MAPPED" | "UNMAPPED";
+    }
+  | {
+      state: "CANCELED";
+      subscription: null;
+      latestEvent: ProviderSubscriptionLifecycleEvent;
+    }
+  | {
+      state: "UNRESOLVED";
+      subscription: MerchantShopifySubscriptionState | null;
+      latestEvent: ProviderSubscriptionLifecycleEvent | null;
+    }
+  | {
+      state: "NO_ACTIVE_SUBSCRIPTION";
+      subscription: null;
+      latestEvent: null;
     };

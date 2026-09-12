@@ -756,6 +756,86 @@ describe("BillingService subscription projection", () => {
     });
   });
 
+  it("classifies Shopify lifecycle states without mutating the local Subscription projection", async () => {
+    const { database } = createDatabase({
+      plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
+    });
+    const latestEvent = {
+      id: "event-1",
+      eventType: "SUBSCRIPTION_FROZEN" as const,
+      state: "FROZEN" as const,
+      occurredAt: new Date("2026-09-12T12:00:00.000Z"),
+      cancelEffectiveOn: null,
+      planHandle: "growth",
+      billingPeriod: "EVERY_30_DAYS",
+    };
+    const provider = {
+      getActiveSubscription: vi.fn(),
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+        activeSubscription: null,
+        latestLifecycleEvent: latestEvent,
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifyLifecycleState("shop-1")).resolves.toMatchObject({
+      state: "FROZEN",
+      subscription: null,
+      providerPlanHandle: "growth",
+      billingPeriod: "EVERY_30_DAYS",
+      mappingStatus: "MAPPED",
+      modaMapping: { id: "growth-1", name: "Growth" },
+    });
+    expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(database.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["ACTIVE", providerSubscription(), { state: "UPDATED", eventType: "SUBSCRIPTION_UPDATED" }],
+    ["CANCELED", null, { state: "CANCELED", eventType: "SUBSCRIPTION_CANCELED" }],
+    ["UNRESOLVED", null, { state: "UNFROZEN", eventType: "SUBSCRIPTION_UNFROZEN" }],
+  ] as const)("returns the Shopify lifecycle state %s", async (state, activeSubscription, event) => {
+    const { database } = createDatabase({ plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" } });
+    const provider = {
+      getActiveSubscription: vi.fn(),
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+        activeSubscription,
+        latestLifecycleEvent: {
+          id: "event-1",
+          eventType: event.eventType,
+          state: event.state,
+          occurredAt: periodStart,
+          cancelEffectiveOn: null,
+          planHandle: "growth",
+          billingPeriod: "EVERY_30_DAYS",
+        },
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifyLifecycleState("shop-1"))
+      .resolves.toMatchObject({ state });
+  });
+
+  it("returns no active subscription for a fresh merchant without provider history", async () => {
+    const { database } = createDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn(),
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+        activeSubscription: null,
+        latestLifecycleEvent: null,
+      }),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.getMerchantShopifyLifecycleState("shop-1")).resolves.toEqual({
+      state: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+      latestEvent: null,
+    });
+  });
+
   it("persists the canonical subscription-ended code that maps to the billing CTA", async () => {
     const current = {
       status: "ACTIVE",
