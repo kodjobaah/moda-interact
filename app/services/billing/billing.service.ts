@@ -17,6 +17,7 @@ import {
 } from "@modainteract/moda-interact-shared/merchant-communications";
 import {
   BILLING_SYSTEM_MESSAGE_CODES,
+  APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
   createShopifyUsageIdempotencyKey,
 } from "@modainteract/moda-interact-shared/billing";
 
@@ -87,6 +88,7 @@ const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
+export const INITIAL_BILLING_RETRY_DELAY_MS = 60_000;
 
 function assertPurchaseId(purchaseId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
@@ -249,6 +251,102 @@ export class BillingService {
     private readonly dispatchTranslation: TranslationDispatch =
       enqueueTranslationBestEffort,
   ) {}
+
+  async prepareFreeActivation(shopId: string, planHandle: string) {
+    const plan = await this.database.billingPlan.findUnique({
+      where: { shopifyPlanHandle: planHandle },
+    });
+    if (!plan?.active || plan.kind !== BillingPlanKind.FREE) return null;
+
+    const now = new Date();
+    return this.database.$transaction(async (transaction) => {
+      const subscription = await transaction.subscription.upsert({
+        where: { shopId },
+        update: {
+          pendingShopifyPlanHandle: planHandle,
+          pendingPlanId: plan.id,
+          pendingEffectiveAt: now,
+          nextReconcileAt: now,
+        },
+        create: {
+          shopId,
+          status: SubscriptionProjectionStatus.NO_CONTRACT,
+          planId: null,
+          pendingShopifyPlanHandle: planHandle,
+          pendingPlanId: plan.id,
+          pendingEffectiveAt: now,
+          nextReconcileAt: now,
+        },
+      });
+      return { plan, subscription };
+    });
+  }
+
+  async getSubscriptionProjection(shopId: string) {
+    return this.database.subscription.findUnique({
+      where: { shopId },
+      include: { plan: true, pendingPlan: true, billingPeriod: true },
+    });
+  }
+
+  async scheduleInitialFreeReconciliation(shopId: string, nextReconcileAt: Date) {
+    return this.database.subscription.update({
+      where: { shopId },
+      data: { nextReconcileAt },
+      select: { id: true },
+    });
+  }
+
+  async completeFreeActivation(shopId: string, requestedPlanHandle: string) {
+    return this.database.$transaction(async (transaction) => {
+      const subscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        include: { plan: true },
+      });
+      if (
+        !subscription ||
+        !subscription.plan ||
+        subscription.plan.kind !== BillingPlanKind.FREE ||
+        subscription.plan.shopifyPlanHandle !== requestedPlanHandle ||
+        (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
+        subscription.observedShopifyPlanHandle !== requestedPlanHandle
+      ) {
+        return false;
+      }
+
+      const policy = await transaction.platformBillingPolicy.findUnique({
+        where: { id: "default" },
+        select: { lifetimeFreeRecoveryAllowance: true },
+      });
+      await transaction.shopEntitlementCounter.upsert({
+        where: {
+          shopId_counter: {
+            shopId,
+            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
+          },
+        },
+        update: {},
+        create: {
+          shopId,
+          counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
+          grantedQuantity: policy?.lifetimeFreeRecoveryAllowance ?? 0,
+        },
+      });
+      await transaction.shopSettings.update({
+        where: { shopId },
+        data: { onboardingCompleted: true },
+      });
+      await transaction.subscription.update({
+        where: { shopId },
+        data: {
+          pendingShopifyPlanHandle: null,
+          pendingPlanId: null,
+          pendingEffectiveAt: null,
+        },
+      });
+      return true;
+    });
+  }
 
 async getSubscription(
   shopId: string,
@@ -615,15 +713,24 @@ async getSubscription(
         const current = await transaction.subscription.findUnique({
           where: { shopId },
           select: {
+            id: true,
             status: true,
             observedShopifyPlanHandle: true,
             providerSubscriptionId: true,
             currentPeriodStart: true,
             currentPeriodEnd: true,
             trialEndsAt: true,
+            pendingShopifyPlanHandle: true,
+            pendingPlanId: true,
+            pendingEffectiveAt: true,
+            nextReconcileAt: true,
           },
         });
         const now = new Date();
+        const preserveInitialIntent = current !== null &&
+          current.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+          current.pendingShopifyPlanHandle &&
+          current.pendingPlanId;
 
         await transaction.subscription.upsert({
           where: { shopId },
@@ -640,9 +747,10 @@ async getSubscription(
             lastSyncedAt: now,
             lastSyncErrorCode: null,
             lastSyncErrorAt: null,
-            pendingShopifyPlanHandle: null,
-            pendingPlanId: null,
-            pendingEffectiveAt: null,
+            pendingShopifyPlanHandle: preserveInitialIntent ? current.pendingShopifyPlanHandle : null,
+            pendingPlanId: preserveInitialIntent ? current.pendingPlanId : null,
+            pendingEffectiveAt: preserveInitialIntent ? current.pendingEffectiveAt : null,
+            nextReconcileAt: preserveInitialIntent ? current.nextReconcileAt : null,
           },
           create: {
             shopId,
@@ -710,6 +818,11 @@ async getSubscription(
     const now = new Date();
 
     return this.database.$transaction(async (transaction) => {
+      const existingSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true },
+      });
+      const subscriptionId = existingSubscription?.id ?? randomUUID();
       const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
         ? await transaction.billingPeriod.upsert({
             where: {
@@ -722,6 +835,12 @@ async getSubscription(
             update: { status: BillingPeriodStatus.OPEN },
             create: {
               shopId,
+              subscriptionId,
+              planId: planIsUsable ? plan?.id ?? null : null,
+              shopifyPlanHandleSnapshot: providerSubscription.planHandle,
+              planNameSnapshot: plan?.name ?? null,
+              planKindSnapshot: plan?.kind ?? null,
+              includedRecoveryCreditsGranted: null,
               periodStart: providerSubscription.currentPeriodStart,
               periodEnd: providerSubscription.currentPeriodEnd,
               status: BillingPeriodStatus.OPEN,
@@ -755,8 +874,14 @@ async getSubscription(
           pendingEffectiveAt: providerSubscription.pendingPlanHandle
             ? providerSubscription.currentPeriodEnd
             : null,
+          nextReconcileAt: plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
+            ? providerSubscription.currentPeriodEnd
+              ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
+              : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
+            : null,
         },
         create: {
+          id: subscriptionId,
           shopId,
           planId: planIsUsable ? plan?.id ?? null : null,
           observedShopifyPlanHandle: providerSubscription.planHandle,
@@ -774,6 +899,11 @@ async getSubscription(
           pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
           pendingEffectiveAt: providerSubscription.pendingPlanHandle
             ? providerSubscription.currentPeriodEnd
+            : null,
+          nextReconcileAt: plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
+            ? providerSubscription.currentPeriodEnd
+              ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
+              : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
             : null,
         },
       });

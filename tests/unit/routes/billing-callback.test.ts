@@ -1,17 +1,32 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authenticateAdmin: vi.fn(),
   redirect: vi.fn((location: string) => ({ location })),
   resolveShop: vi.fn(),
+  prepareFreeActivation: vi.fn(),
   syncSubscription: vi.fn(),
+  getSubscriptionProjection: vi.fn(),
+  completeFreeActivation: vi.fn(),
+  scheduleInitialFreeReconciliation: vi.fn(),
+  enqueueReconcile: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
-  billingService: { syncSubscription: mocks.syncSubscription },
+  billingService: {
+    prepareFreeActivation: mocks.prepareFreeActivation,
+    syncSubscription: mocks.syncSubscription,
+    getSubscriptionProjection: mocks.getSubscriptionProjection,
+    completeFreeActivation: mocks.completeFreeActivation,
+    scheduleInitialFreeReconciliation: mocks.scheduleInitialFreeReconciliation,
+  },
+  INITIAL_BILLING_RETRY_DELAY_MS: 60_000,
+}));
+vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
+  enqueueBillingSubscriptionReconcileBestEffort: mocks.enqueueReconcile,
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
@@ -19,14 +34,20 @@ vi.mock("../../../app/services/shop/shop.service", () => ({
 
 import { loader } from "../../../app/routes/app/billing/callback/route";
 
+const shop = { id: "shop-1", status: "ACTIVE" };
+const freePlan = { id: "free-1", kind: "FREE", shopifyPlanHandle: "free" };
+
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
+    id: "subscription-1",
     status: "ACTIVE",
-    observedShopifyPlanHandle: "growth",
-    planId: "growth-1",
+    observedShopifyPlanHandle: "free",
+    planId: "free-1",
+    plan: freePlan,
     pendingShopifyPlanHandle: null,
     pendingPlanId: null,
     pendingEffectiveAt: null,
+    nextReconcileAt: null,
     ...overrides,
   };
 }
@@ -40,86 +61,86 @@ async function runLoader(planHandle?: string) {
   return loader({ request: request(planHandle) } as never);
 }
 
-describe("billing callback verification", () => {
-  it("accepts a verified mapped current plan", async () => {
-    mocks.authenticateAdmin.mockResolvedValue({
-      admin: {},
-      redirect: mocks.redirect,
-      session: { shop: "example.myshopify.com" },
-    });
-      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
-    mocks.syncSubscription.mockResolvedValue(subscription());
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.authenticateAdmin.mockResolvedValue({
+    admin: {},
+    redirect: mocks.redirect,
+    session: { shop: "example.myshopify.com" },
+  });
+  mocks.resolveShop.mockResolvedValue(shop);
+  mocks.prepareFreeActivation.mockResolvedValue({ plan: freePlan });
+  mocks.syncSubscription.mockResolvedValue(subscription());
+  mocks.getSubscriptionProjection.mockResolvedValue(subscription());
+  mocks.completeFreeActivation.mockResolvedValue(true);
+  mocks.scheduleInitialFreeReconciliation.mockResolvedValue({
+    id: "subscription-1",
+  });
+});
 
-    await runLoader("growth");
+describe("billing callback activation", () => {
+  it("completes onboarding only after current Free verification", async () => {
+    await runLoader("free");
 
+    expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
+    expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
+    expect(mocks.scheduleInitialFreeReconciliation).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
-  it("accepts a verified mapped pending plan without replacing current entitlement", async () => {
-    mocks.authenticateAdmin.mockResolvedValue({
-      admin: {},
-      redirect: mocks.redirect,
-      session: { shop: "example.myshopify.com" },
-    });
-      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      observedShopifyPlanHandle: "growth",
-      planId: "growth-1",
-      pendingShopifyPlanHandle: "starter",
-      pendingPlanId: "starter-1",
-      pendingEffectiveAt: new Date("2026-10-01T00:00:00.000Z"),
+  it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+
+    await runLoader(planHandle);
+
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("keeps a pending callback unresolved until it becomes current", async () => {
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
+      status: "NO_CONTRACT",
+      planId: null,
+      plan: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: "free",
+      pendingPlanId: "free-1",
+      pendingEffectiveAt: new Date(),
     }));
 
-    await runLoader("starter");
+    await runLoader("free");
 
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+    }));
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
-  it.each([
-    ["NO_CONTRACT", { status: "NO_CONTRACT", planId: null }],
-    ["UNMAPPED", { status: "UNMAPPED", planId: null }],
-    ["SYNC_ERROR", { status: "SYNC_ERROR", planId: null }],
-    ["current handle mismatch", subscription({ observedShopifyPlanHandle: "other" })],
-    ["missing current plan id", subscription({ planId: null })],
-    ["missing pending plan id", subscription({ pendingShopifyPlanHandle: "starter", pendingPlanId: null, pendingEffectiveAt: new Date() })],
-    ["missing pending effective boundary", subscription({ pendingShopifyPlanHandle: "starter", pendingPlanId: "starter-1", pendingEffectiveAt: null })],
-  ])("does not report success for %s", async (_label, projection) => {
-    mocks.authenticateAdmin.mockResolvedValue({
-      admin: {},
-      redirect: mocks.redirect,
-      session: { shop: "example.myshopify.com" },
-    });
-      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
-    mocks.syncSubscription.mockResolvedValue(projection);
+  it("preserves durable intent when Partner verification throws", async () => {
+    mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
+      status: "NO_CONTRACT",
+      planId: null,
+      plan: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: "free",
+      pendingPlanId: "free-1",
+      pendingEffectiveAt: new Date(),
+    }));
 
-    await runLoader("starter");
+    await runLoader("free");
 
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing?billing=inactive");
+    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
-  it("does not allow an untrusted requested handle to create success", async () => {
-    mocks.authenticateAdmin.mockResolvedValue({
-      admin: {},
-      redirect: mocks.redirect,
-      session: { shop: "example.myshopify.com" },
-    });
-      mocks.resolveShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
-    mocks.syncSubscription.mockResolvedValue(subscription());
-
-    await runLoader("unknown");
-
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing?billing=inactive");
-  });
-
-  it("keeps the missing plan_handle 400 behavior", async () => {
-    mocks.syncSubscription.mockClear();
-    mocks.authenticateAdmin.mockResolvedValue({
-      admin: {},
-      redirect: mocks.redirect,
-      session: { shop: "example.myshopify.com" },
-    });
-
+  it("keeps missing plan_handle as a client error", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
-    expect(mocks.syncSubscription).not.toHaveBeenCalled();
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 });

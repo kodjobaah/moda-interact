@@ -65,10 +65,6 @@ function createDatabase({
   const billingPeriod = {
     upsert: vi.fn().mockResolvedValue({ id: "period-1", periodStart, periodEnd }),
   };
-  const shopEntitlementCounter = {
-    update: vi.fn(),
-    upsert: vi.fn(),
-  };
   const database = {
     shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
     subscription,
@@ -355,6 +351,28 @@ describe("BillingService subscription projection", () => {
     expect(state.current).toMatchObject({ pendingShopifyPlanHandle: "unknown-pending", pendingPlanId: null });
   });
 
+  it("preserves a fresh Free activation intent when Shopify has no active subscription", async () => {
+    const { database, state } = createDatabase({
+      current: {
+        status: "NO_CONTRACT",
+        pendingShopifyPlanHandle: "free",
+        pendingPlanId: "free-1",
+        pendingEffectiveAt: new Date("2026-01-01T00:00:00.000Z"),
+        nextReconcileAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(null) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.current).toMatchObject({
+      status: "NO_CONTRACT",
+      pendingShopifyPlanHandle: "free",
+      pendingPlanId: "free-1",
+      nextReconcileAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+  });
+
   it("projects trial status and leaves period fields null when Shopify omits the cycle", async () => {
     const { database, state } = createDatabase({
       plan: { id: "free-1", shopifyPlanHandle: "growth", kind: "FREE", active: true },
@@ -432,7 +450,7 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
       },
       recoveryCreditPurchase: {
         findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
-        create: vi.fn().mockImplementation(async ({ data, include }: { data: Record<string, unknown>; include: unknown }) => {
+        create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
           const purchase = { ...data, status: "PENDING_BILLING", usageEvent: usageEvents.at(-1) };
           purchases.set(String(data.id), purchase);
           return purchase;
