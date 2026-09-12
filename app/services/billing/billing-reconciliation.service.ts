@@ -7,17 +7,25 @@ import {
 } from "@modainteract/moda-interact-shared/billing";
 
 type BillingReconciliationQueue = Pick<Queue, "add">;
+type BillingReconciliationQueueFactory = (
+  name: string,
+  options: ConstructorParameters<typeof Queue>[1],
+) => BillingReconciliationQueue;
 
 let queue: Queue | null = null;
 let queueUrl: string | null = null;
 
-async function getQueue(): Promise<BillingReconciliationQueue | null> {
+const createQueue: BillingReconciliationQueueFactory = (name, options) => new Queue(name, options);
+
+async function getQueue(
+  queueFactory: BillingReconciliationQueueFactory = createQueue,
+): Promise<BillingReconciliationQueue | null> {
   const redisUrl = process.env.REDIS_URL?.trim();
   if (!redisUrl) return null;
   if (queue && queueUrl === redisUrl) return queue;
   if (queue) await queue.close();
   queueUrl = redisUrl;
-  queue = new Queue(BILLING_SUBSCRIPTION_RECONCILE_QUEUE_NAME, {
+  queue = queueFactory(BILLING_SUBSCRIPTION_RECONCILE_QUEUE_NAME, {
     connection: {
       url: redisUrl,
       lazyConnect: true,
@@ -37,12 +45,15 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
     expectedNextReconcileAt: Date;
   },
   injectedQueue?: BillingReconciliationQueue | null,
+  injectedQueueFactory?: BillingReconciliationQueueFactory,
 ): Promise<void> {
-  const targetQueue = injectedQueue === undefined ? await getQueue() : injectedQueue;
-  if (!targetQueue) return;
-
-  const expectedNextReconcileAt = input.expectedNextReconcileAt.toISOString();
   try {
+    const targetQueue = injectedQueue === undefined
+      ? await getQueue(injectedQueueFactory)
+      : injectedQueue;
+    if (!targetQueue) return;
+
+    const expectedNextReconcileAt = input.expectedNextReconcileAt.toISOString();
     await targetQueue.add(
       BILLING_SUBSCRIPTION_RECONCILE_JOB_NAME,
       {

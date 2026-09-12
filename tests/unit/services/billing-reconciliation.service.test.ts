@@ -49,4 +49,27 @@ describe("billing reconciliation producer", () => {
       ),
     ).resolves.toBeUndefined();
   });
+
+  it("isolates queue acquisition failures", async () => {
+    const previousRedisUrl = process.env.REDIS_URL;
+    process.env.REDIS_URL = "redis://localhost:6379";
+    try {
+      await expect(
+        enqueueBillingSubscriptionReconcileBestEffort(
+          {
+            shopId: "shop-1",
+            subscriptionId: "subscription-1",
+            expectedNextReconcileAt: new Date(),
+          },
+          undefined,
+          () => {
+            throw new Error("Queue construction failed");
+          },
+        ),
+      ).resolves.toBeUndefined();
+    } finally {
+      if (previousRedisUrl === undefined) delete process.env.REDIS_URL;
+      else process.env.REDIS_URL = previousRedisUrl;
+    }
+  });
 });

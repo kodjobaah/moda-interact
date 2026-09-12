@@ -260,6 +260,31 @@ export class BillingService {
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
+      const [currentSubscription, settings] = await Promise.all([
+        transaction.subscription.findUnique({
+          where: { shopId },
+          select: {
+            status: true,
+            planId: true,
+            observedShopifyPlanHandle: true,
+          },
+        }),
+        transaction.shopSettings.findUnique({
+          where: { shopId },
+          select: { onboardingCompleted: true },
+        }),
+      ]);
+      const isVerifiedReplay = currentSubscription?.planId === plan.id &&
+        currentSubscription.observedShopifyPlanHandle === planHandle &&
+        (currentSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
+          currentSubscription.status === SubscriptionProjectionStatus.TRIALING);
+      const isInitialActivation = !currentSubscription ||
+        (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+          currentSubscription.planId === null &&
+          !currentSubscription.observedShopifyPlanHandle &&
+          settings?.onboardingCompleted !== true);
+      if (!isInitialActivation && !isVerifiedReplay) return null;
+
       const subscription = await transaction.subscription.upsert({
         where: { shopId },
         update: {
@@ -297,6 +322,17 @@ export class BillingService {
     });
   }
 
+  async recordPartnerSyncError(shopId: string, errorAt: Date) {
+    return this.database.subscription.update({
+      where: { shopId },
+      data: {
+        lastSyncErrorCode: "PARTNER_API_ERROR",
+        lastSyncErrorAt: errorAt,
+      },
+      select: { id: true },
+    });
+  }
+
   async completeFreeActivation(shopId: string, requestedPlanHandle: string) {
     return this.database.$transaction(async (transaction) => {
       const subscription = await transaction.subscription.findUnique({
@@ -314,24 +350,31 @@ export class BillingService {
         return false;
       }
 
-      const policy = await transaction.platformBillingPolicy.findUnique({
-        where: { id: "default" },
-        select: { lifetimeFreeRecoveryAllowance: true },
-      });
-      await transaction.shopEntitlementCounter.upsert({
+      const existingLifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
         where: {
           shopId_counter: {
             shopId,
             counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
           },
         },
-        update: {},
-        create: {
-          shopId,
-          counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
-          grantedQuantity: policy?.lifetimeFreeRecoveryAllowance ?? 0,
-        },
       });
+      if (!existingLifetimeCounter) {
+        const policy = await transaction.platformBillingPolicy.findUnique({
+          where: { id: "default" },
+          select: { lifetimeFreeRecoveryAllowance: true },
+        });
+        const lifetimeFreeRecoveryAllowance = policy?.lifetimeFreeRecoveryAllowance;
+        if (!Number.isInteger(lifetimeFreeRecoveryAllowance) || lifetimeFreeRecoveryAllowance < 0) {
+          return false;
+        }
+        await transaction.shopEntitlementCounter.create({
+          data: {
+            shopId,
+            counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
+            grantedQuantity: lifetimeFreeRecoveryAllowance,
+          },
+        });
+      }
       await transaction.shopSettings.update({
         where: { shopId },
         data: { onboardingCompleted: true },

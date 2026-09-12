@@ -85,14 +85,16 @@ export async function loader({
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle);
   if (!activation) return redirect("/app");
 
+  let partnerVerificationSucceeded = false;
   try {
     await billingService.syncSubscription(shop.id);
+    partnerVerificationSucceeded = true;
   } catch {
-    // Durable intent remains available for asynchronous reconciliation.
+    await billingService.recordPartnerSyncError(shop.id, new Date());
   }
 
   const subscription = await billingService.getSubscriptionProjection(shop.id);
-  if (subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
+  if (partnerVerificationSucceeded && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
     const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
     if (completed && subscription.nextReconcileAt) {
       await enqueueBillingSubscriptionReconcileBestEffort({

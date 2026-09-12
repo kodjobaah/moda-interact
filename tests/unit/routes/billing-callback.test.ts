@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   resolveShop: vi.fn(),
   prepareFreeActivation: vi.fn(),
   syncSubscription: vi.fn(),
+  recordPartnerSyncError: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   completeFreeActivation: vi.fn(),
   scheduleInitialFreeReconciliation: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
     prepareFreeActivation: mocks.prepareFreeActivation,
     syncSubscription: mocks.syncSubscription,
+    recordPartnerSyncError: mocks.recordPartnerSyncError,
     getSubscriptionProjection: mocks.getSubscriptionProjection,
     completeFreeActivation: mocks.completeFreeActivation,
     scheduleInitialFreeReconciliation: mocks.scheduleInitialFreeReconciliation,
@@ -136,6 +138,18 @@ describe("billing callback activation", () => {
 
     expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
     expect(mocks.enqueueReconcile).toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("does not complete onboarding from stale active state after Partner failure", async () => {
+    mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription());
+
+    await runLoader("free");
+
+    expect(mocks.recordPartnerSyncError).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
