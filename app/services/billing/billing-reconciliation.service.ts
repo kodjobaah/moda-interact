@@ -14,7 +14,7 @@ type BillingReconciliationQueueFactory = (
   options: ConstructorParameters<typeof Queue>[1],
 ) => BillingReconciliationQueue;
 
-let queue: Queue | null = null;
+let queue: BillingReconciliationQueue | null = null;
 let queueUrl: string | null = null;
 
 const createQueue: BillingReconciliationQueueFactory = (name, options) => new Queue(name, options);
