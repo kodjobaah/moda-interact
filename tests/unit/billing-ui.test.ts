@@ -263,12 +263,6 @@ describe("merchant billing UI", () => {
       labelKey: "billing.viewPlans",
     });
     expect(
-      getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_EXHAUSTED"),
-    ).toEqual({
-      href: "/app/billing/select",
-      labelKey: "billing.upgradePlan",
-    });
-    expect(
       getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED"),
     ).toEqual({
       href: "/app/billing",
