@@ -6,10 +6,9 @@ const mocks = vi.hoisted(() => ({
   resolveShop: vi.fn(),
   prepareFreeActivation: vi.fn(),
   syncSubscription: vi.fn(),
-  recordPartnerSyncError: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   completeFreeActivation: vi.fn(),
-  scheduleInitialFreeReconciliation: vi.fn(),
+  scheduleInitialFreeReconciliationIfCurrent: vi.fn(),
   enqueueReconcile: vi.fn(),
 }));
 
@@ -20,10 +19,9 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
     prepareFreeActivation: mocks.prepareFreeActivation,
     syncSubscription: mocks.syncSubscription,
-    recordPartnerSyncError: mocks.recordPartnerSyncError,
     getSubscriptionProjection: mocks.getSubscriptionProjection,
     completeFreeActivation: mocks.completeFreeActivation,
-    scheduleInitialFreeReconciliation: mocks.scheduleInitialFreeReconciliation,
+    scheduleInitialFreeReconciliationIfCurrent: mocks.scheduleInitialFreeReconciliationIfCurrent,
   },
   INITIAL_BILLING_RETRY_DELAY_MS: 60_000,
 }));
@@ -38,6 +36,13 @@ import { loader } from "../../../app/routes/app/billing/callback/route";
 
 const shop = { id: "shop-1", status: "ACTIVE" };
 const freePlan = { id: "free-1", kind: "FREE", shopifyPlanHandle: "free" };
+const initialToken = Object.freeze({
+  subscriptionId: "subscription-1",
+  pendingPlanId: "free-1",
+  pendingShopifyPlanHandle: "free",
+  pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
+  nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+});
 
 function subscription(overrides: Record<string, unknown> = {}) {
   return {
@@ -71,12 +76,20 @@ beforeEach(() => {
     session: { shop: "example.myshopify.com" },
   });
   mocks.resolveShop.mockResolvedValue(shop);
-  mocks.prepareFreeActivation.mockResolvedValue({ plan: freePlan });
+  mocks.prepareFreeActivation.mockResolvedValue({
+    plan: freePlan,
+    mode: "INITIAL",
+    token: initialToken,
+  });
   mocks.syncSubscription.mockResolvedValue(subscription());
   mocks.getSubscriptionProjection.mockResolvedValue(subscription());
-  mocks.completeFreeActivation.mockResolvedValue(true);
-  mocks.scheduleInitialFreeReconciliation.mockResolvedValue({
-    id: "subscription-1",
+  mocks.completeFreeActivation.mockResolvedValue({
+    subscriptionId: "subscription-1",
+    nextReconcileAt: null,
+  });
+  mocks.scheduleInitialFreeReconciliationIfCurrent.mockResolvedValue({
+    subscriptionId: "subscription-1",
+    nextReconcileAt: new Date("2026-09-12T00:01:00.000Z"),
   });
 });
 
@@ -85,8 +98,9 @@ describe("billing callback activation", () => {
     await runLoader("free");
 
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
-    expect(mocks.scheduleInitialFreeReconciliation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
@@ -114,7 +128,10 @@ describe("billing callback activation", () => {
     await runLoader("free");
 
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: "shop-1",
+      expected: initialToken,
+    }));
     expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({
       shopId: "shop-1",
       subscriptionId: "subscription-1",
@@ -136,7 +153,9 @@ describe("billing callback activation", () => {
 
     await runLoader("free");
 
-    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      partnerErrorAt: expect.any(Date),
+    }));
     expect(mocks.enqueueReconcile).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
@@ -147,9 +166,10 @@ describe("billing callback activation", () => {
 
     await runLoader("free");
 
-    expect(mocks.recordPartnerSyncError).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      partnerErrorAt: expect.any(Date),
+    }));
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
@@ -166,7 +186,7 @@ describe("billing callback activation", () => {
     await runLoader("free-a");
 
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliation).toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 

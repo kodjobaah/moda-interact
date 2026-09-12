@@ -10,6 +10,14 @@ const billingRouteSource = await readFile(
   new URL("../../app/routes/app/billing/route.tsx", import.meta.url),
   "utf8",
 );
+const billingCallbackSource = await readFile(
+  new URL("../../app/routes/app/billing/callback/route.tsx", import.meta.url),
+  "utf8",
+);
+const billingSelectSource = await readFile(
+  new URL("../../app/routes/app/billing/select/route.jsx", import.meta.url),
+  "utf8",
+);
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -84,6 +92,12 @@ describe("merchant billing UI", () => {
     expect(hostedPricingRedirect).toHaveBeenCalledWith(
       "https://admin.shopify.com/store/merchant/charges/moda-interact/pricing_plans",
       { target: "_top" },
+    );
+  });
+
+  it("keeps merchant billing surfaces out of the Admin application", () => {
+    expect(`${billingRouteSource}\n${billingCallbackSource}\n${billingSelectSource}`).not.toContain(
+      "moda-interact-admin",
     );
   });
 

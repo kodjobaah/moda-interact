@@ -92,33 +92,45 @@ export async function loader({
   if (!activation) return redirect("/app");
 
   let partnerVerificationSucceeded = false;
+  let partnerErrorAt: Date | null = null;
   try {
-    await billingService.syncSubscription(shop.id);
+    await billingService.syncSubscription(shop.id, activation.token ?? undefined);
     partnerVerificationSucceeded = true;
   } catch {
-    await billingService.recordPartnerSyncError(shop.id, new Date());
+    partnerErrorAt = new Date();
   }
 
   const subscription = await billingService.getSubscriptionProjection(shop.id);
   if (partnerVerificationSucceeded && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
     const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
-    if (completed && subscription.nextReconcileAt) {
+    if (completed?.nextReconcileAt) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
-        subscriptionId: subscription.id,
-        expectedNextReconcileAt: subscription.nextReconcileAt,
+        subscriptionId: completed.subscriptionId,
+        expectedNextReconcileAt: completed.nextReconcileAt,
       });
     }
     if (completed) return redirect("/app");
   }
 
+  if (activation.mode !== "INITIAL" || !activation.token) {
+    return redirect("/app");
+  }
+
   const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
-  const pending = await billingService.scheduleInitialFreeReconciliation(shop.id, nextReconcileAt);
-  await enqueueBillingSubscriptionReconcileBestEffort({
+  const pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
     shopId: shop.id,
-    subscriptionId: pending.id,
-    expectedNextReconcileAt: nextReconcileAt,
+    expected: activation.token,
+    nextReconcileAt,
+    partnerErrorAt,
   });
+  if (pending) {
+    await enqueueBillingSubscriptionReconcileBestEffort({
+      shopId: shop.id,
+      subscriptionId: pending.subscriptionId,
+      expectedNextReconcileAt: pending.nextReconcileAt,
+    });
+  }
 
   return redirect(
     "/app",
