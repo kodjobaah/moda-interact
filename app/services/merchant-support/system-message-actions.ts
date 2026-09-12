@@ -17,8 +17,6 @@ export function getMerchantSystemMessageAction(
   switch (parsed.data) {
     case "BILLING_FREE_ALLOWANCE_WARNING":
       return { href: BILLING_SELECT_ROUTE, labelKey: "billing.viewPlans" };
-    case "BILLING_FREE_ALLOWANCE_EXHAUSTED":
-      return { href: BILLING_SELECT_ROUTE, labelKey: "billing.upgradePlan" };
     case "BILLING_PLAN_UPGRADED":
     case "BILLING_PLAN_DOWNGRADE_SCHEDULED":
     case "BILLING_SUBSCRIPTION_ENDED":
