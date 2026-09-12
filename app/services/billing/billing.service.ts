@@ -364,7 +364,11 @@ export class BillingService {
           select: { lifetimeFreeRecoveryAllowance: true },
         });
         const lifetimeFreeRecoveryAllowance = policy?.lifetimeFreeRecoveryAllowance;
-        if (!Number.isInteger(lifetimeFreeRecoveryAllowance) || lifetimeFreeRecoveryAllowance < 0) {
+        if (
+          typeof lifetimeFreeRecoveryAllowance !== "number" ||
+          !Number.isInteger(lifetimeFreeRecoveryAllowance) ||
+          lifetimeFreeRecoveryAllowance < 0
+        ) {
           return false;
         }
         await transaction.shopEntitlementCounter.create({
@@ -385,6 +389,9 @@ export class BillingService {
           pendingShopifyPlanHandle: null,
           pendingPlanId: null,
           pendingEffectiveAt: null,
+          nextReconcileAt: subscription.plan.recoveryCreditPackEnabled
+            ? subscription.nextReconcileAt
+            : null,
         },
       });
       return true;

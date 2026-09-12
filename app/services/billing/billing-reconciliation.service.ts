@@ -6,7 +6,9 @@ import {
   createBillingSubscriptionReconcileJobId,
 } from "@modainteract/moda-interact-shared/billing";
 
-type BillingReconciliationQueue = Pick<Queue, "add">;
+type BillingReconciliationQueue = Pick<Queue, "add"> & {
+  close?: () => Promise<unknown>;
+};
 type BillingReconciliationQueueFactory = (
   name: string,
   options: ConstructorParameters<typeof Queue>[1],
@@ -23,7 +25,7 @@ async function getQueue(
   const redisUrl = process.env.REDIS_URL?.trim();
   if (!redisUrl) return null;
   if (queue && queueUrl === redisUrl) return queue;
-  if (queue) await queue.close();
+  if (queue) await queue.close?.();
   queueUrl = redisUrl;
   queue = queueFactory(BILLING_SUBSCRIPTION_RECONCILE_QUEUE_NAME, {
     connection: {
