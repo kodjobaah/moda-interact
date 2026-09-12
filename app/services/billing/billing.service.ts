@@ -278,11 +278,11 @@ export class BillingService {
         currentSubscription.observedShopifyPlanHandle === planHandle &&
         (currentSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
           currentSubscription.status === SubscriptionProjectionStatus.TRIALING);
-      const isInitialActivation = !currentSubscription ||
+      const isInitialActivation = settings?.onboardingCompleted !== true &&
+        (!currentSubscription ||
         (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
           currentSubscription.planId === null &&
-          !currentSubscription.observedShopifyPlanHandle &&
-          settings?.onboardingCompleted !== true);
+          !currentSubscription.observedShopifyPlanHandle));
       if (!isInitialActivation && !isVerifiedReplay) return null;
 
       const subscription = await transaction.subscription.upsert({
@@ -350,7 +350,7 @@ export class BillingService {
         return false;
       }
 
-      const existingLifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
+      const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
         where: {
           shopId_counter: {
             shopId,
@@ -358,27 +358,27 @@ export class BillingService {
           },
         },
       });
-      if (!existingLifetimeCounter) {
-        const policy = await transaction.platformBillingPolicy.findUnique({
-          where: { id: "default" },
-          select: { lifetimeFreeRecoveryAllowance: true },
-        });
-        const lifetimeFreeRecoveryAllowance = policy?.lifetimeFreeRecoveryAllowance;
-        if (
-          typeof lifetimeFreeRecoveryAllowance !== "number" ||
-          !Number.isInteger(lifetimeFreeRecoveryAllowance) ||
-          lifetimeFreeRecoveryAllowance < 0
-        ) {
-          return false;
-        }
-        await transaction.shopEntitlementCounter.create({
-          data: {
+      if (!lifetimeCounter) {
+        await transaction.$executeRaw(Prisma.sql`
+          INSERT INTO "billing"."ShopEntitlementCounter" (
+            "id", "shopId", "counter", "grantedQuantity"
+          )
+          SELECT ${randomUUID()}, ${shopId}, 'FREE_RECOVERY_LIFETIME',
+            "lifetimeFreeRecoveryAllowance"
+          FROM "billing"."PlatformBillingPolicy"
+          WHERE "id" = 'default'
+          ON CONFLICT ("shopId", "counter") DO NOTHING
+        `);
+      }
+      const ensuredLifetimeCounter = lifetimeCounter ?? await transaction.shopEntitlementCounter.findUnique({
+        where: {
+          shopId_counter: {
             shopId,
             counter: EntitlementCounter.FREE_RECOVERY_LIFETIME,
-            grantedQuantity: lifetimeFreeRecoveryAllowance,
           },
-        });
-      }
+        },
+      });
+      if (!ensuredLifetimeCounter) return false;
       await transaction.shopSettings.update({
         where: { shopId },
         data: { onboardingCompleted: true },
@@ -870,9 +870,25 @@ async getSubscription(
     return this.database.$transaction(async (transaction) => {
       const existingSubscription = await transaction.subscription.findUnique({
         where: { shopId },
-        select: { id: true },
+        select: {
+          id: true,
+          status: true,
+          pendingShopifyPlanHandle: true,
+          pendingPlanId: true,
+          pendingEffectiveAt: true,
+          nextReconcileAt: true,
+        },
       });
       const subscriptionId = existingSubscription?.id ?? randomUUID();
+      const preserveInitialIntent = existingSubscription?.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+        Boolean(existingSubscription.pendingShopifyPlanHandle) &&
+        !providerSubscription.pendingPlanHandle &&
+        existingSubscription.pendingShopifyPlanHandle !== providerSubscription.planHandle;
+      const nextReconcileAt = plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
+        ? providerSubscription.currentPeriodEnd
+          ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
+          : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
+        : null;
       const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
         ? await transaction.billingPeriod.upsert({
             where: {
@@ -919,16 +935,18 @@ async getSubscription(
           lastSyncedAt: now,
           lastSyncErrorCode: syncErrorCode,
           lastSyncErrorAt: syncErrorCode ? now : null,
-          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
-          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
-          pendingEffectiveAt: providerSubscription.pendingPlanHandle
-            ? providerSubscription.currentPeriodEnd
-            : null,
-          nextReconcileAt: plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
-            ? providerSubscription.currentPeriodEnd
-              ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
-              : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
-            : null,
+          pendingShopifyPlanHandle: preserveInitialIntent
+            ? existingSubscription.pendingShopifyPlanHandle
+            : providerSubscription.pendingPlanHandle,
+          pendingPlanId: preserveInitialIntent
+            ? existingSubscription.pendingPlanId
+            : pendingPlan?.active ? pendingPlan.id : null,
+          pendingEffectiveAt: preserveInitialIntent
+            ? existingSubscription.pendingEffectiveAt
+            : providerSubscription.pendingPlanHandle
+              ? providerSubscription.currentPeriodEnd
+              : null,
+          nextReconcileAt: preserveInitialIntent ? existingSubscription.nextReconcileAt : nextReconcileAt,
         },
         create: {
           id: subscriptionId,
@@ -945,16 +963,18 @@ async getSubscription(
           lastSyncedAt: now,
           lastSyncErrorCode: syncErrorCode,
           lastSyncErrorAt: syncErrorCode ? now : null,
-          pendingShopifyPlanHandle: providerSubscription.pendingPlanHandle,
-          pendingPlanId: pendingPlan?.active ? pendingPlan.id : null,
-          pendingEffectiveAt: providerSubscription.pendingPlanHandle
-            ? providerSubscription.currentPeriodEnd
-            : null,
-          nextReconcileAt: plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
-            ? providerSubscription.currentPeriodEnd
-              ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
-              : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)
-            : null,
+          pendingShopifyPlanHandle: preserveInitialIntent
+            ? existingSubscription.pendingShopifyPlanHandle
+            : providerSubscription.pendingPlanHandle,
+          pendingPlanId: preserveInitialIntent
+            ? existingSubscription.pendingPlanId
+            : pendingPlan?.active ? pendingPlan.id : null,
+          pendingEffectiveAt: preserveInitialIntent
+            ? existingSubscription.pendingEffectiveAt
+            : providerSubscription.pendingPlanHandle
+              ? providerSubscription.currentPeriodEnd
+              : null,
+          nextReconcileAt: preserveInitialIntent ? existingSubscription.nextReconcileAt : nextReconcileAt,
         },
       });
     });

@@ -57,7 +57,7 @@ function createDatabase({
   };
   const billingPlan = {
     findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => {
-      if (where.shopifyPlanHandle === "growth") return plan;
+      if (where.shopifyPlanHandle === plan?.shopifyPlanHandle || (!plan?.shopifyPlanHandle && where.shopifyPlanHandle === "growth")) return plan;
       if (where.shopifyPlanHandle === "starter") return pendingPlan;
       return null;
     }),
@@ -121,12 +121,22 @@ describe("BillingService subscription projection", () => {
       }),
     };
     const shopEntitlementCounter = {
-      findUnique: vi.fn().mockResolvedValue(lifetimeCounter),
+      findUnique: vi.fn().mockImplementation(async () => state.lifetimeCounter),
       create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
         state.lifetimeCounter = { ...data };
         return state.lifetimeCounter;
       }),
     };
+    const executeRaw = vi.fn().mockImplementation(async () => {
+      if (!state.lifetimeCounter && policy && typeof policy.lifetimeFreeRecoveryAllowance === "number") {
+        state.lifetimeCounter = {
+          shopId: "shop-1",
+          counter: "FREE_RECOVERY_LIFETIME",
+          grantedQuantity: policy.lifetimeFreeRecoveryAllowance,
+        };
+      }
+      return 1;
+    });
     const database = {
       billingPlan: {
         findUnique: vi.fn().mockResolvedValue(freePlan),
@@ -137,14 +147,16 @@ describe("BillingService subscription projection", () => {
       platformBillingPolicy: {
         findUnique: vi.fn().mockResolvedValue(policy),
       },
+      $executeRaw: executeRaw,
       $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
         subscription,
         shopSettings,
         shopEntitlementCounter,
         platformBillingPolicy: database.platformBillingPolicy,
+        $executeRaw: executeRaw,
       })),
     };
-    return { database, state, freePlan, shopSettings, shopEntitlementCounter, platformBillingPolicy: database.platformBillingPolicy };
+    return { database, state, freePlan, shopSettings, shopEntitlementCounter, platformBillingPolicy: database.platformBillingPolicy, executeRaw };
   }
 
   it("records an initial Free selection without activating entitlement", async () => {
@@ -167,6 +179,41 @@ describe("BillingService subscription projection", () => {
       pendingEffectiveAt: expect.any(Date),
       nextReconcileAt: expect.any(Date),
     });
+  });
+
+  it("replaces an older unresolved Free selection with a newer valid selection", async () => {
+    const { database, state } = createFreeActivationDatabase({
+      currentSubscription: {
+        status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
+        pendingShopifyPlanHandle: "free-a",
+        pendingPlanId: "free-a-id",
+      },
+    });
+    const service = new BillingService({} as never, database as never);
+
+    await service.prepareFreeActivation("shop-1", "free");
+
+    expect(state.currentSubscription).toMatchObject({
+      pendingShopifyPlanHandle: "free",
+      pendingPlanId: "free-1",
+    });
+  });
+
+  it("accepts a fresh shop without a Subscription when onboarding is incomplete", async () => {
+    const { database } = createFreeActivationDatabase({ onboardingCompleted: false });
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeTruthy();
+  });
+
+  it("rejects a shop without a Subscription when onboarding is already complete", async () => {
+    const { database } = createFreeActivationDatabase({ onboardingCompleted: true });
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeNull();
+    expect(database.subscription.upsert).not.toHaveBeenCalled();
   });
 
   it("does not overwrite an active different-plan subscription", async () => {
@@ -205,7 +252,7 @@ describe("BillingService subscription projection", () => {
   });
 
   it("snapshots the platform lifetime policy once and clears non-pack scheduling", async () => {
-    const { database, state, shopSettings, shopEntitlementCounter } = createFreeActivationDatabase({
+    const { database, state, shopSettings, executeRaw } = createFreeActivationDatabase({
       currentSubscription: {
         status: "ACTIVE",
         planId: "free-1",
@@ -222,9 +269,7 @@ describe("BillingService subscription projection", () => {
 
     await expect(service.completeFreeActivation("shop-1", "free")).resolves.toBe(true);
 
-    expect(shopEntitlementCounter.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ grantedQuantity: 5 }),
-    });
+    expect(executeRaw).toHaveBeenCalledTimes(1);
     expect(shopSettings.update).toHaveBeenCalledWith({
       where: { shopId: "shop-1" },
       data: { onboardingCompleted: true },
@@ -242,7 +287,7 @@ describe("BillingService subscription projection", () => {
       reservedQuantity: 1,
       forfeitedQuantity: 0,
     };
-    const { database, shopEntitlementCounter, platformBillingPolicy } = createFreeActivationDatabase({
+    const { database, shopEntitlementCounter, platformBillingPolicy, executeRaw } = createFreeActivationDatabase({
       currentSubscription: {
         status: "ACTIVE",
         planId: "free-1",
@@ -264,6 +309,7 @@ describe("BillingService subscription projection", () => {
     await expect(service.completeFreeActivation("shop-1", "free")).resolves.toBe(true);
 
     expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(executeRaw).not.toHaveBeenCalled();
     expect(platformBillingPolicy.findUnique).not.toHaveBeenCalled();
     expect(existingCounter).toEqual({
       grantedQuantity: 5,
@@ -297,6 +343,30 @@ describe("BillingService subscription projection", () => {
 
     expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
     expect(shopSettings.update).not.toHaveBeenCalled();
+  });
+
+  it("tolerates concurrent first Free activations racing to create the lifetime counter", async () => {
+    const { database, state, shopEntitlementCounter } = createFreeActivationDatabase({
+      currentSubscription: {
+        status: "ACTIVE",
+        planId: "free-1",
+        observedShopifyPlanHandle: "free",
+        nextReconcileAt: null,
+        plan: { kind: "FREE", shopifyPlanHandle: "free", recoveryCreditPackEnabled: false },
+      },
+    });
+    database.subscription.findUnique.mockImplementation(async () => ({
+      ...state.currentSubscription,
+      plan: { kind: "FREE", shopifyPlanHandle: "free", recoveryCreditPackEnabled: false },
+    }));
+    const service = new BillingService({} as never, database as never);
+
+    await expect(Promise.all([
+      service.completeFreeActivation("shop-1", "free"),
+      service.completeFreeActivation("shop-1", "free"),
+    ])).resolves.toEqual([true, true]);
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.lifetimeCounter).toMatchObject({ grantedQuantity: 5 });
   });
 
   it("returns Shopify commercial facts and independent current/pending mappings", async () => {
@@ -648,6 +718,47 @@ describe("BillingService subscription projection", () => {
       pendingShopifyPlanHandle: "free",
       pendingPlanId: "free-1",
       nextReconcileAt: new Date("2026-01-01T00:00:00.000Z"),
+    });
+  });
+
+  it("preserves newer Free-B intent when an older Free-A sync sees only Free-A", async () => {
+    const pendingEffectiveAt = new Date("2026-09-12T00:02:00.000Z");
+    const nextReconcileAt = new Date("2026-09-12T00:03:00.000Z");
+    const { database, state } = createDatabase({
+      plan: {
+        id: "free-a-id",
+        shopifyPlanHandle: "free-a",
+        name: "Free A",
+        kind: "FREE",
+        active: true,
+        recoveryCreditPackEnabled: false,
+      },
+      current: {
+        id: "subscription-1",
+        status: "NO_CONTRACT",
+        pendingShopifyPlanHandle: "free-b",
+        pendingPlanId: "free-b-id",
+        pendingEffectiveAt,
+        nextReconcileAt,
+      },
+    });
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        planHandle: "free-a",
+        currentFlatRatePlan: { handle: "free-a", description: "Free A", price: { amount: "0", currency: "USD" } },
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+      })),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.current).toMatchObject({
+      pendingShopifyPlanHandle: "free-b",
+      pendingPlanId: "free-b-id",
+      pendingEffectiveAt,
+      nextReconcileAt,
     });
   });
 
