@@ -41,6 +41,7 @@ function campaign(overrides = {}) {
 
 describe("promotion service", () => {
   it("projects selected, used, exhausted, expired, closed, and reopened history safely", () => {
+    const reopenedAt = new Date("2026-09-13T12:01:00.000Z");
     const baseGrant = {
       quantity: 25,
       reservedQuantity: 3,
@@ -74,12 +75,13 @@ describe("promotion service", () => {
     expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, expiresAt: new Date("2026-09-01T00:00:00.000Z") } }, "shop-1", "plan-1", now).status).toBe("EXPIRED");
     expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
     expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, selectionCount: 2 }, "shop-1", "plan-1", now).status).toBe("SELECTED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z") }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt }, "shop-1", "plan-1", now).status).toBe("REOPENED");
     expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T11:59:00.000Z") }, "shop-1", "plan-1", now).status).toBe("SELECTED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, reopenedAt: new Date("2026-09-13T12:01:00.000Z") }, "shop-1", "plan-1", now).status).toBe("REOPENED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z"), exhaustedAt: now }, "shop-1", "plan-1", now).status).toBe("EXHAUSTED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z"), campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, scope: "PLAN", targetPlanId: "plan-other" } }, "shop-1", "plan-1", now).status).toBe("NO_LONGER_ELIGIBLE");
+    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, reopenedAt }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt, exhaustedAt: now }, "shop-1", "plan-1", now).status).toBe("EXHAUSTED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt, campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt, campaign: { ...baseGrant.campaign, expiresAt: new Date("2026-09-01T00:00:00.000Z") } }, "shop-1", "plan-1", now).status).toBe("EXPIRED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt, campaign: { ...baseGrant.campaign, scope: "PLAN", targetPlanId: "plan-other" } }, "shop-1", "plan-1", now).status).toBe("NO_LONGER_ELIGIBLE");
   });
 
   it("reads only the authenticated shop's campaign-linked grants with bounded pagination", async () => {
@@ -128,8 +130,13 @@ describe("promotion service", () => {
       }),
     }));
     expect(history).toEqual(expect.objectContaining({ page: 2, pageSize: 25, totalEntries: 26, totalPages: 2 }));
+    expect(history.entries[0]).toMatchObject({ campaignId: "campaign-1", status: "REOPENED" });
+    expect(history.entries[0]).not.toHaveProperty("events");
+    expect(history.entries[0]).not.toHaveProperty("reopenedAt");
     expect(history.entries[0]).not.toHaveProperty("platformAdminId");
     expect(history.entries[0]).not.toHaveProperty("targetPlanId");
+    expect(history.entries[0]).not.toHaveProperty("targetShopId");
+    expect(history.entries[0]).not.toHaveProperty("requestKey");
   });
 
   it("returns only currently running campaigns targeted to the shop or its plan", async () => {
