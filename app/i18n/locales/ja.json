@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "原文を表示",
   "merchantSupport.error.unsupportedAction": "サポートされていないマーチャントサポート操作です。",
   "merchantSupport.error.sendFailed": "メッセージを送信できません。",
-  "merchantSupport.page.title": "メッセージ"
+  "merchantSupport.page.title": "メッセージ",
+  "promotions.nav": "プロモーション",
+  "promotions.page.title": "プロモーションオファー",
+  "promotions.page.description": "利用可能なプロモーションを選択して、ストアにプロモーション用回復クレジットを追加します。",
+  "promotions.empty": "現在利用できるプロモーションオファーはありません。",
+  "promotions.credits": "プロモーション用回復クレジット {quantity} 件",
+  "promotions.expires": "有効期限",
+  "promotions.remaining": "残り {quantity} クレジット",
+  "promotions.status.available": "利用可能",
+  "promotions.status.selected": "選択済み",
+  "promotions.status.claimed": "以前に選択済み",
+  "promotions.status.exhausted": "使い切り済み",
+  "promotions.action.select": "プロモーションを選択",
+  "promotions.action.reselect": "プロモーションを再選択",
+  "promotions.success": "プロモーションを選択しました。",
+  "promotions.error.activeSelected": "別のプロモーションを選択する前に、現在のプロモーションを使用または使い切ってください。",
+  "promotions.error.notEligible": "このプロモーションはストアで利用できなくなりました。",
+  "promotions.error.unavailable": "サブスクリプションが利用できない間はプロモーションを変更できません。"
 }

@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "View original",
   "merchantSupport.error.unsupportedAction": "Unsupported merchant support action.",
   "merchantSupport.error.sendFailed": "Unable to send message.",
-  "merchantSupport.page.title": "Messages"
+  "merchantSupport.page.title": "Messages",
+  "promotions.nav": "Promotions",
+  "promotions.page.title": "Promotion offers",
+  "promotions.page.description": "Select an available promotion to add promotional recovery credits to your store.",
+  "promotions.empty": "No promotion offers are currently available.",
+  "promotions.credits": "{quantity} promotional recovery credits",
+  "promotions.expires": "Expires",
+  "promotions.remaining": "{quantity} credits remaining",
+  "promotions.status.available": "Available",
+  "promotions.status.selected": "Selected",
+  "promotions.status.claimed": "Previously selected",
+  "promotions.status.exhausted": "Exhausted",
+  "promotions.action.select": "Select promotion",
+  "promotions.action.reselect": "Reselect promotion",
+  "promotions.success": "Promotion selected.",
+  "promotions.error.activeSelected": "Use or exhaust your currently selected promotion before choosing another.",
+  "promotions.error.notEligible": "This promotion is no longer available for your store.",
+  "promotions.error.unavailable": "Promotions cannot be changed while your subscription is unavailable."
 }

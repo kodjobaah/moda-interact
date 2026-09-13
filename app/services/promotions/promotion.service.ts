@@ -96,6 +96,7 @@ function merchantOffer(campaign: {
     exhaustedAt: Date | null;
     firstSelectedAt: Date | null;
     lastSelectedAt: Date | null;
+    selection: { shopId: string } | null;
   }>;
 }, shopId: string, planId: string | null) {
   const grant = campaign.promotionalCreditGrants[0] ?? null;
@@ -107,7 +108,8 @@ function merchantOffer(campaign: {
     quantity: campaign.quantity,
     expiresAt: campaign.expiresAt,
     remainingQuantity: grant ? Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity) : campaign.quantity,
-    selected: Boolean(grant),
+    currentlySelected: Boolean(grant?.selection),
+    previouslyClaimed: Boolean(grant),
     usable: isUsableGrant(grant),
     exhausted: Boolean(grant?.exhaustedAt) || (grant ? !isUsableGrant(grant) : false),
     eligible: isTargetEligible(campaign, shopId, planId),
@@ -146,12 +148,12 @@ export async function getEligiblePromotionOffers(
       targetShopId: true,
       promotionalCreditGrants: {
         where: { shopId },
-        select: { quantity: true, reservedQuantity: true, committedQuantity: true, exhaustedAt: true, firstSelectedAt: true, lastSelectedAt: true },
+        select: { quantity: true, reservedQuantity: true, committedQuantity: true, exhaustedAt: true, firstSelectedAt: true, lastSelectedAt: true, selection: { select: { shopId: true } } },
       },
     },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
   });
-  return campaigns.map((campaign) => merchantOffer(campaign, shopId, planId));
+  return campaigns.map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
 }
 
 export async function selectPromotionOffer(
@@ -160,8 +162,9 @@ export async function selectPromotionOffer(
   now = new Date(),
   database: PromotionDatabase = prisma,
 ) {
-  try {
-    return await database.$transaction(async (transaction) => {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await database.$transaction(async (transaction: Prisma.TransactionClient) => {
       const context = await readContext(transaction, shopId);
       if (!context || !isExecutableSubscription(context)) {
         throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE");
@@ -188,10 +191,27 @@ export async function selectPromotionOffer(
 
       const current = await transaction.merchantPromotionSelection.findUnique({
         where: { shopId },
-        include: { promotionalCreditGrant: true },
+        include: {
+          promotionalCreditGrant: {
+            include: {
+              campaign: {
+                select: { id: true, status: true, startsAt: true, expiresAt: true, scope: true, targetPlanId: true, targetShopId: true },
+              },
+            },
+          },
+        },
       });
       const currentGrant = current?.promotionalCreditGrant ?? null;
-      if (current && current.promotionalCreditGrant.campaignId !== campaignId && isUsableGrant(currentGrant) && currentGrant.campaign.expiresAt > now && currentGrant.campaign.status === "ACTIVE") {
+      if (
+        current
+        && currentGrant
+        && currentGrant.campaignId !== campaignId
+        && isUsableGrant(currentGrant)
+        && currentGrant.campaign.status === "ACTIVE"
+        && currentGrant.campaign.startsAt <= now
+        && currentGrant.campaign.expiresAt > now
+        && isTargetEligible(currentGrant.campaign, shopId, context.subscription?.planId ?? null)
+      ) {
         throw new PromotionSelectionError("ACTIVE_PROMOTION_ALREADY_SELECTED");
       }
 
@@ -213,13 +233,16 @@ export async function selectPromotionOffer(
         update: { promotionalCreditGrantId: grant.id },
         create: { shopId, promotionalCreditGrantId: grant.id },
       });
-      return { campaignId, grantId: grant.id, remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity) };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
-  } catch (error) {
-    if (error instanceof PromotionSelectionError) throw error;
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-      throw new PromotionSelectionError("ACTIVE_PROMOTION_ALREADY_SELECTED");
+      return { campaignId, remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity) };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof PromotionSelectionError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
+        if (attempt < 3) continue;
+        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE");
+      }
+      throw error;
     }
-    throw error;
   }
+  throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE");
 }

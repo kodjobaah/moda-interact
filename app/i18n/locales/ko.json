@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "원문 보기",
   "merchantSupport.error.unsupportedAction": "지원되지 않는 판매자 지원 작업입니다.",
   "merchantSupport.error.sendFailed": "메시지를 보낼 수 없습니다.",
-  "merchantSupport.page.title": "메시지"
+  "merchantSupport.page.title": "메시지",
+  "promotions.nav": "프로모션",
+  "promotions.page.title": "프로모션 혜택",
+  "promotions.page.description": "사용 가능한 프로모션을 선택하여 스토어에 프로모션 복구 크레딧을 추가하세요.",
+  "promotions.empty": "현재 사용 가능한 프로모션 혜택이 없습니다.",
+  "promotions.credits": "프로모션 복구 크레딧 {quantity}개",
+  "promotions.expires": "만료",
+  "promotions.remaining": "크레딧 {quantity}개 남음",
+  "promotions.status.available": "사용 가능",
+  "promotions.status.selected": "선택됨",
+  "promotions.status.claimed": "이전에 선택됨",
+  "promotions.status.exhausted": "소진됨",
+  "promotions.action.select": "프로모션 선택",
+  "promotions.action.reselect": "프로모션 다시 선택",
+  "promotions.success": "프로모션을 선택했습니다.",
+  "promotions.error.activeSelected": "다른 프로모션을 선택하기 전에 현재 프로모션을 사용하거나 소진하세요.",
+  "promotions.error.notEligible": "이 프로모션은 더 이상 스토어에서 사용할 수 없습니다.",
+  "promotions.error.unavailable": "구독을 사용할 수 없는 동안에는 프로모션을 변경할 수 없습니다."
 }

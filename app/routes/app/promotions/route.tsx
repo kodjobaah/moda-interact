@@ -31,14 +31,22 @@ export async function action({ request }: ActionFunctionArgs) {
   const formData = await request.formData();
   const campaignId = String(formData.get("campaignId") ?? "");
   try {
-    return { ok: true, result: await selectPromotionOffer(shop.id, campaignId) };
+    await selectPromotionOffer(shop.id, campaignId);
+    return { ok: true };
   } catch (error) {
     if (error instanceof PromotionSelectionError) {
-      return { ok: false, error: error.code };
+      const messageKey = error.code === "ACTIVE_PROMOTION_ALREADY_SELECTED"
+        ? "promotions.error.activeSelected"
+        : error.code === "PROMOTION_NOT_ELIGIBLE"
+          ? "promotions.error.notEligible"
+          : "promotions.error.unavailable";
+      return { ok: false, messageKey };
     }
     throw error;
   }
 }
+
+type PromotionOffer = Awaited<ReturnType<typeof loader>>["offers"][number];
 
 export default function PromotionsRoute() {
   const { merchantUi, offers } = useLoaderData<typeof loader>();
@@ -46,21 +54,22 @@ export default function PromotionsRoute() {
   const i18n = createMerchantI18n(merchantUi);
   return (
     <main style={{ maxWidth: 800, margin: "0 auto", padding: 24 }}>
-      <h1>{i18n.t("billing.title")}</h1>
-      <h2>{i18n.t("billing.viewPlans")}</h2>
-      {offers.length === 0 ? <p>{i18n.t("billing.configurationUnavailableDescription")}</p> : null}
-      {actionData?.ok === false ? <p role="alert">{i18n.t("billing.configurationUnavailableDescription")}</p> : null}
-      {offers.map((offer) => (
+      <h1>{i18n.t("promotions.page.title")}</h1>
+      <p>{i18n.t("promotions.page.description")}</p>
+      {actionData?.ok === true ? <p role="status">{i18n.t("promotions.success")}</p> : null}
+      {actionData?.ok === false && actionData.messageKey ? <p role="alert">{i18n.t(actionData.messageKey)}</p> : null}
+      {offers.length === 0 ? <p>{i18n.t("promotions.empty")}</p> : null}
+      {offers.map((offer: PromotionOffer) => (
         <article key={offer.id}>
           <h3>{offer.name}</h3>
           {offer.merchantDescription ? <p>{offer.merchantDescription}</p> : null}
-          <p>{i18n.t("billing.recoveryCreditPackDescription", { quantity: offer.quantity })}</p>
-          <p>{i18n.formatDate(offer.expiresAt)}</p>
-          <p>{i18n.t("billing.purchasedRecoveryCredits", { granted: offer.quantity, committed: offer.quantity - offer.remainingQuantity, reserved: 0, available: offer.remainingQuantity })}</p>
-          {offer.usable ? <p>{i18n.t("billing.status")}</p> : null}
+          <p>{i18n.t("promotions.credits", { quantity: offer.quantity })}</p>
+          <p>{i18n.t("promotions.expires")}: {i18n.formatDate(offer.expiresAt)}</p>
+          {offer.previouslyClaimed && !offer.exhausted ? <p>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</p> : null}
+          <p>{i18n.t(offer.exhausted ? "promotions.status.exhausted" : offer.currentlySelected ? "promotions.status.selected" : offer.previouslyClaimed ? "promotions.status.claimed" : "promotions.status.available")}</p>
           <Form method="post">
             <input type="hidden" name="campaignId" value={offer.id} />
-            <button type="submit">{i18n.t("billing.changePlan")}</button>
+            <button type="submit">{offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}</button>
           </Form>
         </article>
       ))}

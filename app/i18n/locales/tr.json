@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Orijinali görüntüle",
   "merchantSupport.error.unsupportedAction": "Desteklenmeyen satıcı destek işlemi.",
   "merchantSupport.error.sendFailed": "Mesaj gönderilemedi.",
-  "merchantSupport.page.title": "Mesajlar"
+  "merchantSupport.page.title": "Mesajlar",
+  "promotions.nav": "Promosyonlar",
+  "promotions.page.title": "Promosyon teklifleri",
+  "promotions.page.description": "Mağazanıza promosyon kurtarma kredileri eklemek için kullanılabilir bir promosyon seçin.",
+  "promotions.empty": "Şu anda kullanılabilir promosyon teklifi yok.",
+  "promotions.credits": "{quantity} promosyon kurtarma kredisi",
+  "promotions.expires": "Son kullanma tarihi",
+  "promotions.remaining": "{quantity} kredi kaldı",
+  "promotions.status.available": "Kullanılabilir",
+  "promotions.status.selected": "Seçildi",
+  "promotions.status.claimed": "Daha önce seçildi",
+  "promotions.status.exhausted": "Tükendi",
+  "promotions.action.select": "Promosyon seç",
+  "promotions.action.reselect": "Promosyonu yeniden seç",
+  "promotions.success": "Promosyon seçildi.",
+  "promotions.error.activeSelected": "Başka bir promosyon seçmeden önce mevcut promosyonunuzu kullanın veya tüketin.",
+  "promotions.error.notEligible": "Bu promosyon mağazanız için artık kullanılamıyor.",
+  "promotions.error.unavailable": "Aboneliğiniz kullanılamaz durumdayken promosyonlar değiştirilemez."
 }

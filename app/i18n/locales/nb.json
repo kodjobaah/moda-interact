@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Vis original",
   "merchantSupport.error.unsupportedAction": "Ustøttet handling for merchantsupport.",
   "merchantSupport.error.sendFailed": "Kunne ikke sende meldingen.",
-  "merchantSupport.page.title": "Meldinger"
+  "merchantSupport.page.title": "Meldinger",
+  "promotions.nav": "Kampanjer",
+  "promotions.page.title": "Kampanjetilbud",
+  "promotions.page.description": "Velg en tilgjengelig kampanje for å legge til kampanjekreditter for gjenoppretting i butikken din.",
+  "promotions.empty": "Ingen kampanjetilbud er tilgjengelige nå.",
+  "promotions.credits": "{quantity} kampanjekreditter for gjenoppretting",
+  "promotions.expires": "Utløper",
+  "promotions.remaining": "{quantity} kreditter gjenstår",
+  "promotions.status.available": "Tilgjengelig",
+  "promotions.status.selected": "Valgt",
+  "promotions.status.claimed": "Tidligere valgt",
+  "promotions.status.exhausted": "Oppbrukt",
+  "promotions.action.select": "Velg kampanje",
+  "promotions.action.reselect": "Velg kampanje på nytt",
+  "promotions.success": "Kampanje valgt.",
+  "promotions.error.activeSelected": "Bruk eller tøm den valgte kampanjen før du velger en annen.",
+  "promotions.error.notEligible": "Denne kampanjen er ikke lenger tilgjengelig for butikken din.",
+  "promotions.error.unavailable": "Kampanjer kan ikke endres mens abonnementet ditt er utilgjengelig."
 }

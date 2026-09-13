@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Origineel bekijken",
   "merchantSupport.error.unsupportedAction": "Niet-ondersteunde actie voor merchantondersteuning.",
   "merchantSupport.error.sendFailed": "Kan bericht niet verzenden.",
-  "merchantSupport.page.title": "Berichten"
+  "merchantSupport.page.title": "Berichten",
+  "promotions.nav": "Promoties",
+  "promotions.page.title": "Promotieaanbiedingen",
+  "promotions.page.description": "Selecteer een beschikbare promotie om promotionele herstelcredits aan je winkel toe te voegen.",
+  "promotions.empty": "Er zijn momenteel geen promotieaanbiedingen beschikbaar.",
+  "promotions.credits": "{quantity} promotionele herstelcredits",
+  "promotions.expires": "Verloopt",
+  "promotions.remaining": "{quantity} credits resterend",
+  "promotions.status.available": "Beschikbaar",
+  "promotions.status.selected": "Geselecteerd",
+  "promotions.status.claimed": "Eerder geselecteerd",
+  "promotions.status.exhausted": "Opgebruikt",
+  "promotions.action.select": "Promotie selecteren",
+  "promotions.action.reselect": "Promotie opnieuw selecteren",
+  "promotions.success": "Promotie geselecteerd.",
+  "promotions.error.activeSelected": "Gebruik of verbruik je geselecteerde promotie voordat je een andere kiest.",
+  "promotions.error.notEligible": "Deze promotie is niet langer beschikbaar voor je winkel.",
+  "promotions.error.unavailable": "Promoties kunnen niet worden gewijzigd zolang je abonnement niet beschikbaar is."
 }

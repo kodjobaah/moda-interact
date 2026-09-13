@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Original anzeigen",
   "merchantSupport.error.unsupportedAction": "Nicht unterstützte Händler-Supportaktion.",
   "merchantSupport.error.sendFailed": "Nachricht konnte nicht gesendet werden.",
-  "merchantSupport.page.title": "Nachrichten"
+  "merchantSupport.page.title": "Nachrichten",
+  "promotions.nav": "Aktionen",
+  "promotions.page.title": "Aktionsangebote",
+  "promotions.page.description": "Wählen Sie eine verfügbare Aktion aus, um Ihrem Shop Aktionsguthaben hinzuzufügen.",
+  "promotions.empty": "Derzeit sind keine Aktionsangebote verfügbar.",
+  "promotions.credits": "{quantity} Aktionsguthaben",
+  "promotions.expires": "Läuft ab",
+  "promotions.remaining": "{quantity} Guthaben verbleiben",
+  "promotions.status.available": "Verfügbar",
+  "promotions.status.selected": "Ausgewählt",
+  "promotions.status.claimed": "Zuvor ausgewählt",
+  "promotions.status.exhausted": "Aufgebraucht",
+  "promotions.action.select": "Aktion auswählen",
+  "promotions.action.reselect": "Aktion erneut auswählen",
+  "promotions.success": "Aktion ausgewählt.",
+  "promotions.error.activeSelected": "Verwenden Sie die aktuell ausgewählte Aktion, bevor Sie eine andere auswählen.",
+  "promotions.error.notEligible": "Diese Aktion ist für Ihren Shop nicht mehr verfügbar.",
+  "promotions.error.unavailable": "Aktionen können nicht geändert werden, wenn Ihr Abonnement nicht verfügbar ist."
 }

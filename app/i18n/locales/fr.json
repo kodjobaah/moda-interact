@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Voir l’original",
   "merchantSupport.error.unsupportedAction": "Action d’assistance marchand non prise en charge.",
   "merchantSupport.error.sendFailed": "Impossible d’envoyer le message.",
-  "merchantSupport.page.title": "Messages"
+  "merchantSupport.page.title": "Messages",
+  "promotions.nav": "Promotions",
+  "promotions.page.title": "Offres promotionnelles",
+  "promotions.page.description": "Sélectionnez une promotion disponible pour ajouter des crédits de récupération promotionnels à votre boutique.",
+  "promotions.empty": "Aucune offre promotionnelle n’est actuellement disponible.",
+  "promotions.credits": "{quantity} crédits de récupération promotionnels",
+  "promotions.expires": "Expire",
+  "promotions.remaining": "{quantity} crédits restants",
+  "promotions.status.available": "Disponible",
+  "promotions.status.selected": "Sélectionnée",
+  "promotions.status.claimed": "Sélectionnée précédemment",
+  "promotions.status.exhausted": "Épuisée",
+  "promotions.action.select": "Sélectionner la promotion",
+  "promotions.action.reselect": "Sélectionner à nouveau",
+  "promotions.success": "Promotion sélectionnée.",
+  "promotions.error.activeSelected": "Utilisez ou épuisez la promotion sélectionnée avant d’en choisir une autre.",
+  "promotions.error.notEligible": "Cette promotion n’est plus disponible pour votre boutique.",
+  "promotions.error.unavailable": "Les promotions ne peuvent pas être modifiées lorsque votre abonnement est indisponible."
 }
