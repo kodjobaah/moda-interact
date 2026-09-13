@@ -26,6 +26,7 @@ import {
 
 import type {
   BillingProvider,
+  MerchantShopifyLifecycleState,
   MerchantShopifySubscriptionState,
 } from "./billing.types";
 
@@ -546,6 +547,74 @@ async getSubscription(
         subscription: null,
       };
     }
+
+    return this.mapMerchantShopifySubscription(providerSubscription);
+  }
+
+  async getMerchantShopifyLifecycleState(
+    shopId: string,
+  ): Promise<MerchantShopifyLifecycleState> {
+    const shop = await this.database.shop.findUnique({
+      where: { id: shopId },
+    });
+
+    if (!shop) {
+      throw new Error(`Shop ${shopId} was not found`);
+    }
+    if (!shop.shopifyShopId) {
+      throw new Error(`Shop ${shopId} does not have a Shopify shop ID`);
+    }
+    if (!this.provider.getSubscriptionLifecycleSnapshot) {
+      throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
+    }
+
+    const snapshot = await this.provider.getSubscriptionLifecycleSnapshot({
+      shopifyShopId: shop.shopifyShopId,
+    });
+    const latestEvent = snapshot.latestLifecycleEvent;
+    const activeState = snapshot.activeSubscription
+      ? await this.mapMerchantShopifySubscription(snapshot.activeSubscription)
+      : null;
+
+    if (latestEvent?.state === "FROZEN") {
+      const frozenPlan = latestEvent.planHandle
+        ? await this.database.billingPlan.findUnique({
+            where: { shopifyPlanHandle: latestEvent.planHandle },
+            select: { id: true, name: true, kind: true },
+          })
+        : null;
+      return {
+        state: "FROZEN",
+        subscription: activeState,
+        latestEvent,
+        providerPlanHandle: latestEvent.planHandle,
+        billingPeriod: latestEvent.billingPeriod,
+        modaMapping: frozenPlan
+          ? {
+              id: frozenPlan.id,
+              name: frozenPlan.name,
+              kind: frozenPlan.kind === BillingPlanKind.FREE ? "FREE" : "PAID_METERED",
+            }
+          : null,
+        mappingStatus: frozenPlan ? "MAPPED" : "UNMAPPED",
+      };
+    }
+
+    if (!snapshot.activeSubscription && latestEvent?.state === "CANCELED") {
+      return { state: "CANCELED", subscription: null, latestEvent };
+    }
+    if (snapshot.activeSubscription) {
+      return { state: "ACTIVE", subscription: activeState!, latestEvent };
+    }
+    if (latestEvent) {
+      return { state: "UNRESOLVED", subscription: null, latestEvent };
+    }
+    return { state: "NO_ACTIVE_SUBSCRIPTION", subscription: null, latestEvent: null };
+  }
+
+  private async mapMerchantShopifySubscription(
+    providerSubscription: NonNullable<Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>>,
+  ): Promise<MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" }> {
 
     const [currentPlan, pendingPlan] = await Promise.all([
       this.database.billingPlan.findUnique({

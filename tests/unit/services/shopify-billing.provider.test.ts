@@ -15,6 +15,15 @@ function response(activeSubscription: unknown, errors?: Array<{ message: string 
   }), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
+function lifecycleResponse(activeSubscription: unknown, event: unknown) {
+  return new Response(JSON.stringify({
+    data: {
+      activeSubscription,
+      events: { edges: event ? [{ node: event }] : [] },
+    },
+  }), { status: 200, headers: { "Content-Type": "application/json" } });
+}
+
 function subscription(items: unknown[], pendingUpdate: unknown = null) {
   return {
     billingPeriod: "EVERY_30_DAYS",
@@ -42,6 +51,18 @@ const tiered = (handle: string) => ({
   description: handle,
   price: { __typename: "TieredPrice", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
   usage: { quantity: 4, cost: { amount: "2", currencyCode: "USD" } },
+});
+
+const lifecycleEvent = (state: string, eventType: string, plan: unknown = { handle: "growth", billingPeriod: "EVERY_30_DAYS" }) => ({
+  __typename: "SubscriptionStatus",
+  id: "event-1",
+  occurredAt: "2026-09-12T12:00:00.000Z",
+  eventType,
+  state,
+  cancelEffectiveOn: null,
+  plan,
+  subject: { __typename: "AppReference", id: "app-1" },
+  shop: { id: "shop-1" },
 });
 
 describe("ShopifyBillingProvider", () => {
@@ -155,5 +176,161 @@ describe("ShopifyBillingProvider", () => {
 
     await expect(new ShopifyBillingProvider().getActiveSubscription({ shopifyShopId: "shop-1" }))
       .rejects.toThrow("503");
+  });
+
+  it("reads the latest frozen event with the live commercial subscription in one scoped request", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(subscription([flat("growth")]), lifecycleEvent("FROZEN", "SUBSCRIPTION_FROZEN")));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        activeSubscription: { planHandle: "growth" },
+        latestLifecycleEvent: {
+          state: "FROZEN",
+          planHandle: "growth",
+          billingPeriod: "EVERY_30_DAYS",
+        },
+      });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    const body = JSON.parse(String(request.body)) as { query: string; variables: Record<string, unknown> };
+    expect(body.query).toContain("activeSubscription(");
+    expect(body.query).toContain("events(");
+    expect(body.query).toContain("... on SubscriptionStatus");
+    expect(body.query).toContain("subjectId: $appId");
+    expect(body.query).toContain("shopId: $shopId");
+    expect(body.query).toContain("occurredAtMin: $occurredAtMin");
+    expect(body.query).toContain("occurredAtMax: $occurredAtMax");
+    expect(body.query).toContain("orderBy: OCCURRED_AT_DESC");
+    expect(body.query).toContain("first: 1");
+    expect(body.variables).toMatchObject({
+      appId: "app-1",
+      shopId: "shop-1",
+      eventTypes: [
+        "SUBSCRIPTION_CREATED",
+        "SUBSCRIPTION_UPDATED",
+        "SUBSCRIPTION_CANCELLATION_SCHEDULED",
+        "SUBSCRIPTION_CANCELED",
+        "SUBSCRIPTION_FROZEN",
+        "SUBSCRIPTION_UNFROZEN",
+      ],
+    });
+    const occurredAtMin = Date.parse(String(body.variables.occurredAtMin));
+    const occurredAtMax = Date.parse(String(body.variables.occurredAtMax));
+    expect(occurredAtMax - occurredAtMin).toBe(365 * 24 * 60 * 60 * 1000);
+  });
+
+  it("preserves a frozen historical plan handle when no live subscription exists", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, lifecycleEvent("FROZEN", "SUBSCRIPTION_FROZEN", {
+      handle: "growth",
+      billingPeriod: "EVERY_30_DAYS",
+    })));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        activeSubscription: null,
+        latestLifecycleEvent: { state: "FROZEN", planHandle: "growth" },
+      });
+  });
+
+  it.each([
+    ["non-successful HTTP response", new Response("unavailable", { status: 503 }), "503"],
+    ["GraphQL errors", response(null, [{ message: "Partner unavailable" }]), "Partner unavailable"],
+  ] as const)("rejects lifecycle snapshot on %s", async (_name, result, message) => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(result);
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .rejects.toThrow(message);
+  });
+
+  it.each([
+    ["wrong app", { subject: { __typename: "AppReference", id: "other-app" } }],
+    ["wrong shop", { shop: { id: "other-shop" } }],
+    ["invalid timestamp", { occurredAt: "not-a-date" }],
+    ["wrong event type", { state: "FROZEN", eventType: "SUBSCRIPTION_UPDATED" }],
+    ["malformed root", { __typename: "OtherEvent" }],
+  ] as const)("rejects lifecycle snapshot with %s", async (_name, overrides) => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, {
+      ...lifecycleEvent("FROZEN", "SUBSCRIPTION_FROZEN"),
+      ...overrides,
+    }));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .rejects.toThrow();
+  });
+
+  it("rejects a malformed lifecycle edge and parses cancellation fields", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, {
+      ...lifecycleEvent("CANCELLATION_SCHEDULED", "SUBSCRIPTION_CANCELLATION_SCHEDULED"),
+      cancelEffectiveOn: "2026-10-01",
+    }));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        latestLifecycleEvent: {
+          state: "CANCELLATION_SCHEDULED",
+          eventType: "SUBSCRIPTION_CANCELLATION_SCHEDULED",
+          cancelEffectiveOn: "2026-10-01",
+        },
+      });
+
+    fetchMock.mockResolvedValue(lifecycleResponse(null, { malformed: true }));
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .rejects.toThrow("malformed lifecycle event");
+  });
+
+  it("parses a successful unfrozen lifecycle event", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, lifecycleEvent("UNFROZEN", "SUBSCRIPTION_UNFROZEN")));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        latestLifecycleEvent: {
+          state: "UNFROZEN",
+          eventType: "SUBSCRIPTION_UNFROZEN",
+        },
+      });
+  });
+
+  it("parses a successful canceled lifecycle event", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, lifecycleEvent("CANCELED", "SUBSCRIPTION_CANCELED")));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        latestLifecycleEvent: {
+          state: "CANCELED",
+          eventType: "SUBSCRIPTION_CANCELED",
+        },
+      });
+  });
+
+  it("returns no latest event when the bounded lifecycle history is empty", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, null));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({ activeSubscription: null, latestLifecycleEvent: null });
   });
 });
