@@ -73,9 +73,11 @@ function isTargetEligible(
 
 export function promotionHistoryStatus(
   grant: {
+    quantity: number;
     reservedQuantity: number;
     committedQuantity: number;
     selectionCount: number;
+    firstSelectedAt: Date | null;
     exhaustedAt: Date | null;
     firstUsedAt: Date | null;
     selection: { shopId: string } | null;
@@ -89,13 +91,15 @@ export function promotionHistoryStatus(
   },
   shopId: string,
   planId: string | null,
+  reopenedAt: Date | null = null,
   now = new Date(),
 ): PromotionHistoryStatus {
   if (grant.exhaustedAt) return "EXHAUSTED";
   if (campaign.status === "CLOSED") return "CLOSED";
   if (campaign.expiresAt <= now) return "EXPIRED";
   if (!isTargetEligible(campaign, shopId, planId)) return "NO_LONGER_ELIGIBLE";
-  if (campaign.status === "ACTIVE" && !grant.selection && grant.selectionCount > 1) return "REOPENED";
+  const remainingQuantity = Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity);
+  if (reopenedAt && grant.firstSelectedAt && reopenedAt > grant.firstSelectedAt && remainingQuantity > 0) return "REOPENED";
   return grant.firstUsedAt ? "USED" : "SELECTED";
 }
 
@@ -119,7 +123,9 @@ export function projectPromotionHistoryRow(
       status: string;
       targetPlanId: string | null;
       targetShopId: string | null;
+      events?: Array<{ createdAt: Date }>;
     };
+    reopenedAt?: Date | null;
   },
   shopId: string,
   planId: string | null,
@@ -137,7 +143,7 @@ export function projectPromotionHistoryRow(
     lastUsedAt: grant.lastUsedAt,
     expiresAt: grant.campaign.expiresAt,
     currentlySelected: grant.selection !== null,
-    status: promotionHistoryStatus(grant, grant.campaign, shopId, planId, now),
+    status: promotionHistoryStatus(grant, grant.campaign, shopId, planId, grant.reopenedAt, now),
   };
 }
 
@@ -274,13 +280,22 @@ export async function getPromotionHistory(
             status: true,
             targetPlanId: true,
             targetShopId: true,
+            events: {
+              where: { kind: "REOPENED" },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: { createdAt: true },
+            },
           },
         },
       },
     }),
   ]);
   return {
-    entries: grants.map((grant: Parameters<typeof projectPromotionHistoryRow>[0]) => projectPromotionHistoryRow(grant, shopId, context.subscription?.planId ?? null, now)),
+    entries: grants.map((grant: Parameters<typeof projectPromotionHistoryRow>[0]) => projectPromotionHistoryRow({
+      ...grant,
+      reopenedAt: grant.campaign.events?.[0]?.createdAt ?? null,
+    }, shopId, context.subscription?.planId ?? null, now)),
     page: normalizedPage,
     pageSize: PROMOTION_HISTORY_PAGE_SIZE,
     totalEntries,

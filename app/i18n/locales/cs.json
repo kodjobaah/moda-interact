@@ -260,5 +260,22 @@
   "promotions.success": "Akce byla vybrána.",
   "promotions.error.activeSelected": "Než vyberete jinou akci, využijte nebo vyčerpejte aktuálně vybranou akci.",
   "promotions.error.notEligible": "Tato akce již není pro váš obchod dostupná.",
-  "promotions.error.unavailable": "Akce nelze měnit, když vaše předplatné není dostupné."
+  "promotions.error.unavailable": "Akce nelze měnit, když vaše předplatné není dostupné.",
+  "promotions.history.title": "Historie akcí",
+  "promotions.history.empty": "Žádná historie vybraných akcí.",
+  "promotions.history.granted": "Přiděleno: {quantity}",
+  "promotions.history.usedCredits": "Použito: {quantity}",
+  "promotions.history.selectedRange": "Vybráno: {first} – {last}",
+  "promotions.history.usedRange": "Použito: {first} – {last}",
+  "promotions.history.currentlySelected": "Aktuálně vybráno: {value}",
+  "promotions.history.status": "Stav: {status}",
+  "promotions.history.yes": "Ano",
+  "promotions.history.no": "Ne",
+  "promotions.history.previous": "Předchozí",
+  "promotions.history.next": "Další",
+  "promotions.status.used": "Použito",
+  "promotions.status.expired": "Vypršelo",
+  "promotions.status.closed": "Uzavřeno",
+  "promotions.status.noLongerEligible": "Již nesplňuje podmínky",
+  "promotions.status.reopened": "Znovu otevřeno"
 }

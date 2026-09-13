@@ -260,5 +260,22 @@
   "promotions.success": "Kampagne valgt.",
   "promotions.error.activeSelected": "Brug eller opbrug din aktuelt valgte kampagne, før du vælger en anden.",
   "promotions.error.notEligible": "Denne kampagne er ikke længere tilgængelig for din butik.",
-  "promotions.error.unavailable": "Kampagner kan ikke ændres, mens dit abonnement ikke er tilgængeligt."
+  "promotions.error.unavailable": "Kampagner kan ikke ændres, mens dit abonnement ikke er tilgængeligt.",
+  "promotions.history.title": "Kampagnehistorik",
+  "promotions.history.empty": "Ingen historik over valgte kampagner.",
+  "promotions.history.granted": "Tildelt: {quantity}",
+  "promotions.history.usedCredits": "Brugt: {quantity}",
+  "promotions.history.selectedRange": "Valgt: {first} – {last}",
+  "promotions.history.usedRange": "Brugt: {first} – {last}",
+  "promotions.history.currentlySelected": "Aktuelt valgt: {value}",
+  "promotions.history.status": "Status: {status}",
+  "promotions.history.yes": "Ja",
+  "promotions.history.no": "Nej",
+  "promotions.history.previous": "Forrige",
+  "promotions.history.next": "Næste",
+  "promotions.status.used": "Brugt",
+  "promotions.status.expired": "Udløbet",
+  "promotions.status.closed": "Lukket",
+  "promotions.status.noLongerEligible": "Ikke længere berettiget",
+  "promotions.status.reopened": "Genåbnet"
 }

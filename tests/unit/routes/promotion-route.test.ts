@@ -16,6 +16,12 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("promotions.status.selected");
     expect(routeSource).toContain("promotions.status.exhausted");
     expect(routeSource).toContain("promotions.action.select");
+    expect(routeSource).toContain("promotions.history.title");
+    expect(routeSource).toContain("promotions.history.granted");
+    expect(routeSource).toContain("promotions.status.reopened");
+    for (const rawHistoryText of ["No selected promotion history.", "Granted: ", "Currently selected: ", ">Previous<", ">Next<"]) {
+      expect(routeSource).not.toContain(rawHistoryText);
+    }
     expect(routeSource).not.toContain("billing.changePlan");
     expect(routeSource).not.toContain("billing.purchasedRecoveryCredits");
   });

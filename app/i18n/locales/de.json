@@ -260,5 +260,22 @@
   "promotions.success": "Aktion ausgewählt.",
   "promotions.error.activeSelected": "Verwenden Sie die aktuell ausgewählte Aktion, bevor Sie eine andere auswählen.",
   "promotions.error.notEligible": "Diese Aktion ist für Ihren Shop nicht mehr verfügbar.",
-  "promotions.error.unavailable": "Aktionen können nicht geändert werden, wenn Ihr Abonnement nicht verfügbar ist."
+  "promotions.error.unavailable": "Aktionen können nicht geändert werden, wenn Ihr Abonnement nicht verfügbar ist.",
+  "promotions.history.title": "Aktionsverlauf",
+  "promotions.history.empty": "Kein Verlauf ausgewählter Aktionen.",
+  "promotions.history.granted": "Zugewiesen: {quantity}",
+  "promotions.history.usedCredits": "Verwendet: {quantity}",
+  "promotions.history.selectedRange": "Ausgewählt: {first} – {last}",
+  "promotions.history.usedRange": "Verwendet: {first} – {last}",
+  "promotions.history.currentlySelected": "Aktuell ausgewählt: {value}",
+  "promotions.history.status": "Status: {status}",
+  "promotions.history.yes": "Ja",
+  "promotions.history.no": "Nein",
+  "promotions.history.previous": "Zurück",
+  "promotions.history.next": "Weiter",
+  "promotions.status.used": "Verwendet",
+  "promotions.status.expired": "Abgelaufen",
+  "promotions.status.closed": "Geschlossen",
+  "promotions.status.noLongerEligible": "Nicht mehr berechtigt",
+  "promotions.status.reopened": "Wieder geöffnet"
 }

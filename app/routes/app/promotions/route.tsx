@@ -78,25 +78,25 @@ export default function PromotionsRoute() {
         </article>
       ))}
       <section aria-labelledby="promotion-history-heading">
-        <h2 id="promotion-history-heading">{i18n.t("promotions.page.title")} history</h2>
-        {history.entries.length === 0 ? <p>No selected promotion history.</p> : (
+        <h2 id="promotion-history-heading">{i18n.t("promotions.history.title")}</h2>
+        {history.entries.length === 0 ? <p>{i18n.t("promotions.history.empty")}</p> : (
           <>
             {history.entries.map((entry: PromotionHistoryEntry) => (
               <article key={entry.campaignId}>
                 <h3>{entry.campaignName}</h3>
-                <p>Granted: {entry.quantityGranted}</p>
-                <p>Used: {entry.committedQuantity}</p>
+                <p>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</p>
+                <p>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</p>
                 <p>{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</p>
-                <p>Selected: {formatHistoryDate(entry.firstSelectedAt, i18n)} - {formatHistoryDate(entry.lastSelectedAt, i18n)}</p>
-                <p>Used: {formatHistoryDate(entry.firstUsedAt, i18n)} - {formatHistoryDate(entry.lastUsedAt, i18n)}</p>
+                <p>{i18n.t("promotions.history.selectedRange", { first: formatHistoryDate(entry.firstSelectedAt, i18n), last: formatHistoryDate(entry.lastSelectedAt, i18n) })}</p>
+                <p>{i18n.t("promotions.history.usedRange", { first: formatHistoryDate(entry.firstUsedAt, i18n), last: formatHistoryDate(entry.lastUsedAt, i18n) })}</p>
                 <p>{i18n.t("promotions.expires")}: {i18n.formatDate(entry.expiresAt)}</p>
-                <p>Currently selected: {entry.currentlySelected ? "Yes" : "No"}</p>
-                <p>Status: {historyStatusLabel(entry.status, i18n)}</p>
+                <p>{i18n.t("promotions.history.currentlySelected", { value: entry.currentlySelected ? i18n.t("promotions.history.yes") : i18n.t("promotions.history.no") })}</p>
+                <p>{i18n.t("promotions.history.status", { status: historyStatusLabel(entry.status, i18n) })}</p>
               </article>
             ))}
-            <nav aria-label="Promotion history pagination">
-              {history.page > 1 ? <Link to={`/app/promotions?historyPage=${history.page - 1}`}>Previous</Link> : null}
-              {history.page < history.totalPages ? <Link to={`/app/promotions?historyPage=${history.page + 1}`}>Next</Link> : null}
+            <nav aria-label={i18n.t("promotions.history.title")}>
+              {history.page > 1 ? <Link to={`/app/promotions?historyPage=${history.page - 1}`}>{i18n.t("promotions.history.previous")}</Link> : null}
+              {history.page < history.totalPages ? <Link to={`/app/promotions?historyPage=${history.page + 1}`}>{i18n.t("promotions.history.next")}</Link> : null}
             </nav>
           </>
         )}
@@ -112,11 +112,11 @@ function formatHistoryDate(value: Date | null, i18n: ReturnType<typeof createMer
 function historyStatusLabel(status: string, i18n: ReturnType<typeof createMerchantI18n>) {
   if (status === "EXHAUSTED") return i18n.t("promotions.status.exhausted");
   if (status === "SELECTED") return i18n.t("promotions.status.selected");
-  if (status === "USED") return "Used";
-  if (status === "EXPIRED") return "Expired";
-  if (status === "CLOSED") return "Closed";
-  if (status === "NO_LONGER_ELIGIBLE") return "No longer eligible";
-  if (status === "REOPENED") return "Reopened";
+  if (status === "USED") return i18n.t("promotions.status.used");
+  if (status === "EXPIRED") return i18n.t("promotions.status.expired");
+  if (status === "CLOSED") return i18n.t("promotions.status.closed");
+  if (status === "NO_LONGER_ELIGIBLE") return i18n.t("promotions.status.noLongerEligible");
+  if (status === "REOPENED") return i18n.t("promotions.status.reopened");
   return i18n.t("promotions.status.claimed");
 }
 

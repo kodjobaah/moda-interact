@@ -73,7 +73,12 @@ describe("promotion service", () => {
     expect(projectPromotionHistoryRow({ ...baseGrant, exhaustedAt: now }, "shop-1", "plan-1", now).status).toBe("EXHAUSTED");
     expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, expiresAt: new Date("2026-09-01T00:00:00.000Z") } }, "shop-1", "plan-1", now).status).toBe("EXPIRED");
     expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
-    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, selectionCount: 2 }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, selectionCount: 2 }, "shop-1", "plan-1", now).status).toBe("SELECTED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z") }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T11:59:00.000Z") }, "shop-1", "plan-1", now).status).toBe("SELECTED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, reopenedAt: new Date("2026-09-13T12:01:00.000Z") }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z"), exhaustedAt: now }, "shop-1", "plan-1", now).status).toBe("EXHAUSTED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, reopenedAt: new Date("2026-09-13T12:01:00.000Z"), campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
     expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, scope: "PLAN", targetPlanId: "plan-other" } }, "shop-1", "plan-1", now).status).toBe("NO_LONGER_ELIGIBLE");
   });
 
@@ -97,6 +102,7 @@ describe("promotion service", () => {
         status: "ACTIVE",
         targetPlanId: null,
         targetShopId: null,
+        events: [{ createdAt: new Date("2026-09-13T12:01:00.000Z") }],
       },
     }]);
     const count = vi.fn().mockResolvedValue(26);
@@ -113,7 +119,12 @@ describe("promotion service", () => {
       skip: 25,
       take: 25,
       select: expect.objectContaining({
-        campaign: expect.objectContaining({ select: expect.objectContaining({ id: true, name: true, expiresAt: true }) }),
+        campaign: expect.objectContaining({ select: expect.objectContaining({
+          id: true,
+          name: true,
+          expiresAt: true,
+          events: { where: { kind: "REOPENED" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+        }) }),
       }),
     }));
     expect(history).toEqual(expect.objectContaining({ page: 2, pageSize: 25, totalEntries: 26, totalPages: 2 }));

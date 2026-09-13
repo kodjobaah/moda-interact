@@ -260,5 +260,22 @@
   "promotions.success": "已选择促销。",
   "promotions.error.activeSelected": "请先使用或用尽当前选择的促销，再选择其他促销。",
   "promotions.error.notEligible": "此促销已不再适用于您的店铺。",
-  "promotions.error.unavailable": "订阅不可用时无法更改促销。"
+  "promotions.error.unavailable": "订阅不可用时无法更改促销。",
+  "promotions.history.title": "促销历史",
+  "promotions.history.empty": "没有已选择的促销历史。",
+  "promotions.history.granted": "已授予：{quantity}",
+  "promotions.history.usedCredits": "已使用：{quantity}",
+  "promotions.history.selectedRange": "已选择：{first} – {last}",
+  "promotions.history.usedRange": "使用：{first} – {last}",
+  "promotions.history.currentlySelected": "当前已选择：{value}",
+  "promotions.history.status": "状态：{status}",
+  "promotions.history.yes": "是",
+  "promotions.history.no": "否",
+  "promotions.history.previous": "上一页",
+  "promotions.history.next": "下一页",
+  "promotions.status.used": "已使用",
+  "promotions.status.expired": "已过期",
+  "promotions.status.closed": "已关闭",
+  "promotions.status.noLongerEligible": "不再符合资格",
+  "promotions.status.reopened": "已重新开放"
 }

@@ -260,5 +260,22 @@
   "promotions.success": "프로모션을 선택했습니다.",
   "promotions.error.activeSelected": "다른 프로모션을 선택하기 전에 현재 프로모션을 사용하거나 소진하세요.",
   "promotions.error.notEligible": "이 프로모션은 더 이상 스토어에서 사용할 수 없습니다.",
-  "promotions.error.unavailable": "구독을 사용할 수 없는 동안에는 프로모션을 변경할 수 없습니다."
+  "promotions.error.unavailable": "구독을 사용할 수 없는 동안에는 프로모션을 변경할 수 없습니다.",
+  "promotions.history.title": "프로모션 기록",
+  "promotions.history.empty": "선택한 프로모션 기록이 없습니다.",
+  "promotions.history.granted": "지급: {quantity}",
+  "promotions.history.usedCredits": "사용: {quantity}",
+  "promotions.history.selectedRange": "선택: {first} – {last}",
+  "promotions.history.usedRange": "사용: {first} – {last}",
+  "promotions.history.currentlySelected": "현재 선택됨: {value}",
+  "promotions.history.status": "상태: {status}",
+  "promotions.history.yes": "예",
+  "promotions.history.no": "아니요",
+  "promotions.history.previous": "이전",
+  "promotions.history.next": "다음",
+  "promotions.status.used": "사용됨",
+  "promotions.status.expired": "만료됨",
+  "promotions.status.closed": "종료됨",
+  "promotions.status.noLongerEligible": "더 이상 대상 아님",
+  "promotions.status.reopened": "다시 열림"
 }

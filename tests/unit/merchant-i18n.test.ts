@@ -67,6 +67,9 @@ describe("merchant UI internationalisation", () => {
       ]) {
         expect(rawCatalogues[locale][key]).not.toBe(rawCatalogues.en[key]);
       }
+      for (const key of ["promotions.history.title", "promotions.history.empty", "promotions.status.reopened"]) {
+        expect(rawCatalogues[locale][key]).not.toBe(rawCatalogues.en[key]);
+      }
     }
   });
 

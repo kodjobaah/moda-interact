@@ -260,5 +260,22 @@
   "promotions.success": "Promotie geselecteerd.",
   "promotions.error.activeSelected": "Gebruik of verbruik je geselecteerde promotie voordat je een andere kiest.",
   "promotions.error.notEligible": "Deze promotie is niet langer beschikbaar voor je winkel.",
-  "promotions.error.unavailable": "Promoties kunnen niet worden gewijzigd zolang je abonnement niet beschikbaar is."
+  "promotions.error.unavailable": "Promoties kunnen niet worden gewijzigd zolang je abonnement niet beschikbaar is.",
+  "promotions.history.title": "Promotiegeschiedenis",
+  "promotions.history.empty": "Geen geschiedenis van geselecteerde promoties.",
+  "promotions.history.granted": "Toegekend: {quantity}",
+  "promotions.history.usedCredits": "Gebruikt: {quantity}",
+  "promotions.history.selectedRange": "Geselecteerd: {first} – {last}",
+  "promotions.history.usedRange": "Gebruikt: {first} – {last}",
+  "promotions.history.currentlySelected": "Momenteel geselecteerd: {value}",
+  "promotions.history.status": "Status: {status}",
+  "promotions.history.yes": "Ja",
+  "promotions.history.no": "Nee",
+  "promotions.history.previous": "Vorige",
+  "promotions.history.next": "Volgende",
+  "promotions.status.used": "Gebruikt",
+  "promotions.status.expired": "Verlopen",
+  "promotions.status.closed": "Gesloten",
+  "promotions.status.noLongerEligible": "Niet langer in aanmerking",
+  "promotions.status.reopened": "Heropend"
 }
