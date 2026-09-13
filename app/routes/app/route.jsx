@@ -25,6 +25,7 @@ export default function App() {
       <s-app-nav>
         <s-link href="/app">Home</s-link>
         <s-link href="/app/merchant-support">Messages{unreadMessages > 0 ? ` (${unreadMessages})` : ""}</s-link>
+        <s-link href="/app/promotions">Promotions</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
