@@ -791,6 +791,7 @@ describe("BillingService subscription projection", () => {
     expect(provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(database.subscription.upsert).not.toHaveBeenCalled();
     expect(database.subscription.update).not.toHaveBeenCalled();
+    expect(database.billingPeriod.upsert).not.toHaveBeenCalled();
     expect(database.$transaction).not.toHaveBeenCalled();
   });
 

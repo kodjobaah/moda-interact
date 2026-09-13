@@ -197,6 +197,8 @@ describe("ShopifyBillingProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const body = JSON.parse(String(request.body)) as { query: string; variables: Record<string, unknown> };
+    expect(body.query).toContain("activeSubscription(");
+    expect(body.query).toContain("events(");
     expect(body.query).toContain("... on SubscriptionStatus");
     expect(body.query).toContain("subjectId: $appId");
     expect(body.query).toContain("shopId: $shopId");
@@ -290,6 +292,36 @@ describe("ShopifyBillingProvider", () => {
     fetchMock.mockResolvedValue(lifecycleResponse(null, { malformed: true }));
     await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
       .rejects.toThrow("malformed lifecycle event");
+  });
+
+  it("parses a successful unfrozen lifecycle event", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, lifecycleEvent("UNFROZEN", "SUBSCRIPTION_UNFROZEN")));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        latestLifecycleEvent: {
+          state: "UNFROZEN",
+          eventType: "SUBSCRIPTION_UNFROZEN",
+        },
+      });
+  });
+
+  it("parses a successful canceled lifecycle event", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(lifecycleResponse(null, lifecycleEvent("CANCELED", "SUBSCRIPTION_CANCELED")));
+
+    await expect(new ShopifyBillingProvider().getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        latestLifecycleEvent: {
+          state: "CANCELED",
+          eventType: "SUBSCRIPTION_CANCELED",
+        },
+      });
   });
 
   it("returns no latest event when the bounded lifecycle history is empty", async () => {
