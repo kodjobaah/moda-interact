@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Näytä alkuperäinen",
   "merchantSupport.error.unsupportedAction": "Kauppiastuen toimintoa ei tueta.",
   "merchantSupport.error.sendFailed": "Viestiä ei voitu lähettää.",
-  "merchantSupport.page.title": "Viestit"
+  "merchantSupport.page.title": "Viestit",
+  "promotions.nav": "Kampanjat",
+  "promotions.page.title": "Kampanjatarjoukset",
+  "promotions.page.description": "Valitse saatavilla oleva kampanja lisätäksesi kauppaasi kampanjan palautuskrediittejä.",
+  "promotions.empty": "Kampanjatarjouksia ei ole tällä hetkellä saatavilla.",
+  "promotions.credits": "{quantity} kampanjan palautuskrediittiä",
+  "promotions.expires": "Vanhenee",
+  "promotions.remaining": "{quantity} krediittiä jäljellä",
+  "promotions.status.available": "Saatavilla",
+  "promotions.status.selected": "Valittu",
+  "promotions.status.claimed": "Valittu aiemmin",
+  "promotions.status.exhausted": "Käytetty loppuun",
+  "promotions.action.select": "Valitse kampanja",
+  "promotions.action.reselect": "Valitse kampanja uudelleen",
+  "promotions.success": "Kampanja valittu.",
+  "promotions.error.activeSelected": "Käytä tai kuluta loppuun tällä hetkellä valittu kampanja ennen kuin valitset toisen.",
+  "promotions.error.notEligible": "Tämä kampanja ei ole enää saatavilla kaupallesi.",
+  "promotions.error.unavailable": "Kampanjoita ei voi vaihtaa, kun tilauksesi ei ole käytettävissä."
 }

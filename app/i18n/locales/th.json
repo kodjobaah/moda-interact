@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "ดูต้นฉบับ",
   "merchantSupport.error.unsupportedAction": "ไม่รองรับการดำเนินการสนับสนุนผู้ค้า",
   "merchantSupport.error.sendFailed": "ไม่สามารถส่งข้อความได้",
-  "merchantSupport.page.title": "ข้อความ"
+  "merchantSupport.page.title": "ข้อความ",
+  "promotions.nav": "โปรโมชัน",
+  "promotions.page.title": "ข้อเสนอโปรโมชัน",
+  "promotions.page.description": "เลือกโปรโมชันที่มีอยู่เพื่อเพิ่มเครดิตการกู้คืนจากโปรโมชันให้ร้านค้าของคุณ",
+  "promotions.empty": "ขณะนี้ไม่มีข้อเสนอโปรโมชันที่พร้อมใช้งาน",
+  "promotions.credits": "เครดิตการกู้คืนจากโปรโมชัน {quantity} เครดิต",
+  "promotions.expires": "หมดอายุ",
+  "promotions.remaining": "เหลือเครดิต {quantity} เครดิต",
+  "promotions.status.available": "พร้อมใช้งาน",
+  "promotions.status.selected": "เลือกแล้ว",
+  "promotions.status.claimed": "เลือกไว้ก่อนหน้านี้",
+  "promotions.status.exhausted": "ใช้หมดแล้ว",
+  "promotions.action.select": "เลือกโปรโมชัน",
+  "promotions.action.reselect": "เลือกโปรโมชันอีกครั้ง",
+  "promotions.success": "เลือกโปรโมชันแล้ว",
+  "promotions.error.activeSelected": "ใช้หรือใช้โปรโมชันที่เลือกอยู่ให้หมดก่อนเลือกโปรโมชันอื่น",
+  "promotions.error.notEligible": "โปรโมชันนี้ไม่พร้อมใช้งานสำหรับร้านค้าของคุณแล้ว",
+  "promotions.error.unavailable": "ไม่สามารถเปลี่ยนโปรโมชันได้ขณะที่การสมัครใช้งานของคุณไม่พร้อมใช้งาน"
 }

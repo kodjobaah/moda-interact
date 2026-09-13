@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "查看原文",
   "merchantSupport.error.unsupportedAction": "不支援的商家支援操作。",
   "merchantSupport.error.sendFailed": "無法傳送訊息。",
-  "merchantSupport.page.title": "訊息"
+  "merchantSupport.page.title": "訊息",
+  "promotions.nav": "促銷",
+  "promotions.page.title": "促銷優惠",
+  "promotions.page.description": "選擇可用的促銷，為您的商店新增促銷恢復點數。",
+  "promotions.empty": "目前沒有可用的促銷優惠。",
+  "promotions.credits": "{quantity} 個促銷恢復點數",
+  "promotions.expires": "到期時間",
+  "promotions.remaining": "剩餘 {quantity} 個點數",
+  "promotions.status.available": "可用",
+  "promotions.status.selected": "已選擇",
+  "promotions.status.claimed": "之前已選擇",
+  "promotions.status.exhausted": "已用盡",
+  "promotions.action.select": "選擇促銷",
+  "promotions.action.reselect": "重新選擇促銷",
+  "promotions.success": "已選擇促銷。",
+  "promotions.error.activeSelected": "請先使用或用盡目前選擇的促銷，再選擇其他促銷。",
+  "promotions.error.notEligible": "此促銷已不再適用於您的商店。",
+  "promotions.error.unavailable": "訂閱無法使用時不能變更促銷。"
 }

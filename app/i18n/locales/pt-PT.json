@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Ver original",
   "merchantSupport.error.unsupportedAction": "Ação de suporte ao comerciante não suportada.",
   "merchantSupport.error.sendFailed": "Não foi possível enviar a mensagem.",
-  "merchantSupport.page.title": "Mensagens"
+  "merchantSupport.page.title": "Mensagens",
+  "promotions.nav": "Promoções",
+  "promotions.page.title": "Ofertas promocionais",
+  "promotions.page.description": "Selecione uma promoção disponível para adicionar créditos promocionais de recuperação à sua loja.",
+  "promotions.empty": "Não existem ofertas promocionais disponíveis neste momento.",
+  "promotions.credits": "{quantity} créditos promocionais de recuperação",
+  "promotions.expires": "Expira",
+  "promotions.remaining": "{quantity} créditos restantes",
+  "promotions.status.available": "Disponível",
+  "promotions.status.selected": "Selecionada",
+  "promotions.status.claimed": "Selecionada anteriormente",
+  "promotions.status.exhausted": "Esgotada",
+  "promotions.action.select": "Selecionar promoção",
+  "promotions.action.reselect": "Selecionar promoção novamente",
+  "promotions.success": "Promoção selecionada.",
+  "promotions.error.activeSelected": "Utilize ou esgote a promoção selecionada antes de escolher outra.",
+  "promotions.error.notEligible": "Esta promoção já não está disponível para a sua loja.",
+  "promotions.error.unavailable": "As promoções não podem ser alteradas enquanto a sua subscrição estiver indisponível."
 }

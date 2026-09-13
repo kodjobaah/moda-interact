@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Visa original",
   "merchantSupport.error.unsupportedAction": "Åtgärden för merchantsupport stöds inte.",
   "merchantSupport.error.sendFailed": "Det gick inte att skicka meddelandet.",
-  "merchantSupport.page.title": "Meddelanden"
+  "merchantSupport.page.title": "Meddelanden",
+  "promotions.nav": "Kampanjer",
+  "promotions.page.title": "Kampanjerbjudanden",
+  "promotions.page.description": "Välj en tillgänglig kampanj för att lägga till kampanjkrediter för återvinning i din butik.",
+  "promotions.empty": "Inga kampanjerbjudanden är tillgängliga just nu.",
+  "promotions.credits": "{quantity} kampanjkrediter för återvinning",
+  "promotions.expires": "Förfaller",
+  "promotions.remaining": "{quantity} krediter återstår",
+  "promotions.status.available": "Tillgänglig",
+  "promotions.status.selected": "Vald",
+  "promotions.status.claimed": "Tidigare vald",
+  "promotions.status.exhausted": "Förbrukad",
+  "promotions.action.select": "Välj kampanj",
+  "promotions.action.reselect": "Välj kampanj igen",
+  "promotions.success": "Kampanj vald.",
+  "promotions.error.activeSelected": "Använd eller förbruka den valda kampanjen innan du väljer en annan.",
+  "promotions.error.notEligible": "Den här kampanjen är inte längre tillgänglig för din butik.",
+  "promotions.error.unavailable": "Kampanjer kan inte ändras när din prenumeration inte är tillgänglig."
 }

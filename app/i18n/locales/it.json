@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Visualizza originale",
   "merchantSupport.error.unsupportedAction": "Azione di supporto commerciante non supportata.",
   "merchantSupport.error.sendFailed": "Impossibile inviare il messaggio.",
-  "merchantSupport.page.title": "Messaggi"
+  "merchantSupport.page.title": "Messaggi",
+  "promotions.nav": "Promozioni",
+  "promotions.page.title": "Offerte promozionali",
+  "promotions.page.description": "Seleziona una promozione disponibile per aggiungere crediti di recupero promozionali al tuo negozio.",
+  "promotions.empty": "Nessuna offerta promozionale è attualmente disponibile.",
+  "promotions.credits": "{quantity} crediti di recupero promozionali",
+  "promotions.expires": "Scade",
+  "promotions.remaining": "{quantity} crediti rimanenti",
+  "promotions.status.available": "Disponibile",
+  "promotions.status.selected": "Selezionata",
+  "promotions.status.claimed": "Selezionata in precedenza",
+  "promotions.status.exhausted": "Esaurita",
+  "promotions.action.select": "Seleziona promozione",
+  "promotions.action.reselect": "Riseleziona promozione",
+  "promotions.success": "Promozione selezionata.",
+  "promotions.error.activeSelected": "Usa o esaurisci la promozione selezionata prima di sceglierne un’altra.",
+  "promotions.error.notEligible": "Questa promozione non è più disponibile per il tuo negozio.",
+  "promotions.error.unavailable": "Le promozioni non possono essere modificate mentre l’abbonamento non è disponibile."
 }

@@ -57,6 +57,19 @@ describe("merchant UI internationalisation", () => {
     expect(rawCatalogues["zh-Hant"]["chart.recoveryDetails"]).not.toBe(rawCatalogues.en["chart.recoveryDetails"]);
   });
 
+  it("keeps Czech, Danish, and Finnish promotion copy semantic rather than English placeholders", () => {
+    for (const locale of ["cs", "da", "fi"] as const) {
+      for (const key of [
+        "promotions.page.title",
+        "promotions.page.description",
+        "promotions.action.select",
+        "promotions.error.activeSelected",
+      ]) {
+        expect(rawCatalogues[locale][key]).not.toBe(rawCatalogues.en[key]);
+      }
+    }
+  });
+
   it("retains regional formatting while resolving compatible catalogues", () => {
     expect(createMerchantI18n({ locale: "fr-CA" }).locale).toBe("fr-CA");
     expect(createMerchantI18n({ locale: "fr-CA" }).t("pending.title")).toBe("Récupérations en attente");

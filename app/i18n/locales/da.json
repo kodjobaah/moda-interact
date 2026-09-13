@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Vis original",
   "merchantSupport.error.unsupportedAction": "Ikke-understøttet handling i merchantsupport.",
   "merchantSupport.error.sendFailed": "Beskeden kunne ikke sendes.",
-  "merchantSupport.page.title": "Beskeder"
+  "merchantSupport.page.title": "Beskeder",
+  "promotions.nav": "Kampagner",
+  "promotions.page.title": "Kampagnetilbud",
+  "promotions.page.description": "Vælg en tilgængelig kampagne for at tilføje kampagnekreditter til gendannelse til din butik.",
+  "promotions.empty": "Der er ingen kampagnetilbud tilgængelige i øjeblikket.",
+  "promotions.credits": "{quantity} kampagnekreditter til gendannelse",
+  "promotions.expires": "Udløber",
+  "promotions.remaining": "{quantity} kreditter tilbage",
+  "promotions.status.available": "Tilgængelig",
+  "promotions.status.selected": "Valgt",
+  "promotions.status.claimed": "Tidligere valgt",
+  "promotions.status.exhausted": "Opbrugt",
+  "promotions.action.select": "Vælg kampagne",
+  "promotions.action.reselect": "Vælg kampagne igen",
+  "promotions.success": "Kampagne valgt.",
+  "promotions.error.activeSelected": "Brug eller opbrug din aktuelt valgte kampagne, før du vælger en anden.",
+  "promotions.error.notEligible": "Denne kampagne er ikke længere tilgængelig for din butik.",
+  "promotions.error.unavailable": "Kampagner kan ikke ændres, mens dit abonnement ikke er tilgængeligt."
 }

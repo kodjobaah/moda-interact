@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Zobacz oryginał",
   "merchantSupport.error.unsupportedAction": "Nieobsługiwana akcja pomocy dla sprzedawcy.",
   "merchantSupport.error.sendFailed": "Nie można wysłać wiadomości.",
-  "merchantSupport.page.title": "Wiadomości"
+  "merchantSupport.page.title": "Wiadomości",
+  "promotions.nav": "Promocje",
+  "promotions.page.title": "Oferty promocyjne",
+  "promotions.page.description": "Wybierz dostępną promocję, aby dodać promocyjne kredyty odzyskiwania do sklepu.",
+  "promotions.empty": "Obecnie nie ma dostępnych ofert promocyjnych.",
+  "promotions.credits": "{quantity} promocyjnych kredytów odzyskiwania",
+  "promotions.expires": "Wygasa",
+  "promotions.remaining": "Pozostało kredytów: {quantity}",
+  "promotions.status.available": "Dostępna",
+  "promotions.status.selected": "Wybrana",
+  "promotions.status.claimed": "Wybrana wcześniej",
+  "promotions.status.exhausted": "Wykorzystana",
+  "promotions.action.select": "Wybierz promocję",
+  "promotions.action.reselect": "Wybierz promocję ponownie",
+  "promotions.success": "Promocja została wybrana.",
+  "promotions.error.activeSelected": "Wykorzystaj lub wyczerp wybraną promocję przed wyborem innej.",
+  "promotions.error.notEligible": "Ta promocja nie jest już dostępna dla Twojego sklepu.",
+  "promotions.error.unavailable": "Nie można zmieniać promocji, gdy subskrypcja jest niedostępna."
 }

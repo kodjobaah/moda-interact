@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "Zobrazit originál",
   "merchantSupport.error.unsupportedAction": "Nepodporovaná akce podpory obchodníka.",
   "merchantSupport.error.sendFailed": "Zprávu se nepodařilo odeslat.",
-  "merchantSupport.page.title": "Zprávy"
+  "merchantSupport.page.title": "Zprávy",
+  "promotions.nav": "Akce",
+  "promotions.page.title": "Propagační nabídky",
+  "promotions.page.description": "Vyberte dostupnou akci a přidejte do svého obchodu propagační kredity pro obnovu.",
+  "promotions.empty": "Momentálně nejsou k dispozici žádné propagační nabídky.",
+  "promotions.credits": "{quantity} propagačních kreditů pro obnovu",
+  "promotions.expires": "Platnost končí",
+  "promotions.remaining": "Zbývá {quantity} kreditů",
+  "promotions.status.available": "Dostupná",
+  "promotions.status.selected": "Vybraná",
+  "promotions.status.claimed": "Dříve vybraná",
+  "promotions.status.exhausted": "Vyčerpaná",
+  "promotions.action.select": "Vybrat akci",
+  "promotions.action.reselect": "Vybrat akci znovu",
+  "promotions.success": "Akce byla vybrána.",
+  "promotions.error.activeSelected": "Než vyberete jinou akci, využijte nebo vyčerpejte aktuálně vybranou akci.",
+  "promotions.error.notEligible": "Tato akce již není pro váš obchod dostupná.",
+  "promotions.error.unavailable": "Akce nelze měnit, když vaše předplatné není dostupné."
 }

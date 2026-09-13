@@ -243,5 +243,22 @@
   "merchantSupport.message.viewOriginal": "查看原文",
   "merchantSupport.error.unsupportedAction": "不支持的商家支持操作。",
   "merchantSupport.error.sendFailed": "无法发送消息。",
-  "merchantSupport.page.title": "消息"
+  "merchantSupport.page.title": "消息",
+  "promotions.nav": "促销",
+  "promotions.page.title": "促销优惠",
+  "promotions.page.description": "选择可用的促销，为您的店铺添加促销恢复积分。",
+  "promotions.empty": "当前没有可用的促销优惠。",
+  "promotions.credits": "{quantity} 个促销恢复积分",
+  "promotions.expires": "到期时间",
+  "promotions.remaining": "剩余 {quantity} 个积分",
+  "promotions.status.available": "可用",
+  "promotions.status.selected": "已选择",
+  "promotions.status.claimed": "之前已选择",
+  "promotions.status.exhausted": "已用尽",
+  "promotions.action.select": "选择促销",
+  "promotions.action.reselect": "重新选择促销",
+  "promotions.success": "已选择促销。",
+  "promotions.error.activeSelected": "请先使用或用尽当前选择的促销，再选择其他促销。",
+  "promotions.error.notEligible": "此促销已不再适用于您的店铺。",
+  "promotions.error.unavailable": "订阅不可用时无法更改促销。"
 }
