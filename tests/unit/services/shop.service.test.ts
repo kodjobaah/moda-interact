@@ -16,6 +16,7 @@ const dbMock = {
     updateMany: vi.fn(),
   },
   subscription: {
+    findUnique: vi.fn(),
     upsert: vi.fn(),
     updateMany: vi.fn(),
   },
@@ -51,6 +52,7 @@ beforeEach(() => {
   dbMock.shop.upsert.mockReset();
   dbMock.shop.updateMany.mockReset();
   dbMock.subscription.updateMany.mockReset();
+  dbMock.subscription.findUnique.mockReset();
   dbMock.subscription.upsert.mockReset();
   dbMock.shopSettings.upsert.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
@@ -65,7 +67,7 @@ beforeEach(() => {
 });
 
 describe("ShopService.markUninstalled", () => {
-  it("marks the shop and disables new subscription admission", async () => {
+  it("marks the shop while preserving the subscription projection", async () => {
     dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
     const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
 
@@ -73,12 +75,9 @@ describe("ShopService.markUninstalled", () => {
 
     expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: shop.id, uninstalledAt: null },
-      data: { status: "UNINSTALLED", uninstalledAt },
+      data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
-    expect(dbMock.subscription.updateMany).toHaveBeenCalledWith({
-      where: { shopId: shop.id },
-      data: { status: "NO_CONTRACT" },
-    });
+    expect(dbMock.subscription.updateMany).not.toHaveBeenCalled();
   });
 
   it("uses a conditional cutoff write for duplicate delivery", async () => {
@@ -89,31 +88,49 @@ describe("ShopService.markUninstalled", () => {
 
     expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: shop.id, uninstalledAt: null },
-      data: { status: "UNINSTALLED", uninstalledAt },
+      data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
   });
 });
 
-describe("ShopService.markInstalled", () => {
-  it("reactivates only an uninstalled shop", async () => {
-    await new ShopService().markInstalled(shop.domain);
+describe("ShopService.beginReinstallReconciliation", () => {
+  it("creates the pending marker and immediate schedule without changing subscription state", async () => {
+    const now = new Date("2026-09-08T12:00:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: null });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt: now });
 
-    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
-      where: { domain: shop.domain, status: "UNINSTALLED" },
-      data: { status: "ACTIVE", uninstalledAt: null },
+    const result = await new ShopService().beginReinstallReconciliation(shop.id, now);
+
+    expect(result).toEqual({
+      shopId: shop.id,
+      subscriptionId: "subscription-1",
+      reinstallPendingAt: now,
+      expectedNextReconcileAt: now,
     });
+    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
+      where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: null },
+      data: { reinstallPendingAt: now },
+    });
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { shopId: shop.id },
+      update: { nextReconcileAt: now },
+    }));
   });
 
-  it("does not reactivate a suspended shop", async () => {
-    await new ShopService().markInstalled("suspended.myshopify.com");
+  it("does not reset an existing reinstall attempt", async () => {
+    const pendingAt = new Date("2026-09-08T12:00:00.000Z");
+    const nextReconcileAt = new Date("2026-09-08T12:05:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
+    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
 
-    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
-      where: {
-        domain: "suspended.myshopify.com",
-        status: "UNINSTALLED",
-      },
-      data: { status: "ACTIVE", uninstalledAt: null },
-    });
+    const result = await new ShopService().beginReinstallReconciliation(shop.id, new Date("2026-09-08T13:00:00.000Z"));
+
+    expect(result?.reinstallPendingAt).toBe(pendingAt);
+    expect(result?.expectedNextReconcileAt).toBe(nextReconcileAt);
+    expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
   });
 });
 

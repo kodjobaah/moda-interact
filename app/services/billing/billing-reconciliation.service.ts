@@ -1,10 +1,17 @@
 import { Queue } from "bullmq";
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import {
   BILLING_SUBSCRIPTION_RECONCILE_JOB_NAME,
   BILLING_SUBSCRIPTION_RECONCILE_QUEUE_NAME,
   BILLING_SUBSCRIPTION_RECONCILE_SCHEMA_VERSION,
   createBillingSubscriptionReconcileJobId,
 } from "@modainteract/moda-interact-shared/billing";
+import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
+
+const logger = createLogger({
+  serviceName: "moda-interact",
+  environment: resolveDeploymentEnvironmentName(),
+});
 
 type BillingReconciliationQueue = Pick<Queue, "add"> & {
   close?: () => Promise<unknown>;
@@ -72,7 +79,12 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
         delay: Math.max(input.expectedNextReconcileAt.getTime() - Date.now(), 0),
       },
     );
-  } catch {
-    // Durable reconciliation state is committed before this best-effort hint.
+  } catch (error) {
+    logger.error("billing.subscription_reconcile.enqueue_failed", {
+      shopId: input.shopId,
+      subscriptionId: input.subscriptionId,
+      expectedNextReconcileAt: input.expectedNextReconcileAt.toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }

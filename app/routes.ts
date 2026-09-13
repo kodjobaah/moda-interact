@@ -25,6 +25,7 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
+    route("reinstalling", "./routes/app/reinstalling/route.jsx"),
     route("additional", "./routes/app/additional/route.jsx"),
     route("billing", "./routes/app/billing/route.tsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
