@@ -260,5 +260,22 @@
   "promotions.success": "Promotion sélectionnée.",
   "promotions.error.activeSelected": "Utilisez ou épuisez la promotion sélectionnée avant d’en choisir une autre.",
   "promotions.error.notEligible": "Cette promotion n’est plus disponible pour votre boutique.",
-  "promotions.error.unavailable": "Les promotions ne peuvent pas être modifiées lorsque votre abonnement est indisponible."
+  "promotions.error.unavailable": "Les promotions ne peuvent pas être modifiées lorsque votre abonnement est indisponible.",
+  "promotions.history.title": "Historique des promotions",
+  "promotions.history.empty": "Aucun historique de promotions sélectionnées.",
+  "promotions.history.granted": "Accordés : {quantity}",
+  "promotions.history.usedCredits": "Utilisés : {quantity}",
+  "promotions.history.selectedRange": "Sélectionnée : {first} – {last}",
+  "promotions.history.usedRange": "Utilisée : {first} – {last}",
+  "promotions.history.currentlySelected": "Actuellement sélectionnée : {value}",
+  "promotions.history.status": "Statut : {status}",
+  "promotions.history.yes": "Oui",
+  "promotions.history.no": "Non",
+  "promotions.history.previous": "Précédent",
+  "promotions.history.next": "Suivant",
+  "promotions.status.used": "Utilisée",
+  "promotions.status.expired": "Expirée",
+  "promotions.status.closed": "Fermée",
+  "promotions.status.noLongerEligible": "Plus éligible",
+  "promotions.status.reopened": "Rouverte"
 }

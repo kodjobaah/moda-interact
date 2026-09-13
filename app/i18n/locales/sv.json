@@ -260,5 +260,22 @@
   "promotions.success": "Kampanj vald.",
   "promotions.error.activeSelected": "Använd eller förbruka den valda kampanjen innan du väljer en annan.",
   "promotions.error.notEligible": "Den här kampanjen är inte längre tillgänglig för din butik.",
-  "promotions.error.unavailable": "Kampanjer kan inte ändras när din prenumeration inte är tillgänglig."
+  "promotions.error.unavailable": "Kampanjer kan inte ändras när din prenumeration inte är tillgänglig.",
+  "promotions.history.title": "Kampanjhistorik",
+  "promotions.history.empty": "Ingen historik för valda kampanjer.",
+  "promotions.history.granted": "Tilldelade: {quantity}",
+  "promotions.history.usedCredits": "Använda: {quantity}",
+  "promotions.history.selectedRange": "Vald: {first} – {last}",
+  "promotions.history.usedRange": "Använd: {first} – {last}",
+  "promotions.history.currentlySelected": "Vald just nu: {value}",
+  "promotions.history.status": "Status: {status}",
+  "promotions.history.yes": "Ja",
+  "promotions.history.no": "Nej",
+  "promotions.history.previous": "Föregående",
+  "promotions.history.next": "Nästa",
+  "promotions.status.used": "Använd",
+  "promotions.status.expired": "Utgången",
+  "promotions.status.closed": "Stängd",
+  "promotions.status.noLongerEligible": "Inte längre behörig",
+  "promotions.status.reopened": "Återöppnad"
 }

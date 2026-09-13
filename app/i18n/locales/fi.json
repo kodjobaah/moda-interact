@@ -260,5 +260,22 @@
   "promotions.success": "Kampanja valittu.",
   "promotions.error.activeSelected": "Käytä tai kuluta loppuun tällä hetkellä valittu kampanja ennen kuin valitset toisen.",
   "promotions.error.notEligible": "Tämä kampanja ei ole enää saatavilla kaupallesi.",
-  "promotions.error.unavailable": "Kampanjoita ei voi vaihtaa, kun tilauksesi ei ole käytettävissä."
+  "promotions.error.unavailable": "Kampanjoita ei voi vaihtaa, kun tilauksesi ei ole käytettävissä.",
+  "promotions.history.title": "Kampanjahistoria",
+  "promotions.history.empty": "Ei valittujen kampanjoiden historiaa.",
+  "promotions.history.granted": "Myönnetty: {quantity}",
+  "promotions.history.usedCredits": "Käytetty: {quantity}",
+  "promotions.history.selectedRange": "Valittu: {first} – {last}",
+  "promotions.history.usedRange": "Käytetty: {first} – {last}",
+  "promotions.history.currentlySelected": "Tällä hetkellä valittu: {value}",
+  "promotions.history.status": "Tila: {status}",
+  "promotions.history.yes": "Kyllä",
+  "promotions.history.no": "Ei",
+  "promotions.history.previous": "Edellinen",
+  "promotions.history.next": "Seuraava",
+  "promotions.status.used": "Käytetty",
+  "promotions.status.expired": "Vanhentunut",
+  "promotions.status.closed": "Suljettu",
+  "promotions.status.noLongerEligible": "Ei enää kelvollinen",
+  "promotions.status.reopened": "Avattu uudelleen"
 }

@@ -16,6 +16,12 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("promotions.status.selected");
     expect(routeSource).toContain("promotions.status.exhausted");
     expect(routeSource).toContain("promotions.action.select");
+    expect(routeSource).toContain("promotions.history.title");
+    expect(routeSource).toContain("promotions.history.granted");
+    expect(routeSource).toContain("promotions.status.reopened");
+    for (const rawHistoryText of ["No selected promotion history.", "Granted: ", "Currently selected: ", ">Previous<", ">Next<"]) {
+      expect(routeSource).not.toContain(rawHistoryText);
+    }
     expect(routeSource).not.toContain("billing.changePlan");
     expect(routeSource).not.toContain("billing.purchasedRecoveryCredits");
   });
@@ -38,5 +44,24 @@ describe("promotion merchant route", () => {
     for (const internalField of ["platformAdminId", "targetPlanId", "targetShopId", "requestKey", "audit"]) {
       expect(routeSource).not.toContain(internalField);
     }
+  });
+
+  it("renders tenant-safe history fields and bounded pagination without mutation controls", () => {
+    expect(routeSource).toContain("getPromotionHistory");
+    expect(routeSource).toContain("historyPage");
+    expect(routeSource).toContain("entry.quantityGranted");
+    expect(routeSource).toContain("entry.committedQuantity");
+    expect(routeSource).toContain("entry.remainingQuantity");
+    expect(routeSource).toContain("entry.firstSelectedAt");
+    expect(routeSource).toContain("entry.lastSelectedAt");
+    expect(routeSource).toContain("entry.firstUsedAt");
+    expect(routeSource).toContain("entry.lastUsedAt");
+    expect(routeSource).toContain("entry.expiresAt");
+    expect(routeSource).toContain("entry.currentlySelected");
+    expect(routeSource).toContain("history.page - 1");
+    expect(routeSource).toContain("history.page + 1");
+    expect(routeSource).not.toContain("platformAdminId");
+    expect(routeSource).not.toContain("requestKey");
+    expect(routeSource).not.toContain("audit");
   });
 });

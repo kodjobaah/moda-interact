@@ -260,5 +260,22 @@
   "promotions.success": "プロモーションを選択しました。",
   "promotions.error.activeSelected": "別のプロモーションを選択する前に、現在のプロモーションを使用または使い切ってください。",
   "promotions.error.notEligible": "このプロモーションはストアで利用できなくなりました。",
-  "promotions.error.unavailable": "サブスクリプションが利用できない間はプロモーションを変更できません。"
+  "promotions.error.unavailable": "サブスクリプションが利用できない間はプロモーションを変更できません。",
+  "promotions.history.title": "プロモーション履歴",
+  "promotions.history.empty": "選択済みプロモーションの履歴はありません。",
+  "promotions.history.granted": "付与: {quantity}",
+  "promotions.history.usedCredits": "使用済み: {quantity}",
+  "promotions.history.selectedRange": "選択: {first} – {last}",
+  "promotions.history.usedRange": "使用: {first} – {last}",
+  "promotions.history.currentlySelected": "現在選択中: {value}",
+  "promotions.history.status": "ステータス: {status}",
+  "promotions.history.yes": "はい",
+  "promotions.history.no": "いいえ",
+  "promotions.history.previous": "前へ",
+  "promotions.history.next": "次へ",
+  "promotions.status.used": "使用済み",
+  "promotions.status.expired": "期限切れ",
+  "promotions.status.closed": "終了",
+  "promotions.status.noLongerEligible": "対象外",
+  "promotions.status.reopened": "再開済み"
 }

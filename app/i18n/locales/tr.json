@@ -260,5 +260,22 @@
   "promotions.success": "Promosyon seçildi.",
   "promotions.error.activeSelected": "Başka bir promosyon seçmeden önce mevcut promosyonunuzu kullanın veya tüketin.",
   "promotions.error.notEligible": "Bu promosyon mağazanız için artık kullanılamıyor.",
-  "promotions.error.unavailable": "Aboneliğiniz kullanılamaz durumdayken promosyonlar değiştirilemez."
+  "promotions.error.unavailable": "Aboneliğiniz kullanılamaz durumdayken promosyonlar değiştirilemez.",
+  "promotions.history.title": "Promosyon geçmişi",
+  "promotions.history.empty": "Seçilen promosyon geçmişi yok.",
+  "promotions.history.granted": "Verilen: {quantity}",
+  "promotions.history.usedCredits": "Kullanılan: {quantity}",
+  "promotions.history.selectedRange": "Seçildi: {first} – {last}",
+  "promotions.history.usedRange": "Kullanıldı: {first} – {last}",
+  "promotions.history.currentlySelected": "Şu anda seçili: {value}",
+  "promotions.history.status": "Durum: {status}",
+  "promotions.history.yes": "Evet",
+  "promotions.history.no": "Hayır",
+  "promotions.history.previous": "Önceki",
+  "promotions.history.next": "Sonraki",
+  "promotions.status.used": "Kullanıldı",
+  "promotions.status.expired": "Süresi doldu",
+  "promotions.status.closed": "Kapatıldı",
+  "promotions.status.noLongerEligible": "Artık uygun değil",
+  "promotions.status.reopened": "Yeniden açıldı"
 }

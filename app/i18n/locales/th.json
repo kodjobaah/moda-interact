@@ -260,5 +260,22 @@
   "promotions.success": "เลือกโปรโมชันแล้ว",
   "promotions.error.activeSelected": "ใช้หรือใช้โปรโมชันที่เลือกอยู่ให้หมดก่อนเลือกโปรโมชันอื่น",
   "promotions.error.notEligible": "โปรโมชันนี้ไม่พร้อมใช้งานสำหรับร้านค้าของคุณแล้ว",
-  "promotions.error.unavailable": "ไม่สามารถเปลี่ยนโปรโมชันได้ขณะที่การสมัครใช้งานของคุณไม่พร้อมใช้งาน"
+  "promotions.error.unavailable": "ไม่สามารถเปลี่ยนโปรโมชันได้ขณะที่การสมัครใช้งานของคุณไม่พร้อมใช้งาน",
+  "promotions.history.title": "ประวัติโปรโมชัน",
+  "promotions.history.empty": "ไม่มีประวัติโปรโมชันที่เลือก",
+  "promotions.history.granted": "ได้รับ: {quantity}",
+  "promotions.history.usedCredits": "ใช้แล้ว: {quantity}",
+  "promotions.history.selectedRange": "เลือก: {first} – {last}",
+  "promotions.history.usedRange": "ใช้: {first} – {last}",
+  "promotions.history.currentlySelected": "เลือกอยู่ในขณะนี้: {value}",
+  "promotions.history.status": "สถานะ: {status}",
+  "promotions.history.yes": "ใช่",
+  "promotions.history.no": "ไม่",
+  "promotions.history.previous": "ก่อนหน้า",
+  "promotions.history.next": "ถัดไป",
+  "promotions.status.used": "ใช้แล้ว",
+  "promotions.status.expired": "หมดอายุแล้ว",
+  "promotions.status.closed": "ปิดแล้ว",
+  "promotions.status.noLongerEligible": "ไม่มีสิทธิ์แล้ว",
+  "promotions.status.reopened": "เปิดอีกครั้งแล้ว"
 }
