@@ -155,6 +155,43 @@ describe("promotion service", () => {
     expect(tx.merchantPromotionSelection.upsert).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    ["wrong plan", { scope: "PLAN", targetPlanId: "plan-other", targetShopId: null }],
+    ["wrong shop", { scope: "SHOP", targetPlanId: null, targetShopId: "shop-other" }],
+  ] as const)("rejects a requested %s campaign", async (_label, targeting) => {
+    const tx = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findUnique: vi.fn().mockResolvedValue(campaign(targeting)) },
+      merchantPromotionSelection: { findUnique: vi.fn() },
+      promotionalCreditGrant: { upsert: vi.fn(), update: vi.fn() },
+    };
+    const database = { $transaction: vi.fn(async (callback) => callback(tx)) };
+
+    await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never))
+      .rejects.toMatchObject({ code: "PROMOTION_NOT_ELIGIBLE" });
+    expect(tx.promotionalCreditGrant.upsert).not.toHaveBeenCalled();
+    expect(tx.merchantPromotionSelection.findUnique).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["future", { status: "ACTIVE", startsAt: new Date("2026-09-14T00:00:00.000Z") }],
+    ["expired", { status: "ACTIVE", expiresAt: new Date("2026-09-01T00:00:00.000Z") }],
+    ["closed", { status: "CLOSED" }],
+  ] as const)("rejects a requested %s campaign lifecycle", async (_label, lifecycle) => {
+    const tx = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findUnique: vi.fn().mockResolvedValue(campaign(lifecycle)) },
+      merchantPromotionSelection: { findUnique: vi.fn() },
+      promotionalCreditGrant: { upsert: vi.fn(), update: vi.fn() },
+    };
+    const database = { $transaction: vi.fn(async (callback) => callback(tx)) };
+
+    await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never))
+      .rejects.toMatchObject({ code: "PROMOTION_NOT_ELIGIBLE" });
+    expect(tx.promotionalCreditGrant.upsert).not.toHaveBeenCalled();
+    expect(tx.merchantPromotionSelection.findUnique).not.toHaveBeenCalled();
+  });
+
   it("blocks switching away from a different still-usable selection", async () => {
     const currentGrant = {
       id: "grant-old",
@@ -211,6 +248,57 @@ describe("promotion service", () => {
   });
 
   it.each([
+    ["matching plan", { scope: "PLAN", targetPlanId: "plan-1", targetShopId: null }, true],
+    ["matching shop", { scope: "SHOP", targetPlanId: null, targetShopId: "shop-1" }, true],
+    ["different shop", { scope: "SHOP", targetPlanId: null, targetShopId: "shop-other" }, false],
+  ] as const)("re-evaluates a current %s target before switching", async (_label, targeting, shouldBlock) => {
+    const currentGrant = {
+      id: "grant-old",
+      campaignId: "campaign-old",
+      quantity: 25,
+      reservedQuantity: 0,
+      committedQuantity: 1,
+      exhaustedAt: null,
+      campaign: { id: "campaign-old", startsAt: new Date("2026-09-01T00:00:00.000Z"), expiresAt: new Date("2026-09-30T00:00:00.000Z"), status: "ACTIVE", ...targeting },
+    };
+    const newGrant = { ...currentGrant, id: "grant-new", campaignId: "campaign-1", committedQuantity: 0, campaign: campaign() };
+    const tx = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findUnique: vi.fn().mockResolvedValue(campaign()) },
+      merchantPromotionSelection: { findUnique: vi.fn().mockResolvedValue({ promotionalCreditGrant: currentGrant }), upsert: vi.fn() },
+      promotionalCreditGrant: { upsert: vi.fn().mockResolvedValue(newGrant), update: vi.fn() },
+    };
+    const database = { $transaction: vi.fn(async (callback) => callback(tx)) };
+
+    if (shouldBlock) {
+      await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never))
+        .rejects.toMatchObject({ code: "ACTIVE_PROMOTION_ALREADY_SELECTED" });
+      expect(tx.promotionalCreditGrant.upsert).not.toHaveBeenCalled();
+    } else {
+      await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never)).resolves.toEqual(expect.objectContaining({ campaignId: "campaign-1" }));
+      expect(tx.promotionalCreditGrant.upsert).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each([
+    ["partially used", { quantity: 25, reservedQuantity: 3, committedQuantity: 7, exhaustedAt: null }, 15],
+    ["exhausted", { quantity: 25, reservedQuantity: 0, committedQuantity: 25, exhaustedAt: now }, 0],
+  ] as const)("reopens a same-campaign grant without changing quantity when %s", async (_label, quantities, remainingQuantity) => {
+    const existingGrant = { id: "grant-1", shopId: "shop-1", campaignId: "campaign-1", ...quantities, firstSelectedAt: now, lastSelectedAt: now, selectionCount: 3, campaign: { status: "ACTIVE", startsAt: campaign().startsAt, expiresAt: campaign().expiresAt } };
+    const tx = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findUnique: vi.fn().mockResolvedValue(campaign()) },
+      merchantPromotionSelection: { findUnique: vi.fn().mockResolvedValue({ promotionalCreditGrant: existingGrant }), upsert: vi.fn() },
+      promotionalCreditGrant: { upsert: vi.fn().mockResolvedValue(existingGrant), update: vi.fn() },
+    };
+    const database = { $transaction: vi.fn(async (callback) => callback(tx)) };
+
+    await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never)).resolves.toMatchObject({ remainingQuantity });
+    expect(tx.promotionalCreditGrant.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {}, create: { campaignId: "campaign-1", shopId: "shop-1", quantity: 25 } }));
+    expect(tx.promotionalCreditGrant.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.not.objectContaining({ quantity: expect.anything(), reservedQuantity: expect.anything(), committedQuantity: expect.anything() }) }));
+  });
+
+  it.each([
     ["expired", { status: "ACTIVE", startsAt: new Date("2026-08-01T00:00:00.000Z"), expiresAt: new Date("2026-09-01T00:00:00.000Z"), scope: "GLOBAL", targetPlanId: null, targetShopId: null }],
     ["closed", { status: "CLOSED", startsAt: new Date("2026-09-01T00:00:00.000Z"), expiresAt: new Date("2026-09-30T00:00:00.000Z"), scope: "GLOBAL", targetPlanId: null, targetShopId: null }],
     ["exhausted", { status: "ACTIVE", startsAt: new Date("2026-09-01T00:00:00.000Z"), expiresAt: new Date("2026-09-30T00:00:00.000Z"), scope: "GLOBAL", targetPlanId: null, targetShopId: null, exhaustedAt: now }],
@@ -230,7 +318,8 @@ describe("promotion service", () => {
   });
 
   it.each([
-    ["inactive shop", { shopStatus: "FROZEN", subscription: context().subscription }],
+    ["suspended shop", { shopStatus: "SUSPENDED", subscription: context().subscription }],
+    ["frozen subscription", { shopStatus: "ACTIVE", subscription: { ...context().subscription, status: "FROZEN" } }],
     ["no contract", { shopStatus: "ACTIVE", subscription: { ...context().subscription, status: "NO_CONTRACT" } }],
     ["inactive plan", { shopStatus: "ACTIVE", subscription: { ...context().subscription, plan: { ...context().subscription.plan, active: false } } }],
   ])("fails closed for an %s", async (_label, unavailableContext) => {
@@ -250,5 +339,21 @@ describe("promotion service", () => {
     await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never))
       .rejects.toMatchObject({ code: "PROMOTION_SELECTION_UNAVAILABLE" });
     expect(database.$transaction).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries once and returns the successful same-campaign selection", async () => {
+    const conflict = new Prisma.PrismaClientKnownRequestError("serialization failure", { code: "P2034", clientVersion: "test" });
+    const grant = { id: "grant-1", quantity: 25, reservedQuantity: 0, committedQuantity: 0, exhaustedAt: null, firstSelectedAt: null, lastSelectedAt: null };
+    const tx = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findUnique: vi.fn().mockResolvedValue(campaign()) },
+      merchantPromotionSelection: { findUnique: vi.fn().mockResolvedValue(null), upsert: vi.fn() },
+      promotionalCreditGrant: { upsert: vi.fn().mockResolvedValue(grant), update: vi.fn() },
+    };
+    const database = { $transaction: vi.fn().mockRejectedValueOnce(conflict).mockImplementationOnce(async (callback) => callback(tx)) };
+
+    await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never)).resolves.toMatchObject({ campaignId: "campaign-1" });
+    expect(database.$transaction).toHaveBeenCalledTimes(2);
+    expect(tx.promotionalCreditGrant.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ firstSelectedAt: now, lastSelectedAt: now }) }));
   });
 });
