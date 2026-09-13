@@ -36,6 +36,7 @@ type BillingCallbackSubscription = Pick<
 export function isVerifiedBillingCallback(
   subscription: BillingCallbackSubscription | null,
   requestedPlanHandle: string | null,
+  expectedPlanKind: "FREE" | "PAID_METERED" = "FREE",
 ): boolean {
   if (!subscription || !requestedPlanHandle) return false;
 
@@ -48,7 +49,7 @@ export function isVerifiedBillingCallback(
   const currentPlanMatches =
     subscription.observedShopifyPlanHandle === requestedPlanHandle &&
     subscription.planId !== null &&
-    subscription.plan?.kind === "FREE";
+    subscription.plan?.kind === expectedPlanKind;
 
   const pendingSelectionConflicts = subscription.pendingShopifyPlanHandle !== null && (
     subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
@@ -88,7 +89,8 @@ export async function loader({
     });
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
-  const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle);
+  const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
+    await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
   if (!activation) return redirect("/app");
 
   let partnerVerificationSucceeded = false;
@@ -101,8 +103,11 @@ export async function loader({
   }
 
   const subscription = await billingService.getSubscriptionProjection(shop.id);
-  if (partnerVerificationSucceeded && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
-    const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+  const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
+  if (partnerVerificationSucceeded && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
+    const completed = expectedPlanKind === "PAID_METERED"
+      ? await billingService.completePaidActivation(shop.id, requestedPlanHandle)
+      : await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
     if (completed?.nextReconcileAt) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,

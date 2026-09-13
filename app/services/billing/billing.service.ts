@@ -7,6 +7,7 @@ import type {
 } from "@prisma/client";
 import {
   BillingPeriodStatus,
+  BillingPeriodEntitlementCounterKind,
   BillingPlanKind,
   EntitlementCounter,
   Prisma,
@@ -100,6 +101,8 @@ export type InitialFreeActivationToken = Readonly<{
   nextReconcileAt: Date;
 }>;
 
+export type InitialPaidActivationToken = InitialFreeActivationToken;
+
 export type FreeActivationResult = {
   plan: BillingPlan;
   mode: "INITIAL" | "VERIFIED_REPLAY";
@@ -109,6 +112,11 @@ export type FreeActivationResult = {
 export type CompletedFreeActivation = {
   subscriptionId: string;
   nextReconcileAt: Date | null;
+};
+
+export type CompletedPaidActivation = {
+  subscriptionId: string;
+  nextReconcileAt: Date;
 };
 
 function assertPurchaseId(purchaseId: string): void {
@@ -390,6 +398,47 @@ export class BillingService {
     });
   }
 
+  async preparePaidActivation(
+    shopId: string,
+    planHandle: string,
+  ): Promise<FreeActivationResult | null> {
+    const plan = await this.database.billingPlan.findUnique({ where: { shopifyPlanHandle: planHandle } });
+    if (!plan?.active || plan.kind !== BillingPlanKind.PAID_METERED) return null;
+
+    const now = new Date();
+    return this.database.$transaction(async (transaction) => {
+      await lockInitialFreeActivationState(transaction, shopId);
+      const currentSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { status: true, planId: true, observedShopifyPlanHandle: true },
+      });
+      const settings = await transaction.shopSettings.findUnique({ where: { shopId }, select: { onboardingCompleted: true } });
+      const isInitialActivation = settings?.onboardingCompleted !== true &&
+        (!currentSubscription || (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT && currentSubscription.planId === null && !currentSubscription.observedShopifyPlanHandle));
+      if (!isInitialActivation) return null;
+
+      const subscription = await transaction.subscription.upsert({
+        where: { shopId },
+        update: { pendingShopifyPlanHandle: planHandle, pendingPlanId: plan.id, pendingEffectiveAt: now, nextReconcileAt: now },
+        create: { shopId, status: SubscriptionProjectionStatus.NO_CONTRACT, planId: null, pendingShopifyPlanHandle: planHandle, pendingPlanId: plan.id, pendingEffectiveAt: now, nextReconcileAt: now },
+      });
+      if (!subscription.id || !subscription.pendingPlanId || !subscription.pendingShopifyPlanHandle || !subscription.pendingEffectiveAt || !subscription.nextReconcileAt) {
+        throw new Error("Initial Paid activation token was not persisted.");
+      }
+      return {
+        plan,
+        mode: "INITIAL",
+        token: Object.freeze({
+          subscriptionId: subscription.id,
+          pendingPlanId: subscription.pendingPlanId,
+          pendingShopifyPlanHandle: subscription.pendingShopifyPlanHandle,
+          pendingEffectiveAt: subscription.pendingEffectiveAt,
+          nextReconcileAt: subscription.nextReconcileAt,
+        }),
+      };
+    });
+  }
+
   async getSubscriptionProjection(shopId: string) {
     return this.database.subscription.findUnique({
       where: { shopId },
@@ -507,6 +556,94 @@ export class BillingService {
         subscriptionId: subscription.id,
         nextReconcileAt: completedNextReconcileAt,
       };
+    });
+  }
+
+  async completePaidActivation(
+    shopId: string,
+    requestedPlanHandle: string,
+  ): Promise<CompletedPaidActivation | null> {
+    return this.database.$transaction(async (transaction) => {
+      await lockInitialFreeActivationState(transaction, shopId);
+      const settings = await transaction.shopSettings.findUnique({ where: { shopId }, select: { onboardingCompleted: true } });
+      const subscription = await transaction.subscription.findUnique({ where: { shopId }, include: { plan: true } });
+      if (settings?.onboardingCompleted !== false || !subscription ||
+        subscription.pendingShopifyPlanHandle !== requestedPlanHandle || !subscription.pendingPlanId || !subscription.pendingEffectiveAt ||
+        subscription.status !== SubscriptionProjectionStatus.ACTIVE || subscription.observedShopifyPlanHandle !== requestedPlanHandle ||
+        subscription.plan?.kind !== BillingPlanKind.PAID_METERED || subscription.plan.shopifyPlanHandle !== requestedPlanHandle ||
+        !subscription.currentPeriodStart || !subscription.currentPeriodEnd || subscription.currentPeriodStart >= subscription.currentPeriodEnd ||
+        (subscription.trialEndsAt && subscription.trialEndsAt >= new Date())) return null;
+
+      const allowance = subscription.plan.includedRecoveryConversationAllowance;
+      if (allowance === null || !Number.isSafeInteger(allowance) || allowance < 0) return null;
+      const existingPeriod = await transaction.billingPeriod.findUnique({
+        where: {
+          shopId_periodStart_periodEnd: {
+            shopId,
+            periodStart: subscription.currentPeriodStart,
+            periodEnd: subscription.currentPeriodEnd,
+          },
+        },
+      });
+      if (existingPeriod?.status !== undefined && existingPeriod.status !== BillingPeriodStatus.OPEN) {
+        throw new Error("The verified Shopify billing period is already closed.");
+      }
+      if (existingPeriod && (
+        existingPeriod.periodStart.getTime() !== subscription.currentPeriodStart.getTime() ||
+        existingPeriod.periodEnd.getTime() !== subscription.currentPeriodEnd.getTime() ||
+        existingPeriod.subscriptionId !== subscription.id || existingPeriod.planId !== subscription.plan.id ||
+        (existingPeriod.shopifyPlanHandleSnapshot && existingPeriod.shopifyPlanHandleSnapshot !== requestedPlanHandle) ||
+        (existingPeriod.planNameSnapshot && existingPeriod.planNameSnapshot !== subscription.plan.name) ||
+        (existingPeriod.planKindSnapshot && existingPeriod.planKindSnapshot !== BillingPlanKind.PAID_METERED) ||
+        (existingPeriod.includedRecoveryCreditsGranted !== null && existingPeriod.includedRecoveryCreditsGranted !== allowance)
+      )) throw new Error("The verified Shopify billing period conflicts with local state.");
+
+      const billingPeriod = existingPeriod ?? await transaction.billingPeriod.create({ data: {
+        shopId, subscriptionId: subscription.id, planId: subscription.plan.id,
+        shopifyPlanHandleSnapshot: requestedPlanHandle, planNameSnapshot: subscription.plan.name,
+        planKindSnapshot: BillingPlanKind.PAID_METERED, includedRecoveryCreditsGranted: allowance,
+        periodStart: subscription.currentPeriodStart, periodEnd: subscription.currentPeriodEnd, status: BillingPeriodStatus.OPEN,
+      } });
+      if (existingPeriod) {
+        await transaction.billingPeriod.update({ where: { id: existingPeriod.id }, data: {
+          subscriptionId: subscription.id,
+          planId: subscription.plan.id,
+          shopifyPlanHandleSnapshot: requestedPlanHandle,
+          planNameSnapshot: subscription.plan.name,
+          planKindSnapshot: BillingPlanKind.PAID_METERED,
+          includedRecoveryCreditsGranted: allowance,
+        } });
+      }
+
+      const periodCounter = await transaction.billingPeriodEntitlementCounter.findUnique({
+        where: { billingPeriodId_counter: { billingPeriodId: billingPeriod.id, counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS } },
+      });
+      if (periodCounter && (periodCounter.grantedQuantity !== allowance || periodCounter.shopId !== shopId || periodCounter.billingPeriodId !== billingPeriod.id)) {
+        throw new Error("The verified billing period counter conflicts with local state.");
+      }
+      if (!periodCounter) await transaction.billingPeriodEntitlementCounter.create({ data: {
+        shopId, billingPeriodId: billingPeriod.id, counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS, grantedQuantity: allowance,
+      } });
+
+      const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({ where: { shopId_counter: { shopId, counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS } } });
+      if (!lifetimeCounter) {
+        const policy = await transaction.platformBillingPolicy.findUnique({ where: { id: "default" } });
+        if (!policy || !Number.isSafeInteger(policy.lifetimeFreeRecoveryAllowance) || policy.lifetimeFreeRecoveryAllowance < 0) {
+          throw new Error("The platform lifetime recovery allowance is not configured.");
+        }
+        await transaction.shopEntitlementCounter.create({ data: {
+          shopId, counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS, grantedQuantity: policy.lifetimeFreeRecoveryAllowance,
+          committedQuantity: 0, reservedQuantity: 0, refundingQuantity: 0,
+        } });
+      }
+
+      const nextReconcileAt = new Date(Math.max(new Date().getTime(), subscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS));
+      await transaction.subscription.update({ where: { shopId }, data: {
+        billingPeriodId: billingPeriod.id, lastSyncErrorCode: null, lastSyncErrorAt: null,
+        pendingShopifyPlanHandle: null, pendingPlanId: null, pendingEffectiveAt: null, nextReconcileAt,
+      } });
+      await transaction.shopSettings.update({ where: { shopId }, data: { onboardingCompleted: true } });
+      return { subscriptionId: subscription.id, nextReconcileAt };
     });
   }
 
@@ -1065,6 +1202,8 @@ async getSubscription(
         select: {
           id: true,
           status: true,
+          planId: true,
+          observedShopifyPlanHandle: true,
           pendingShopifyPlanHandle: true,
           pendingPlanId: true,
           pendingEffectiveAt: true,
@@ -1091,6 +1230,9 @@ async getSubscription(
       const preserveInitialIntent = settings?.onboardingCompleted !== true &&
         Boolean(existingSubscription?.pendingShopifyPlanHandle) &&
         Boolean(existingSubscription?.pendingPlanId);
+      const initialPaidActivation = preserveInitialIntent &&
+        existingSubscription?.planId === null &&
+        plan?.kind === BillingPlanKind.PAID_METERED;
       const preservedPendingShopifyPlanHandle = preserveInitialIntent
         ? existingSubscription?.pendingShopifyPlanHandle ?? null
         : providerSubscription.pendingPlanHandle;
@@ -1110,7 +1252,7 @@ async getSubscription(
       const preservedNextReconcileAt = preserveInitialIntent
         ? existingSubscription?.nextReconcileAt ?? null
         : nextReconcileAt;
-      const billingPeriod = providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
+      const billingPeriod = !initialPaidActivation && providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
         ? await transaction.billingPeriod.upsert({
             where: {
               shopId_periodStart_periodEnd: {
