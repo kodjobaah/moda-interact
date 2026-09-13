@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 
 import {
   getEligiblePromotionOffers,
+  getPromotionHistory,
+  projectPromotionHistoryRow,
   selectPromotionOffer,
 } from "@/services/promotions/promotion.service";
 
@@ -38,6 +40,87 @@ function campaign(overrides = {}) {
 }
 
 describe("promotion service", () => {
+  it("projects selected, used, exhausted, expired, closed, and reopened history safely", () => {
+    const baseGrant = {
+      quantity: 25,
+      reservedQuantity: 3,
+      committedQuantity: 2,
+      selectionCount: 1,
+      firstSelectedAt: now,
+      lastSelectedAt: now,
+      firstUsedAt: null,
+      lastUsedAt: null,
+      exhaustedAt: null,
+      selection: { shopId: "shop-1" },
+      campaign: {
+        id: "campaign-1",
+        name: "Recovery launch",
+        scope: "GLOBAL",
+        expiresAt: new Date("2026-09-30T00:00:00.000Z"),
+        status: "ACTIVE",
+        targetPlanId: null,
+        targetShopId: null,
+      },
+    };
+    expect(projectPromotionHistoryRow(baseGrant, "shop-1", "plan-1", now)).toEqual(expect.objectContaining({
+      status: "SELECTED",
+      quantityGranted: 25,
+      committedQuantity: 2,
+      remainingQuantity: 20,
+      campaignId: "campaign-1",
+    }));
+    expect(projectPromotionHistoryRow({ ...baseGrant, firstUsedAt: now, lastUsedAt: now }, "shop-1", "plan-1", now).status).toBe("USED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, exhaustedAt: now }, "shop-1", "plan-1", now).status).toBe("EXHAUSTED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, expiresAt: new Date("2026-09-01T00:00:00.000Z") } }, "shop-1", "plan-1", now).status).toBe("EXPIRED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, status: "CLOSED" } }, "shop-1", "plan-1", now).status).toBe("CLOSED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, selection: null, selectionCount: 2 }, "shop-1", "plan-1", now).status).toBe("REOPENED");
+    expect(projectPromotionHistoryRow({ ...baseGrant, campaign: { ...baseGrant.campaign, scope: "PLAN", targetPlanId: "plan-other" } }, "shop-1", "plan-1", now).status).toBe("NO_LONGER_ELIGIBLE");
+  });
+
+  it("reads only the authenticated shop's campaign-linked grants with bounded pagination", async () => {
+    const findMany = vi.fn().mockResolvedValue([{
+      quantity: 25,
+      reservedQuantity: 3,
+      committedQuantity: 2,
+      selectionCount: 1,
+      firstSelectedAt: now,
+      lastSelectedAt: now,
+      firstUsedAt: null,
+      lastUsedAt: null,
+      exhaustedAt: null,
+      selection: { shopId: "shop-1" },
+      campaign: {
+        id: "campaign-1",
+        name: "Recovery launch",
+        scope: "GLOBAL",
+        expiresAt: new Date("2026-09-30T00:00:00.000Z"),
+        status: "ACTIVE",
+        targetPlanId: null,
+        targetShopId: null,
+      },
+    }]);
+    const count = vi.fn().mockResolvedValue(26);
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionalCreditGrant: { count, findMany },
+    };
+
+    const history = await getPromotionHistory("shop-1", 2, now, database as never);
+
+    expect(count).toHaveBeenCalledWith({ where: { shopId: "shop-1" } });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { shopId: "shop-1" },
+      skip: 25,
+      take: 25,
+      select: expect.objectContaining({
+        campaign: expect.objectContaining({ select: expect.objectContaining({ id: true, name: true, expiresAt: true }) }),
+      }),
+    }));
+    expect(history).toEqual(expect.objectContaining({ page: 2, pageSize: 25, totalEntries: 26, totalPages: 2 }));
+    expect(history.entries[0]).not.toHaveProperty("platformAdminId");
+    expect(history.entries[0]).not.toHaveProperty("targetPlanId");
+  });
+
   it("returns only currently running campaigns targeted to the shop or its plan", async () => {
     const findMany = vi.fn().mockResolvedValue([campaign()]);
     const database = {

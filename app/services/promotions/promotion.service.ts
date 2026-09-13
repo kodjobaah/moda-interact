@@ -8,6 +8,17 @@ export const PROMOTION_SELECTION_ERROR_CODES = {
   PROMOTION_SELECTION_UNAVAILABLE: "PROMOTION_SELECTION_UNAVAILABLE",
 } as const;
 
+export const PROMOTION_HISTORY_PAGE_SIZE = 25;
+
+export type PromotionHistoryStatus =
+  | "SELECTED"
+  | "USED"
+  | "EXHAUSTED"
+  | "EXPIRED"
+  | "CLOSED"
+  | "NO_LONGER_ELIGIBLE"
+  | "REOPENED";
+
 export class PromotionSelectionError extends Error {
   code: keyof typeof PROMOTION_SELECTION_ERROR_CODES;
 
@@ -58,6 +69,76 @@ function isTargetEligible(
   return campaign.scope === "GLOBAL" ||
     (campaign.scope === "SHOP" && campaign.targetShopId === shopId) ||
     (campaign.scope === "PLAN" && campaign.targetPlanId !== null && campaign.targetPlanId === planId);
+}
+
+export function promotionHistoryStatus(
+  grant: {
+    reservedQuantity: number;
+    committedQuantity: number;
+    selectionCount: number;
+    exhaustedAt: Date | null;
+    firstUsedAt: Date | null;
+    selection: { shopId: string } | null;
+  },
+  campaign: {
+    status: string;
+      scope: string;
+    expiresAt: Date;
+    targetPlanId: string | null;
+    targetShopId: string | null;
+  },
+  shopId: string,
+  planId: string | null,
+  now = new Date(),
+): PromotionHistoryStatus {
+  if (grant.exhaustedAt) return "EXHAUSTED";
+  if (campaign.status === "CLOSED") return "CLOSED";
+  if (campaign.expiresAt <= now) return "EXPIRED";
+  if (!isTargetEligible(campaign, shopId, planId)) return "NO_LONGER_ELIGIBLE";
+  if (campaign.status === "ACTIVE" && !grant.selection && grant.selectionCount > 1) return "REOPENED";
+  return grant.firstUsedAt ? "USED" : "SELECTED";
+}
+
+export function projectPromotionHistoryRow(
+  grant: {
+    quantity: number;
+    reservedQuantity: number;
+    committedQuantity: number;
+    selectionCount: number;
+    firstSelectedAt: Date | null;
+    lastSelectedAt: Date | null;
+    firstUsedAt: Date | null;
+    lastUsedAt: Date | null;
+    exhaustedAt: Date | null;
+    selection: { shopId: string } | null;
+    campaign: {
+      id: string;
+      name: string;
+      scope: string;
+      expiresAt: Date;
+      status: string;
+      targetPlanId: string | null;
+      targetShopId: string | null;
+    };
+  },
+  shopId: string,
+  planId: string | null,
+  now = new Date(),
+) {
+  return {
+    campaignId: grant.campaign.id,
+    campaignName: grant.campaign.name,
+    quantityGranted: grant.quantity,
+    committedQuantity: grant.committedQuantity,
+    remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity),
+    firstSelectedAt: grant.firstSelectedAt,
+    lastSelectedAt: grant.lastSelectedAt,
+    firstUsedAt: grant.firstUsedAt,
+    lastUsedAt: grant.lastUsedAt,
+    expiresAt: grant.campaign.expiresAt,
+    currentlySelected: grant.selection !== null,
+    status: promotionHistoryStatus(grant, grant.campaign, shopId, planId, now),
+  };
 }
 
 async function readContext(database: PromotionDatabase, shopId: string): Promise<PromotionContext | null> {
@@ -154,6 +235,57 @@ export async function getEligiblePromotionOffers(
     orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
   });
   return campaigns.map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
+}
+
+export async function getPromotionHistory(
+  shopId: string,
+  page = 1,
+  now = new Date(),
+  database: PromotionDatabase = prisma,
+) {
+  const context = await readContext(database, shopId);
+  if (!context) return { entries: [], page: 1, pageSize: PROMOTION_HISTORY_PAGE_SIZE, totalEntries: 0, totalPages: 1 };
+  const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
+  const where = { shopId };
+  const [totalEntries, grants] = await Promise.all([
+    database.promotionalCreditGrant.count({ where }),
+    database.promotionalCreditGrant.findMany({
+      where,
+      orderBy: [{ lastSelectedAt: "desc" }, { createdAt: "desc" }],
+      skip: (normalizedPage - 1) * PROMOTION_HISTORY_PAGE_SIZE,
+      take: PROMOTION_HISTORY_PAGE_SIZE,
+      select: {
+        quantity: true,
+        reservedQuantity: true,
+        committedQuantity: true,
+        selectionCount: true,
+        firstSelectedAt: true,
+        lastSelectedAt: true,
+        firstUsedAt: true,
+        lastUsedAt: true,
+        exhaustedAt: true,
+        selection: { select: { shopId: true } },
+        campaign: {
+          select: {
+            id: true,
+            name: true,
+            scope: true,
+            expiresAt: true,
+            status: true,
+            targetPlanId: true,
+            targetShopId: true,
+          },
+        },
+      },
+    }),
+  ]);
+  return {
+    entries: grants.map((grant: Parameters<typeof projectPromotionHistoryRow>[0]) => projectPromotionHistoryRow(grant, shopId, context.subscription?.planId ?? null, now)),
+    page: normalizedPage,
+    pageSize: PROMOTION_HISTORY_PAGE_SIZE,
+    totalEntries,
+    totalPages: Math.max(1, Math.ceil(totalEntries / PROMOTION_HISTORY_PAGE_SIZE)),
+  };
 }
 
 export async function selectPromotionOffer(

@@ -39,4 +39,23 @@ describe("promotion merchant route", () => {
       expect(routeSource).not.toContain(internalField);
     }
   });
+
+  it("renders tenant-safe history fields and bounded pagination without mutation controls", () => {
+    expect(routeSource).toContain("getPromotionHistory");
+    expect(routeSource).toContain("historyPage");
+    expect(routeSource).toContain("entry.quantityGranted");
+    expect(routeSource).toContain("entry.committedQuantity");
+    expect(routeSource).toContain("entry.remainingQuantity");
+    expect(routeSource).toContain("entry.firstSelectedAt");
+    expect(routeSource).toContain("entry.lastSelectedAt");
+    expect(routeSource).toContain("entry.firstUsedAt");
+    expect(routeSource).toContain("entry.lastUsedAt");
+    expect(routeSource).toContain("entry.expiresAt");
+    expect(routeSource).toContain("entry.currentlySelected");
+    expect(routeSource).toContain("history.page - 1");
+    expect(routeSource).toContain("history.page + 1");
+    expect(routeSource).not.toContain("platformAdminId");
+    expect(routeSource).not.toContain("requestKey");
+    expect(routeSource).not.toContain("audit");
+  });
 });
