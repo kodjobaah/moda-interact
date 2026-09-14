@@ -1930,6 +1930,151 @@ describe("BillingService merchant billing state", () => {
       expect(result.paidIncluded).not.toEqual({ remaining: result.usageQuantity });
     }
   });
+
+  it.each([
+    ["Paid DRAINING", "PAID_METERED", "DRAINING"],
+    ["Paid RECONCILING", "PAID_METERED", "RECONCILING"],
+    ["Free DRAINING", "FREE", "DRAINING"],
+    ["Free RECONCILING", "FREE", "RECONCILING"],
+  ] as const)(
+    "marks pack purchase ineligible during merchant billing phase: %s",
+    async (_name, kind, expectedPhase) => {
+      vi.useFakeTimers();
+      const currentPeriodEnd = new Date("2026-10-01T00:00:00.000Z");
+      vi.setSystemTime(
+        expectedPhase === "DRAINING"
+          ? new Date(currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
+          : currentPeriodEnd,
+      );
+      const isPaid = kind === "PAID_METERED";
+      const plan = {
+        id: isPaid ? "growth-1" : "free-1",
+        kind,
+        shopifyPlanHandle: isPaid ? "growth" : "free",
+        shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+        shopifyUsageEventHandle: isPaid ? "message-meter" : null,
+        recoveryCreditPackEnabled: true,
+        recoveryCreditsPerPack: 100,
+        active: true,
+      };
+      const period = {
+        id: "period-1",
+        shopId: "shop-1",
+        subscriptionId: "subscription-1",
+        planId: plan.id,
+        shopifyPlanHandleSnapshot: plan.shopifyPlanHandle,
+        planKindSnapshot: kind,
+        periodStart,
+        periodEnd: currentPeriodEnd,
+        status: "OPEN",
+        includedRecoveryCreditsGranted: 100,
+        entitlementCounters: isPaid ? [{
+          shopId: "shop-1",
+          billingPeriodId: "period-1",
+          counter: "INCLUDED_RECOVERY_CREDITS",
+          grantedQuantity: 100,
+          committedQuantity: 10,
+          reservedQuantity: 5,
+          forfeitedQuantity: 0,
+        }] : [],
+      };
+      const lifetime = { grantedQuantity: 20, committedQuantity: 3, reservedQuantity: 2 };
+      const subscription = {
+        id: "subscription-1",
+        status: "ACTIVE",
+        billingPeriodId: "period-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd,
+        observedShopifyPlanHandle: plan.shopifyPlanHandle,
+        plan,
+        billingPeriod: period,
+      };
+      const database = {
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+        subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+        shopEntitlementCounter: {
+          findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
+            where.shopId_counter.counter === "LIFETIME_FREE_RECOVERY_CREDITS" ? lifetime : null),
+        },
+        usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 5 } }) },
+      };
+      const provider = {
+        getActiveSubscription: vi.fn().mockResolvedValue(
+          providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }),
+        ),
+      };
+
+      try {
+        const result = await new BillingService(provider, database as never).getMerchantBillingState("shop-1");
+        expect(result).toMatchObject({
+          billingPeriodPhase: expectedPhase,
+          recoveryCreditPackMeterVerified: true,
+          recoveryCreditPackPurchaseEligible: false,
+        });
+        if (!isPaid) expect(result.lifetimeFree).toEqual({ ...lifetime, remaining: 15 });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["Paid", "Free"] as const)(
+    "keeps pack purchase eligible for exact ACTIVE cycle: %s",
+    async (kind) => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+      const isPaid = kind === "Paid";
+      const plan = {
+        id: isPaid ? "growth-1" : "free-1",
+        kind: isPaid ? "PAID_METERED" : "FREE",
+        shopifyPlanHandle: isPaid ? "growth" : "free",
+        shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+        shopifyUsageEventHandle: isPaid ? "message-meter" : null,
+        recoveryCreditPackEnabled: true,
+        recoveryCreditsPerPack: 100,
+        active: true,
+      };
+      const period = {
+        id: "period-1",
+        shopId: "shop-1",
+        subscriptionId: "subscription-1",
+        planId: plan.id,
+        shopifyPlanHandleSnapshot: plan.shopifyPlanHandle,
+        planKindSnapshot: plan.kind,
+        periodStart,
+        periodEnd,
+        status: "OPEN",
+        includedRecoveryCreditsGranted: 100,
+        entitlementCounters: isPaid ? [{
+          shopId: "shop-1", billingPeriodId: "period-1", counter: "INCLUDED_RECOVERY_CREDITS",
+          grantedQuantity: 100, committedQuantity: 10, reservedQuantity: 5, forfeitedQuantity: 0,
+        }] : [],
+      };
+      const subscription = {
+        id: "subscription-1", status: "ACTIVE", billingPeriodId: "period-1",
+        currentPeriodStart: periodStart, currentPeriodEnd: periodEnd,
+        observedShopifyPlanHandle: plan.shopifyPlanHandle, plan, billingPeriod: period,
+      };
+      const database = {
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+        subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+        shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue({ grantedQuantity: 20, committedQuantity: 3, reservedQuantity: 2 }) },
+        usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 5 } }) },
+      };
+      const provider = {
+        getActiveSubscription: vi.fn().mockResolvedValue(
+          providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }),
+        ),
+      };
+
+      try {
+        await expect(new BillingService(provider, database as never).getMerchantBillingState("shop-1"))
+          .resolves.toMatchObject({ billingPeriodPhase: "ACTIVE", recoveryCreditPackMeterVerified: true, recoveryCreditPackPurchaseEligible: true });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
 });
 
 describe("BillingService recovery credit packs", () => {
@@ -1969,15 +2114,25 @@ describe("BillingService recovery credit packs", () => {
     expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
   });
 
-  it.each(["PAID_METERED", "FREE"] as const)(
-    "blocks a new %s pack request during billing-cycle transition",
-    async (kind) => {
-      const { database, purchases, usageEvents, subscriptionState, transactionSubscription } =
+  it.each([
+    ["Paid DRAINING", "PAID_METERED", "DRAINING"],
+    ["Paid RECONCILING", "PAID_METERED", "RECONCILING"],
+    ["Free DRAINING", "FREE", "DRAINING"],
+    ["Free RECONCILING", "FREE", "RECONCILING"],
+  ] as const)(
+    "blocks new pack request during billing-cycle phase: %s",
+    async (_name, kind, phase) => {
+      vi.useFakeTimers();
+      const transitionEnd = new Date("2026-10-01T00:00:00.000Z");
+      const now = phase === "DRAINING"
+        ? new Date(transitionEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
+        : transitionEnd;
+      vi.setSystemTime(now);
+      const { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription } =
         createRecoveryCreditPurchaseDatabase({
           kind,
           ...(kind === "FREE" ? { shopifyUsageEventHandle: null } : {}),
         });
-      const transitionEnd = new Date(Date.now() + APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS / 2);
       Object.assign(subscriptionState, {
         currentPeriodEnd: transitionEnd,
         billingPeriod: { id: "period-1", periodStart, periodEnd: transitionEnd, status: "OPEN" },
@@ -1993,15 +2148,49 @@ describe("BillingService recovery credit packs", () => {
       };
       const service = new BillingService(provider, database as never);
 
+      try {
+        await expect(
+          service.requestRecoveryCreditPack(
+            "shop-1",
+            "BUY_RECOVERY_CREDIT_PACK",
+            kind === "FREE"
+              ? `f${phase === "DRAINING" ? "1" : "2"}111111-1111-4111-8111-111111111111`
+              : `a${phase === "DRAINING" ? "1" : "2"}111111-1111-4111-8111-111111111111`,
+          ),
+        ).rejects.toThrow("temporarily unavailable");
+        expect(usageEvents).toHaveLength(0);
+        expect(purchases).toHaveLength(0);
+        expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
+        expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it.each(["Paid", "Free"] as const)(
+    "rejects new pack request for CLOSED local BillingPeriod: %s",
+    async (kind) => {
+      const { database, purchases, usageEvents, subscriptionState, transactionSubscription } =
+        createRecoveryCreditPurchaseDatabase({
+          kind: kind === "Free" ? "FREE" : "PAID_METERED",
+          ...(kind === "Free" ? { shopifyUsageEventHandle: null } : {}),
+        });
+      subscriptionState.billingPeriod.status = "CLOSED";
+      transactionSubscription.billingPeriod.status = "CLOSED";
+      const provider = { getActiveSubscription: vi.fn() };
+      const service = new BillingService(provider, database as never);
+
       await expect(
         service.requestRecoveryCreditPack(
           "shop-1",
           "BUY_RECOVERY_CREDIT_PACK",
-          kind === "FREE"
-            ? "f1111111-1111-4111-8111-111111111111"
-            : "a1111111-1111-4111-8111-111111111111",
+          kind === "Free"
+            ? "c1111111-1111-4111-8111-111111111111"
+            : "d1111111-1111-4111-8111-111111111111",
         ),
-      ).rejects.toThrow("temporarily unavailable");
+      ).rejects.toThrow("current local billing cycle");
+      expect(provider.getActiveSubscription).not.toHaveBeenCalled();
       expect(usageEvents).toHaveLength(0);
       expect(purchases).toHaveLength(0);
     },
@@ -2118,6 +2307,73 @@ describe("BillingService recovery credit packs", () => {
       .resolves.toMatchObject({ id: purchaseId });
     expect(usageEvents).toHaveLength(1);
     expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(purchases).toHaveLength(1);
+  });
+
+  it.each(["DRAINING", "RECONCILING"] as const)(
+    "replays existing purchase after cycle enters %s",
+    async (phase) => {
+      vi.useFakeTimers();
+      const periodEnd = new Date("2026-10-01T00:00:00.000Z");
+      vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+      const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
+      const provider = {
+        getActiveSubscription: vi.fn().mockResolvedValue(
+          providerSubscription({ currentPeriodEnd: periodEnd, usageEventHandles: ["message-meter", "credit-pack-meter"] }),
+        ),
+      };
+      const service = new BillingService(provider, database as never);
+      const purchaseId = phase === "DRAINING"
+        ? "e1111111-1111-4111-8111-111111111111"
+        : "e2222222-2222-4222-8222-222222222222";
+
+      try {
+        const created = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+        vi.setSystemTime(
+          phase === "DRAINING"
+            ? new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
+            : periodEnd,
+        );
+        provider.getActiveSubscription.mockRejectedValue(new Error("Shopify unavailable"));
+
+        await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId))
+          .resolves.toMatchObject({ id: purchaseId });
+        expect(created.id).toBe(purchaseId);
+        expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+        expect(usageEvents).toHaveLength(1);
+        expect(purchases).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("restores Free pack eligibility on an exact successor BillingPeriod without changing lifetime Free state", async () => {
+    const successorStart = new Date("2026-10-01T00:00:00.000Z");
+    const successorEnd = new Date("2026-10-31T00:00:00.000Z");
+    const { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription } =
+      createRecoveryCreditPurchaseDatabase({
+        kind: "FREE",
+        shopifyPlanHandle: "free",
+        shopifyUsageEventHandle: null,
+      });
+    const successorPeriod = { id: "period-2", periodStart: successorStart, periodEnd: successorEnd, status: "OPEN" };
+    Object.assign(subscriptionState, { billingPeriodId: "period-2", currentPeriodStart: successorStart, currentPeriodEnd: successorEnd, billingPeriod: successorPeriod });
+    Object.assign(transactionSubscription, subscriptionState);
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({ planHandle: "free", currentPeriodStart: successorStart, currentPeriodEnd: successorEnd, usageEventHandles: ["credit-pack-meter"] }),
+      ),
+    };
+    const service = new BillingService(provider, database as never);
+
+    const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "f3333333-3333-4333-8333-333333333333");
+
+    expect(purchase.usageEventId).toEqual(expect.any(String));
+    expect(usageEvents[0]).toMatchObject({ billingPeriodId: "period-2" });
+    expect(usageEvents).toHaveLength(1);
+    expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
     expect(purchases).toHaveLength(1);
   });
 

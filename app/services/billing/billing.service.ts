@@ -819,7 +819,9 @@ async getSubscription(
           recoveryCreditPackMeterVerified &&
           subscription &&
           providerSubscription &&
-          hasMatchingBillingCycle(subscription, providerSubscription),
+          hasMatchingBillingCycle(subscription, providerSubscription) &&
+          subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+          billingPeriodPhase === "ACTIVE",
         );
       } catch {
         recoveryCreditPackMeterVerified = false;
@@ -963,6 +965,13 @@ async getSubscription(
     if (!verifiedBillingPeriodId) {
       throw new Error("The current local billing cycle could not be verified.");
     }
+    if (
+      !subscription.billingPeriod ||
+      subscription.billingPeriod.id !== verifiedBillingPeriodId ||
+      subscription.billingPeriod.status !== BillingPeriodStatus.OPEN
+    ) {
+      throw new Error("The current local billing cycle could not be verified.");
+    }
     if (plan.kind === BillingPlanKind.PAID_METERED && (!plan.shopifyUsageEventHandle || plan.shopifyUsageEventHandle === packMeter)) {
       throw new Error("The recovery credit pack meter is not safely mapped.");
     }
@@ -976,9 +985,6 @@ async getSubscription(
     }
     if (deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE") {
       throw new Error(RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION);
-    }
-    if (plan.kind === BillingPlanKind.FREE && subscription.billingPeriod?.status !== BillingPeriodStatus.OPEN) {
-      throw new Error("The current local billing cycle could not be verified.");
     }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
@@ -1010,9 +1016,11 @@ async getSubscription(
         !currentPackMeter ||
         !currentPlan.recoveryCreditsPerPack ||
         currentPlan.recoveryCreditsPerPack <= 0 ||
+        !currentSubscription.billingPeriod ||
+        currentSubscription.billingPeriod.id !== currentSubscription.billingPeriodId ||
+        currentSubscription.billingPeriod.status !== BillingPeriodStatus.OPEN ||
         !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
         deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE" ||
-        (currentPlan.kind === BillingPlanKind.FREE && currentSubscription.billingPeriod?.status !== BillingPeriodStatus.OPEN) ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
         currentPackMeter !== packMeter ||
         currentPlan.recoveryCreditsPerPack !== creditsGranted ||

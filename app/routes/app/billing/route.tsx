@@ -149,7 +149,9 @@ export default function BillingRoute() {
             {i18n.t("billing.status")}: <strong>{subscription.status}</strong>
           </p>
 
-          {subscription.planKind === "PAID_METERED" && paidIncluded ? (
+          {subscription.planKind === "PAID_METERED" &&
+          billingPeriodPhase !== "RECONCILING" &&
+          paidIncluded ? (
             <p>
               {i18n.t("billing.paidIncludedAllowance", {
                 remaining: paidIncluded.remaining,
@@ -179,9 +181,19 @@ export default function BillingRoute() {
             </p>
           ) : null}
           {billingPeriodPhase === "DRAINING" ? (
-            <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p>
+            <p>
+              {i18n.t(
+                isFree ? "billing.freeCycleDraining" : "billing.paidCycleDraining",
+              )}
+            </p>
           ) : billingPeriodPhase === "RECONCILING" ? (
-            <p>{i18n.t("billing.configurationUnavailableDescription")}</p>
+            <p>
+              {i18n.t(
+                isFree
+                  ? "billing.freeCycleReconciling"
+                  : "billing.paidCycleReconciling",
+              )}
+            </p>
           ) : null}
           {subscription.trialEndsAt ? (
             <p>
@@ -213,7 +225,8 @@ export default function BillingRoute() {
                 available: purchasedRecoveryCredits.available,
               })}
             </p>
-            {recoveryCreditPackPurchaseEligible &&
+            {billingPeriodPhase === "ACTIVE" &&
+            recoveryCreditPackPurchaseEligible &&
             recoveryCreditPackEnabled &&
             recoveryCreditsPerPack !== null &&
             recoveryCreditsPerPack > 0 &&

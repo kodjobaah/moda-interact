@@ -235,7 +235,8 @@ describe("merchant billing UI", () => {
     });
     expect(billingRouteSource).toContain('i18n.t("billing.paidIncludedAllowance"');
     expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
-    expect(billingRouteSource).toContain('subscription.planKind === "PAID_METERED" && paidIncluded');
+    expect(billingRouteSource).toContain('subscription.planKind === "PAID_METERED" &&');
+    expect(billingRouteSource).toContain('billingPeriodPhase !== "RECONCILING"');
   });
 
   it("fails closed when a paid period or period counter is unavailable", async () => {
@@ -363,6 +364,18 @@ describe("merchant billing UI", () => {
     expect(billingRouteSource).toContain(
       "recoveryCreditPackPurchaseEligible &&",
     );
+    expect(billingRouteSource).toContain('billingPeriodPhase === "ACTIVE" &&');
+  });
+
+  it("uses explicit phase copy for each plan and preserves Free lifetime presentation", () => {
+    expect(billingRouteSource).toContain('"billing.paidCycleDraining"');
+    expect(billingRouteSource).toContain('"billing.paidCycleReconciling"');
+    expect(billingRouteSource).toContain('"billing.freeCycleDraining"');
+    expect(billingRouteSource).toContain('"billing.freeCycleReconciling"');
+    expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
+    expect(billingRouteSource).toContain('billingPeriodPhase !== "RECONCILING"');
+    expect(billingRouteSource).not.toContain('i18n.t("billing.configurationUnavailableDescription")</p>');
+    expect(billingRouteSource).not.toContain('i18n.t("billing.recoveryCreditPurchasePending")</p>');
   });
 
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {
