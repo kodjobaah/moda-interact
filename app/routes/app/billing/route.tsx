@@ -68,6 +68,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recoveryCreditPackMeterVerified: state.recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible:
       state.recoveryCreditPackPurchaseEligible,
+    billingPeriodPhase: state.billingPeriodPhase,
     purchaseId: randomUUID(),
   };
 }
@@ -104,6 +105,7 @@ export default function BillingRoute() {
     recoveryCreditPackMeter,
     recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible,
+    billingPeriodPhase,
     purchaseId,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -147,7 +149,9 @@ export default function BillingRoute() {
             {i18n.t("billing.status")}: <strong>{subscription.status}</strong>
           </p>
 
-          {subscription.planKind === "PAID_METERED" && paidIncluded ? (
+          {subscription.planKind === "PAID_METERED" &&
+          billingPeriodPhase !== "RECONCILING" &&
+          paidIncluded ? (
             <p>
               {i18n.t("billing.paidIncludedAllowance", {
                 remaining: paidIncluded.remaining,
@@ -174,6 +178,21 @@ export default function BillingRoute() {
                 start: i18n.formatDate(subscription.currentPeriodStart),
                 end: i18n.formatDate(subscription.currentPeriodEnd),
               })}
+            </p>
+          ) : null}
+          {billingPeriodPhase === "DRAINING" ? (
+            <p>
+              {i18n.t(
+                isFree ? "billing.freeCycleDraining" : "billing.paidCycleDraining",
+              )}
+            </p>
+          ) : billingPeriodPhase === "RECONCILING" ? (
+            <p>
+              {i18n.t(
+                isFree
+                  ? "billing.freeCycleReconciling"
+                  : "billing.paidCycleReconciling",
+              )}
             </p>
           ) : null}
           {subscription.trialEndsAt ? (
@@ -206,7 +225,8 @@ export default function BillingRoute() {
                 available: purchasedRecoveryCredits.available,
               })}
             </p>
-            {recoveryCreditPackPurchaseEligible &&
+            {billingPeriodPhase === "ACTIVE" &&
+            recoveryCreditPackPurchaseEligible &&
             recoveryCreditPackEnabled &&
             recoveryCreditsPerPack !== null &&
             recoveryCreditsPerPack > 0 &&

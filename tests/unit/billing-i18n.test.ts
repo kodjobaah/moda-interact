@@ -14,7 +14,17 @@ describe("ARCH-007 billing translations", () => {
     "billing.recoveryCreditPackShopifyMeter",
     "billing.buyRecoveryCreditPack",
     "billing.recoveryCreditPurchasePending",
+    "billing.paidCycleDraining",
+    "billing.paidCycleReconciling",
+    "billing.freeCycleDraining",
+    "billing.freeCycleReconciling",
   ];
+  const localizedPhaseKeys = new Set([
+    "billing.paidCycleDraining",
+    "billing.paidCycleReconciling",
+    "billing.freeCycleDraining",
+    "billing.freeCycleReconciling",
+  ]);
 
   it("defines every billing key in every locale catalogue", async () => {
     const localeFiles = (await readdir(localeDirectory)).filter((file) => file.endsWith(".json"));
@@ -42,6 +52,10 @@ describe("ARCH-007 billing translations", () => {
       expect(i18n.catalogueLocale).toBe(locale);
       for (const key of taskKeys) {
         expect(placeholders(catalogue[key])).toEqual(placeholders(english[key]));
+        expect(catalogue[key]).toBeTruthy();
+        if (locale !== "en" && localizedPhaseKeys.has(key)) {
+          expect(catalogue[key]).not.toBe(english[key]);
+        }
         expect(i18n.t(key, {
           granted: 100,
           committed: 20,

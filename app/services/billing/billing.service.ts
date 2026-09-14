@@ -29,6 +29,7 @@ import {
 
 
 import type {
+  BillingPeriodPhase,
   BillingProvider,
   MerchantShopifyLifecycleState,
   MerchantRecoveryCapacityState,
@@ -90,6 +91,20 @@ function hasMatchingBillingCycle(
   return providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart!.getTime() &&
     providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd!.getTime();
 }
+
+export function deriveBillingPeriodPhase(
+  periodEnd: Date | null,
+  now = new Date(),
+): BillingPeriodPhase | null {
+  if (!periodEnd) return null;
+  const drainStart = periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS;
+  if (now.getTime() < drainStart) return "ACTIVE";
+  if (now.getTime() < periodEnd.getTime()) return "DRAINING";
+  return "RECONCILING";
+}
+
+const RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION =
+  "Recovery credit packs are temporarily unavailable while the current Shopify billing cycle is being confirmed.";
 
 function isSafeNonNegativeInteger(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -1225,12 +1240,21 @@ async getSubscription(
     const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
     let recoveryCreditPackMeterVerified = false;
     let recoveryCreditPackPurchaseEligible = false;
-    if (
-      shop?.shopifyShopId &&
+    const hasExactOpenLocalCycle = Boolean(
       subscription?.plan?.active &&
       subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
-      subscription.plan.recoveryCreditPackEnabled &&
-      packMeter
+      hasDurableBillingPeriod(subscription) &&
+      subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+      subscription.currentPeriodStart &&
+      subscription.currentPeriodEnd &&
+      subscription.currentPeriodStart.getTime() < subscription.currentPeriodEnd.getTime(),
+    );
+    const billingPeriodPhase: BillingPeriodPhase | null = hasExactOpenLocalCycle
+      ? deriveBillingPeriodPhase(subscription.currentPeriodEnd)
+      : null;
+    if (
+      shop?.shopifyShopId &&
+      hasExactOpenLocalCycle
     ) {
       try {
         const providerSubscription = await this.provider.getActiveSubscription({
@@ -1238,6 +1262,7 @@ async getSubscription(
         });
         recoveryCreditPackMeterVerified = Boolean(
           providerSubscription &&
+          packMeter &&
           providerSubscription.planHandle === subscription.plan.shopifyPlanHandle &&
           providerSubscription.usageEventHandles.includes(packMeter),
         );
@@ -1245,7 +1270,9 @@ async getSubscription(
           recoveryCreditPackMeterVerified &&
           subscription &&
           providerSubscription &&
-          hasMatchingBillingCycle(subscription, providerSubscription),
+          hasMatchingBillingCycle(subscription, providerSubscription) &&
+          subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+          billingPeriodPhase === "ACTIVE",
         );
       } catch {
         recoveryCreditPackMeterVerified = false;
@@ -1346,6 +1373,7 @@ async getSubscription(
       recoveryCreditPackMeter: packMeter,
       recoveryCreditPackMeterVerified,
       recoveryCreditPackPurchaseEligible,
+      billingPeriodPhase,
     };
   }
 
@@ -1388,6 +1416,13 @@ async getSubscription(
     if (!verifiedBillingPeriodId) {
       throw new Error("The current local billing cycle could not be verified.");
     }
+    if (
+      !subscription.billingPeriod ||
+      subscription.billingPeriod.id !== verifiedBillingPeriodId ||
+      subscription.billingPeriod.status !== BillingPeriodStatus.OPEN
+    ) {
+      throw new Error("The current local billing cycle could not be verified.");
+    }
     if (plan.kind === BillingPlanKind.PAID_METERED && (!plan.shopifyUsageEventHandle || plan.shopifyUsageEventHandle === packMeter)) {
       throw new Error("The recovery credit pack meter is not safely mapped.");
     }
@@ -1398,6 +1433,9 @@ async getSubscription(
     }
     if (!hasMatchingBillingCycle(subscription, providerSubscription, verifiedBillingPeriodId)) {
       throw new Error("The current Shopify billing cycle could not be verified.");
+    }
+    if (deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE") {
+      throw new Error(RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION);
     }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
@@ -1429,7 +1467,11 @@ async getSubscription(
         !currentPackMeter ||
         !currentPlan.recoveryCreditsPerPack ||
         currentPlan.recoveryCreditsPerPack <= 0 ||
+        !currentSubscription.billingPeriod ||
+        currentSubscription.billingPeriod.id !== currentSubscription.billingPeriodId ||
+        currentSubscription.billingPeriod.status !== BillingPeriodStatus.OPEN ||
         !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
+        deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE" ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
         currentPackMeter !== packMeter ||
         currentPlan.recoveryCreditsPerPack !== creditsGranted ||

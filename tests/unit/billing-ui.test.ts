@@ -235,7 +235,8 @@ describe("merchant billing UI", () => {
     });
     expect(billingRouteSource).toContain('i18n.t("billing.paidIncludedAllowance"');
     expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
-    expect(billingRouteSource).toContain('subscription.planKind === "PAID_METERED" && paidIncluded');
+    expect(billingRouteSource).toContain('subscription.planKind === "PAID_METERED" &&');
+    expect(billingRouteSource).toContain('billingPeriodPhase !== "RECONCILING"');
   });
 
   it("fails closed when a paid period or period counter is unavailable", async () => {
@@ -363,6 +364,63 @@ describe("merchant billing UI", () => {
     expect(billingRouteSource).toContain(
       "recoveryCreditPackPurchaseEligible &&",
     );
+    expect(billingRouteSource).toContain('billingPeriodPhase === "ACTIVE" &&');
+  });
+
+  it("uses explicit phase copy for each plan and preserves Free lifetime presentation", () => {
+    expect(billingRouteSource).toContain('"billing.paidCycleDraining"');
+    expect(billingRouteSource).toContain('"billing.paidCycleReconciling"');
+    expect(billingRouteSource).toContain('"billing.freeCycleDraining"');
+    expect(billingRouteSource).toContain('"billing.freeCycleReconciling"');
+    expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
+    expect(billingRouteSource).toContain('billingPeriodPhase !== "RECONCILING"');
+    expect(billingRouteSource).not.toContain('i18n.t("billing.configurationUnavailableDescription")</p>');
+    expect(billingRouteSource).not.toContain('i18n.t("billing.recoveryCreditPurchasePending")</p>');
+  });
+
+  it("uses durable RECONCILING phase to hide expired Paid included capacity", async () => {
+    getMerchantBillingState.mockResolvedValue({
+      subscription: {
+        status: "ACTIVE",
+        plan: { kind: "PAID_METERED", name: "Growth" },
+        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      },
+      billingPeriodPhase: "RECONCILING",
+      paidIncluded: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 0,
+        forfeitedQuantity: 0,
+        remaining: 80,
+      },
+      recoveryCreditPackPurchaseEligible: false,
+      lifetimeFree: {
+        grantedQuantity: 50,
+        committedQuantity: 10,
+        reservedQuantity: 5,
+        remaining: 35,
+      },
+      purchasedRecoveryCredits: {
+        grantedQuantity: 0,
+        committedQuantity: 0,
+        reservedQuantity: 0,
+        refundingQuantity: 0,
+        available: 0,
+      },
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
+
+    expect(result).toMatchObject({
+      billingPeriodPhase: "RECONCILING",
+      paidIncluded: { remaining: 80 },
+      recoveryCreditPackPurchaseEligible: false,
+    });
+    expect(billingRouteSource).toContain('billingPeriodPhase !== "RECONCILING"');
+    expect(billingRouteSource).toContain('"billing.paidCycleReconciling"');
   });
 
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {

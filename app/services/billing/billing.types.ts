@@ -66,6 +66,8 @@ export interface ProviderSubscription {
   providerUsageSnapshot: ProviderUsageSnapshot[];
 }
 
+export type BillingPeriodPhase = "ACTIVE" | "DRAINING" | "RECONCILING";
+
 export interface ProviderUsageSnapshot {
   handle: string;
   quantity: number | null;
