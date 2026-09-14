@@ -61,7 +61,8 @@ describe("SubscriptionChangePanel", () => {
     expect(noActive).toContain("plans");
 
     const unavailable = render({ providerVerificationState: "VERIFICATION_UNAVAILABLE", current: null, pending: null });
-    expect(unavailable).toContain("safely mapped");
+    expect(unavailable).toContain("verify your current Shopify billing details");
+    expect(unavailable).not.toContain("safely mapped");
   });
 
   it("does not invent a currency when the provider omits it", () => {

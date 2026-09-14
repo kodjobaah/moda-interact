@@ -40,7 +40,7 @@ export default function SubscriptionChangePanel({ merchantUi, current, pending, 
     <div className="moda-eyebrow">{i18n.t("billingCommerce.plans.eyebrow")}</div>
     <h2>{i18n.t("billingCommerce.plans.title")}</h2>
     <p>{i18n.t("billingCommerce.plans.shopifyApproval")}</p>
-    {providerVerificationState === "VERIFICATION_UNAVAILABLE" ? <p>{i18n.t("billing.configurationUnavailableDescription")}</p> : null}
+    {providerVerificationState === "VERIFICATION_UNAVAILABLE" ? <p>{i18n.t("billing.verificationUnavailableDescription")}</p> : null}
     {providerVerificationState === "NO_ACTIVE_SUBSCRIPTION" ? <p>{i18n.t("billing.viewPlans")}</p> : null}
     {hasCurrent ? <>
       <ProviderPlan i18n={i18n} plan={{ ...current }} />
