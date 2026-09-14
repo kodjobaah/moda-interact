@@ -28,8 +28,10 @@ describe("additional route access", () => {
       reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
     });
 
-    await expect(loader({ request: new Request("https://example.test/app/additional") } as never)).rejects.toMatchObject({
-      headers: expect.any(Headers),
+    await expect(loader({ request: new Request("https://example.test/app/additional") } as never)).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(Response);
+      expect(error.headers.get("Location")).toBe("/app/reinstalling");
+      return true;
     });
   });
 

@@ -104,7 +104,11 @@ describe("merchant billing UI", () => {
 
     await expect(billingSelectLoader({
       request: new Request("https://example.test/app/billing/select"),
-    } as never)).rejects.toMatchObject({ headers: expect.any(Headers) });
+    } as never)).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(Response);
+      expect(error.headers.get("Location")).toBe("/app/reinstalling");
+      return true;
+    });
     expect(hostedPricingRedirect).not.toHaveBeenCalled();
   });
 

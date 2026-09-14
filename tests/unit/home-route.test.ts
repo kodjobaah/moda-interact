@@ -90,7 +90,11 @@ describe("app home loader", () => {
 
     await expect(loader({
       request: new Request("https://example.test/app"),
-    })).rejects.toMatchObject({ headers: expect.any(Headers) });
+    })).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(Response);
+      expect(error.headers.get("Location")).toBe("/app/reinstalling");
+      return true;
+    });
 
     expect(findShopSettings).not.toHaveBeenCalled();
     expect(getSubscription).not.toHaveBeenCalled();
