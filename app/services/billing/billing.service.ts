@@ -622,10 +622,12 @@ async getSubscription(
     shopId,
     requestedPlanHandle,
     state,
+    verificationStartedAt,
   }: {
     shopId: string;
     requestedPlanHandle: string;
     state: MerchantShopifySubscriptionState;
+    verificationStartedAt: Date;
   }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
@@ -634,13 +636,21 @@ async getSubscription(
         where: { shopId },
         select: {
           id: true,
+          updatedAt: true,
+          status: true,
+          observedShopifyPlanHandle: true,
           planId: true,
+          billingPeriodId: true,
           pendingPlanId: true,
           pendingShopifyPlanHandle: true,
           pendingEffectiveAt: true,
           nextReconcileAt: true,
         },
       });
+
+      if (current?.updatedAt && current.updatedAt > verificationStartedAt) {
+        return { result: "unverified", subscriptionId: current.id, nextReconcileAt: null };
+      }
 
       if (state.status === "NO_ACTIVE_SUBSCRIPTION") {
         if (!current) return { result: "no_active", subscriptionId: null, nextReconcileAt: null };
@@ -702,10 +712,18 @@ async getSubscription(
     });
   }
 
-  async recordHostedPlanVerificationFailure(shopId: string): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
+  async recordHostedPlanVerificationFailure(
+    shopId: string,
+    verificationStartedAt: Date,
+  ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
     return this.database.$transaction(async (transaction) => {
       await lockInitialFreeActivationState(transaction, shopId);
+      const current = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true, updatedAt: true },
+      });
+      if (!current || current.updatedAt > verificationStartedAt) return null;
       const updated = await transaction.subscription.updateMany({
         where: { shopId },
         data: {

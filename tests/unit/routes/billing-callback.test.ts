@@ -102,7 +102,7 @@ beforeEach(() => {
     mappingStatus: "MAPPED",
     pendingModaMapping: { id: "free-id", name: "Free", kind: "FREE" },
   });
-  mocks.prepareFreeActivation.mockResolvedValue(null);
+  mocks.prepareFreeActivation.mockResolvedValue({ plan: freePlan, mode: "INITIAL", token: initialToken });
   mocks.preparePaidActivation.mockResolvedValue(null);
   mocks.syncSubscription.mockResolvedValue(subscription());
   mocks.getSubscriptionProjection.mockResolvedValue(subscription());
@@ -118,7 +118,7 @@ beforeEach(() => {
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
 });
 
-describe.skip("legacy billing callback activation", () => {
+describe("billing callback activation", () => {
   it("completes onboarding only after current Free verification", async () => {
     await runLoader("free");
 
@@ -254,12 +254,24 @@ describe.skip("legacy billing callback activation", () => {
 
   it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: null });
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "growth",
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelAtEndOfCycle: false,
+        pendingUpdate: null,
+      },
+    });
 
     await runLoader(planHandle);
 
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=mismatch");
   });
 
   it("keeps a pending callback unresolved until it becomes current", async () => {
@@ -357,6 +369,11 @@ describe.skip("legacy billing callback activation", () => {
 });
 
 describe("hosted billing callback", () => {
+  beforeEach(() => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+  });
+
   it("requires plan_handle", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
     expect(mocks.getState).not.toHaveBeenCalled();
@@ -366,7 +383,11 @@ describe("hosted billing callback", () => {
     mocks.recordReturn.mockResolvedValue({ result, subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
     await runLoader(handle);
     expect(mocks.getState).toHaveBeenCalledWith("shop-1");
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ shopId: "shop-1", requestedPlanHandle: handle }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: "shop-1",
+      requestedPlanHandle: handle,
+      verificationStartedAt: expect.any(Date),
+    }));
     expect(mocks.redirect).toHaveBeenCalledWith(`/app/billing/options?plan_change=${result}`);
   });
 
@@ -379,6 +400,16 @@ describe("hosted billing callback", () => {
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
   });
 
+  it("does not enqueue a freshness-fenced unverified result", async () => {
+    mocks.recordReturn.mockResolvedValue({ result: "unverified", subscriptionId: "subscription-1", nextReconcileAt: null });
+
+    await runLoader("growth");
+
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationStartedAt: expect.any(Date) }));
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
+  });
+
   it("distinguishes no active subscription from verification failure", async () => {
     mocks.getState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
     mocks.recordReturn.mockResolvedValue({ result: "no_active", subscriptionId: "subscription-1", nextReconcileAt: new Date() });
@@ -386,7 +417,15 @@ describe("hosted billing callback", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=no_active");
     mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
     await runLoader("free");
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1");
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", expect.any(Date));
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
+  });
+
+  it("passes one read fence into provider failure recording", async () => {
+    mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", expect.any(Date));
   });
 });
