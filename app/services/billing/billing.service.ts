@@ -111,6 +111,13 @@ export type CompletedFreeActivation = {
   nextReconcileAt: Date | null;
 };
 
+export type HostedPlanChangeReturnResult =
+  | "current"
+  | "pending"
+  | "mismatch"
+  | "no_active"
+  | "unverified";
+
 function assertPurchaseId(purchaseId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
     throw new Error("A valid recovery credit purchase ID is required.");
@@ -549,6 +556,103 @@ async getSubscription(
     }
 
     return this.mapMerchantShopifySubscription(providerSubscription);
+  }
+
+  async recordHostedPlanChangeReturn({
+    shopId,
+    requestedPlanHandle,
+    state,
+  }: {
+    shopId: string;
+    requestedPlanHandle: string;
+    state: MerchantShopifySubscriptionState;
+  }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
+    const now = new Date();
+    return this.database.$transaction(async (transaction) => {
+      const current = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: {
+          id: true,
+          planId: true,
+          pendingPlanId: true,
+          pendingShopifyPlanHandle: true,
+          pendingEffectiveAt: true,
+          nextReconcileAt: true,
+        },
+      });
+
+      if (state.status === "NO_ACTIVE_SUBSCRIPTION") {
+        if (!current) return { result: "no_active", subscriptionId: null, nextReconcileAt: null };
+        const nextReconcileAt = now;
+        const updated = await transaction.subscription.update({
+          where: { shopId },
+          data: { nextReconcileAt, lastSyncErrorCode: null, lastSyncErrorAt: null },
+          select: { id: true, nextReconcileAt: true },
+        });
+        return { result: "no_active", subscriptionId: updated.id, nextReconcileAt: updated.nextReconcileAt };
+      }
+
+      const provider = state.subscription;
+      const currentHandle = provider.planHandle;
+      const pendingHandle = provider.pendingUpdate?.planHandle ?? null;
+      const result: HostedPlanChangeReturnResult = requestedPlanHandle === currentHandle
+        ? "current"
+        : requestedPlanHandle === pendingHandle
+          ? "pending"
+          : "mismatch";
+
+      if (result === "mismatch" || !current) {
+        return { result, subscriptionId: current?.id ?? null, nextReconcileAt: current?.nextReconcileAt ?? null };
+      }
+
+      const nextReconcileAt = result === "pending"
+        ? provider.pendingUpdate?.effectiveAt
+          ? new Date(provider.pendingUpdate.effectiveAt)
+          : now
+        : now;
+      const mappedPendingPlanId = state.pendingModaMapping?.id ?? null;
+      const updated = await transaction.subscription.update({
+        where: { shopId },
+        data: {
+          observedShopifyPlanHandle: currentHandle,
+          currentPeriodStart: provider.currentPeriodStart ? new Date(provider.currentPeriodStart) : undefined,
+          currentPeriodEnd: provider.currentPeriodEnd ? new Date(provider.currentPeriodEnd) : undefined,
+          trialEndsAt: provider.trialEndsAt ? new Date(provider.trialEndsAt) : undefined,
+          cancelAtPeriodEnd: provider.cancelAtEndOfCycle,
+          pendingShopifyPlanHandle: pendingHandle,
+          pendingPlanId: mappedPendingPlanId,
+          pendingEffectiveAt: provider.pendingUpdate?.effectiveAt
+            ? new Date(provider.pendingUpdate.effectiveAt)
+            : null,
+          nextReconcileAt,
+          lastSyncedAt: now,
+          lastSyncErrorCode: null,
+          lastSyncErrorAt: null,
+        },
+        select: { id: true, nextReconcileAt: true },
+      });
+      return { result, subscriptionId: updated.id, nextReconcileAt: updated.nextReconcileAt };
+    });
+  }
+
+  async recordHostedPlanVerificationFailure(shopId: string): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
+    const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
+    const updated = await this.database.subscription.updateMany({
+      where: { shopId },
+      data: {
+        nextReconcileAt,
+        lastSyncErrorCode: "PARTNER_API_ERROR",
+        lastSyncErrorAt: new Date(),
+      },
+    });
+    if (!updated.count) return null;
+    const subscription = await this.database.subscription.findUnique({
+      where: { shopId },
+      select: { id: true, nextReconcileAt: true },
+    });
+    return subscription?.nextReconcileAt
+      ? { subscriptionId: subscription.id, nextReconcileAt: subscription.nextReconcileAt }
+      : null;
   }
 
   async getMerchantShopifyLifecycleState(
