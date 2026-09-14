@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   syncSubscription: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   completeFreeActivation: vi.fn(),
-  completePaidActivation: vi.fn(),
   scheduleInitialFreeReconciliationIfCurrent: vi.fn(),
   enqueueReconcile: vi.fn(),
 }));
@@ -24,7 +23,6 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
     syncSubscription: mocks.syncSubscription,
     getSubscriptionProjection: mocks.getSubscriptionProjection,
     completeFreeActivation: mocks.completeFreeActivation,
-    completePaidActivation: mocks.completePaidActivation,
     scheduleInitialFreeReconciliationIfCurrent: mocks.scheduleInitialFreeReconciliationIfCurrent,
   },
   INITIAL_BILLING_RETRY_DELAY_MS: 60_000,
@@ -93,10 +91,6 @@ beforeEach(() => {
     subscriptionId: "subscription-1",
     nextReconcileAt: null,
   });
-  mocks.completePaidActivation.mockResolvedValue({
-    subscriptionId: "subscription-1",
-    nextReconcileAt: new Date("2026-09-30T00:00:00.000Z"),
-  });
   mocks.scheduleInitialFreeReconciliationIfCurrent.mockResolvedValue({
     subscriptionId: "subscription-1",
     nextReconcileAt: new Date("2026-09-12T00:01:00.000Z"),
@@ -122,23 +116,20 @@ describe("billing callback activation", () => {
       observedShopifyPlanHandle: "growth",
       planId: "paid-1",
       plan: paidPlan,
-      pendingShopifyPlanHandle: "growth",
-      pendingPlanId: "paid-1",
-      pendingEffectiveAt: paidToken.pendingEffectiveAt,
-    }));
-    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
-      observedShopifyPlanHandle: "growth",
-      planId: "paid-1",
-      plan: paidPlan,
-      pendingShopifyPlanHandle: "growth",
-      pendingPlanId: "paid-1",
-      pendingEffectiveAt: paidToken.pendingEffectiveAt,
+      billingPeriodId: "period-1",
+      currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+      pendingEffectiveAt: null,
+      nextReconcileAt: new Date("2026-09-30T00:00:00.000Z"),
     }));
 
     await runLoader("growth");
 
     expect(mocks.preparePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
-    expect(mocks.completePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));
   });
@@ -157,8 +148,61 @@ describe("billing callback activation", () => {
 
     await runLoader("growth");
 
-    expect(mocks.completePaidActivation).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
+  });
+
+  it("keeps a Paid provider-null result on the existing bounded retry path", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(null);
+
+    await runLoader("growth");
+
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({ expected: paidToken }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalled();
+  });
+
+  it("keeps a Paid Partner failure on the existing bounded retry path", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      expected: paidToken,
+      partnerErrorAt: expect.any(Date),
+    }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalled();
+  });
+
+  it("does not enqueue the initial retry for an unsupported Paid trial", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "SYNC_ERROR",
+      planId: null,
+      observedShopifyPlanHandle: "growth",
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: paidToken.pendingEffectiveAt,
+      nextReconcileAt: null,
+      lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL",
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
