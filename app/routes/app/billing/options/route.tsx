@@ -81,7 +81,12 @@ export async function action({ request }: ActionFunctionArgs) {
   const scheduledCancellation = commercial.status === "ACTIVE_SUBSCRIPTION" &&
     commercial.subscription.cancelAtEndOfCycle &&
     !commercial.subscription.pendingUpdate;
-  if (capacity.availability === "CONTRACT_FROZEN" || lifecycle.state === "FROZEN" || scheduledCancellation) {
+  if (
+    capacity.availability === "CONTRACT_FROZEN" ||
+    capacity.availability === "CONTRACT_REQUIRED" ||
+    lifecycle.state === "FROZEN" ||
+    scheduledCancellation
+  ) {
     throw new Error("Recovery credit packs are unavailable while Shopify billing is restricted.");
   }
   const formData = await request.formData();

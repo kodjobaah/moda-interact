@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getSubscription = vi.fn();
+const getSubscriptionProjection = vi.fn();
 const getMerchantRecoveryCapacityState = vi.fn();
 const findShopSettings = vi.fn();
 const readPendingRecoveries = vi.fn();
@@ -17,7 +18,7 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getSubscription, getMerchantRecoveryCapacityState },
+  billingService: { getSubscription, getSubscriptionProjection, getMerchantRecoveryCapacityState },
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries,
@@ -46,6 +47,7 @@ beforeEach(() => {
   });
   findShopSettings.mockResolvedValue({ onboardingCompleted: false });
   getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED", observedShopifyPlanHandle: null });
+  getSubscriptionProjection.mockResolvedValue(null);
   readPendingRecoveries.mockResolvedValue({ available: true, items: [] });
   findRecoveries.mockResolvedValue([]);
   findBillingPeriods.mockResolvedValue([]);
@@ -85,6 +87,55 @@ describe("app home loader", () => {
     expect(findRecoveries).toHaveBeenCalled();
     expect(findBillingPeriods).toHaveBeenCalled();
     expect(findUsageEvents).toHaveBeenCalled();
+  });
+
+  it("preserves pending plan and scheduled cancellation precedence in dashboard data", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({
+      status: "ACTIVE",
+      observedShopifyPlanHandle: "growth",
+    });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "ACTIVE",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      pendingEffectiveAt: new Date("2026-09-20T00:00:00.000Z"),
+      pendingPlan: { name: "Basic" },
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result.subscription).toMatchObject({
+      status: "ACTIVE",
+      cancelAtEndOfCycle: true,
+      currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+      pendingPlan: {
+        name: "Basic",
+        effectiveAt: "2026-09-20T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("keeps effective no-contract and frozen merchants on the dashboard data path", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+    getSubscriptionProjection.mockResolvedValue({ status: "NO_CONTRACT" });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONTRACT_FROZEN",
+      canStartRecovery: false,
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      subscription: { status: "NO_CONTRACT" },
+      capacity: { availability: "CONTRACT_FROZEN", canStartRecovery: false },
+    });
+    expect(readPendingRecoveries).toHaveBeenCalled();
   });
 
   it("redirects pending reinstall before reading product data", async () => {

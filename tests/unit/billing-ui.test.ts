@@ -5,6 +5,10 @@ const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getMerchantBillingState = vi.fn();
 const getMerchantRecoveryCapacityState = vi.fn();
+const getSubscriptionProjection = vi.fn();
+const getMerchantShopifySubscriptionState = vi.fn();
+const getMerchantShopifyLifecycleState = vi.fn();
+const requestRecoveryCreditPack = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingRouteSource = await readFile(
@@ -38,7 +42,14 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getMerchantBillingState, getMerchantRecoveryCapacityState },
+  billingService: {
+    getMerchantBillingState,
+    getMerchantRecoveryCapacityState,
+    getSubscriptionProjection,
+    getMerchantShopifySubscriptionState,
+    getMerchantShopifyLifecycleState,
+    requestRecoveryCreditPack,
+  },
 }));
 vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
@@ -47,6 +58,9 @@ vi.mock("../../app/db.server", () => ({
 const { loader } = await import("../../app/routes/app/billing/route");
 const { loader: billingSelectLoader } =
   await import("../../app/routes/app/billing/select/route");
+const { action: billingAction } = await import("../../app/routes/app/billing/route");
+const { action: billingOptionsAction } =
+  await import("../../app/routes/app/billing/options/route");
 const { getMerchantSystemMessageAction } =
   await import("../../app/services/merchant-support/system-message-actions");
 
@@ -72,6 +86,9 @@ beforeEach(() => {
   resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
   findShopSettings.mockResolvedValue(null);
   getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED" });
+  getSubscriptionProjection.mockResolvedValue(null);
+  getMerchantShopifySubscriptionState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
+  getMerchantShopifyLifecycleState.mockResolvedValue({ state: "NO_ACTIVE_SUBSCRIPTION", subscription: null, latestEvent: null });
 });
 
 describe("merchant billing UI", () => {
@@ -113,6 +130,56 @@ describe("merchant billing UI", () => {
 
     expect(result.subscription).toMatchObject({ status: "NO_CONTRACT" });
     expect(hostedPricingRedirect).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a scheduled cancellation before creating a top-up", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "AVAILABLE",
+      canStartRecovery: true,
+    });
+    getSubscriptionProjection.mockResolvedValue({
+      cancelAtPeriodEnd: true,
+      pendingPlan: null,
+    });
+
+    await expect(billingAction({
+      request: new Request("https://example.test/app/billing", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a frozen capacity projection", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONTRACT_FROZEN",
+      canStartRecovery: false,
+    });
+    getSubscriptionProjection.mockResolvedValue(null);
+
+    await expect(billingAction({
+      request: new Request("https://example.test/app/billing", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an effective no-contract options action", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONTRACT_REQUIRED",
+      canStartRecovery: false,
+    });
+    getMerchantShopifyLifecycleState.mockResolvedValue({
+      state: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+      latestEvent: null,
+    });
+    getMerchantShopifySubscriptionState.mockResolvedValue({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+
+    await expect(billingOptionsAction({
+      request: new Request("https://example.test/app/billing/options", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
   });
 
   it("redirects the selection route to Shopify pricing with a top-level target", async () => {

@@ -75,10 +75,10 @@ console.log("Resolved shop settings:", settings);
    *
    * We don't need to call Shopify here.
    */
-  const subscription =
-    await billingService.getSubscription(
-      shop.id,
-    );
+  const [subscription, subscriptionProjection] = await Promise.all([
+    billingService.getSubscription(shop.id),
+    billingService.getSubscriptionProjection(shop.id),
+  ]);
 
   console.log("Resolved subscription:", subscription);
   const subscriptionState = subscription ?? {
@@ -139,6 +139,12 @@ console.log("Resolved shop settings:", settings);
       planName:
         subscriptionState.plan?.name ??
         subscriptionState.observedShopifyPlanHandle,
+      cancelAtEndOfCycle: subscriptionProjection?.cancelAtPeriodEnd ?? false,
+      currentPeriodEnd: subscriptionProjection?.currentPeriodEnd?.toISOString() ?? null,
+      pendingPlan: subscriptionProjection?.pendingPlan ? {
+        name: subscriptionProjection.pendingPlan.name,
+        effectiveAt: subscriptionProjection.pendingEffectiveAt?.toISOString() ?? null,
+      } : null,
     } : null,
       capacity,
 
@@ -186,10 +192,10 @@ export default function Index() {
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
   }
 
-  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} />;
+  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
 }
 
 

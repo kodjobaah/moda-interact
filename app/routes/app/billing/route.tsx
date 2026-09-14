@@ -80,6 +80,20 @@ export async function action({ request }: ActionFunctionArgs) {
     domain: session.shop,
   });
   assertActiveShop(shop, { route: "/app/billing", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
+  const [capacity, subscription] = await Promise.all([
+    billingService.getMerchantRecoveryCapacityState(shop.id),
+    billingService.getSubscriptionProjection(shop.id),
+  ]);
+  const scheduledCancellation = Boolean(
+    subscription?.cancelAtPeriodEnd && !subscription.pendingPlan,
+  );
+  if (
+    capacity.availability === "CONTRACT_FROZEN" ||
+    capacity.availability === "CONTRACT_REQUIRED" ||
+    scheduledCancellation
+  ) {
+    throw new Error("Recovery credit packs are unavailable while Shopify billing is restricted.");
+  }
   const formData = await request.formData();
   const purchase = await billingService.requestRecoveryCreditPack(
     shop.id,
