@@ -27,6 +27,7 @@ import {
 
 
 import type {
+  BillingPeriodPhase,
   BillingProvider,
   MerchantShopifyLifecycleState,
   MerchantShopifySubscriptionState,
@@ -87,6 +88,20 @@ function hasMatchingBillingCycle(
   return providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart!.getTime() &&
     providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd!.getTime();
 }
+
+export function deriveBillingPeriodPhase(
+  periodEnd: Date | null,
+  now = new Date(),
+): BillingPeriodPhase | null {
+  if (!periodEnd) return null;
+  const drainStart = periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS;
+  if (now.getTime() < drainStart) return "ACTIVE";
+  if (now.getTime() < periodEnd.getTime()) return "DRAINING";
+  return "RECONCILING";
+}
+
+const RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION =
+  "Recovery credit packs are temporarily unavailable while the current Shopify billing cycle is being confirmed.";
 
 function isSafeNonNegativeInteger(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -780,19 +795,23 @@ async getSubscription(
     const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
     let recoveryCreditPackMeterVerified = false;
     let recoveryCreditPackPurchaseEligible = false;
+    let billingPeriodPhase: BillingPeriodPhase | null = null;
     if (
       shop?.shopifyShopId &&
       subscription?.plan?.active &&
       subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
-      subscription.plan.recoveryCreditPackEnabled &&
-      packMeter
+      hasDurableBillingPeriod(subscription)
     ) {
       try {
         const providerSubscription = await this.provider.getActiveSubscription({
           shopifyShopId: shop.shopifyShopId,
         });
+        if (providerSubscription && hasMatchingBillingCycle(subscription, providerSubscription)) {
+          billingPeriodPhase = deriveBillingPeriodPhase(subscription.currentPeriodEnd);
+        }
         recoveryCreditPackMeterVerified = Boolean(
           providerSubscription &&
+          packMeter &&
           providerSubscription.planHandle === subscription.plan.shopifyPlanHandle &&
           providerSubscription.usageEventHandles.includes(packMeter),
         );
@@ -901,6 +920,7 @@ async getSubscription(
       recoveryCreditPackMeter: packMeter,
       recoveryCreditPackMeterVerified,
       recoveryCreditPackPurchaseEligible,
+      billingPeriodPhase,
     };
   }
 
@@ -954,6 +974,12 @@ async getSubscription(
     if (!hasMatchingBillingCycle(subscription, providerSubscription, verifiedBillingPeriodId)) {
       throw new Error("The current Shopify billing cycle could not be verified.");
     }
+    if (deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE") {
+      throw new Error(RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION);
+    }
+    if (plan.kind === BillingPlanKind.FREE && subscription.billingPeriod?.status !== BillingPeriodStatus.OPEN) {
+      throw new Error("The current local billing cycle could not be verified.");
+    }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
     }
@@ -985,6 +1011,8 @@ async getSubscription(
         !currentPlan.recoveryCreditsPerPack ||
         currentPlan.recoveryCreditsPerPack <= 0 ||
         !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
+        deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE" ||
+        (currentPlan.kind === BillingPlanKind.FREE && currentSubscription.billingPeriod?.status !== BillingPeriodStatus.OPEN) ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
         currentPackMeter !== packMeter ||
         currentPlan.recoveryCreditsPerPack !== creditsGranted ||

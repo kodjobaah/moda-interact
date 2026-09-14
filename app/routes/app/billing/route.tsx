@@ -68,6 +68,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recoveryCreditPackMeterVerified: state.recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible:
       state.recoveryCreditPackPurchaseEligible,
+    billingPeriodPhase: state.billingPeriodPhase,
     purchaseId: randomUUID(),
   };
 }
@@ -104,6 +105,7 @@ export default function BillingRoute() {
     recoveryCreditPackMeter,
     recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible,
+    billingPeriodPhase,
     purchaseId,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -175,6 +177,11 @@ export default function BillingRoute() {
                 end: i18n.formatDate(subscription.currentPeriodEnd),
               })}
             </p>
+          ) : null}
+          {billingPeriodPhase === "DRAINING" ? (
+            <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p>
+          ) : billingPeriodPhase === "RECONCILING" ? (
+            <p>{i18n.t("billing.configurationUnavailableDescription")}</p>
           ) : null}
           {subscription.trialEndsAt ? (
             <p>

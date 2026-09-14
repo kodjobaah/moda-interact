@@ -6,6 +6,7 @@ import {
 } from "@modainteract/moda-interact-shared/billing";
 
 import { BillingService } from "../../../app/services/billing/billing.service";
+import { deriveBillingPeriodPhase } from "../../../app/services/billing/billing.service";
 import { getMerchantSystemMessageAction } from "../../../app/services/merchant-support/system-message-actions";
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
@@ -1654,7 +1655,7 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
     billingPeriodId: "period-1",
     currentPeriodStart: periodStart,
     currentPeriodEnd: periodEnd,
-    billingPeriod: { id: "period-1", periodStart, periodEnd },
+    billingPeriod: { id: "period-1", periodStart, periodEnd, status: "OPEN" },
     plan,
   };
   const transactionSubscription = { ...subscriptionState };
@@ -1932,6 +1933,14 @@ describe("BillingService merchant billing state", () => {
 });
 
 describe("BillingService recovery credit packs", () => {
+    it.each([
+      ["ACTIVE", new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS - 1)],
+      ["DRAINING", new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)],
+      ["RECONCILING", periodEnd],
+    ] as const)("derives %s from exact period timestamps", (expected, now) => {
+      expect(deriveBillingPeriodPhase(periodEnd, now)).toBe(expected);
+    });
+
   it.each([
     ["FREE", { kind: "FREE", shopifyUsageEventHandle: null }],
     ["PAID_METERED", { kind: "PAID_METERED" }],
@@ -1959,6 +1968,44 @@ describe("BillingService recovery credit packs", () => {
     expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
     expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
   });
+
+  it.each(["PAID_METERED", "FREE"] as const)(
+    "blocks a new %s pack request during billing-cycle transition",
+    async (kind) => {
+      const { database, purchases, usageEvents, subscriptionState, transactionSubscription } =
+        createRecoveryCreditPurchaseDatabase({
+          kind,
+          ...(kind === "FREE" ? { shopifyUsageEventHandle: null } : {}),
+        });
+      const transitionEnd = new Date(Date.now() + APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS / 2);
+      Object.assign(subscriptionState, {
+        currentPeriodEnd: transitionEnd,
+        billingPeriod: { id: "period-1", periodStart, periodEnd: transitionEnd, status: "OPEN" },
+      });
+      Object.assign(transactionSubscription, subscriptionState);
+      const provider = {
+        getActiveSubscription: vi.fn().mockResolvedValue(
+          providerSubscription({
+            usageEventHandles: ["message-meter", "credit-pack-meter"],
+            currentPeriodEnd: transitionEnd,
+          }),
+        ),
+      };
+      const service = new BillingService(provider, database as never);
+
+      await expect(
+        service.requestRecoveryCreditPack(
+          "shop-1",
+          "BUY_RECOVERY_CREDIT_PACK",
+          kind === "FREE"
+            ? "f1111111-1111-4111-8111-111111111111"
+            : "a1111111-1111-4111-8111-111111111111",
+        ),
+      ).rejects.toThrow("temporarily unavailable");
+      expect(usageEvents).toHaveLength(0);
+      expect(purchases).toHaveLength(0);
+    },
+  );
 
   it("returns the existing purchase without creating another usage event", async () => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
