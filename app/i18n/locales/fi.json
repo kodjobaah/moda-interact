@@ -101,6 +101,8 @@
   "billing.currentPlan": "Current plan",
   "billing.status": "Status",
   "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
+  "billing.lifetimeFreeAllowance": "Lifetime Free recoveries: {remaining} of {allowance} remaining",
+  "billing.paidIncludedAllowance": "Included recoveries this period: {remaining} of {allowance} remaining",
   "billing.paidUsage": "Recovery conversations used: {quantity}",
   "billing.currentPeriod": "Current billing period: {start} to {end}",
   "billing.trialEnds": "Trial ends: {date}",

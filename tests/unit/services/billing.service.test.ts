@@ -1691,9 +1691,8 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
 }
 
 describe("BillingService merchant billing state", () => {
-  it.each(["FREE", "PAID_METERED"] as const)(
-    "uses the canonical lifetime counter for a mapped %s plan",
-    async (kind) => {
+  it("uses the canonical lifetime counter for a mapped Free plan",
+    async () => {
       const lifetimeCounter = {
         grantedQuantity: 10,
         committedQuantity: 4,
@@ -1710,7 +1709,7 @@ describe("BillingService merchant billing state", () => {
           findUnique: vi.fn().mockResolvedValue({
             status: "ACTIVE",
             plan: {
-              kind,
+              kind: "FREE",
               active: true,
               recoveryCreditPackEnabled: false,
             },
@@ -1733,9 +1732,63 @@ describe("BillingService merchant billing state", () => {
         committed: 4,
         reserved: 3,
         remaining: 3,
+        lifetimeFree: { grantedQuantity: 10, remaining: 3 },
       });
     },
   );
+
+  it("uses the current paid period counter and preserves lifetime Free capacity", async () => {
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      subscription: {
+        findUnique: vi.fn().mockResolvedValue({
+          status: "ACTIVE",
+          billingPeriodId: "period-1",
+          currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+          currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+          plan: { kind: "PAID_METERED", active: true, recoveryCreditPackEnabled: false },
+          billingPeriod: {
+            id: "period-1",
+            shopId: "shop-1",
+            periodStart: new Date("2026-09-01T00:00:00.000Z"),
+            periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+            status: "OPEN",
+            includedRecoveryCreditsGranted: 100,
+            entitlementCounters: [{
+              shopId: "shop-1",
+              billingPeriodId: "period-1",
+              counter: "INCLUDED_RECOVERY_CREDITS",
+              grantedQuantity: 100,
+              committedQuantity: 12,
+              reservedQuantity: 8,
+              forfeitedQuantity: 5,
+            }],
+          },
+        }),
+      },
+      shopEntitlementCounter: {
+        findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
+          where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
+            ? null
+            : { grantedQuantity: 50, committedQuantity: 10, reservedQuantity: 5 }),
+      },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }) },
+    };
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.getMerchantBillingState("shop-1")).resolves.toMatchObject({
+      allowance: null,
+      remaining: null,
+      paidIncluded: {
+        grantedQuantity: 100,
+        committedQuantity: 12,
+        reservedQuantity: 8,
+        forfeitedQuantity: 5,
+        remaining: 75,
+      },
+      lifetimeFree: { grantedQuantity: 50, remaining: 35 },
+    });
+  });
 });
 
 describe("BillingService recovery credit packs", () => {

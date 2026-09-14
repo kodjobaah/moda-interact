@@ -57,6 +57,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     } : null,
     allowance: state.allowance,
     remaining: state.remaining,
+    paidIncluded: state.paidIncluded,
+    paidConfigurationUnavailable: state.paidConfigurationUnavailable,
+    lifetimeFree: state.lifetimeFree,
     usageQuantity: state.usageQuantity,
     purchasedRecoveryCredits: state.purchasedRecoveryCredits,
     recoveryCreditPackEnabled: state.recoveryCreditPackEnabled,
@@ -91,6 +94,9 @@ export default function BillingRoute() {
     subscription,
     allowance,
     remaining,
+    paidIncluded,
+    paidConfigurationUnavailable,
+    lifetimeFree,
     usageQuantity,
     purchasedRecoveryCredits,
     recoveryCreditPackEnabled,
@@ -104,7 +110,9 @@ export default function BillingRoute() {
   const i18n = createMerchantI18n(merchantUi);
   const isFree = subscription?.planKind === "FREE";
   const isSafeProjection = Boolean(
-    subscription && ["ACTIVE", "TRIALING"].includes(subscription.status),
+    subscription &&
+    ["ACTIVE", "TRIALING"].includes(subscription.status) &&
+    !paidConfigurationUnavailable,
   );
 
   return (
@@ -139,11 +147,26 @@ export default function BillingRoute() {
             {i18n.t("billing.status")}: <strong>{subscription.status}</strong>
           </p>
 
-          {allowance !== null ? (
-            <p>{i18n.t("billing.freeAllowance", { remaining, allowance })}</p>
+          {subscription.planKind === "PAID_METERED" && paidIncluded ? (
+            <p>
+              {i18n.t("billing.paidIncludedAllowance", {
+                remaining: paidIncluded.remaining,
+                allowance: paidIncluded.grantedQuantity,
+              })}
+            </p>
+          ) : allowance !== null ? (
+            <p>{i18n.t("billing.lifetimeFreeAllowance", { remaining, allowance })}</p>
           ) : (
             <p>{i18n.t("billing.paidUsage", { quantity: usageQuantity })}</p>
           )}
+          {subscription.planKind === "PAID_METERED" ? (
+            <p>
+              {i18n.t("billing.lifetimeFreeAllowance", {
+                remaining: lifetimeFree.remaining,
+                allowance: lifetimeFree.grantedQuantity,
+              })}
+            </p>
+          ) : null}
 
           {subscription.currentPeriodStart && subscription.currentPeriodEnd ? (
             <p>

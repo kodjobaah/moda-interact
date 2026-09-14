@@ -101,6 +101,8 @@
   "billing.currentPlan": "Forfait actuel",
   "billing.status": "Statut",
   "billing.freeAllowance": "Crédit gratuit : {remaining} conversation(s) de récupération restantes sur {allowance}",
+  "billing.lifetimeFreeAllowance": "Récupérations gratuites à vie : {remaining} sur {allowance} restantes",
+  "billing.paidIncludedAllowance": "Récupérations incluses pour cette période : {remaining} sur {allowance} restantes",
   "billing.paidUsage": "Conversations de récupération utilisées : {quantity}",
   "billing.currentPeriod": "Période actuelle : du {start} au {end}",
   "billing.trialEnds": "L’essai se termine le {date}",

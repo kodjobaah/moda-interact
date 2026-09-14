@@ -737,7 +737,19 @@ async getSubscription(
       this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
         where: { shopId },
-        include: { plan: true, pendingPlan: true, billingPeriod: true },
+        include: {
+          plan: true,
+          pendingPlan: true,
+          billingPeriod: {
+            include: {
+              entitlementCounters: {
+                where: {
+                  counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+                },
+              },
+            },
+          },
+        },
       }),
       this.database.shopEntitlementCounter.findUnique({
         where: {
@@ -791,12 +803,43 @@ async getSubscription(
       }
     }
 
-    const allowance = counter?.grantedQuantity ?? null;
-    const committed = counter?.committedQuantity ?? 0;
-    const reserved = counter?.reservedQuantity ?? 0;
-    const remaining = allowance === null
+    const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
+    const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
+      ({ counter }) => counter === BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+    ) ?? null;
+    const hasValidPaidPeriod = Boolean(
+      isPaid &&
+      subscription?.status === SubscriptionProjectionStatus.ACTIVE &&
+      hasDurableBillingPeriod(subscription) &&
+      subscription.billingPeriod?.shopId === shopId &&
+      subscription.billingPeriod.status === BillingPeriodStatus.OPEN &&
+      periodCounter?.shopId === shopId &&
+      periodCounter.billingPeriodId === subscription.billingPeriod.id &&
+      periodCounter.grantedQuantity === subscription.billingPeriod.includedRecoveryCreditsGranted,
+    );
+    const paidIncluded = hasValidPaidPeriod && periodCounter
+      ? {
+          grantedQuantity: periodCounter.grantedQuantity,
+          committedQuantity: periodCounter.committedQuantity,
+          reservedQuantity: periodCounter.reservedQuantity,
+          forfeitedQuantity: periodCounter.forfeitedQuantity,
+          remaining: Math.max(
+            periodCounter.grantedQuantity -
+              periodCounter.committedQuantity -
+              periodCounter.reservedQuantity -
+              periodCounter.forfeitedQuantity,
+            0,
+          ),
+        }
+      : null;
+    const allowance = isPaid ? null : counter?.grantedQuantity ?? null;
+    const committed = isPaid ? 0 : counter?.committedQuantity ?? 0;
+    const reserved = isPaid ? 0 : counter?.reservedQuantity ?? 0;
+    const remaining = isPaid
       ? null
-      : Math.max(allowance - committed - reserved, 0);
+      : allowance === null
+        ? null
+        : Math.max(allowance - committed - reserved, 0);
 
     return {
       subscription,
@@ -804,6 +847,19 @@ async getSubscription(
       committed,
       reserved,
       remaining,
+      paidIncluded,
+      paidConfigurationUnavailable: isPaid && !paidIncluded,
+      lifetimeFree: {
+        grantedQuantity: counter?.grantedQuantity ?? 0,
+        committedQuantity: counter?.committedQuantity ?? 0,
+        reservedQuantity: counter?.reservedQuantity ?? 0,
+        remaining: Math.max(
+          (counter?.grantedQuantity ?? 0) -
+            (counter?.committedQuantity ?? 0) -
+            (counter?.reservedQuantity ?? 0),
+          0,
+        ),
+      },
       usageQuantity: Number(usageTotal._sum.quantity ?? 0),
       purchasedRecoveryCredits: {
         grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
