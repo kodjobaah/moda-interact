@@ -13,6 +13,8 @@ const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
 
 function providerSubscription(overrides: Record<string, unknown> = {}) {
+  const usageEventHandles = (overrides.usageEventHandles as string[] | undefined)
+    ?? ["message-meter"];
   return {
     provider: "SHOPIFY",
     planHandle: "growth",
@@ -23,8 +25,15 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
       price: { amount: "10", currency: "USD" },
     },
     pendingFlatRatePlan: null,
-    usageItems: [],
-    usageEventHandles: ["message-meter"],
+    usageItems: overrides.usageItems ?? (usageEventHandles.includes("credit-pack-meter")
+      ? [{
+          handle: "credit-pack-meter",
+          description: "Recovery credit pack",
+          price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
+          usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
+        }]
+      : []),
+    usageEventHandles,
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
     status: "ACTIVE",
@@ -2047,8 +2056,10 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
       },
       recoveryCreditPurchase: {
         findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
+        findFirst: vi.fn().mockImplementation(async ({ where }: { where: { shopId: string; status: string } }) =>
+          [...purchases.values()].find((purchase) => purchase.shopId === where.shopId && purchase.status === where.status) ?? null),
         create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
-          const purchase = { ...data, status: "PENDING_BILLING", usageEvent: usageEvents.at(-1) };
+          const purchase = { ...data, status: "REQUESTED", usageEvent: usageEvents.at(-1) };
           purchases.set(String(data.id), purchase);
           return purchase;
         }),
@@ -2960,7 +2971,7 @@ describe("BillingService recovery credit packs", () => {
 
     const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "11111111-1111-4111-8111-111111111111");
 
-    expect(purchase).toMatchObject({ id: "11111111-1111-4111-8111-111111111111", creditsGranted: 100, status: "PENDING_BILLING" });
+    expect(purchase).toMatchObject({ id: "11111111-1111-4111-8111-111111111111", creditsGranted: 100, status: "REQUESTED" });
     expect(usageEvents).toHaveLength(1);
     expect(usageEvents[0]).toMatchObject({
       id: expect.any(String),
@@ -3073,15 +3084,16 @@ describe("BillingService recovery credit packs", () => {
     expect(usageEvents).toHaveLength(1);
   });
 
-  it("allows repeated purchases with different purchase IDs", async () => {
+  it("blocks a second unresolved purchase for the same provider context", async () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
     const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
     const service = new BillingService(provider, database as never);
 
     await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "33333333-3333-4333-8333-333333333333");
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "44444444-4444-4444-8444-444444444444");
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "44444444-4444-4444-8444-444444444444"))
+      .rejects.toThrow("already awaiting Shopify confirmation");
 
-    expect(usageEvents).toHaveLength(2);
+    expect(usageEvents).toHaveLength(1);
   });
 
   it("fails closed without creating an event when the pack meter is not verified", async () => {
@@ -3091,6 +3103,30 @@ describe("BillingService recovery credit packs", () => {
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555"))
       .rejects.toThrow("could not be verified");
+    expect(usageEvents).toHaveLength(0);
+  });
+
+  it.each([
+    ["quantity", { quantity: null, costAmount: "0.00", costCurrency: "USD" }],
+    ["cost", { quantity: 0, costAmount: null, costCurrency: "USD" }],
+    ["currency", { quantity: 0, costAmount: "0.00", costCurrency: null }],
+  ])("fails closed when provider BEFORE %s evidence is missing", async (_name, usage) => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        usageEventHandles: ["message-meter", "credit-pack-meter"],
+        usageItems: [{
+          handle: "credit-pack-meter",
+          description: "Recovery credit pack",
+          price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
+          usage,
+        }],
+      })),
+    };
+    const service = new BillingService(provider, database as never);
+
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "56565656-5656-4565-8565-565656565656"))
+      .rejects.toThrow("before evidence is unavailable");
     expect(usageEvents).toHaveLength(0);
   });
 
@@ -3348,7 +3384,7 @@ describe("BillingService recovery credit packs", () => {
     const winningPurchase = {
       id: purchaseId,
       shopId: "shop-1",
-      status: "PENDING_BILLING",
+      status: "REQUESTED",
       creditsGranted: 100,
       usageEvent: winningUsageEvent,
     };
@@ -3370,7 +3406,7 @@ describe("BillingService recovery credit packs", () => {
     ).resolves.toMatchObject({
       id: purchaseId,
       shopId: "shop-1",
-      status: "PENDING_BILLING",
+      status: "REQUESTED",
     });
 
     expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);

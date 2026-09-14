@@ -1,14 +1,28 @@
-import BillingPurchaseHub from "@/components/dashboard/BillingPurchaseHub";
+import TopUpPurchasePanel from "@/components/dashboard/TopUpPurchasePanel";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { authenticate } from "@/shopify.server";
+import { billingService } from "@/services/billing/billing.service";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
-import { useLoaderData } from "react-router";
-import { mockBillingState } from "@/components/dashboard/billing-purchase.mock";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
+import { randomUUID } from "node:crypto";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 
-export async function loader({ request }) {
+export async function action({ request }: ActionFunctionArgs) {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/billing/options", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
+  const formData = await request.formData();
+  const purchase = await billingService.requestRecoveryCreditPack(
+    shop.id,
+    String(formData.get("intent") ?? ""),
+    String(formData.get("purchaseId") ?? ""),
+  );
+  return { purchasePending: purchase.status === "REQUESTED" };
+}
+export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
     const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
     assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
@@ -19,69 +33,30 @@ export async function loader({ request }) {
   const merchantUi = merchantUiContext(settings, session)
 
 
-  const plans = [
-  {
-    id: "free",
-    rank: 0,
-    monthlyPriceMinor: 0,
-    includedConversations: 5
-  },
-  {
-    id: "starter",
-    rank: 1,
-    monthlyPriceMinor: 3500,
-    includedConversations: 100
-  },
-  {
-    id: "growth",
-    rank: 2,
-    monthlyPriceMinor: 7500,
-    includedConversations: 250
-  },
-  {
-    id: "scale",
-    rank: 3,
-    monthlyPriceMinor: 14900,
-    includedConversations: 500
-  }
-]
-
-  const topUpOffers = [
-  {
-    id: "starter-5-v1",
-    planId: "starter",
-    chargeAmountMinor: 500,
-    currency: "GBP",
-    creditsGranted: 15
-  },
-  {
-    id: "starter-10-v1",
-    planId: "starter",
-    chargeAmountMinor: 1000,
-    currency: "GBP",
-    creditsGranted: 32
-  }
-]
+  const billing = await billingService.getMerchantBillingState(shop.id);
 
   return {
     merchantUi,
-    billing: {
-      currentPlanId: "starter",
-      monthlyUsed: 84,
-      purchasedCreditsAvailable: 18
+    topUpState: {
+      configured: billing.configured,
+      purchaseEligible: billing.purchaseEligible,
+      unavailableReason: billing.unavailableReason,
+      creditsPerPack: billing.creditsPerPack,
+      purchasedCreditsAvailable: billing.purchasedRecoveryCredits.available,
+      shopifyPackMeter: billing.shopifyPackMeter,
+      latestPurchase: billing.latestPurchase,
     },
-    plans,
-    topUpOffers,
+    purchaseId: randomUUID(),
   };
 }
 
 export default function BillingOptionsPage() {
   const {
     merchantUi,
-    billing,
-    plans,
-    topUpOffers,
+    topUpState,
+    purchaseId,
   } = useLoaderData();
+  const fetcher = useFetcher();
  const i18n = createMerchantI18n(merchantUi);
 
   return (
@@ -90,42 +65,8 @@ export default function BillingOptionsPage() {
             current={i18n.t("billingCommerce.page.title")}
             merchantUi={merchantUi}
           />
-        <BillingPurchaseHub
-  merchantUi={merchantUi}
-  currentPlanId={mockBillingState.currentPlanId}
-  monthlyUsed={mockBillingState.monthlyUsed}
-  purchasedCreditsAvailable={
-    mockBillingState.purchasedCreditsAvailable
-  }
-  plans={plans}
-  topUpOffers={topUpOffers}
-  onPurchaseTopUp={handleTopUp}
-  onChangePlan={handlePlanChange}
-/>
+        <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId }, { method: "post" })} />
         </s-page>
 
   );
 }
-
-const handleTopUp = (offer) => {
-  console.log("Top-up selected");
-  console.log({
-    offerId: offer.id,
-    planId: offer.planId,
-    chargeAmountMinor: offer.chargeAmountMinor,
-    currency: offer.currency,
-    creditsGranted: offer.creditsGranted,
-  });
-};
-
-const handlePlanChange = (plan) => {
-  console.log("Plan change selected");
-  console.log({
-    planId: plan.id,
-    planName: plan.name,
-    monthlyPriceMinor: plan.monthlyPriceMinor,
-    currency: plan.currency,
-    includedConversations: plan.includedConversations,
-    rank: plan.rank,
-  });
-};

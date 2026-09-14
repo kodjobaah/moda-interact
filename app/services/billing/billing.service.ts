@@ -210,6 +210,23 @@ function isPrismaUniqueConstraintError(error: unknown): boolean {
   );
 }
 
+function hasProviderBeforeEvidence(
+  usage: { quantity: number | null; costAmount: string | null; costCurrency: string | null } | null | undefined,
+): usage is { quantity: number; costAmount: string; costCurrency: string } {
+  return Boolean(
+    usage &&
+    isSafeNonNegativeInteger(usage.quantity) &&
+    typeof usage.costAmount === "string" &&
+    usage.costAmount.trim() &&
+    typeof usage.costCurrency === "string" &&
+    /^[A-Z]{3}$/.test(usage.costCurrency),
+  );
+}
+
+function unresolvedPurchaseMessage(): string {
+  return "A recovery credit pack is already awaiting Shopify confirmation.";
+}
+
 function matchesInitialFreeActivationToken(
   settings: { onboardingCompleted: boolean } | null,
   subscription: {
@@ -1052,8 +1069,8 @@ async getSubscription(
       paidPeriod.subscriptionId === subscription.id &&
       paidPeriod.planId === subscription.planId &&
       subscription.billingPeriodId === paidPeriod.id &&
-      subscription.observedShopifyPlanHandle === subscription.plan.shopifyPlanHandle &&
-      paidPeriod.shopifyPlanHandleSnapshot === subscription.plan.shopifyPlanHandle &&
+      subscription.observedShopifyPlanHandle === subscription.plan?.shopifyPlanHandle &&
+      paidPeriod.shopifyPlanHandleSnapshot === subscription.plan?.shopifyPlanHandle &&
       paidPeriod.planKindSnapshot === BillingPlanKind.PAID_METERED &&
       subscription.currentPeriodStart &&
       subscription.currentPeriodEnd &&
@@ -1240,6 +1257,16 @@ async getSubscription(
     const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
     let recoveryCreditPackMeterVerified = false;
     let recoveryCreditPackPurchaseEligible = false;
+    let shopifyPackMeter: {
+      handle: string;
+      description: string | null;
+      currency: string | null;
+      price: unknown;
+      currentQuantity: number | null;
+      currentCostAmount: string | null;
+      currentCostCurrency: string | null;
+    } | null = null;
+    let unavailableReason: string | null = null;
     const hasExactOpenLocalCycle = Boolean(
       subscription?.plan?.active &&
       subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
@@ -1249,7 +1276,7 @@ async getSubscription(
       subscription.currentPeriodEnd &&
       subscription.currentPeriodStart.getTime() < subscription.currentPeriodEnd.getTime(),
     );
-    const billingPeriodPhase: BillingPeriodPhase | null = hasExactOpenLocalCycle
+    const billingPeriodPhase: BillingPeriodPhase | null = hasExactOpenLocalCycle && subscription
       ? deriveBillingPeriodPhase(subscription.currentPeriodEnd)
       : null;
     if (
@@ -1260,24 +1287,50 @@ async getSubscription(
         const providerSubscription = await this.provider.getActiveSubscription({
           shopifyShopId: shop.shopifyShopId,
         });
+        const providerPackMeter = providerSubscription?.usageItems.find(
+          (item) => item.handle === packMeter,
+        );
+        if (providerPackMeter) {
+          shopifyPackMeter = {
+            handle: providerPackMeter.handle,
+            description: providerPackMeter.description,
+            currency: providerPackMeter.price.currency,
+            price: providerPackMeter.price,
+            currentQuantity: providerPackMeter.usage?.quantity ?? null,
+            currentCostAmount: providerPackMeter.usage?.costAmount ?? null,
+            currentCostCurrency: providerPackMeter.usage?.costCurrency ?? null,
+          };
+        }
         recoveryCreditPackMeterVerified = Boolean(
           providerSubscription &&
           packMeter &&
-          providerSubscription.planHandle === subscription.plan.shopifyPlanHandle &&
-          providerSubscription.usageEventHandles.includes(packMeter),
+          providerSubscription.planHandle === subscription?.plan?.shopifyPlanHandle &&
+          providerPackMeter &&
+          providerSubscription.usageEventHandles.includes(packMeter) &&
+          hasProviderBeforeEvidence(providerPackMeter.usage),
         );
         recoveryCreditPackPurchaseEligible = Boolean(
           recoveryCreditPackMeterVerified &&
           subscription &&
           providerSubscription &&
           hasMatchingBillingCycle(subscription, providerSubscription) &&
-          subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+          subscription?.billingPeriod?.status === BillingPeriodStatus.OPEN &&
           billingPeriodPhase === "ACTIVE",
         );
+        if (!recoveryCreditPackPurchaseEligible) {
+          unavailableReason = "Recovery credit packs are not currently available.";
+        }
       } catch {
         recoveryCreditPackMeterVerified = false;
+        unavailableReason = "Shopify billing details could not be verified.";
       }
     }
+
+    const latestPurchase = await (this.database.recoveryCreditPurchase?.findFirst?.({
+      where: { shopId },
+      orderBy: { createdAt: "desc" },
+      include: { usageEvent: true },
+    }) ?? Promise.resolve(null));
 
     const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
     const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
@@ -1373,6 +1426,27 @@ async getSubscription(
       recoveryCreditPackMeter: packMeter,
       recoveryCreditPackMeterVerified,
       recoveryCreditPackPurchaseEligible,
+      configured: Boolean(
+        subscription?.plan?.recoveryCreditPackEnabled &&
+        isSafeNonNegativeInteger(subscription.plan.recoveryCreditsPerPack) &&
+        subscription.plan.recoveryCreditsPerPack > 0,
+      ),
+      purchaseEligible: recoveryCreditPackPurchaseEligible,
+      unavailableReason,
+      creditsPerPack: subscription?.plan?.recoveryCreditsPerPack ?? null,
+      shopifyPackMeter,
+      latestPurchase: latestPurchase
+        ? {
+            id: latestPurchase.id,
+            status: latestPurchase.status,
+            creditsGranted: latestPurchase.creditsGranted,
+            currentAmount: latestPurchase.currentAmount,
+            reservedAmount: latestPurchase.reservedAmount,
+            createdAt: latestPurchase.createdAt.toISOString(),
+            activatedAt: latestPurchase.activatedAt?.toISOString() ?? null,
+            usageReportState: latestPurchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
+          }
+        : null,
       billingPeriodPhase,
     };
   }
@@ -1428,8 +1502,16 @@ async getSubscription(
     }
 
     const providerSubscription = await this.provider.getActiveSubscription({ shopifyShopId: shop.shopifyShopId });
-    if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerSubscription.usageEventHandles.includes(packMeter)) {
+    const providerPackMeter = providerSubscription?.usageItems.find((item) => item.handle === packMeter);
+    if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerPackMeter || !providerSubscription.usageEventHandles.includes(packMeter)) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
+    }
+    if (!providerSubscription.providerSubscriptionId) {
+      throw new Error("The Shopify subscription identity could not be verified.");
+    }
+    const providerBeforeEvidence = providerPackMeter.usage;
+    if (!hasProviderBeforeEvidence(providerBeforeEvidence)) {
+      throw new Error("Shopify recovery credit usage before evidence is unavailable.");
     }
     if (!hasMatchingBillingCycle(subscription, providerSubscription, verifiedBillingPeriodId)) {
       throw new Error("The current Shopify billing cycle could not be verified.");
@@ -1443,6 +1525,14 @@ async getSubscription(
 
     try {
       return await this.database.$transaction(async (transaction) => {
+      if ("$queryRaw" in transaction && typeof transaction.$queryRaw === "function") {
+        await transaction.$queryRaw(Prisma.sql`
+          SELECT "id"
+          FROM "billing"."Subscription"
+          WHERE "shopId" = ${shopId}
+          FOR UPDATE
+        `);
+      }
       const existing = await transaction.recoveryCreditPurchase.findUnique({
         where: { id: purchaseId },
         include: { usageEvent: true },
@@ -1451,6 +1541,18 @@ async getSubscription(
         if (existing.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
         return existing;
       }
+
+      const unresolved = await transaction.recoveryCreditPurchase.findFirst?.({
+        where: {
+          shopId,
+          status: "REQUESTED",
+          providerSubscriptionIdSnapshot: providerSubscription.providerSubscriptionId as string,
+          billingPeriodId: verifiedBillingPeriodId,
+          shopifyEventHandleSnapshot: packMeter,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+      if (unresolved) throw new Error(unresolvedPurchaseMessage());
 
       const currentSubscription = await transaction.subscription.findUnique({
         where: { shopId },
@@ -1505,9 +1607,18 @@ async getSubscription(
           id: purchaseId,
           shopId,
           planId: currentPlan.id,
+          billingPeriodId: currentSubscription.billingPeriodId as string,
           shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
           shopifyEventHandleSnapshot: packMeter,
+          providerSubscriptionIdSnapshot: providerSubscription.providerSubscriptionId as string,
+          providerUsageQuantityBeforeSnapshot: providerBeforeEvidence.quantity,
+          providerUsageCostBeforeSnapshot: providerBeforeEvidence.costAmount,
+          providerUsageCostCurrencyBeforeSnapshot: providerBeforeEvidence.costCurrency,
+          providerPriceSnapshot: providerPackMeter.price,
           creditsGranted,
+          currentAmount: 0,
+          reservedAmount: 0,
+          status: "REQUESTED",
           usageEventId: usageEvent.id,
         },
         include: { usageEvent: true },
