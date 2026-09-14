@@ -7,6 +7,8 @@ const localeDirectory = new URL("../../app/i18n/locales/", import.meta.url);
 
 describe("ARCH-007 billing translations", () => {
   const taskKeys = [
+    "billing.lifetimeFreeAllowance",
+    "billing.paidIncludedAllowance",
     "billing.purchasedRecoveryCredits",
     "billing.recoveryCreditPackDescription",
     "billing.recoveryCreditPackShopifyMeter",
@@ -44,8 +46,11 @@ describe("ARCH-007 billing translations", () => {
           granted: 100,
           committed: 20,
           reserved: 5,
+          refunding: 10,
           available: 75,
           quantity: 100,
+          remaining: 75,
+          allowance: 100,
         })).toEqual(expect.any(String));
       }
     }
