@@ -1,5 +1,21 @@
+import { createElement, type ReactNode } from "react";
 import { readFile } from "node:fs/promises";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useLoaderData } from "react-router";
+
+vi.mock("react-router", async () => {
+  const actual = await vi.importActual<typeof import("react-router")>(
+    "react-router",
+  );
+  return {
+    ...actual,
+    Link: ({ to, children }: { to: string; children: ReactNode }) =>
+      createElement("a", { href: to }, children),
+    useFetcher: vi.fn(() => ({ data: null, state: "idle" })),
+    useLoaderData: vi.fn(),
+  };
+});
 
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
@@ -55,7 +71,8 @@ vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
-const { loader } = await import("../../app/routes/app/billing/route");
+const { default: BillingRoute, loader } =
+  await import("../../app/routes/app/billing/route");
 const { loader: billingSelectLoader } =
   await import("../../app/routes/app/billing/select/route");
 const { action: billingAction } = await import("../../app/routes/app/billing/route");
@@ -63,6 +80,52 @@ const { action: billingOptionsAction } =
   await import("../../app/routes/app/billing/options/route");
 const { getMerchantSystemMessageAction } =
   await import("../../app/services/merchant-support/system-message-actions");
+
+const useLoaderDataMock = vi.mocked(useLoaderData);
+const renderBillingRoute = (overrides: Record<string, unknown> = {}) => {
+  useLoaderDataMock.mockReturnValue({
+    merchantUi: { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" },
+    subscription: {
+      status: "ACTIVE",
+      planKind: "FREE",
+      planName: "Free",
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+      cancelAtPeriodEnd: false,
+      pendingPlanName: null,
+      pendingEffectiveAt: null,
+    },
+    allowance: 10,
+    remaining: 10,
+    paidIncluded: null,
+    paidConfigurationUnavailable: false,
+    lifetimeFree: {
+      grantedQuantity: 10,
+      committedQuantity: 0,
+      reservedQuantity: 0,
+      remaining: 10,
+    },
+    usageQuantity: 0,
+    purchasedRecoveryCredits: {
+      grantedQuantity: 0,
+      committedQuantity: 0,
+      reservedQuantity: 0,
+      refundingQuantity: 0,
+      available: 0,
+    },
+    recoveryCreditPackEnabled: true,
+    recoveryCreditsPerPack: 10,
+    recoveryCreditPackMeter: "credit-pack-meter",
+    recoveryCreditPackMeterVerified: true,
+    recoveryCreditPackPurchaseEligible: true,
+    billingPeriodPhase: "ACTIVE",
+    lifecycleRestriction: "AVAILABLE",
+    purchaseId: "purchase-1",
+    ...overrides,
+  } as never);
+  return renderToStaticMarkup(createElement(BillingRoute));
+};
 
 const activeFreeSubscription = {
   status: "ACTIVE",
@@ -146,6 +209,29 @@ describe("merchant billing UI", () => {
       request: new Request("https://example.test/app/billing", { method: "POST", body: "" }),
     } as never)).rejects.toThrow("Shopify billing is restricted");
     expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+  });
+
+  it("hides top-up while scheduled cancellation keeps Shopify plan management", () => {
+    const markup = renderBillingRoute({
+      subscription: {
+        ...activeFreeSubscription,
+        cancelAtPeriodEnd: true,
+        pendingPlanName: null,
+        pendingEffectiveAt: null,
+      },
+    });
+
+    expect(markup).toContain('href="/app/billing/select"');
+    expect(markup).not.toContain("<form");
+  });
+
+  it("hides top-up and plan management while capacity is frozen", () => {
+    const markup = renderBillingRoute({
+      lifecycleRestriction: "CONTRACT_FROZEN",
+    });
+
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain('href="/app/billing/select"');
   });
 
   it("fails closed for a frozen capacity projection", async () => {

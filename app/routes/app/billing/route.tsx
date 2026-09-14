@@ -33,7 +33,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     where: { shopId: shop.id },
   });
 
-  const state = await billingService.getMerchantBillingState(shop.id);
+  const [state, capacity] = await Promise.all([
+    billingService.getMerchantBillingState(shop.id),
+    billingService.getMerchantRecoveryCapacityState(shop.id),
+  ]);
 
   return {
     merchantUi: merchantUiContext(settings, session),
@@ -69,6 +72,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     recoveryCreditPackPurchaseEligible:
       state.recoveryCreditPackPurchaseEligible,
     billingPeriodPhase: state.billingPeriodPhase,
+    lifecycleRestriction: capacity.availability,
     purchaseId: randomUUID(),
   };
 }
@@ -120,6 +124,7 @@ export default function BillingRoute() {
     recoveryCreditPackMeterVerified,
     recoveryCreditPackPurchaseEligible,
     billingPeriodPhase,
+    lifecycleRestriction,
     purchaseId,
   } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
@@ -129,6 +134,9 @@ export default function BillingRoute() {
     subscription &&
     (subscription.status === "ACTIVE" || subscription.status === "TRIALING") &&
     !paidConfigurationUnavailable,
+  );
+  const scheduledFullCancellation = Boolean(
+    subscription?.cancelAtPeriodEnd === true && !subscription.pendingPlanName,
   );
 
   return (
@@ -240,6 +248,8 @@ export default function BillingRoute() {
               })}
             </p>
             {billingPeriodPhase === "ACTIVE" &&
+            !scheduledFullCancellation &&
+            lifecycleRestriction !== "CONTRACT_FROZEN" &&
             recoveryCreditPackPurchaseEligible &&
             recoveryCreditPackEnabled &&
             recoveryCreditsPerPack !== null &&
@@ -278,9 +288,11 @@ export default function BillingRoute() {
         </>
       )}
 
-      <Link to="/app/billing/select">
-        {i18n.t(isFree ? "billing.viewPlans" : "billing.changePlan")}
-      </Link>
+      {lifecycleRestriction !== "CONTRACT_FROZEN" ? (
+        <Link to="/app/billing/select">
+          {i18n.t(isFree ? "billing.viewPlans" : "billing.changePlan")}
+        </Link>
+      ) : null}
     </div>
   );
 }
