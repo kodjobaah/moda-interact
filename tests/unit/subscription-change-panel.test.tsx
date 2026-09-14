@@ -61,7 +61,8 @@ describe("SubscriptionChangePanel", () => {
     expect(noActive).toContain("plans");
 
     const unavailable = render({ providerVerificationState: "VERIFICATION_UNAVAILABLE", current: null, pending: null });
-    expect(unavailable).toContain("safely mapped");
+    expect(unavailable).toContain("verify your current Shopify billing details");
+    expect(unavailable).not.toContain("safely mapped");
   });
 
   it("does not invent a currency when the provider omits it", () => {
@@ -78,6 +79,19 @@ describe("SubscriptionChangePanel", () => {
     const markup = render();
     expect(markup).toContain('href="/app/billing/select"');
     expect(markup).not.toContain("moda-interact-admin");
+  });
+
+  it("renders an unconfirmed hosted selection without commercial facts", () => {
+    const markup = render({
+      pending: null,
+      requestedSelection: { shopifyPlanHandle: "scale" },
+    });
+    expect(markup).toContain("scale");
+    expect(markup).toContain("Waiting for confirmation from Shopify.");
+    expect(markup).toContain("moda-provider-plan-awaiting-confirmation");
+    const requestedCard = markup.slice(markup.indexOf("moda-provider-plan-awaiting-confirmation"));
+    expect(requestedCard).not.toContain("£75.00");
+    expect(requestedCard).not.toContain("EVERY_30_DAYS");
   });
 
   it("contains no local catalogue, rank inference, or provider mutation", async () => {

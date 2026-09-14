@@ -18,6 +18,14 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
+function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
+  const params = new URLSearchParams({ plan_change: result });
+  if (result === "mismatch" || result === "unverified") {
+    params.set("requested_plan_handle", requestedPlanHandle);
+  }
+  return `/app/billing/options?${params.toString()}`;
+}
+
 type BillingCallbackSubscription = Pick<
   Subscription,
   | "id"
@@ -183,7 +191,7 @@ export async function loader({
         expectedNextReconcileAt: retry.nextReconcileAt,
       });
     }
-    return redirect("/app/billing/options?plan_change=unverified");
+    return redirect(billingOptionsRedirect("unverified", requestedPlanHandle));
   }
 
   const result = await billingService.recordHostedPlanChangeReturn({
@@ -204,7 +212,7 @@ export async function loader({
     });
   }
 
-  return redirect(`/app/billing/options?plan_change=${result.result}`);
+  return redirect(billingOptionsRedirect(result.result, requestedPlanHandle));
 }
 
 export default function BillingCallback() {

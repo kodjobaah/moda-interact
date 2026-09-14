@@ -18,6 +18,17 @@ const billingSelectSource = await readFile(
   new URL("../../app/routes/app/billing/select/route.jsx", import.meta.url),
   "utf8",
 );
+const billingOptionsRouteSource = await readFile(
+  new URL("../../app/routes/app/billing/options/route.tsx", import.meta.url),
+  "utf8",
+);
+const billingPurchaseHubSource = await readFile(
+  new URL(
+    "../../app/components/dashboard/BillingPurchaseHub.jsx",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -62,6 +73,29 @@ beforeEach(() => {
 });
 
 describe("merchant billing UI", () => {
+  it("composes production billing authority without mock or local plan fallbacks", () => {
+    expect(billingOptionsRouteSource).toContain(
+      "getMerchantShopifySubscriptionState(shop.id)",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "getMerchantRecoveryCapacityState(shop.id)",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "getMerchantShopifyLifecycleState(shop.id)",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "getMerchantBillingState(shop.id)",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      'managePlansHref="/app/billing/select"',
+    );
+    expect(billingOptionsRouteSource).not.toContain("fetch(");
+    expect(billingPurchaseHubSource).not.toContain("billing-purchase.mock");
+    expect(billingPurchaseHubSource).not.toContain("plans[0]");
+    expect(billingPurchaseHubSource).toContain("TopUpPurchasePanel");
+    expect(billingPurchaseHubSource).toContain("SubscriptionChangePanel");
+  });
+
   it("returns the billing summary for a no-contract merchant", async () => {
     getMerchantBillingState.mockResolvedValue({
       subscription: { status: "NO_CONTRACT" },
