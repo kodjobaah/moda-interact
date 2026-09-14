@@ -27,6 +27,7 @@ export default [
     index("./routes/app/home/route.jsx"),
     route("additional", "./routes/app/additional/route.jsx"),
     route("billing", "./routes/app/billing/route.tsx"),
+    route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
     route("merchant-support", "./routes/app/merchant-support/route.jsx"),
     route("usage", "./routes/app/usage/route.jsx"),

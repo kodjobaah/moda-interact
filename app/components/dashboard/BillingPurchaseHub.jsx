@@ -39,6 +39,7 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
       {capacity.purchased ? <div><strong>{capacity.purchased.available}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div> : null}
     </> : <div><strong>{i18n.t("common.unavailable")}</strong><span>{i18n.t("billingCommerce.currentPlan")}</span></div>}</div><div className="moda-summary-graphic"><span></span><span></span><span></span><span></span><span></span></div></div></section>
     <div className="moda-view-switch"><button className={view==="topup"?"is-active":""} onClick={()=>setView("topup")}>{i18n.t("billingCommerce.actions.topup")}</button><button className={view==="plans"?"is-active":""} onClick={()=>setView("plans")}>{i18n.t("billingCommerce.actions.plan")}</button></div>
+    <p><a href="/app/billing/recovery-credit-purchases">{i18n.t("billingPurchases.manageLink")}</a></p>
     {view === "topup" ? (
       <><TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} onPurchaseTopUp={onPurchaseTopUp} />{topUpVerificationUnavailable ? <p>{i18n.t("billingCommerce.topup.verificationUnavailable")}</p> : null}</>
     ) : (

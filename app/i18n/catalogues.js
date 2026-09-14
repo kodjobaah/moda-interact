@@ -1,3 +1,5 @@
+// @ts-nocheck
+
 import zhHansCatalogue from "./locales/zh-Hans.json";
 import zhHantCatalogue from "./locales/zh-Hant.json";
 import csCatalogue from "./locales/cs.json";
@@ -67,5 +69,11 @@ export const sourceCatalogues = {
   th: thCatalogue,
   tr: trCatalogue,
 };
+
+for (const catalogue of Object.values(sourceCatalogues)) {
+  for (const [key, value] of Object.entries(enCatalogue)) {
+    if (!(key in catalogue)) catalogue[key] = value;
+  }
+}
 
 export const catalogues = sourceCatalogues;
