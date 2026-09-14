@@ -190,3 +190,60 @@ export type MerchantShopifyLifecycleState =
       subscription: null;
       latestEvent: null;
     };
+
+export type MerchantRecoveryCapacityState = {
+  availability:
+    | "AVAILABLE"
+    | "EXHAUSTED"
+    | "CONTRACT_REQUIRED"
+    | "CONTRACT_FROZEN"
+    | "CONFIGURATION_UNAVAILABLE";
+  capacitySource:
+    | "FREE_LIFETIME"
+    | "PAID_INCLUDED"
+    | "PROMOTIONAL"
+    | "PURCHASED"
+    | "EXHAUSTED"
+    | null;
+  canStartRecovery: boolean;
+  reconciledPlanMapping: {
+    id: string;
+    shopifyPlanHandle: string;
+    name: string;
+    kind: "FREE" | "PAID_METERED";
+  } | null;
+  observedShopifyPlanHandle: string | null;
+  freeLifetime: {
+    granted: number;
+    committed: number;
+    reserved: number;
+    remaining: number;
+  } | null;
+  paidIncluded: {
+    billingPeriodId: string;
+    periodStart: string;
+    periodEnd: string;
+    granted: number;
+    committed: number;
+    reserved: number;
+    forfeited: number;
+    remaining: number;
+  } | null;
+  promotional: {
+    granted: number;
+    committed: number;
+    reserved: number;
+    remaining: number;
+  };
+  purchased: {
+    granted: number;
+    committed: number;
+    reserved: number;
+    refunding: number;
+    available: number;
+  };
+  topUpConfiguration: {
+    enabled: boolean;
+    creditsPerPack: number | null;
+  };
+};

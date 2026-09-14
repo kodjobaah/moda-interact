@@ -1931,6 +1931,229 @@ describe("BillingService merchant billing state", () => {
   });
 });
 
+function createRecoveryCapacityDatabase({
+  planKind = "FREE",
+  subscriptionStatus = "ACTIVE",
+  lifetimeCounter = { grantedQuantity: 10, committedQuantity: 2, reservedQuantity: 1 },
+  purchasedCounter = { grantedQuantity: 20, committedQuantity: 5, reservedQuantity: 2, refundingQuantity: 3 },
+  periodCounter = { grantedQuantity: 30, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 },
+  period = {},
+  selection = null,
+}: {
+  planKind?: "FREE" | "PAID_METERED";
+  subscriptionStatus?: string;
+  lifetimeCounter?: Record<string, number> | null;
+  purchasedCounter?: Record<string, number> | null;
+  periodCounter?: Record<string, number> | null;
+  period?: Record<string, unknown> | null;
+  selection?: Record<string, unknown> | null;
+} = {}) {
+  const plan = {
+    id: "plan-1",
+    shopifyPlanHandle: planKind === "FREE" ? "free" : "growth",
+    name: planKind === "FREE" ? "Free" : "Growth",
+    kind: planKind,
+    active: true,
+    recoveryCreditPackEnabled: true,
+    recoveryCreditsPerPack: 50,
+  };
+  const currentPeriod = period === null ? null : {
+    id: "period-1",
+    shopId: "shop-1",
+    subscriptionId: "subscription-1",
+    planId: "plan-1",
+    shopifyPlanHandleSnapshot: planKind === "FREE" ? "free" : "growth",
+    planKindSnapshot: "PAID_METERED",
+    periodStart,
+    periodEnd,
+    status: "OPEN",
+    entitlementCounters: periodCounter ? [{
+      shopId: "shop-1",
+      billingPeriodId: "period-1",
+      counter: "INCLUDED_RECOVERY_CREDITS",
+      ...periodCounter,
+    }] : [],
+    ...period,
+  };
+  const subscription = {
+    id: "subscription-1",
+    shopId: "shop-1",
+    status: subscriptionStatus,
+    planId: "plan-1",
+    observedShopifyPlanHandle: plan.shopifyPlanHandle,
+    billingPeriodId: currentPeriod?.id ?? null,
+    currentPeriodStart: currentPeriod?.periodStart ?? null,
+    currentPeriodEnd: currentPeriod?.periodEnd ?? null,
+    plan,
+    billingPeriod: currentPeriod,
+  };
+  const database = {
+    subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+    shopEntitlementCounter: {
+      findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
+        where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS" ? purchasedCounter : lifetimeCounter),
+    },
+    merchantPromotionSelection: { findUnique: vi.fn().mockResolvedValue(selection) },
+    usageEvent: { aggregate: vi.fn() },
+    platformBillingPolicy: { findUnique: vi.fn() },
+  };
+  return { database, subscription, plan, currentPeriod };
+}
+
+describe("BillingService local recovery capacity", () => {
+  it("uses purchased capacity before lifetime Free capacity", async () => {
+    const { database } = createRecoveryCapacityDatabase();
+    const provider = { getActiveSubscription: vi.fn() };
+
+    const result = await new BillingService(provider, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "PURCHASED", canStartRecovery: true });
+    expect(result.purchased.available).toBe(10);
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(database.usageEvent.aggregate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to lifetime Free capacity when purchased capacity is exhausted", async () => {
+    const { database } = createRecoveryCapacityDatabase({ purchasedCounter: { grantedQuantity: 10, committedQuantity: 7, reservedQuantity: 3, refundingQuantity: 1 } });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "FREE_LIFETIME" });
+  });
+
+  it("accounts for reserved lifetime Free credits and reports exhaustion", async () => {
+    const { database } = createRecoveryCapacityDatabase({ purchasedCounter: null, lifetimeCounter: { grantedQuantity: 5, committedQuantity: 2, reservedQuantity: 3 } });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result.freeLifetime).toMatchObject({ granted: 5, committed: 2, reserved: 3, remaining: 0 });
+    expect(result).toMatchObject({ availability: "EXHAUSTED", capacitySource: "EXHAUSTED", canStartRecovery: false });
+  });
+
+  it("uses paid included capacity before purchased capacity", async () => {
+    const { database } = createRecoveryCapacityDatabase({ planKind: "PAID_METERED", purchasedCounter: null });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "PAID_INCLUDED" });
+    expect(result.paidIncluded).toMatchObject({ granted: 30, committed: 4, reserved: 3, forfeited: 2, remaining: 21 });
+    expect(result.reconciledPlanMapping).toMatchObject({ id: "plan-1", shopifyPlanHandle: "growth", kind: "PAID_METERED" });
+  });
+
+  it("falls back from exhausted paid included capacity to purchased capacity", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      planKind: "PAID_METERED",
+      periodCounter: { grantedQuantity: 30, committedQuantity: 20, reservedQuantity: 7, forfeitedQuantity: 3 },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "PURCHASED" });
+  });
+
+  it("uses promotional capacity first and reduces it by reserved quantity", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      selection: {
+        promotionalCreditGrant: {
+          quantity: 12,
+          committedQuantity: 2,
+          reservedQuantity: 4,
+          campaign: {
+            scope: "GLOBAL",
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        },
+      },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "PROMOTIONAL" });
+    expect(result.promotional).toMatchObject({ granted: 12, committed: 2, reserved: 4, remaining: 6 });
+  });
+
+  it("treats an unavailable selected campaign as zero promotional spendability", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      planKind: "PAID_METERED",
+      purchasedCounter: null,
+      periodCounter: null,
+      selection: {
+        promotionalCreditGrant: {
+          quantity: 12,
+          committedQuantity: 0,
+          reservedQuantity: 0,
+          campaign: {
+            scope: "PLAN",
+            targetPlanId: "other-plan",
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        },
+      },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result.promotional).toEqual({ granted: 0, committed: 0, reserved: 0, remaining: 0 });
+    expect(result).toMatchObject({ availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null });
+  });
+
+  it("falls back from unavailable promotion and exhausted paid capacity to lifetime Free", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      planKind: "PAID_METERED",
+      purchasedCounter: null,
+      periodCounter: { grantedQuantity: 30, committedQuantity: 20, reservedQuantity: 7, forfeitedQuantity: 3 },
+      selection: {
+        promotionalCreditGrant: {
+          quantity: 12,
+          committedQuantity: 0,
+          reservedQuantity: 0,
+          campaign: {
+            scope: "PLAN",
+            targetPlanId: "other-plan",
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        },
+      },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "FREE_LIFETIME" });
+  });
+
+  it.each([
+    ["missing period", { period: null }],
+    ["missing period counter", { periodCounter: null }],
+  ])("returns configuration unavailable for a paid projection with %s", async (_name, overrides) => {
+    const { database } = createRecoveryCapacityDatabase({ planKind: "PAID_METERED", ...overrides });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false });
+  });
+
+  it.each([
+    ["NO_CONTRACT", "CONTRACT_REQUIRED"],
+    ["FROZEN", "CONTRACT_FROZEN"],
+  ] as const)("blocks capacity for %s even when balances remain", async (subscriptionStatus, availability) => {
+    const { database } = createRecoveryCapacityDatabase({ subscriptionStatus, purchasedCounter: { grantedQuantity: 20, committedQuantity: 0, reservedQuantity: 0, refundingQuantity: 0 } });
+    const provider = { getActiveSubscription: vi.fn() };
+
+    const result = await new BillingService(provider, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability, capacitySource: null, canStartRecovery: false });
+    expect(result.purchased.available).toBe(20);
+    expect(result.freeLifetime?.remaining).toBe(7);
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+  });
+});
+
 describe("BillingService recovery credit packs", () => {
   it.each([
     ["FREE", { kind: "FREE", shopifyUsageEventHandle: null }],
