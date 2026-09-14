@@ -2074,6 +2074,53 @@ describe("BillingService local recovery capacity", () => {
     expect(result.promotional).toMatchObject({ granted: 12, committed: 2, reserved: 4, remaining: 6 });
   });
 
+  it("falls from a zero promotional grant to purchased capacity", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      selection: {
+        promotionalCreditGrant: {
+          quantity: 4,
+          committedQuantity: 4,
+          reservedQuantity: 0,
+          campaign: {
+            scope: "GLOBAL",
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        },
+      },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result.promotional.remaining).toBe(0);
+    expect(result.capacitySource).toBe("PURCHASED");
+  });
+
+  it("lets usable promotion outrank paid included capacity", async () => {
+    const { database } = createRecoveryCapacityDatabase({
+      planKind: "PAID_METERED",
+      selection: {
+        promotionalCreditGrant: {
+          quantity: 8,
+          committedQuantity: 1,
+          reservedQuantity: 1,
+          campaign: {
+            scope: "PLAN",
+            targetPlanId: "plan-1",
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        },
+      },
+    });
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result).toMatchObject({ availability: "AVAILABLE", capacitySource: "PROMOTIONAL" });
+  });
+
   it("treats an unavailable selected campaign as zero promotional spendability", async () => {
     const { database } = createRecoveryCapacityDatabase({
       planKind: "PAID_METERED",
