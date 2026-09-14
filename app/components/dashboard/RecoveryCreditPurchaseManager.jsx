@@ -28,16 +28,16 @@ function outcomeText(i18n, outcome) {
   return i18n.t(`billingPurchases.outcome.${outcome.code}`, values);
 }
 
-export default function RecoveryCreditPurchaseManager({ merchantUi, page }) {
+export default function RecoveryCreditPurchaseManager({ merchantUi, page, filter }) {
   const i18n = createMerchantI18n(merchantUi);
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [searchParams, setSearchParams] = useSearchParams();
+  void searchParams;
   const [selected, setSelected] = useState([]);
   const [dialog, setDialog] = useState(null);
-  const filter = FILTERS.includes(searchParams.get("filter")) ? searchParams.get("filter") : "ACTIVE";
   const purchases = useMemo(() => page?.purchases ?? [], [page]);
-  const visible = useMemo(() => filter === "ALL" ? purchases : purchases.filter((purchase) => purchase.status === filter), [filter, purchases]);
+  const visible = purchases;
   const eligibleVisible = useMemo(() => visible.filter(eligible), [visible]);
   const selectedPurchases = purchases.filter((purchase) => selected.includes(purchase.id) && eligible(purchase));
   const isSubmitting = fetcher.state !== "idle";

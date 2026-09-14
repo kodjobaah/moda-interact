@@ -53,6 +53,7 @@ function render() {
   return renderToStaticMarkup(
     <RecoveryCreditPurchaseManager
       merchantUi={merchantUi}
+      filter={filter}
       page={{
         page: 1,
         pageSize: 20,
@@ -105,5 +106,17 @@ describe("purchased credit history manager", () => {
     expect(routeSource).toContain('capability: "manage-billing"');
     expect(routeSource).toContain("shopId: shop.id");
     expect(routesSource).toContain('route("billing/recovery-credit-purchases"');
+    expect(routeSource).toContain("FILTER_TO_STATUS");
+    expect(routeSource).toContain('resolvePurchaseHistoryFilter(url.searchParams.get("filter"))');
+    expect(managerSource).toContain("const visible = purchases;");
+    expect(managerSource).not.toContain("purchases.filter((purchase) => purchase.status === filter)");
+  });
+
+  it("keeps server-provided rows visible and preserves the canonical filter during pagination", () => {
+    filter = "ALL";
+    const markup = render();
+    expect(markup).toContain("Awaiting Shopify confirmation");
+    expect(managerSource).toContain('setSearchParams({ filter, page: String((page?.page ?? 1) - 1) })');
+    expect(managerSource).toContain('setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })');
   });
 });

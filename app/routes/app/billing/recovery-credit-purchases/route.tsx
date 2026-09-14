@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { RecoveryCreditPurchaseStatus } from "@prisma/client";
 import { useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "@/shopify.server";
@@ -10,18 +11,48 @@ import db from "@/db.server";
 import RecoveryCreditPurchaseManager from "@/components/dashboard/RecoveryCreditPurchaseManager";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 
+const PURCHASE_HISTORY_FILTERS = [
+  "ACTIVE",
+  "WITHDRAWN",
+  "COMPLETED",
+  "REFUNDED",
+  "ALL",
+] as const;
+
+type PurchaseHistoryFilter = (typeof PURCHASE_HISTORY_FILTERS)[number];
+
+const FILTER_TO_STATUS: Record<
+  PurchaseHistoryFilter,
+  RecoveryCreditPurchaseStatus | undefined
+> = {
+  ACTIVE: RecoveryCreditPurchaseStatus.ACTIVE,
+  WITHDRAWN: RecoveryCreditPurchaseStatus.WITHDRAWN,
+  COMPLETED: RecoveryCreditPurchaseStatus.COMPLETED,
+  REFUNDED: RecoveryCreditPurchaseStatus.REFUNDED,
+  ALL: undefined,
+};
+
+function resolvePurchaseHistoryFilter(value: string | null): PurchaseHistoryFilter {
+  return PURCHASE_HISTORY_FILTERS.includes(value as PurchaseHistoryFilter)
+    ? (value as PurchaseHistoryFilter)
+    : "ACTIVE";
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/billing/recovery-credit-purchases", capability: "read-billing", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const url = new URL(request.url);
+  const filter = resolvePurchaseHistoryFilter(url.searchParams.get("filter"));
   return {
     merchantUi: merchantUiContext(settings, session),
+    filter,
     page: await recoveryCreditPurchaseManagementService.listPurchaseHistory({
       shopId: shop.id,
       page: Number(url.searchParams.get("page") ?? "1"),
       pageSize: Number(url.searchParams.get("pageSize") ?? "20"),
+      status: FILTER_TO_STATUS[filter],
     }),
   };
 }
@@ -55,7 +86,7 @@ export default function RecoveryCreditPurchasesRoute() {
   const i18n = createMerchantI18n(data.merchantUi);
   return <s-page heading={i18n.t("billingPurchases.title")}>
     <Breadcrumbs current={i18n.t("billingPurchases.title")} merchantUi={data.merchantUi} />
-    <RecoveryCreditPurchaseManager merchantUi={data.merchantUi} page={data.page} />
+    <RecoveryCreditPurchaseManager merchantUi={data.merchantUi} page={data.page} filter={data.filter} />
   </s-page>;
 }
 

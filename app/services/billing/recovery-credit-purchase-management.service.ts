@@ -204,10 +204,13 @@ function outcomeForPurchase(purchase: PurchaseRow): RefundOutcome {
 export class RecoveryCreditPurchaseManagementService {
   constructor(private readonly database: Database = prisma) {}
 
-  async listPurchaseHistory(input: { shopId: string; page?: number; pageSize?: number }): Promise<PurchaseHistoryPage> {
+  async listPurchaseHistory(input: { shopId: string; page?: number; pageSize?: number; status?: RecoveryCreditPurchaseStatus }): Promise<PurchaseHistoryPage> {
     const page = pageNumber(input.page);
     const size = pageSize(input.pageSize);
-    const where = { shopId: input.shopId };
+    const where: Prisma.RecoveryCreditPurchaseWhereInput = {
+      shopId: input.shopId,
+      ...(input.status ? { status: input.status } : {}),
+    };
     const [total, purchases] = await Promise.all([
       this.database.recoveryCreditPurchase.count({ where }),
       this.database.recoveryCreditPurchase.findMany({

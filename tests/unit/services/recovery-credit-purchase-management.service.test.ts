@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
+import { RecoveryCreditPurchaseStatus } from "@prisma/client";
 
 import { RecoveryCreditPurchaseManagementService } from "../../../app/services/billing/recovery-credit-purchase-management.service";
 
@@ -38,7 +39,8 @@ function database(purchases: any[]) {
       updateMany: vi.fn(async ({ where, data }: any) => { if (where.version !== aggregate.version) return { count: 0 }; aggregate.refundingQuantity += data.refundingQuantity.increment ?? -data.refundingQuantity.decrement; aggregate.version += 1; return { count: 1 }; }),
     },
   };
-  return { database: { recoveryCreditPurchase: { count: vi.fn(async ({ where }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).length), findMany: vi.fn(async ({ where, take }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).slice(0, take)), findFirst: vi.fn(async ({ where }: any) => { const row = rows.get(where.id); return row?.shopId === where.shopId ? row : null; }) }, recoveryCreditRefund: { findUnique: vi.fn(async ({ where }: any) => { const refund = refunds.get(where.requestKey); return refund ? { ...refund, purchase: rows.get(refund.purchaseId) } : null; }) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
+  const matches = (row: any, where: any) => row.shopId === where.shopId && (!where.status || row.status === where.status);
+  return { database: { recoveryCreditPurchase: { count: vi.fn(async ({ where }: any) => [...rows.values()].filter((row) => matches(row, where)).length), findMany: vi.fn(async ({ where, take }: any) => [...rows.values()].filter((row) => matches(row, where)).slice(0, take)), findFirst: vi.fn(async ({ where }: any) => { const row = rows.get(where.id); return row?.shopId === where.shopId ? row : null; }) }, recoveryCreditRefund: { findUnique: vi.fn(async ({ where }: any) => { const refund = refunds.get(where.requestKey); return refund ? { ...refund, purchase: rows.get(refund.purchaseId) } : null; }) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
 }
 
 describe("RecoveryCreditPurchaseManagementService", () => {
@@ -49,6 +51,28 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(result.purchases).toHaveLength(1);
     expect(result.purchases[0].availableAmount).toBe(2);
     expect(fixture.database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: "shop-1" }, take: 50 }));
+  });
+
+  it("filters status before pagination with one shared shop predicate", async () => {
+    const fixture = database([
+      purchase("purchase-5", "shop-1", "COMPLETED"),
+      purchase("purchase-4", "shop-1", "COMPLETED"),
+      purchase("purchase-3", "shop-1", "ACTIVE"),
+      purchase("purchase-2", "shop-1", "ACTIVE"),
+      purchase("purchase-1", "shop-1", "ACTIVE"),
+      purchase("other", "shop-2", "ACTIVE"),
+    ]);
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database);
+    const active = await service.listPurchaseHistory({ shopId: "shop-1", page: 1, pageSize: 2, status: RecoveryCreditPurchaseStatus.ACTIVE });
+    expect(active).toMatchObject({ total: 3, page: 1, pageSize: 2 });
+    expect(active.purchases.every((row) => row.status === RecoveryCreditPurchaseStatus.ACTIVE)).toBe(true);
+    expect(active.purchases.map((row) => row.id)).not.toContain("other");
+    expect(fixture.database.recoveryCreditPurchase.count).toHaveBeenCalledWith({ where: { shopId: "shop-1", status: RecoveryCreditPurchaseStatus.ACTIVE } });
+    expect(fixture.database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: "shop-1", status: RecoveryCreditPurchaseStatus.ACTIVE }, take: 2 }));
+
+    await service.listPurchaseHistory({ shopId: "shop-1" });
+    expect(fixture.database.recoveryCreditPurchase.count).toHaveBeenLastCalledWith({ where: { shopId: "shop-1" } });
+    expect(fixture.database.recoveryCreditPurchase.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { shopId: "shop-1" } }));
   });
 
   it("maps every canonical purchase status without exposing provider internals", async () => {

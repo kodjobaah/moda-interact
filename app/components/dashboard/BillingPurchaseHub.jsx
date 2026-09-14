@@ -14,14 +14,17 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
   const stateCopy = lifecycleState === "FROZEN"
     ? i18n.t("billing.frozenDescription")
     : scheduledCancellation && !pending && current?.currentPeriodEnd
-      ? i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current?.currentPeriodEnd) })
+      ? i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current.currentPeriodEnd) })
       : capacity?.availability === "CONTRACT_REQUIRED"
         ? i18n.t("billing.contractRequiredDescription")
         : billingPeriodPhase === "DRAINING" || billingPeriodPhase === "RECONCILING"
           ? i18n.t("billing.configurationUnavailableDescription")
-    : verificationState === "VERIFICATION_UNAVAILABLE"
-      ? i18n.t("billing.verificationUnavailableDescription")
-    : null;
+            : verificationState === "VERIFICATION_UNAVAILABLE"
+              ? i18n.t("billing.verificationUnavailableDescription")
+              : verificationState === "ACTIVE_SUBSCRIPTION"
+                && mappingStatus === "UNMAPPED"
+                  ? i18n.t("billing.configurationUnavailableDescription")
+                  : null;
   const topUpVerificationUnavailable = topUpState.configured
     && !topUpState.purchaseEligible
     && topUpState.latestPurchase?.status !== "REQUESTED"
