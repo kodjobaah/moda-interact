@@ -181,7 +181,64 @@ describe("merchant billing UI", () => {
     });
   });
 
-  it("returns lifetime capacity for a mapped Paid subscription", async () => {
+  it("reads paid included capacity from the current period counter", async () => {
+    getMerchantBillingState.mockResolvedValue({
+      subscription: {
+        status: "ACTIVE",
+        plan: { kind: "PAID_METERED", name: "Growth" },
+        observedShopifyPlanHandle: "growth",
+        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        pendingPlan: null,
+        pendingEffectiveAt: null,
+      },
+      allowance: null,
+      remaining: null,
+      paidIncluded: {
+        grantedQuantity: 100,
+        committedQuantity: 12,
+        reservedQuantity: 8,
+        forfeitedQuantity: 5,
+        remaining: 75,
+      },
+      paidConfigurationUnavailable: false,
+      lifetimeFree: {
+        grantedQuantity: 50,
+        committedQuantity: 10,
+        reservedQuantity: 5,
+        remaining: 35,
+      },
+      usageQuantity: 12,
+      purchasedRecoveryCredits: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 5,
+        refundingQuantity: 10,
+        available: 65,
+      },
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app/billing"),
+    } as never);
+
+    expect(result).toMatchObject({
+      allowance: null,
+      remaining: null,
+      paidIncluded: { remaining: 75 },
+      subscription: {
+        currentPeriodStart: "2026-09-01T00:00:00.000Z",
+        currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+      },
+    });
+    expect(billingRouteSource).toContain('i18n.t("billing.paidIncludedAllowance"');
+    expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
+    expect(billingRouteSource).toContain('subscription.planKind === "PAID_METERED" && paidIncluded');
+  });
+
+  it("fails closed when a paid period or period counter is unavailable", async () => {
     getMerchantBillingState.mockResolvedValue({
       subscription: {
         status: "ACTIVE",
@@ -194,17 +251,26 @@ describe("merchant billing UI", () => {
         pendingPlan: null,
         pendingEffectiveAt: null,
       },
-      allowance: 10,
-      remaining: 3,
-      usageQuantity: 12,
+      allowance: null,
+      remaining: null,
+      paidIncluded: null,
+      paidConfigurationUnavailable: true,
+      lifetimeFree: {
+        grantedQuantity: 50,
+        committedQuantity: 10,
+        reservedQuantity: 5,
+        remaining: 35,
+      },
+      usageQuantity: 999,
     });
 
     const result = await loader({
       request: new Request("https://example.test/app/billing"),
     } as never);
 
-    expect(result).toMatchObject({ allowance: 10, remaining: 3 });
-    expect(billingRouteSource).toContain("{allowance !== null ? (");
+    expect(result.paidConfigurationUnavailable).toBe(true);
+    expect(billingRouteSource).toContain("!paidConfigurationUnavailable");
+    expect(billingRouteSource).toContain("billing.configurationUnavailable");
   });
 
   it("fails closed for an unmapped projection instead of presenting paid entitlement", async () => {
@@ -276,7 +342,8 @@ describe("merchant billing UI", () => {
         grantedQuantity: 100,
         committedQuantity: 20,
         reservedQuantity: 0,
-        available: 80,
+        refundingQuantity: 10,
+        available: 70,
       },
       recoveryCreditPackEnabled: true,
       recoveryCreditsPerPack: 100,
@@ -290,7 +357,7 @@ describe("merchant billing UI", () => {
     } as never);
 
     expect(result).toMatchObject({
-      purchasedRecoveryCredits: { available: 80 },
+      purchasedRecoveryCredits: { available: 70, refundingQuantity: 10 },
       recoveryCreditPackPurchaseEligible: false,
     });
     expect(billingRouteSource).toContain(
