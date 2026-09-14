@@ -1,131 +1,94 @@
 import BillingPurchaseHub from "@/components/dashboard/BillingPurchaseHub";
+import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
+import { billingService } from "@/services/billing/billing.service";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
-import { useLoaderData } from "react-router";
-import { mockBillingState } from "@/components/dashboard/billing-purchase.mock";
-import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
+import { randomUUID } from "node:crypto";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
+import { useFetcher, useLoaderData } from "react-router";
 
-export async function loader({ request }) {
+export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
-    const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
-    assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
-    const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
+  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const merchantUi = merchantUiContext(settings, session);
 
-
-
-  const merchantUi = merchantUiContext(settings, session)
-
-
-  const plans = [
-  {
-    id: "free",
-    rank: 0,
-    monthlyPriceMinor: 0,
-    includedConversations: 5
-  },
-  {
-    id: "starter",
-    rank: 1,
-    monthlyPriceMinor: 3500,
-    includedConversations: 100
-  },
-  {
-    id: "growth",
-    rank: 2,
-    monthlyPriceMinor: 7500,
-    includedConversations: 250
-  },
-  {
-    id: "scale",
-    rank: 3,
-    monthlyPriceMinor: 14900,
-    includedConversations: 500
+  try {
+    const [commercialResult, capacityResult, lifecycleResult, topUpResult] =
+      await Promise.allSettled([
+      billingService.getMerchantShopifySubscriptionState(shop.id),
+      billingService.getMerchantRecoveryCapacityState(shop.id),
+      billingService.getMerchantShopifyLifecycleState(shop.id),
+      billingService.getMerchantBillingState(shop.id),
+      ]);
+    const commercial = commercialResult.status === "fulfilled" ? commercialResult.value : null;
+    const capacity = capacityResult.status === "fulfilled" ? capacityResult.value : null;
+    const lifecycle = lifecycleResult.status === "fulfilled" ? lifecycleResult.value : null;
+    const topUp = topUpResult.status === "fulfilled" ? topUpResult.value : null;
+    const lifecycleState = lifecycle?.state === "FROZEN" ? "FROZEN" : lifecycle?.state ?? "UNRESOLVED";
+    const verificationState = lifecycleState === "FROZEN"
+      ? "FROZEN"
+      : commercial?.status ?? "VERIFICATION_UNAVAILABLE";
+    return {
+      merchantUi,
+      commercial,
+      capacity,
+      topUp,
+      billingPeriodPhase: topUp?.billingPeriodPhase ?? null,
+      lifecycleState,
+      purchaseId: verificationState === "ACTIVE_SUBSCRIPTION" && capacity?.topUpConfiguration.enabled
+        ? randomUUID()
+        : null,
+      verificationState,
+    };
+  } catch {
+    return { merchantUi, commercial: null, capacity: null, topUp: null, billingPeriodPhase: null, lifecycleState: "UNRESOLVED", purchaseId: null, verificationState: "VERIFICATION_UNAVAILABLE" };
   }
-]
+}
 
-  const topUpOffers = [
-  {
-    id: "starter-5-v1",
-    planId: "starter",
-    chargeAmountMinor: 500,
-    currency: "GBP",
-    creditsGranted: 15
-  },
-  {
-    id: "starter-10-v1",
-    planId: "starter",
-    chargeAmountMinor: 1000,
-    currency: "GBP",
-    creditsGranted: 32
-  }
-]
-
+export async function action({ request }: ActionFunctionArgs) {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/billing/options", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
+  const formData = await request.formData();
+  const purchase = await billingService.requestRecoveryCreditPack(shop.id, String(formData.get("intent") ?? ""), String(formData.get("purchaseId") ?? ""));
   return {
-    merchantUi,
-    billing: {
-      currentPlanId: "starter",
-      monthlyUsed: 84,
-      purchasedCreditsAvailable: 18
+    purchase: {
+      status: purchase.status,
+      currentAmount: Number(purchase.currentAmount),
+      usageReportState: purchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
     },
-    plans,
-    topUpOffers,
   };
 }
 
 export default function BillingOptionsPage() {
-  const {
-    merchantUi,
-    billing,
-    plans,
-    topUpOffers,
-  } = useLoaderData();
- const i18n = createMerchantI18n(merchantUi);
+  const data = useLoaderData<typeof loader>();
+  const fetcher = useFetcher<typeof action>();
+  const i18n = createMerchantI18n(data.merchantUi);
+  const subscription = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.subscription : null;
+  const mapping = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.modaMapping : null;
+  const topUpState = data.topUp ? {
+    configured: data.topUp.configured,
+    purchaseEligible: data.verificationState === "ACTIVE_SUBSCRIPTION" && data.commercial?.mappingStatus === "MAPPED" && data.lifecycleState === "ACTIVE" && data.topUp.purchaseEligible,
+    creditsPerPack: data.topUp.creditsPerPack,
+    paidIncludedCreditsAvailable: data.capacity?.paidIncluded?.remaining ?? null,
+    freeLifetimeCreditsAvailable: data.capacity?.freeLifetime?.remaining ?? null,
+    promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
+    purchasedCreditsAvailable: data.capacity?.purchased.available ?? data.topUp.purchasedRecoveryCredits.available,
+    shopifyPackMeter: data.topUp.shopifyPackMeter,
+    latestPurchase: fetcher.data?.purchase ?? data.topUp.latestPurchase,
+  } : { configured: false, purchaseEligible: false, creditsPerPack: null, purchasedCreditsAvailable: 0, shopifyPackMeter: null, latestPurchase: null };
+  const current = subscription ? { shopifyPlanHandle: subscription.planHandle, mappedModaPlanName: mapping?.name ?? null, price: subscription.price, interval: subscription.billingPeriod, cancelAtEndOfCycle: subscription.cancelAtEndOfCycle } : null;
+  const pending = subscription?.pendingUpdate ? { shopifyPlanHandle: subscription.pendingUpdate.planHandle, price: subscription.pendingUpdate.price, effectiveAt: subscription.pendingUpdate.effectiveAt } : null;
 
   return (
-        <s-page heading={i18n.t("usage.billable")}>
-          <Breadcrumbs
-            current={i18n.t("billingCommerce.page.title")}
-            merchantUi={merchantUi}
-          />
-        <BillingPurchaseHub
-  merchantUi={merchantUi}
-  currentPlanId={mockBillingState.currentPlanId}
-  monthlyUsed={mockBillingState.monthlyUsed}
-  purchasedCreditsAvailable={
-    mockBillingState.purchasedCreditsAvailable
-  }
-  plans={plans}
-  topUpOffers={topUpOffers}
-  onPurchaseTopUp={handleTopUp}
-  onChangePlan={handlePlanChange}
-/>
-        </s-page>
-
+    <s-page heading={i18n.t("usage.billable")}>
+      <Breadcrumbs current={i18n.t("billingCommerce.page.title")} merchantUi={data.merchantUi} />
+      <BillingPurchaseHub merchantUi={data.merchantUi} capacity={data.capacity} billingPeriodPhase={data.billingPeriodPhase} lifecycleState={data.lifecycleState} verificationState={data.verificationState} topUpState={topUpState} current={current} pending={pending} managePlansHref="/app/billing/select" managePlansAvailable={data.verificationState !== "VERIFICATION_UNAVAILABLE"} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId: data.purchaseId ?? "" }, { method: "post" })} />
+    </s-page>
   );
 }
-
-const handleTopUp = (offer) => {
-  console.log("Top-up selected");
-  console.log({
-    offerId: offer.id,
-    planId: offer.planId,
-    chargeAmountMinor: offer.chargeAmountMinor,
-    currency: offer.currency,
-    creditsGranted: offer.creditsGranted,
-  });
-};
-
-const handlePlanChange = (plan) => {
-  console.log("Plan change selected");
-  console.log({
-    planId: plan.id,
-    planName: plan.name,
-    monthlyPriceMinor: plan.monthlyPriceMinor,
-    currency: plan.currency,
-    includedConversations: plan.includedConversations,
-    rank: plan.rank,
-  });
-};

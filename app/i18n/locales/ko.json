@@ -103,6 +103,7 @@
   "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
   "billing.lifetimeFreeAllowance": "Lifetime Free recoveries: {remaining} of {allowance} remaining",
   "billing.paidIncludedAllowance": "Included recoveries this period: {remaining} of {allowance} remaining",
+  "billingCommerce.promotionalCredits": "Promotional recoveries available",
   "billing.paidCycleDraining": "Shopify에서 결제 주기를 변경하고 있습니다. 새로운 유료 복구와 추가 구매가 잠시 중지됩니다.",
   "billing.paidCycleReconciling": "새 Shopify 결제 주기를 확인하고 있습니다. 유료 포함 복구 용량과 새로운 추가 구매를 일시적으로 이용할 수 없습니다.",
   "billing.freeCycleDraining": "Shopify에서 결제 주기를 변경하고 있습니다. 남은 평생 Free 복구 수량은 변하지 않으며 새로운 추가 구매만 잠시 중지됩니다.",

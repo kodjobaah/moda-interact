@@ -103,6 +103,7 @@
   "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
   "billing.lifetimeFreeAllowance": "Lifetime Free recoveries: {remaining} of {allowance} remaining",
   "billing.paidIncludedAllowance": "Included recoveries this period: {remaining} of {allowance} remaining",
+  "billingCommerce.promotionalCredits": "Promotional recoveries available",
   "billing.paidCycleDraining": "Shopify กำลังเปลี่ยนรอบการเรียกเก็บเงินของคุณ การกู้คืนแบบชำระเงินใหม่และการซื้อเพิ่มเติมหยุดชั่วคราว",
   "billing.paidCycleReconciling": "เรากำลังยืนยันรอบการเรียกเก็บเงิน Shopify ใหม่ของคุณ ความสามารถการกู้คืนแบบชำระเงินที่รวมอยู่และการซื้อเพิ่มเติมใหม่ไม่พร้อมใช้งานชั่วคราว",
   "billing.freeCycleDraining": "Shopify กำลังเปลี่ยนรอบการเรียกเก็บเงินของคุณ การกู้คืน Free ตลอดชีพที่เหลือไม่เปลี่ยนแปลง มีเพียงการซื้อเพิ่มเติมใหม่ที่หยุดชั่วคราว",

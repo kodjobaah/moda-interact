@@ -103,6 +103,7 @@
   "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
   "billing.lifetimeFreeAllowance": "Lifetime Free recoveries: {remaining} of {allowance} remaining",
   "billing.paidIncludedAllowance": "Included recoveries this period: {remaining} of {allowance} remaining",
+  "billingCommerce.promotionalCredits": "Promotional recoveries available",
   "billing.paidCycleDraining": "Shopify zmienia cykl rozliczeniowy. Nowe płatne odzyskiwanie i dodatkowe zakupy są na krótko wstrzymane.",
   "billing.paidCycleReconciling": "Potwierdzamy nowy cykl rozliczeniowy Shopify. Dołączony limit płatnych odzyskiwań i nowe dodatkowe zakupy są tymczasowo niedostępne.",
   "billing.freeCycleDraining": "Shopify zmienia cykl rozliczeniowy. Pozostałe dożywotnie odzyskiwania Free pozostają bez zmian; tylko nowe dodatkowe zakupy są na krótko wstrzymane.",

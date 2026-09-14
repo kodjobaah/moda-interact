@@ -103,6 +103,7 @@
   "billing.freeAllowance": "Crédit gratuit : {remaining} conversation(s) de récupération restantes sur {allowance}",
   "billing.lifetimeFreeAllowance": "Récupérations gratuites à vie : {remaining} sur {allowance} restantes",
   "billing.paidIncludedAllowance": "Récupérations incluses pour cette période : {remaining} sur {allowance} restantes",
+  "billingCommerce.promotionalCredits": "Promotional recoveries available",
   "billing.paidCycleDraining": "Shopify modifie votre cycle de facturation. Les nouvelles récupérations payantes et les achats supplémentaires sont brièvement suspendus.",
   "billing.paidCycleReconciling": "Nous confirmons votre nouveau cycle de facturation Shopify. La capacité de récupération payante incluse et les nouveaux achats supplémentaires sont temporairement indisponibles.",
   "billing.freeCycleDraining": "Shopify modifie votre cycle de facturation. Vos récupérations Free à vie restantes sont inchangées ; seuls les nouveaux achats supplémentaires sont brièvement suspendus.",

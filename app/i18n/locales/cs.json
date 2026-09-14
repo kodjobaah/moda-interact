@@ -103,6 +103,7 @@
   "billing.freeAllowance": "Free allowance: {remaining} of {allowance} recovery conversations remaining",
   "billing.lifetimeFreeAllowance": "Lifetime Free recoveries: {remaining} of {allowance} remaining",
   "billing.paidIncludedAllowance": "Included recoveries this period: {remaining} of {allowance} remaining",
+  "billingCommerce.promotionalCredits": "Promotional recoveries available",
   "billing.paidCycleDraining": "Shopify mění váš fakturační cyklus. Nové placené obnovy a nákupy doplňkových kreditů jsou krátce pozastaveny.",
   "billing.paidCycleReconciling": "Ověřujeme váš nový fakturační cyklus Shopify. Placená zahrnutá kapacita obnov a nové nákupy doplňkových kreditů jsou dočasně nedostupné.",
   "billing.freeCycleDraining": "Shopify mění váš fakturační cyklus. Zbývající celoživotní obnovy Free se nemění; krátce jsou pozastaveny jen nové nákupy doplňkových kreditů.",
