@@ -1,7 +1,8 @@
 import type { Shop } from "@prisma/client";
 import { redirect } from "react-router";
 
-export type ShopAccessStatus = Pick<Shop, "status">;
+export type ShopAccessStatus = Pick<Shop, "status"> &
+  Partial<Pick<Shop, "reinstallPendingAt">>;
 
 export type ShopAccessContext = {
   route: string;
@@ -17,6 +18,10 @@ export function assertActiveShop(
     return;
   }
 
+  if (shop.status === "UNINSTALLED" && shop.reinstallPendingAt) {
+    throw redirect("/app/reinstalling");
+  }
+
   throw redirect(context.redirectTo);
 }
 
@@ -25,6 +30,10 @@ export function assertSupportShop(
   context: ShopAccessContext,
 ): void {
   if (shop.status !== "UNINSTALLED") {
+    return;
+  }
+
+  if (shop.status === "UNINSTALLED" && shop.reinstallPendingAt) {
     return;
   }
 

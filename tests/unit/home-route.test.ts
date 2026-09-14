@@ -79,4 +79,28 @@ describe("app home loader", () => {
     expect(findBillingPeriods).not.toHaveBeenCalled();
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
+
+  it("redirects pending reinstall before reading product data", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "UNINSTALLED",
+      reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
+    });
+
+    await expect(loader({
+      request: new Request("https://example.test/app"),
+    })).rejects.toSatisfy((error) => {
+      expect(error).toBeInstanceOf(Response);
+      expect(error.headers.get("Location")).toBe("/app/reinstalling");
+      return true;
+    });
+
+    expect(findShopSettings).not.toHaveBeenCalled();
+    expect(getSubscription).not.toHaveBeenCalled();
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+    expect(findRecoveries).not.toHaveBeenCalled();
+    expect(findBillingPeriods).not.toHaveBeenCalled();
+    expect(findUsageEvents).not.toHaveBeenCalled();
+  });
 });

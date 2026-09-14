@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   recordReturn: vi.fn(),
   recordFailure: vi.fn(),
   prepareFreeActivation: vi.fn(),
+  preparePaidActivation: vi.fn(),
   syncSubscription: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   completeFreeActivation: vi.fn(),
@@ -23,7 +24,14 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
     getMerchantShopifySubscriptionState: mocks.getState,
     recordHostedPlanChangeReturn: mocks.recordReturn,
     recordHostedPlanVerificationFailure: mocks.recordFailure,
+    prepareFreeActivation: mocks.prepareFreeActivation,
+    preparePaidActivation: mocks.preparePaidActivation,
+    syncSubscription: mocks.syncSubscription,
+    getSubscriptionProjection: mocks.getSubscriptionProjection,
+    completeFreeActivation: mocks.completeFreeActivation,
+    scheduleInitialFreeReconciliationIfCurrent: mocks.scheduleInitialFreeReconciliationIfCurrent,
   },
+  INITIAL_BILLING_RETRY_DELAY_MS: 60_000,
 }));
 vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
   enqueueBillingSubscriptionReconcileBestEffort: mocks.enqueueReconcile,
@@ -36,6 +44,7 @@ import { loader } from "../../../app/routes/app/billing/callback/route";
 
 const shop = { id: "shop-1", status: "ACTIVE" };
 const freePlan = { id: "free-1", kind: "FREE", shopifyPlanHandle: "free" };
+const paidPlan = { id: "paid-1", kind: "PAID_METERED", shopifyPlanHandle: "growth" };
 const initialToken = Object.freeze({
   subscriptionId: "subscription-1",
   pendingPlanId: "free-1",
@@ -93,6 +102,18 @@ beforeEach(() => {
     mappingStatus: "MAPPED",
     pendingModaMapping: { id: "free-id", name: "Free", kind: "FREE" },
   });
+  mocks.prepareFreeActivation.mockResolvedValue(null);
+  mocks.preparePaidActivation.mockResolvedValue(null);
+  mocks.syncSubscription.mockResolvedValue(subscription());
+  mocks.getSubscriptionProjection.mockResolvedValue(subscription());
+  mocks.completeFreeActivation.mockResolvedValue({
+    subscriptionId: "subscription-1",
+    nextReconcileAt: null,
+  });
+  mocks.scheduleInitialFreeReconciliationIfCurrent.mockResolvedValue({
+    subscriptionId: "subscription-1",
+    nextReconcileAt: new Date("2026-09-12T00:01:00.000Z"),
+  });
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
 });
@@ -105,6 +126,129 @@ describe.skip("legacy billing callback activation", () => {
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("records and completes a first paid activation only after matching verification", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      observedShopifyPlanHandle: "growth",
+      planId: "paid-1",
+      plan: paidPlan,
+      billingPeriodId: "period-1",
+      currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+      pendingEffectiveAt: null,
+      nextReconcileAt: new Date("2026-09-30T00:00:00.000Z"),
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.preparePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));
+  });
+
+  it("does not activate a pending paid handle when Shopify still reports another plan", async () => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: initialToken });
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
+      observedShopifyPlanHandle: "starter",
+      planId: "starter-1",
+      plan: { kind: "PAID_METERED", shopifyPlanHandle: "starter" },
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: new Date(),
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
+  });
+
+  it("keeps a Paid provider-null result on the existing bounded retry path", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(null);
+
+    await runLoader("growth");
+
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({ expected: paidToken }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalled();
+  });
+
+  it("keeps a Paid Partner failure on the existing bounded retry path", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
+      expected: paidToken,
+      partnerErrorAt: expect.any(Date),
+    }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalled();
+  });
+
+  it("does not enqueue the initial retry for an unsupported Paid trial", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "SYNC_ERROR",
+      planId: null,
+      observedShopifyPlanHandle: "growth",
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: paidToken.pendingEffectiveAt,
+      nextReconcileAt: null,
+      lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL",
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("does not classify a durable Paid configuration error as a Partner failure", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "SYNC_ERROR",
+      planId: null,
+      observedShopifyPlanHandle: "growth",
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: paidToken.pendingEffectiveAt,
+      nextReconcileAt: null,
+      lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 

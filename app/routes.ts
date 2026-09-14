@@ -32,6 +32,7 @@ export default [
     route("usage", "./routes/app/usage/route.jsx"),
   ]),
 
+  route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
   route("app/billing/options", "./routes/app/billing/options/route.tsx"),
