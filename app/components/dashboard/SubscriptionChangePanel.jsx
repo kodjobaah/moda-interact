@@ -2,7 +2,7 @@ import React from "react";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
-/** @typedef {{ shopifyPlanHandle: string, mappedModaPlanName?: string|null, price: { amount: string, currency?: string|null }, interval?: string, effectiveAt?: string|null }} ProviderPlanData */
+/** @typedef {{ shopifyPlanHandle: string, mappedModaPlanName?: string|null, price: { amount: string, currency?: string|null }, interval?: string, effectiveAt?: string|null, currentPeriodEnd?: string|null }} ProviderPlanData */
 
 /** @param {{ plan: ProviderPlanData, i18n: any, pending?: boolean }} props */
 function ProviderPlan({ plan, i18n, pending = false }) {
@@ -44,7 +44,7 @@ export default function SubscriptionChangePanel({ merchantUi, current, pending, 
     {providerVerificationState === "NO_ACTIVE_SUBSCRIPTION" ? <p>{i18n.t("billing.viewPlans")}</p> : null}
     {hasCurrent ? <>
       <ProviderPlan i18n={i18n} plan={{ ...current }} />
-      <p>{current.mappedModaPlanName || i18n.t("billing.configurationUnavailable")}{current.cancelAtEndOfCycle ? ` - ${i18n.t("billing.cancelAtPeriodEnd")}` : ""}</p>
+      <p>{current.mappedModaPlanName || i18n.t("billing.configurationUnavailable")}{current.cancelAtEndOfCycle && !pending && current.currentPeriodEnd ? ` - ${i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current.currentPeriodEnd) })}` : ""}</p>
       {pending ? <ProviderPlan i18n={i18n} pending plan={pending} /> : null}
     </> : null}
     {requestedSelection ? <div className="moda-provider-plan-awaiting-confirmation"><strong>{requestedSelection.shopifyPlanHandle}</strong><span>{i18n.t("billingCommerce.plans.awaitingShopifyConfirmation")}</span></div> : null}

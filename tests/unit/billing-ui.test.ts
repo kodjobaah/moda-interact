@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getMerchantBillingState = vi.fn();
+const getMerchantRecoveryCapacityState = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingRouteSource = await readFile(
@@ -37,7 +38,7 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getMerchantBillingState },
+  billingService: { getMerchantBillingState, getMerchantRecoveryCapacityState },
 }));
 vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
@@ -70,6 +71,7 @@ beforeEach(() => {
   });
   resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
   findShopSettings.mockResolvedValue(null);
+  getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED" });
 });
 
 describe("merchant billing UI", () => {

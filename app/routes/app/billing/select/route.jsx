@@ -5,11 +5,17 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { billingService } from "@/services/billing/billing.service";
 
 export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request }) {
   const { admin, redirect, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/billing/select", capability: "manage-billing", redirectTo: "/app/merchant-support" });
+
+  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
+  if (capacity.availability === "CONTRACT_FROZEN") {
+    throw new Response("Shopify billing is currently being restored.", { status: 403 });
+  }
 
   const appHandle = process.env.SHOPIFY_APP_HANDLE;
 

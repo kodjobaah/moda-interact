@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getSubscription = vi.fn();
+const getMerchantRecoveryCapacityState = vi.fn();
 const findShopSettings = vi.fn();
 const readPendingRecoveries = vi.fn();
 const findRecoveries = vi.fn();
@@ -16,7 +17,7 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getSubscription },
+  billingService: { getSubscription, getMerchantRecoveryCapacityState },
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries,
@@ -44,6 +45,11 @@ beforeEach(() => {
     status: "ACTIVE",
   });
   findShopSettings.mockResolvedValue({ onboardingCompleted: false });
+  getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED", observedShopifyPlanHandle: null });
+  readPendingRecoveries.mockResolvedValue({ available: true, items: [] });
+  findRecoveries.mockResolvedValue([]);
+  findBillingPeriods.mockResolvedValue([]);
+  findUsageEvents.mockResolvedValue([]);
 });
 
 describe("app home loader", () => {
@@ -63,7 +69,7 @@ describe("app home loader", () => {
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
 
-  it("returns onboarding data for a completed shop without an active plan", async () => {
+  it("keeps a completed shop without an active plan on the merchant surface", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
 
@@ -73,11 +79,12 @@ describe("app home loader", () => {
 
     expect(result).toMatchObject({
       settings: { onboardingCompleted: true },
-      subscription: null,
+      subscription: { status: "NO_CONTRACT" },
+      capacity: { availability: "CONTRACT_REQUIRED" },
     });
-    expect(findRecoveries).not.toHaveBeenCalled();
-    expect(findBillingPeriods).not.toHaveBeenCalled();
-    expect(findUsageEvents).not.toHaveBeenCalled();
+    expect(findRecoveries).toHaveBeenCalled();
+    expect(findBillingPeriods).toHaveBeenCalled();
+    expect(findUsageEvents).toHaveBeenCalled();
   });
 
   it("redirects pending reinstall before reading product data", async () => {

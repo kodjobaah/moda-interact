@@ -68,6 +68,8 @@ console.log("Resolved shop settings:", settings);
     return { settings, merchantUi, subscription: null };
   }
 
+  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
+
   /*
    * Read local billing state.
    *
@@ -79,9 +81,11 @@ console.log("Resolved shop settings:", settings);
     );
 
   console.log("Resolved subscription:", subscription);
-  if (!subscription || !["ACTIVE", "TRIALING"].includes(subscription.status)) {
-    return { settings, merchantUi, subscription: null };
-  }
+  const subscriptionState = subscription ?? {
+    status: capacity.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
+    plan: null,
+    observedShopifyPlanHandle: capacity.observedShopifyPlanHandle,
+  };
 
   const pendingRecoveries = await readPendingRecoveries({
     shopId: shop.id,
@@ -126,16 +130,17 @@ console.log("Resolved shop settings:", settings);
     settings,
     merchantUi,
 
-    subscription: subscription ? {
-      status: subscription.status,
+    subscription: subscriptionState ? {
+      status: subscriptionState.status,
 
       planHandle:
-        subscription.observedShopifyPlanHandle,
+        subscriptionState.observedShopifyPlanHandle,
 
       planName:
-        subscription.plan?.name ??
-        subscription.observedShopifyPlanHandle,
+        subscriptionState.plan?.name ??
+        subscriptionState.observedShopifyPlanHandle,
     } : null,
+      capacity,
 
     stats: {
       abandonedCheckouts: recoveries.length,
@@ -172,10 +177,11 @@ export default function Index() {
     pendingRecoveriesUpdatedAt,
     usageView,
     usagePagination,
+    capacity,
   } = useLoaderData();
   const [searchParams] = useSearchParams();
 
-  if (!settings?.onboardingCompleted || !subscription) {
+  if (!settings?.onboardingCompleted) {
     return <Onboarding merchantUi={merchantUi} />;
   }
 
