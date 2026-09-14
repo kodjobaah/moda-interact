@@ -72,4 +72,12 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Promotional recoveries available</span>");
     expect(markup).not.toContain("purchased credits available</span>");
   });
+
+  it("warns for a genuine UNMAPPED subscription without hiding independent balances", () => {
+    const markup = render({ mappingStatus: "UNMAPPED", topUpState: { ...topUpState, configured: false, purchaseEligible: false, creditsPerPack: null, shopifyPackMeter: null } });
+    expect(markup).toContain("Your subscription could not be safely mapped");
+    expect(markup).toContain("Growth");
+    expect(markup).toContain("Included recoveries this period: 21 of 30 remaining");
+    expect(markup).toContain("Manage purchased credits");
+  });
 });
