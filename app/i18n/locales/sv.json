@@ -114,7 +114,7 @@
   "billing.unknownPlan": "Unknown plan",
   "billing.configurationUnavailable": "Billing configuration unavailable",
   "billing.configurationUnavailableDescription": "Your subscription could not be safely mapped. Contact Moda support before using paid features.",
-  "billing.purchasedRecoveryCredits": "Köpta återställningskrediter: {granted} - {committed} - {reserved} ({available} tillgängliga)",
+  "billing.purchasedRecoveryCredits": "Köpta återställningskrediter: {granted} - {committed} - {reserved} - {refunding} hålls för återbetalning ({available} tillgängliga)",
   "billing.recoveryCreditPackDescription": "Begär ett paket med {quantity} återställningskrediter.",
   "billing.recoveryCreditPackShopifyMeter": "Shopify debiterar det här paketet enligt mätaren för återställningskreditpaket som är konfigurerad för din nuvarande plan.",
   "billing.buyRecoveryCreditPack": "Köp paket med återställningskrediter",

@@ -1691,6 +1691,58 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
 }
 
 describe("BillingService merchant billing state", () => {
+  function createValidPaidMerchantState() {
+    const periodStart = new Date("2026-09-01T00:00:00.000Z");
+    const periodEnd = new Date("2026-10-01T00:00:00.000Z");
+    const plan = {
+      id: "growth-1",
+      kind: "PAID_METERED",
+      shopifyPlanHandle: "growth",
+      active: true,
+      recoveryCreditPackEnabled: false,
+    };
+    const period = {
+      id: "period-1",
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      planId: "growth-1",
+      shopifyPlanHandleSnapshot: "growth",
+      planKindSnapshot: "PAID_METERED",
+      periodStart,
+      periodEnd,
+      status: "OPEN",
+      includedRecoveryCreditsGranted: 100,
+      entitlementCounters: [{
+        shopId: "shop-1",
+        billingPeriodId: "period-1",
+        counter: "INCLUDED_RECOVERY_CREDITS",
+        grantedQuantity: 100,
+        committedQuantity: 12,
+        reservedQuantity: 8,
+        forfeitedQuantity: 5,
+      }],
+    };
+    const state = {
+      subscription: {
+        id: "subscription-1",
+        status: "ACTIVE",
+        billingPeriodId: "period-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        observedShopifyPlanHandle: "growth",
+        plan,
+        billingPeriod: period,
+      },
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      subscription: { findUnique: vi.fn().mockImplementation(async () => state.subscription) },
+      shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }) },
+    };
+    return { database, state, period, plan };
+  }
+
   it("uses the canonical lifetime counter for a mapped Free plan",
     async () => {
       const lifetimeCounter = {
@@ -1742,14 +1794,26 @@ describe("BillingService merchant billing state", () => {
       shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
       subscription: {
         findUnique: vi.fn().mockResolvedValue({
+          id: "subscription-1",
           status: "ACTIVE",
+          observedShopifyPlanHandle: "growth",
           billingPeriodId: "period-1",
           currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
           currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
-          plan: { kind: "PAID_METERED", active: true, recoveryCreditPackEnabled: false },
+          plan: {
+            id: "growth-1",
+            kind: "PAID_METERED",
+            shopifyPlanHandle: "growth",
+            active: true,
+            recoveryCreditPackEnabled: false,
+          },
           billingPeriod: {
             id: "period-1",
             shopId: "shop-1",
+            subscriptionId: "subscription-1",
+            planId: "growth-1",
+            shopifyPlanHandleSnapshot: "growth",
+            planKindSnapshot: "PAID_METERED",
             periodStart: new Date("2026-09-01T00:00:00.000Z"),
             periodEnd: new Date("2026-10-01T00:00:00.000Z"),
             status: "OPEN",
@@ -1769,7 +1833,12 @@ describe("BillingService merchant billing state", () => {
       shopEntitlementCounter: {
         findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
           where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
-            ? null
+            ? {
+                grantedQuantity: 100,
+                committedQuantity: 20,
+                reservedQuantity: 5,
+                refundingQuantity: 10,
+              }
             : { grantedQuantity: 50, committedQuantity: 10, reservedQuantity: 5 }),
       },
       usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }) },
@@ -1786,8 +1855,79 @@ describe("BillingService merchant billing state", () => {
         forfeitedQuantity: 5,
         remaining: 75,
       },
+      purchasedRecoveryCredits: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 5,
+        refundingQuantity: 10,
+        available: 65,
+      },
       lifetimeFree: { grantedQuantity: 50, remaining: 35 },
     });
+  });
+
+  it("subtracts purchased refund holds from merchant available credits", async () => {
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      subscription: { findUnique: vi.fn().mockResolvedValue(null) },
+      shopEntitlementCounter: {
+        findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
+          where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
+            ? { grantedQuantity: 100, committedQuantity: 20, reservedQuantity: 5, refundingQuantity: 10 }
+            : null),
+      },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 9999 } }) },
+    };
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.getMerchantBillingState("shop-1")).resolves.toMatchObject({
+      purchasedRecoveryCredits: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 5,
+        refundingQuantity: 10,
+        available: 65,
+      },
+      usageQuantity: 9999,
+    });
+  });
+
+  it.each([
+    ["billingPeriod relation missing", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.state.subscription.billingPeriod = null as never; }],
+    ["billingPeriodId missing", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.state.subscription.billingPeriodId = null as never; }],
+    ["period status CLOSED", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.status = "CLOSED"; }],
+    ["period shopId differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.shopId = "shop-2"; }],
+    ["period subscriptionId differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.subscriptionId = "subscription-2"; }],
+    ["period planId differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.planId = "growth-2"; }],
+    ["period Shopify handle snapshot differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.shopifyPlanHandleSnapshot = "starter"; }],
+    ["period plan kind snapshot is FREE", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.planKindSnapshot = "FREE"; }],
+    ["period boundary differs from Subscription", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.periodEnd = new Date("2026-10-02T00:00:00.000Z"); }],
+    ["periodStart >= periodEnd", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.periodEnd = fixture.period.periodStart; }],
+    ["includedRecoveryCreditsGranted is null", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.includedRecoveryCreditsGranted = null as never; }],
+    ["includedRecoveryCreditsGranted is negative", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.includedRecoveryCreditsGranted = -1; }],
+    ["included counter missing", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters = []; }],
+    ["counter shopId differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].shopId = "shop-2"; }],
+    ["counter billingPeriodId differs", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].billingPeriodId = "period-2"; }],
+    ["counter granted differs from period grant", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].grantedQuantity = 99; }],
+    ["counter committed is negative", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].committedQuantity = -1; }],
+    ["counter reserved is negative", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].reservedQuantity = -1; }],
+    ["counter forfeited is negative", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].forfeitedQuantity = -1; }],
+    ["committed + reserved + forfeited exceeds granted", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.period.entitlementCounters[0].committedQuantity = 90; fixture.period.entitlementCounters[0].reservedQuantity = 20; }],
+    ["current BillingPlan inactive", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.plan.active = false; }],
+    ["observed Shopify handle differs from mapped plan handle", (fixture: ReturnType<typeof createValidPaidMerchantState>) => { fixture.state.subscription.observedShopifyPlanHandle = "starter"; }],
+  ] as const)("fails merchant Paid presentation closed for inconsistent current period: %s", async (_name, invalidate) => {
+    const fixture = createValidPaidMerchantState();
+    invalidate(fixture);
+    const service = new BillingService({} as never, fixture.database as never);
+
+    const result = await service.getMerchantBillingState("shop-1");
+
+    expect(result.paidIncluded).toBeNull();
+    expect(result.paidConfigurationUnavailable).toBe(true);
+    if (_name === "billingPeriod relation missing" || _name === "included counter missing") {
+      expect(result.usageQuantity).toBe(999);
+      expect(result.paidIncluded).not.toEqual({ remaining: result.usageQuantity });
+    }
   });
 });
 

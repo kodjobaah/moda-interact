@@ -111,7 +111,7 @@ export default function BillingRoute() {
   const isFree = subscription?.planKind === "FREE";
   const isSafeProjection = Boolean(
     subscription &&
-    ["ACTIVE", "TRIALING"].includes(subscription.status) &&
+    (subscription.status === "ACTIVE" || subscription.status === "TRIALING") &&
     !paidConfigurationUnavailable,
   );
 
@@ -202,6 +202,7 @@ export default function BillingRoute() {
                 granted: purchasedRecoveryCredits.grantedQuantity,
                 committed: purchasedRecoveryCredits.committedQuantity,
                 reserved: purchasedRecoveryCredits.reservedQuantity,
+                refunding: purchasedRecoveryCredits.refundingQuantity,
                 available: purchasedRecoveryCredits.available,
               })}
             </p>

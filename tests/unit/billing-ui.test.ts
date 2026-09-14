@@ -211,6 +211,13 @@ describe("merchant billing UI", () => {
         remaining: 35,
       },
       usageQuantity: 12,
+      purchasedRecoveryCredits: {
+        grantedQuantity: 100,
+        committedQuantity: 20,
+        reservedQuantity: 5,
+        refundingQuantity: 10,
+        available: 65,
+      },
     });
 
     const result = await loader({
@@ -221,6 +228,10 @@ describe("merchant billing UI", () => {
       allowance: null,
       remaining: null,
       paidIncluded: { remaining: 75 },
+      subscription: {
+        currentPeriodStart: "2026-09-01T00:00:00.000Z",
+        currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+      },
     });
     expect(billingRouteSource).toContain('i18n.t("billing.paidIncludedAllowance"');
     expect(billingRouteSource).toContain('i18n.t("billing.lifetimeFreeAllowance"');
@@ -331,7 +342,8 @@ describe("merchant billing UI", () => {
         grantedQuantity: 100,
         committedQuantity: 20,
         reservedQuantity: 0,
-        available: 80,
+        refundingQuantity: 10,
+        available: 70,
       },
       recoveryCreditPackEnabled: true,
       recoveryCreditsPerPack: 100,
@@ -345,7 +357,7 @@ describe("merchant billing UI", () => {
     } as never);
 
     expect(result).toMatchObject({
-      purchasedRecoveryCredits: { available: 80 },
+      purchasedRecoveryCredits: { available: 70, refundingQuantity: 10 },
       recoveryCreditPackPurchaseEligible: false,
     });
     expect(billingRouteSource).toContain(

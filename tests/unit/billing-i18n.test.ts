@@ -46,6 +46,7 @@ describe("ARCH-007 billing translations", () => {
           granted: 100,
           committed: 20,
           reserved: 5,
+          refunding: 10,
           available: 75,
           quantity: 100,
           remaining: 75,
