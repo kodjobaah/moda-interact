@@ -1631,6 +1631,162 @@ describe("BillingService subscription projection", () => {
   });
 });
 
+describe("BillingService hosted plan-change return", () => {
+  function createHostedReturnDatabase(pendingPlan: Record<string, unknown> | null = null) {
+    const state = {
+      current: {
+        id: "subscription-1",
+        status: "ACTIVE",
+        planId: "growth-id",
+        billingPeriodId: "period-1",
+        pendingPlanId: "old-pending-id",
+        pendingShopifyPlanHandle: "old-pending",
+        pendingEffectiveAt: new Date("2026-09-20T00:00:00.000Z"),
+        nextReconcileAt: new Date("2026-09-19T00:00:00.000Z"),
+      },
+    };
+    const lockQueries: string[] = [];
+    const subscription = {
+      findUnique: vi.fn().mockImplementation(async () => state.current),
+      update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        state.current = { ...state.current, ...data };
+        return { id: state.current.id, nextReconcileAt: state.current.nextReconcileAt };
+      }),
+      updateMany: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        state.current = { ...state.current, ...data };
+        return { count: 1 };
+      }),
+    };
+    const billingPlan = {
+      findUnique: vi.fn().mockResolvedValue(pendingPlan),
+    };
+    const transaction = {
+      $queryRaw: vi.fn().mockImplementation(async (query: { sql?: string }) => {
+        lockQueries.push(query.sql ?? "");
+        return [];
+      }),
+      subscription,
+      billingPlan,
+    };
+    const database = {
+      subscription,
+      $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    return { database, state, subscription, billingPlan, lockQueries, transaction };
+  }
+
+  function activeProviderState(overrides: Record<string, unknown> = {}) {
+    return {
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "growth",
+        currentPeriodStart: "2026-09-01T00:00:00.000Z",
+        currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+        trialEndsAt: null,
+        cancelAtEndOfCycle: true,
+        pendingUpdate: {
+          planHandle: "starter",
+          effectiveAt: "2026-10-01T00:00:00.000Z",
+        },
+        ...overrides,
+      },
+    };
+  }
+
+  it.each([
+    ["active", { id: "starter-id", active: true }, "starter-id"],
+    ["inactive", { id: "starter-id", active: false }, null],
+    ["unmapped", null, null],
+  ] as const)("stores only an active exact pending mapping for %s provider plans", async (_label, pendingPlan, expectedPlanId) => {
+    const { database, state, billingPlan } = createHostedReturnDatabase(pendingPlan);
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "starter",
+      state: activeProviderState() as never,
+    });
+
+    expect(result).toMatchObject({ result: "pending", subscriptionId: "subscription-1" });
+    expect(billingPlan.findUnique).toHaveBeenCalledWith({
+      where: { shopifyPlanHandle: "starter" },
+      select: { id: true, active: true },
+    });
+    expect(state.current).toMatchObject({
+      pendingShopifyPlanHandle: "starter",
+      pendingPlanId: expectedPlanId,
+      pendingEffectiveAt: new Date("2026-10-01T00:00:00.000Z"),
+      planId: "growth-id",
+      billingPeriodId: "period-1",
+    });
+  });
+
+  it("locks the accepted settings/subscription pair before rereading the hosted projection", async () => {
+    const { database, lockQueries, subscription } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+
+    await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "starter",
+      state: activeProviderState() as never,
+    });
+
+    expect(lockQueries[0]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockQueries[1]).toContain('FROM "billing"."Subscription"');
+    expect(lockQueries[1]).toContain("FOR UPDATE");
+    expect(subscription.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules current state without changing entitlement ownership", async () => {
+    const { database, state, subscription } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: activeProviderState(),
+    });
+
+    expect(result.result).toBe("current");
+    expect(state.current).toMatchObject({ planId: "growth-id", billingPeriodId: "period-1" });
+    expect(subscription.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not mutate a mismatch or invent a plan when there is no active subscription", async () => {
+    const mismatch = createHostedReturnDatabase();
+    const mismatchService = new BillingService({} as never, mismatch.database as never);
+    await expect(mismatchService.recordHostedPlanChangeReturn({
+      shopId: "shop-1", requestedPlanHandle: "scale", state: activeProviderState() as never,
+    })).resolves.toMatchObject({ result: "mismatch" });
+    expect(mismatch.subscription.update).not.toHaveBeenCalled();
+
+    const noActive = createHostedReturnDatabase();
+    const noActiveService = new BillingService({} as never, noActive.database as never);
+    await expect(noActiveService.recordHostedPlanChangeReturn({
+      shopId: "shop-1", requestedPlanHandle: "scale", state: { status: "NO_ACTIVE_SUBSCRIPTION", subscription: null } as never,
+    })).resolves.toMatchObject({ result: "no_active" });
+    expect(noActive.state.current.planId).toBe("growth-id");
+    expect(noActive.state.current.pendingShopifyPlanHandle).toBe("old-pending");
+  });
+
+  it("updates only retry metadata when provider verification fails", async () => {
+    const { database, state, lockQueries } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+    const before = { ...state.current };
+
+    await service.recordHostedPlanVerificationFailure("shop-1");
+
+    expect(state.current).toMatchObject({
+      planId: before.planId,
+      billingPeriodId: before.billingPeriodId,
+      pendingPlanId: before.pendingPlanId,
+      pendingShopifyPlanHandle: before.pendingShopifyPlanHandle,
+      lastSyncErrorCode: "PARTNER_API_ERROR",
+    });
+    expect(lockQueries[1]).toContain("FOR UPDATE");
+  });
+});
+
 function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
   const purchases = new Map<string, Record<string, unknown>>();
   const usageEvents: Record<string, unknown>[] = [];
