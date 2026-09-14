@@ -1742,6 +1742,16 @@ describe("BillingService hosted plan-change return", () => {
     });
   }
 
+  it("returns null hosted verification fence when no durable Subscription exists", async () => {
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const service = new BillingService({} as never, {
+      subscription: { findUnique },
+    } as never);
+
+    await expect(service.getHostedPlanVerificationFence("shop-1")).resolves.toBeNull();
+    expect(findUnique).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["active", { id: "starter-id", active: true }, "starter-id"],
     ["inactive", { id: "starter-id", active: false }, null],
@@ -1828,6 +1838,24 @@ describe("BillingService hosted plan-change return", () => {
     expectNoProtectedWrites(noActive.protectedModels);
   });
 
+  it("classifies unchanged absent durable Subscription as no_active", async () => {
+    const noActive = createHostedReturnDatabase();
+    noActive.state.current = null as never;
+    const service = new BillingService({} as never, noActive.database as never);
+
+    await expect(service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: { status: "NO_ACTIVE_SUBSCRIPTION", subscription: null } as never,
+      verificationFence: null,
+    })).resolves.toEqual({ result: "no_active", subscriptionId: null, nextReconcileAt: null });
+
+    expect(noActive.billingPlan.findUnique).not.toHaveBeenCalled();
+    expect(noActive.subscription.update).not.toHaveBeenCalled();
+    expect(noActive.subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(noActive.protectedModels);
+  });
+
   it("updates only retry metadata when provider verification fails", async () => {
     const { database, state, lockQueries, protectedModels } = createHostedReturnDatabase();
     const service = new BillingService({} as never, database as never);
@@ -1844,6 +1872,18 @@ describe("BillingService hosted plan-change return", () => {
     });
     expect(lockQueries[1]).toContain("FOR UPDATE");
     expectNoProtectedWrites(protectedModels);
+  });
+
+  it("does not manufacture retry metadata when durable Subscription is absent", async () => {
+    const noSubscription = createHostedReturnDatabase();
+    noSubscription.state.current = null as never;
+    const service = new BillingService({} as never, noSubscription.database as never);
+
+    await expect(service.recordHostedPlanVerificationFailure("shop-1", null)).resolves.toBeNull();
+
+    expect(noSubscription.subscription.update).not.toHaveBeenCalled();
+    expect(noSubscription.subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(noSubscription.protectedModels);
   });
 
   it("fences a stale successful provider observation without mapping or writing", async () => {

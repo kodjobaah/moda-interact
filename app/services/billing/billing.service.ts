@@ -674,7 +674,7 @@ async getSubscription(
 
   async getHostedPlanVerificationFence(
     shopId: string,
-  ): Promise<HostedPlanVerificationFence> {
+  ): Promise<HostedPlanVerificationFence | null> {
     const subscription = await this.database.subscription.findUnique({
       where: { shopId },
       select: {
@@ -697,25 +697,7 @@ async getSubscription(
         lastSyncErrorAt: true,
       },
     });
-    return subscription ?? {
-      id: null,
-      updatedAt: null,
-      status: null,
-      observedShopifyPlanHandle: null,
-      planId: null,
-      billingPeriodId: null,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      trialEndsAt: null,
-      cancelAtPeriodEnd: null,
-      pendingShopifyPlanHandle: null,
-      pendingPlanId: null,
-      pendingEffectiveAt: null,
-      nextReconcileAt: null,
-      lastSyncedAt: null,
-      lastSyncErrorCode: null,
-      lastSyncErrorAt: null,
-    };
+    return subscription;
   }
 
   async recordHostedPlanChangeReturn({
@@ -727,7 +709,7 @@ async getSubscription(
     shopId: string;
     requestedPlanHandle: string;
     state: MerchantShopifySubscriptionState;
-    verificationFence: HostedPlanVerificationFence;
+    verificationFence: HostedPlanVerificationFence | null;
   }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
@@ -821,7 +803,7 @@ async getSubscription(
 
   async recordHostedPlanVerificationFailure(
     shopId: string,
-    verificationFence: HostedPlanVerificationFence,
+    verificationFence: HostedPlanVerificationFence | null,
   ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
     return this.database.$transaction(async (transaction) => {
@@ -849,6 +831,7 @@ async getSubscription(
         },
       });
       if (!sameHostedPlanVerificationFence(current, verificationFence)) return null;
+      if (!current) return null;
       const updated = await transaction.subscription.updateMany({
         where: { shopId },
         data: {

@@ -469,4 +469,29 @@ describe("hosted billing callback", () => {
     expect(mocks.getState).toHaveBeenCalledTimes(1);
     expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
   });
+
+  it("passes an absent durable verification fence unchanged through hosted NO_ACTIVE verification", async () => {
+    mocks.getFence.mockResolvedValue(null);
+    mocks.getState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
+    mocks.recordReturn.mockResolvedValue({ result: "no_active", subscriptionId: null, nextReconcileAt: null });
+
+    await runLoader("growth");
+
+    expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
+    expect(mocks.getState).toHaveBeenCalledTimes(1);
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence: null }));
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=no_active");
+  });
+
+  it("passes an absent durable verification fence unchanged to failure recording", async () => {
+    mocks.getFence.mockResolvedValue(null);
+    mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
+    expect(mocks.getState).toHaveBeenCalledTimes(1);
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", null);
+  });
 });
