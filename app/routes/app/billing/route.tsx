@@ -86,7 +86,7 @@ export async function action({ request }: ActionFunctionArgs) {
     String(formData.get("intent") ?? ""),
     String(formData.get("purchaseId") ?? ""),
   );
-  return { purchasePending: purchase.status === "PENDING_BILLING" };
+  return { purchasePending: purchase.status === "REQUESTED" };
 }
 
 export default function BillingRoute() {
