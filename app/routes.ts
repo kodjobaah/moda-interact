@@ -25,7 +25,6 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
-    route("reinstalling", "./routes/app/reinstalling/route.jsx"),
     route("additional", "./routes/app/additional/route.jsx"),
     route("billing", "./routes/app/billing/route.tsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
@@ -33,6 +32,7 @@ export default [
     route("usage", "./routes/app/usage/route.jsx"),
   ]),
 
+  route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
   route("app/billing/options", "./routes/app/billing/options/route.tsx"),

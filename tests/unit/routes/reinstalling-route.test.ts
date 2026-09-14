@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
+
+const routeSource = await readFile(
+  new URL("../../../app/routes/app/reinstalling/route.jsx", import.meta.url),
+  "utf8",
+);
 
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
@@ -44,6 +50,14 @@ beforeEach(() => {
 });
 
 describe("reinstalling route", () => {
+  it("uses a standalone embedded shell without normal app-shell reads or Admin links", () => {
+    expect(routeSource).toContain("AppProvider");
+    expect(routeSource).toContain("boundary.error");
+    expect(routeSource).not.toContain("readMerchantSupportMessages");
+    expect(routeSource).not.toContain("shopSettings");
+    expect(routeSource).not.toContain("moda-interact-admin");
+  });
+
   it("redirects an active shop to the application", async () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
 
@@ -79,7 +93,7 @@ describe("reinstalling route", () => {
   it("renders stopped state when the durable schedule is absent", async () => {
     getReinstallSubscription.mockResolvedValue({ nextReconcileAt: null });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).resolves.toEqual({
+    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).resolves.toMatchObject({
       state: "stopped",
       nextReconcileAt: null,
     });

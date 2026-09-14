@@ -83,6 +83,7 @@ describe("ShopService.markUninstalled", () => {
 
   it("uses a conditional cutoff write for duplicate delivery", async () => {
     dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
+    dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
     const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
 
     await new ShopService().markUninstalled(shop.domain, uninstalledAt);
@@ -91,6 +92,7 @@ describe("ShopService.markUninstalled", () => {
       where: { id: shop.id, uninstalledAt: null },
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
+    expect(dbMock.shop.updateMany).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -194,6 +196,32 @@ describe("ShopService.beginReinstallReconciliation", () => {
       data: { reinstallPendingAt: expect.any(Date) },
     });
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("successfully retries a stopped attempt without changing entitlement fields", async () => {
+    const oldPendingAt = new Date("2026-09-08T12:00:00.000Z");
+    const now = new Date("2026-09-08T13:00:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: oldPendingAt });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.shop.updateMany.mockResolvedValue({ count: 1 });
+    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt: now });
+
+    await expect(
+      new ShopService().retryReinstallReconciliation(shop.id, now),
+    ).resolves.toEqual({
+      shopId: shop.id,
+      subscriptionId: "subscription-1",
+      reinstallPendingAt: now,
+      expectedNextReconcileAt: now,
+    });
+    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
+      where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: oldPendingAt },
+      data: { reinstallPendingAt: now },
+    });
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { shopId: shop.id },
+      update: { nextReconcileAt: now },
+    }));
   });
 });
 

@@ -95,6 +95,19 @@ describe("merchant billing UI", () => {
     );
   });
 
+  it("blocks pricing selection while reinstall reconciliation is pending", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+      reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
+    });
+
+    await expect(billingSelectLoader({
+      request: new Request("https://example.test/app/billing/select"),
+    } as never)).rejects.toMatchObject({ headers: expect.any(Headers) });
+    expect(hostedPricingRedirect).not.toHaveBeenCalled();
+  });
+
   it("keeps merchant billing surfaces out of the Admin application", () => {
     expect(`${billingRouteSource}\n${billingCallbackSource}\n${billingSelectSource}`).not.toContain(
       "moda-interact-admin",

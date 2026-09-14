@@ -1,3 +1,14 @@
+import { authenticate } from "@/shopify.server";
+import { shopService } from "@/services/shop/shop.service";
+import { assertActiveShop } from "@/services/shop/shop-access-policy";
+
+export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request }) {
+  const { admin, session } = await authenticate.admin(request);
+  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+  assertActiveShop(shop, { route: "/app/additional", redirectTo: "/app/merchant-support" });
+  return null;
+}
+
 export default function AdditionalPage() {
   return (
     <s-page heading="Additional page">

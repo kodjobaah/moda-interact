@@ -14,9 +14,14 @@ describe("explicit route configuration", () => {
 
   it("keeps embedded UI pages under the app layout", () => {
     expect(source).toContain('route("app", "./routes/app/route.jsx", [');
+    expect(source).not.toContain('route("reinstalling", "./routes/app/reinstalling/route.jsx")');
     expect(source).toContain('route("billing", "./routes/app/billing/route.tsx"),');
     expect(source).toContain('route("promotions", "./routes/app/promotions/route.tsx"),');
     expect(source).toContain('route("merchant-support", "./routes/app/merchant-support/route.jsx"),');
+  });
+
+  it("declares the restoration route as a standalone exact path", () => {
+    expect(source).toContain('route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),');
   });
 
   it("keeps billing transitions standalone", () => {
