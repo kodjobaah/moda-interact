@@ -18,6 +18,7 @@ function purchase(id: string, shopId = "shop-1", status = "ACTIVE", currentAmoun
 function database(purchases: any[]) {
   const rows = new Map(purchases.map((row) => [row.id, row]));
   const aggregate = { id: "counter-1", version: 4, refundingQuantity: 2, reservedQuantity: 1 };
+  const refunds = new Map<string, any>();
   const transaction: any = {
     recoveryCreditPurchase: {
       findUnique: vi.fn(async ({ where }: any) => rows.get(where.id) ?? null),
@@ -29,7 +30,7 @@ function database(purchases: any[]) {
       }),
     },
     recoveryCreditRefund: {
-      create: vi.fn(async ({ data }: any) => { const row = rows.get(data.purchaseId); row.refunds.push({ ...data, id: "refund-1", version: 0 }); return data; }),
+      create: vi.fn(async ({ data }: any) => { const row = rows.get(data.purchaseId); const refund = { ...data, id: "refund-1", version: 0 }; row.refunds.push(refund); refunds.set(data.requestKey, refund); return data; }),
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
     shopEntitlementCounter: {
@@ -37,7 +38,7 @@ function database(purchases: any[]) {
       updateMany: vi.fn(async ({ where, data }: any) => { if (where.version !== aggregate.version) return { count: 0 }; aggregate.refundingQuantity += data.refundingQuantity.increment ?? -data.refundingQuantity.decrement; aggregate.version += 1; return { count: 1 }; }),
     },
   };
-  return { database: { recoveryCreditPurchase: { count: vi.fn(async () => rows.size), findMany: vi.fn(async () => [...rows.values()]) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
+  return { database: { recoveryCreditPurchase: { count: vi.fn(async ({ where }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).length), findMany: vi.fn(async ({ where, take }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).slice(0, take)) }, recoveryCreditRefund: { findUnique: vi.fn(async ({ where }: any) => { const refund = refunds.get(where.requestKey); return refund ? { ...refund, purchase: rows.get(refund.purchaseId) } : null; }) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
 }
 
 describe("RecoveryCreditPurchaseManagementService", () => {
@@ -45,7 +46,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     const fixture = database([purchase("one"), purchase("two", "other")]);
     const result = await new RecoveryCreditPurchaseManagementService(fixture.database).listPurchaseHistory({ shopId: "shop-1", pageSize: 100 });
     expect(result.pageSize).toBe(50);
-    expect(result.purchases).toHaveLength(2);
+    expect(result.purchases).toHaveLength(1);
     expect(result.purchases[0].availableAmount).toBe(2);
     expect(fixture.database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: "shop-1" }, take: 50 }));
   });
@@ -103,6 +104,15 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     await service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-1" });
     await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-1" })).resolves.toMatchObject({ code: "REQUESTED" });
     expect(fixture.transaction.recoveryCreditRefund.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves a request-key uniqueness conflict from the persisted refund state", async () => {
+    const fixture = database([purchase("one")]);
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database);
+    await service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-1" });
+    fixture.database.$transaction = vi.fn().mockRejectedValue(new (await import("@prisma/client")).Prisma.PrismaClientKnownRequestError("duplicate request key", { code: "P2002", clientVersion: "6" }));
+    await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-1" })).resolves.toMatchObject({ code: "REQUESTED", availableAmount: 2 });
+    expect(fixture.database.recoveryCreditRefund.findUnique).toHaveBeenCalled();
   });
 
   it("retries the whole refund transaction after a serialization conflict", async () => {

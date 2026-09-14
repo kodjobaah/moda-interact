@@ -181,6 +181,26 @@ function outcomeForExistingRefund(purchase: PurchaseRow, refundStatus: RecoveryC
   return purchase.status === RecoveryCreditPurchaseStatus.REFUNDED ? "ALREADY_REFUNDED" : "ALREADY_WITHDRAWN";
 }
 
+function outcomeForPurchase(purchase: PurchaseRow): RefundOutcome {
+  const availableAmount = Math.max(purchase.currentAmount - purchase.reservedAmount, 0);
+  const liveRefund = purchase.refunds[0];
+  if (liveRefund) {
+    return {
+      purchaseId: purchase.id,
+      code: outcomeForExistingRefund(purchase, liveRefund.status),
+      currentAmount: purchase.currentAmount,
+      reservedAmount: purchase.reservedAmount,
+      availableAmount,
+    };
+  }
+  const code = purchase.status === RecoveryCreditPurchaseStatus.REFUNDED
+    ? "ALREADY_REFUNDED"
+    : purchase.status === RecoveryCreditPurchaseStatus.COMPLETED
+      ? "COMPLETED"
+      : "NOT_ACTIVE";
+  return { purchaseId: purchase.id, code, currentAmount: purchase.currentAmount, reservedAmount: purchase.reservedAmount, availableAmount };
+}
+
 export class RecoveryCreditPurchaseManagementService {
   constructor(private readonly database: Database = prisma) {}
 
@@ -326,7 +346,22 @@ export class RecoveryCreditPurchaseManagementService {
       } catch (error) {
         if (retryable(error) && attempt < MAX_RETRIES - 1) continue;
         if (isUniqueConflict(error)) {
-          return { purchaseId: input.purchaseId, code: "REQUESTED" };
+          const existing = await this.database.recoveryCreditRefund.findUnique({
+            where: { requestKey: requestKey(input.shopId, input.requestId, input.purchaseId) },
+            include: {
+              purchase: {
+                include: {
+                  refunds: {
+                    where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                    orderBy: { createdAt: "desc" },
+                    take: 1,
+                  },
+                },
+              },
+            },
+          });
+          if (!existing || existing.purchase.shopId !== input.shopId) throw error;
+          return outcomeForPurchase(existing.purchase as PurchaseRow);
         }
         throw error;
       }
