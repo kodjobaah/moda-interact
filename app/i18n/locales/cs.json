@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Čekáme na potvrzení od Shopify.",
   "common.unavailable": "Není k dispozici",
   "navigation.breadcrumb": "Drobečková navigace",
   "pending.title": "Čekající obnovení",

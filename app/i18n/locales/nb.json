@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Venter på bekreftelse fra Shopify.",
   "common.unavailable": "Utilgjengelig",
   "navigation.breadcrumb": "Brødsmulesti",
   "pending.title": "Ventende gjenopprettinger",

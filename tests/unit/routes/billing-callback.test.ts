@@ -293,7 +293,7 @@ describe("billing callback activation", () => {
 
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=mismatch");
+    expect(mocks.redirect).toHaveBeenCalledWith(`/app/billing/options?plan_change=mismatch&requested_plan_handle=${planHandle}`);
   });
 
   it("keeps a pending callback unresolved until it becomes current", async () => {
@@ -410,7 +410,10 @@ describe("hosted billing callback", () => {
       requestedPlanHandle: handle,
       verificationFence,
     }));
-    expect(mocks.redirect).toHaveBeenCalledWith(`/app/billing/options?plan_change=${result}`);
+    const expectedRedirect = result === "mismatch"
+      ? `/app/billing/options?plan_change=mismatch&requested_plan_handle=${handle}`
+      : `/app/billing/options?plan_change=${result}`;
+    expect(mocks.redirect).toHaveBeenCalledWith(expectedRedirect);
   });
 
   it("schedules reconciliation for verified current or pending state", async () => {
@@ -429,7 +432,7 @@ describe("hosted billing callback", () => {
 
     expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified&requested_plan_handle=growth");
   });
 
   it("distinguishes no active subscription from verification failure", async () => {
@@ -440,7 +443,7 @@ describe("hosted billing callback", () => {
     mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
     await runLoader("free");
     expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified&requested_plan_handle=free");
   });
 
   it("passes one read fence into provider failure recording", async () => {

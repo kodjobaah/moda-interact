@@ -81,6 +81,19 @@ describe("SubscriptionChangePanel", () => {
     expect(markup).not.toContain("moda-interact-admin");
   });
 
+  it("renders an unconfirmed hosted selection without commercial facts", () => {
+    const markup = render({
+      pending: null,
+      requestedSelection: { shopifyPlanHandle: "scale" },
+    });
+    expect(markup).toContain("scale");
+    expect(markup).toContain("Waiting for confirmation from Shopify.");
+    expect(markup).toContain("moda-provider-plan-awaiting-confirmation");
+    const requestedCard = markup.slice(markup.indexOf("moda-provider-plan-awaiting-confirmation"));
+    expect(requestedCard).not.toContain("£75.00");
+    expect(requestedCard).not.toContain("EVERY_30_DAYS");
+  });
+
   it("contains no local catalogue, rank inference, or provider mutation", async () => {
     const source = await readFile(new URL("../../app/components/dashboard/SubscriptionChangePanel.jsx", import.meta.url), "utf8");
     expect(source).not.toMatch(/plans\[\]|isUpgrade|isDowngrade|upgradeAction|downgradeAction|appSubscriptionCreate|billing\.request|console\./);

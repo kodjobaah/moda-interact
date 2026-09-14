@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Shopify からの確認を待っています。",
   "common.unavailable": "利用できません",
   "navigation.breadcrumb": "パンくずリスト",
   "pending.title": "保留中のリカバリー",

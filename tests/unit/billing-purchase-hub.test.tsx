@@ -27,6 +27,7 @@ function render(overrides: Record<string, unknown> = {}) {
       }}
       lifecycleState="ACTIVE"
       verificationState="ACTIVE_SUBSCRIPTION"
+      mappingStatus="MAPPED"
       topUpState={topUpState}
       current={{ shopifyPlanHandle: "growth", mappedModaPlanName: "Growth" }}
       pending={null}

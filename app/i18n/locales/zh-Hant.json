@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "正在等待 Shopify 確認。",
   "common.unavailable": "無法使用",
   "navigation.breadcrumb": "階層連結導覽",
   "pending.title": "待處理的挽回",

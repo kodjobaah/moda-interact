@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Venter på bekræftelse fra Shopify.",
   "common.unavailable": "Ikke tilgængelig",
   "navigation.breadcrumb": "Brødkrummenavigation",
   "pending.title": "Afventende gendannelser",

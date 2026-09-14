@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Odotetaan vahvistusta Shopifylta.",
   "common.unavailable": "Ei saatavilla",
   "navigation.breadcrumb": "Murupolku",
   "pending.title": "Odottavat palautukset",

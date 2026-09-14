@@ -1,4 +1,5 @@
 {
+  "billingCommerce.plans.awaitingShopifyConfirmation": "Waiting for confirmation from Shopify.",
   "common.unavailable": "Unavailable",
   "navigation.breadcrumb": "Breadcrumb",
   "pending.title": "Pending recoveries",

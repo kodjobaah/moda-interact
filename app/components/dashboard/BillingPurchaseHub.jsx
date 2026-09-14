@@ -5,8 +5,8 @@ import TopUpPurchasePanel from "./TopUpPurchasePanel";
 import SubscriptionChangePanel from "./SubscriptionChangePanel";
 import "./BillingPurchaseHub.css";
 
-/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, topUpState: any, current?: any, pending?: any, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans", onPurchaseTopUp: () => void }} props */
-export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, topUpState, current, pending, managePlansHref, managePlansAvailable, initialView="topup", onPurchaseTopUp }) {
+/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans", onPurchaseTopUp: () => void }} props */
+export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, managePlansHref, managePlansAvailable, initialView="topup", onPurchaseTopUp }) {
   const i18n=createMerchantI18n(merchantUi); const [view,setView]=useState(initialView);
   const currentName = verificationState === "VERIFICATION_UNAVAILABLE"
     ? i18n.t("common.unavailable")
@@ -20,6 +20,7 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
     && !topUpState.purchaseEligible
     && topUpState.latestPurchase?.status !== "REQUESTED"
     && verificationState === "ACTIVE_SUBSCRIPTION"
+    && mappingStatus === "MAPPED"
     && lifecycleState === "ACTIVE"
     && billingPeriodPhase !== "DRAINING"
     && billingPeriodPhase !== "RECONCILING";
@@ -35,9 +36,9 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
     {view === "topup" ? (
       <><TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} onPurchaseTopUp={onPurchaseTopUp} />{topUpVerificationUnavailable ? <p>{i18n.t("billingCommerce.topup.verificationUnavailable")}</p> : null}</>
     ) : (
-      <SubscriptionChangePanel merchantUi={merchantUi} current={current} pending={pending} providerVerificationState={verificationState} managePlansHref={managePlansHref} managePlansAvailable={managePlansAvailable} />
+      <SubscriptionChangePanel merchantUi={merchantUi} current={current} pending={pending} requestedSelection={requestedSelection} providerVerificationState={verificationState} managePlansHref={managePlansHref} managePlansAvailable={managePlansAvailable} />
     )}
   </div>;
 }
 
-BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]), onPurchaseTopUp:PropTypes.func.isRequired };
+BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]), onPurchaseTopUp:PropTypes.func.isRequired };
