@@ -1631,6 +1631,380 @@ describe("BillingService subscription projection", () => {
   });
 });
 
+describe("BillingService hosted plan-change return", () => {
+  function createHostedReturnDatabase(pendingPlan: Record<string, unknown> | null = null) {
+    const state: { current: Record<string, unknown> } = {
+      current: {
+        id: "subscription-1",
+        updatedAt: new Date("2026-08-30T00:00:00.000Z"),
+        status: "ACTIVE",
+        observedShopifyPlanHandle: null,
+        planId: "growth-id",
+        billingPeriodId: "period-1",
+        pendingPlanId: "old-pending-id",
+        pendingShopifyPlanHandle: "old-pending",
+        pendingEffectiveAt: new Date("2026-09-20T00:00:00.000Z"),
+        nextReconcileAt: new Date("2026-09-19T00:00:00.000Z"),
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        cancelAtPeriodEnd: false,
+        lastSyncedAt: null,
+        lastSyncErrorCode: null,
+        lastSyncErrorAt: null,
+      },
+    };
+    const lockQueries: string[] = [];
+    const subscription = {
+      findUnique: vi.fn().mockImplementation(async () => state.current),
+      update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        state.current = { ...state.current, ...data };
+        return { id: state.current.id, nextReconcileAt: state.current.nextReconcileAt };
+      }),
+      updateMany: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+        state.current = { ...state.current, ...data };
+        return { count: 1 };
+      }),
+    };
+    const billingPlan = {
+      findUnique: vi.fn().mockResolvedValue(pendingPlan),
+    };
+    const protectedModels = Object.fromEntries([
+      "billingPeriod",
+      "billingPeriodEntitlementCounter",
+      "shopEntitlementCounter",
+      "recoveryCreditPurchase",
+      "recoveryCreditRefund",
+      "promotionalCreditGrant",
+      "merchantPromotionSelection",
+    ].map((name) => [name, Object.fromEntries([
+      "create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany",
+    ].map((method) => [method, vi.fn()]))]));
+    const transaction = {
+      $queryRaw: vi.fn().mockImplementation(async (query: { sql?: string }) => {
+        lockQueries.push(query.sql ?? "");
+        return [];
+      }),
+      subscription,
+      billingPlan,
+      ...protectedModels,
+    };
+    const database = {
+      subscription,
+      $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+    };
+    return { database, state, subscription, billingPlan, lockQueries, transaction, protectedModels };
+  }
+
+  function hostedFence(current: Record<string, unknown>) {
+    return {
+      id: current.id as string | null,
+      updatedAt: current.updatedAt as Date | null,
+      status: current.status as never,
+      observedShopifyPlanHandle: (current.observedShopifyPlanHandle as string | null) ?? null,
+      planId: (current.planId as string | null) ?? null,
+      billingPeriodId: (current.billingPeriodId as string | null) ?? null,
+      currentPeriodStart: (current.currentPeriodStart as Date | null) ?? null,
+      currentPeriodEnd: (current.currentPeriodEnd as Date | null) ?? null,
+      trialEndsAt: (current.trialEndsAt as Date | null) ?? null,
+      cancelAtPeriodEnd: (current.cancelAtPeriodEnd as boolean | null) ?? null,
+      pendingShopifyPlanHandle: (current.pendingShopifyPlanHandle as string | null) ?? null,
+      pendingPlanId: (current.pendingPlanId as string | null) ?? null,
+      pendingEffectiveAt: (current.pendingEffectiveAt as Date | null) ?? null,
+      nextReconcileAt: (current.nextReconcileAt as Date | null) ?? null,
+      lastSyncedAt: (current.lastSyncedAt as Date | null) ?? null,
+      lastSyncErrorCode: (current.lastSyncErrorCode as string | null) ?? null,
+      lastSyncErrorAt: (current.lastSyncErrorAt as Date | null) ?? null,
+    };
+  }
+
+  function activeProviderState(overrides: Record<string, unknown> = {}) {
+    return {
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "growth",
+        currentPeriodStart: "2026-09-01T00:00:00.000Z",
+        currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+        trialEndsAt: null,
+        cancelAtEndOfCycle: true,
+        pendingUpdate: {
+          planHandle: "starter",
+          effectiveAt: "2026-10-01T00:00:00.000Z",
+        },
+        ...overrides,
+      },
+    };
+  }
+
+  function expectNoProtectedWrites(protectedModels: Record<string, Record<string, ReturnType<typeof vi.fn>>>) {
+    Object.values(protectedModels).forEach((model) => {
+      Object.values(model).forEach((method) => expect(method).not.toHaveBeenCalled());
+    });
+  }
+
+  it("returns null hosted verification fence when no durable Subscription exists", async () => {
+    const findUnique = vi.fn().mockResolvedValue(null);
+    const service = new BillingService({} as never, {
+      subscription: { findUnique },
+    } as never);
+
+    await expect(service.getHostedPlanVerificationFence("shop-1")).resolves.toBeNull();
+    expect(findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["active", { id: "starter-id", active: true }, "starter-id"],
+    ["inactive", { id: "starter-id", active: false }, null],
+    ["unmapped", null, null],
+  ] as const)("stores only an active exact pending mapping for %s provider plans", async (_label, pendingPlan, expectedPlanId) => {
+    const { database, state, billingPlan, protectedModels } = createHostedReturnDatabase(pendingPlan);
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "starter",
+      state: activeProviderState() as never,
+      verificationFence: hostedFence(state.current),
+    });
+
+    expect(result).toMatchObject({ result: "pending", subscriptionId: "subscription-1" });
+    expect(billingPlan.findUnique).toHaveBeenCalledWith({
+      where: { shopifyPlanHandle: "starter" },
+      select: { id: true, active: true },
+    });
+    expect(state.current).toMatchObject({
+      pendingShopifyPlanHandle: "starter",
+      pendingPlanId: expectedPlanId,
+      pendingEffectiveAt: new Date("2026-10-01T00:00:00.000Z"),
+      planId: "growth-id",
+      billingPeriodId: "period-1",
+    });
+    expectNoProtectedWrites(protectedModels);
+  });
+
+  it("locks the accepted settings/subscription pair before rereading the hosted projection", async () => {
+    const { database, state, lockQueries, subscription } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+
+    await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "starter",
+      state: activeProviderState() as never,
+      verificationFence: hostedFence(state.current),
+    });
+
+    expect(lockQueries[0]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockQueries[1]).toContain('FROM "billing"."Subscription"');
+    expect(lockQueries[1]).toContain("FOR UPDATE");
+    expect(subscription.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("schedules current state without changing entitlement ownership", async () => {
+    const { database, state, subscription, protectedModels } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: activeProviderState() as never,
+      verificationFence: hostedFence(state.current),
+    });
+
+    expect(result.result).toBe("current");
+    expect(state.current).toMatchObject({ planId: "growth-id", billingPeriodId: "period-1" });
+    expect(subscription.update).toHaveBeenCalledTimes(1);
+    expectNoProtectedWrites(protectedModels);
+    expectNoProtectedWrites(createHostedReturnDatabase().protectedModels);
+  });
+
+  it("does not mutate a mismatch or invent a plan when there is no active subscription", async () => {
+    const mismatch = createHostedReturnDatabase();
+    const mismatchService = new BillingService({} as never, mismatch.database as never);
+    await expect(mismatchService.recordHostedPlanChangeReturn({
+      shopId: "shop-1", requestedPlanHandle: "scale", state: activeProviderState() as never,
+      verificationFence: hostedFence(mismatch.state.current),
+    })).resolves.toMatchObject({ result: "mismatch" });
+    expect(mismatch.subscription.update).not.toHaveBeenCalled();
+    expectNoProtectedWrites(mismatch.protectedModels);
+
+    const noActive = createHostedReturnDatabase();
+    const noActiveService = new BillingService({} as never, noActive.database as never);
+    await expect(noActiveService.recordHostedPlanChangeReturn({
+      shopId: "shop-1", requestedPlanHandle: "scale", state: { status: "NO_ACTIVE_SUBSCRIPTION", subscription: null } as never,
+      verificationFence: hostedFence(noActive.state.current),
+    })).resolves.toMatchObject({ result: "no_active" });
+    expect(noActive.state.current.planId).toBe("growth-id");
+    expect(noActive.state.current.pendingShopifyPlanHandle).toBe("old-pending");
+    expectNoProtectedWrites(noActive.protectedModels);
+  });
+
+  it("classifies unchanged absent durable Subscription as no_active", async () => {
+    const noActive = createHostedReturnDatabase();
+    noActive.state.current = null as never;
+    const service = new BillingService({} as never, noActive.database as never);
+
+    await expect(service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: { status: "NO_ACTIVE_SUBSCRIPTION", subscription: null } as never,
+      verificationFence: null,
+    })).resolves.toEqual({ result: "no_active", subscriptionId: null, nextReconcileAt: null });
+
+    expect(noActive.billingPlan.findUnique).not.toHaveBeenCalled();
+    expect(noActive.subscription.update).not.toHaveBeenCalled();
+    expect(noActive.subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(noActive.protectedModels);
+  });
+
+  it("updates only retry metadata when provider verification fails", async () => {
+    const { database, state, lockQueries, protectedModels } = createHostedReturnDatabase();
+    const service = new BillingService({} as never, database as never);
+    const before = { ...state.current };
+
+    await service.recordHostedPlanVerificationFailure("shop-1", hostedFence(state.current));
+
+    expect(state.current).toMatchObject({
+      planId: before.planId,
+      billingPeriodId: before.billingPeriodId,
+      pendingPlanId: before.pendingPlanId,
+      pendingShopifyPlanHandle: before.pendingShopifyPlanHandle,
+      lastSyncErrorCode: "PARTNER_API_ERROR",
+    });
+    expect(lockQueries[1]).toContain("FOR UPDATE");
+    expectNoProtectedWrites(protectedModels);
+  });
+
+  it("does not manufacture retry metadata when durable Subscription is absent", async () => {
+    const noSubscription = createHostedReturnDatabase();
+    noSubscription.state.current = null as never;
+    const service = new BillingService({} as never, noSubscription.database as never);
+
+    await expect(service.recordHostedPlanVerificationFailure("shop-1", null)).resolves.toBeNull();
+
+    expect(noSubscription.subscription.update).not.toHaveBeenCalled();
+    expect(noSubscription.subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(noSubscription.protectedModels);
+  });
+
+  it("fences a stale successful provider observation without mapping or writing", async () => {
+    const { database, state, subscription, billingPlan, protectedModels } = createHostedReturnDatabase({ id: "starter-id", active: true });
+    const verificationFence = hostedFence(state.current);
+    state.current.updatedAt = new Date("2026-09-02T00:00:00.000Z");
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "starter",
+      state: activeProviderState() as never,
+      verificationFence,
+    });
+
+    expect(result).toEqual({ result: "unverified", subscriptionId: "subscription-1", nextReconcileAt: null });
+    expect(subscription.update).not.toHaveBeenCalled();
+    expect(billingPlan.findUnique).not.toHaveBeenCalled();
+    expectNoProtectedWrites(protectedModels);
+    expect(state.current).toMatchObject({ planId: "growth-id", pendingShopifyPlanHandle: "old-pending" });
+  });
+
+  it("fences a stale failed provider observation without retry or protected writes", async () => {
+    const { database, state, subscription, protectedModels } = createHostedReturnDatabase();
+    const verificationFence = hostedFence(state.current);
+    state.current.updatedAt = new Date("2026-09-02T00:00:00.000Z");
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.recordHostedPlanVerificationFailure(
+      "shop-1",
+      verificationFence,
+    )).resolves.toBeNull();
+
+    expect(subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(protectedModels);
+    expect(state.current.lastSyncErrorCode).toBeNull();
+  });
+
+  it("fences a durable commit that is newer than the pre-provider projection even when its updatedAt is earlier than the old wall-clock start", async () => {
+    const { database, state, subscription, billingPlan, protectedModels } = createHostedReturnDatabase();
+    const verificationFence = hostedFence(state.current);
+    state.current.updatedAt = new Date("2026-09-01T10:00:00.500Z");
+    state.current.planId = "starter-id";
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: activeProviderState() as never,
+      verificationFence,
+    });
+
+    expect(result).toEqual({ result: "unverified", subscriptionId: "subscription-1", nextReconcileAt: null });
+    expect(state.current.updatedAt).toEqual(new Date("2026-09-01T10:00:00.500Z"));
+    expect(subscription.update).not.toHaveBeenCalled();
+    expect(billingPlan.findUnique).not.toHaveBeenCalled();
+    expectNoProtectedWrites(protectedModels);
+  });
+
+  it("fences a changed durable projection even when updatedAt is identical", async () => {
+    const { database, state, subscription, billingPlan, protectedModels } = createHostedReturnDatabase();
+    const verificationFence = hostedFence(state.current);
+    state.current.planId = "starter-id";
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: activeProviderState() as never,
+      verificationFence,
+    })).resolves.toEqual({ result: "unverified", subscriptionId: "subscription-1", nextReconcileAt: null });
+
+    expect(subscription.update).not.toHaveBeenCalled();
+    expect(billingPlan.findUnique).not.toHaveBeenCalled();
+    expectNoProtectedWrites(protectedModels);
+  });
+
+  it("does not record provider failure when the durable projection changed during verification", async () => {
+    const { database, state, subscription, protectedModels } = createHostedReturnDatabase();
+    const verificationFence = hostedFence(state.current);
+    state.current.pendingShopifyPlanHandle = "new-pending";
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.recordHostedPlanVerificationFailure("shop-1", verificationFence)).resolves.toBeNull();
+
+    expect(subscription.updateMany).not.toHaveBeenCalled();
+    expectNoProtectedWrites(protectedModels);
+  });
+
+  it("clears stale nullable provider cycle and trial facts from a verified hosted observation", async () => {
+    const { database, state, protectedModels } = createHostedReturnDatabase();
+    state.current.currentPeriodStart = new Date("2026-08-01T00:00:00.000Z");
+    state.current.currentPeriodEnd = new Date("2026-09-01T00:00:00.000Z");
+    state.current.trialEndsAt = new Date("2026-08-15T00:00:00.000Z");
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "growth",
+      state: activeProviderState({
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        trialEndsAt: null,
+        pendingUpdate: null,
+      }) as never,
+      verificationFence: hostedFence(state.current),
+    });
+
+    expect(result.result).toBe("current");
+    expect(state.current).toMatchObject({
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+      status: "ACTIVE",
+      planId: "growth-id",
+      billingPeriodId: "period-1",
+    });
+    expectNoProtectedWrites(protectedModels);
+  });
+});
+
 function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
   const purchases = new Map<string, Record<string, unknown>>();
   const usageEvents: Record<string, unknown>[] = [];

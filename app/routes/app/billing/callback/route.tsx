@@ -8,7 +8,6 @@ import type {
   BillingPlan,
   Subscription,
 } from "@prisma/client";
-
 import { authenticate } from "@/shopify.server";
 
 import {
@@ -84,7 +83,6 @@ function isVerifiedPaidActivation(
   );
 }
 
-
 export async function loader({
   request,
 }: LoaderFunctionArgs) {
@@ -95,90 +93,119 @@ export async function loader({
   } = await authenticate.admin(request);
 
   const url = new URL(request.url);
-
-  const requestedPlanHandle =
-    url.searchParams.get("plan_handle");
+  const requestedPlanHandle = url.searchParams.get("plan_handle");
 
   if (!requestedPlanHandle) {
-    throw new Response(
-      "Missing plan_handle",
-      { status: 400 },
-    );
+    throw new Response("Missing plan_handle", { status: 400 });
   }
 
-  const shop =
-    await shopService.resolveShopifyShop({
-      admin,
-      domain: session.shop,
-    });
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
     await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
-  if (!activation) return redirect("/app");
 
-  let partnerVerificationSucceeded = false;
-  let partnerErrorAt: Date | null = null;
-  let syncedSubscription: BillingCallbackSubscription | null = null;
-  try {
-    syncedSubscription = await billingService.syncSubscription(shop.id, activation.token ?? undefined) as BillingCallbackSubscription | null;
-    partnerVerificationSucceeded = true;
-  } catch {
-    partnerErrorAt = new Date();
-  }
+  if (activation) {
+    let partnerVerificationSucceeded = false;
+    let partnerErrorAt: Date | null = null;
+    let syncedSubscription: BillingCallbackSubscription | null = null;
+    try {
+      syncedSubscription = await billingService.syncSubscription(shop.id, activation.token ?? undefined) as BillingCallbackSubscription | null;
+      partnerVerificationSucceeded = true;
+    } catch {
+      partnerErrorAt = new Date();
+    }
 
-  const subscription = activation.plan.kind === "PAID_METERED"
-    ? syncedSubscription
-    : await billingService.getSubscriptionProjection(shop.id);
-  const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
-  if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
-    await enqueueBillingSubscriptionReconcileBestEffort({
-      shopId: shop.id,
-      subscriptionId: subscription!.id,
-      expectedNextReconcileAt: subscription!.nextReconcileAt!,
-    });
-    return redirect("/app");
-  }
-  if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
-    const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
-    if (completed?.nextReconcileAt) {
+    const subscription = activation.plan.kind === "PAID_METERED"
+      ? syncedSubscription
+      : await billingService.getSubscriptionProjection(shop.id);
+    const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
+
+    if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
-        subscriptionId: completed.subscriptionId,
-        expectedNextReconcileAt: completed.nextReconcileAt,
+        subscriptionId: subscription!.id,
+        expectedNextReconcileAt: subscription!.nextReconcileAt!,
+      });
+      return redirect("/app");
+    }
+
+    if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
+      const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+      if (completed?.nextReconcileAt) {
+        await enqueueBillingSubscriptionReconcileBestEffort({
+          shopId: shop.id,
+          subscriptionId: completed.subscriptionId,
+          expectedNextReconcileAt: completed.nextReconcileAt,
+        });
+      }
+      return redirect("/app");
+    }
+
+    if (activation.mode !== "INITIAL" || !activation.token) {
+      return redirect("/app");
+    }
+
+    if (expectedPlanKind === "PAID_METERED" && syncedSubscription?.lastSyncErrorCode) {
+      return redirect("/app");
+    }
+
+    const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
+    const pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
+      shopId: shop.id,
+      expected: activation.token,
+      nextReconcileAt,
+      partnerErrorAt,
+    });
+    if (pending) {
+      await enqueueBillingSubscriptionReconcileBestEffort({
+        shopId: shop.id,
+        subscriptionId: pending.subscriptionId,
+        expectedNextReconcileAt: pending.nextReconcileAt,
       });
     }
-    if (completed) return redirect("/app");
-  }
-
-  if (activation.mode !== "INITIAL" || !activation.token) {
     return redirect("/app");
   }
 
-  if (expectedPlanKind === "PAID_METERED" && syncedSubscription?.lastSyncErrorCode) {
-    return redirect("/app");
+  const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
+  let verification;
+  try {
+    verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
+  } catch {
+    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence);
+    if (retry) {
+      await enqueueBillingSubscriptionReconcileBestEffort({
+        shopId: shop.id,
+        subscriptionId: retry.subscriptionId,
+        expectedNextReconcileAt: retry.nextReconcileAt,
+      });
+    }
+    return redirect("/app/billing/options?plan_change=unverified");
   }
 
-  const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
-  const pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
+  const result = await billingService.recordHostedPlanChangeReturn({
     shopId: shop.id,
-    expected: activation.token,
-    nextReconcileAt,
-    partnerErrorAt,
+    requestedPlanHandle,
+    state: verification,
+    verificationFence,
   });
-  if (pending) {
+  if (
+    result.subscriptionId &&
+    result.nextReconcileAt &&
+    ["current", "pending", "no_active"].includes(result.result)
+  ) {
     await enqueueBillingSubscriptionReconcileBestEffort({
       shopId: shop.id,
-      subscriptionId: pending.subscriptionId,
-      expectedNextReconcileAt: pending.nextReconcileAt,
+      subscriptionId: result.subscriptionId,
+      expectedNextReconcileAt: result.nextReconcileAt,
     });
   }
 
-  return redirect(
-    "/app",
-  );
+  return redirect(`/app/billing/options?plan_change=${result.result}`);
 }
-
 
 export default function BillingCallback() {
   return null;

@@ -13,11 +13,11 @@ export async function loader({ request }) {
     const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
     assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
     const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
-  
-    
-  
+
+
+
   const merchantUi = merchantUiContext(settings, session)
-  
+
 
   const plans = [
   {
@@ -103,7 +103,7 @@ export default function BillingOptionsPage() {
   onChangePlan={handlePlanChange}
 />
         </s-page>
-  
+
   );
 }
 
