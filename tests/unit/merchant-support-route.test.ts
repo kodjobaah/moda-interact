@@ -57,6 +57,22 @@ describe("merchant support resource route", () => {
     });
   });
 
+  it("keeps authenticated pending reinstall support scoped to the internal shop", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "internal-shop-1",
+      status: "UNINSTALLED",
+      reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
+    });
+
+    await loader({
+      request: new Request("https://example.test/app/merchant-support?shopId=other-shop"),
+    });
+
+    expect(readMerchantSupportMessages).toHaveBeenCalledWith(expect.objectContaining({
+      shopId: "internal-shop-1",
+    }));
+  });
+
   it("does not accept client-controlled shop or message provenance", async () => {
     const form = new FormData();
     form.set("intent", "compose");

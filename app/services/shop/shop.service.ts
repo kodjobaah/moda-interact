@@ -3,6 +3,7 @@ import type {
 } from "@shopify/shopify-app-react-router/server";
 
 import type {
+  Prisma,
   Shop,
 } from "@prisma/client";
 import {
@@ -194,18 +195,164 @@ export class ShopService {
   }
 
 
-  async markInstalled(
-    domain: string,
-  ): Promise<void> {
-    await prisma.shop.updateMany({
-      where: {
-        domain: normalizeShopDomain(domain),
-        status: "UNINSTALLED",
-      },
-      data: {
-        status: "ACTIVE",
-        uninstalledAt: null,
-      },
+  async beginReinstallReconciliation(
+    shopId: string,
+    now = new Date(),
+  ): Promise<{
+    shopId: string;
+    subscriptionId: string;
+    reinstallPendingAt: Date;
+    expectedNextReconcileAt: Date;
+  } | null> {
+    return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+      const shop = await transaction.shop.findUnique({
+        where: { id: shopId },
+        select: { status: true, reinstallPendingAt: true },
+      });
+      if (!shop || shop.status !== "UNINSTALLED") return null;
+
+      const existingSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true, nextReconcileAt: true },
+      });
+
+      if (shop.reinstallPendingAt) {
+        if (!existingSubscription?.nextReconcileAt) return null;
+
+        return {
+          shopId,
+          subscriptionId: existingSubscription.id,
+          reinstallPendingAt: shop.reinstallPendingAt,
+          expectedNextReconcileAt: existingSubscription.nextReconcileAt,
+        };
+      }
+
+      const reinstallPendingAt = now;
+      const markerWrite = await transaction.shop.updateMany({
+          where: {
+            id: shopId,
+            status: "UNINSTALLED",
+            reinstallPendingAt: null,
+          },
+          data: { reinstallPendingAt },
+      });
+
+      if (markerWrite.count !== 1) {
+        const durableShop = await transaction.shop.findUnique({
+          where: { id: shopId },
+          select: { status: true, reinstallPendingAt: true },
+        });
+        const durableSubscription = await transaction.subscription.findUnique({
+          where: { shopId },
+          select: { id: true, nextReconcileAt: true },
+        });
+
+        if (
+          durableShop?.status !== "UNINSTALLED" ||
+          !durableShop.reinstallPendingAt ||
+          !durableSubscription?.nextReconcileAt
+        ) {
+          return null;
+        }
+
+        return {
+          shopId,
+          subscriptionId: durableSubscription.id,
+          reinstallPendingAt: durableShop.reinstallPendingAt,
+          expectedNextReconcileAt: durableSubscription.nextReconcileAt,
+        };
+      }
+
+      const subscription = await transaction.subscription.upsert({
+        where: { shopId },
+        update: { nextReconcileAt: now },
+        create: {
+          shopId,
+          status: "NO_CONTRACT",
+          planId: null,
+          observedShopifyPlanHandle: null,
+          nextReconcileAt: now,
+        },
+        select: { id: true, nextReconcileAt: true },
+      });
+
+      if (!subscription.nextReconcileAt) {
+        throw new Error("Reinstall reconciliation schedule was not persisted.");
+      }
+
+      return {
+        shopId,
+        subscriptionId: subscription.id,
+        reinstallPendingAt,
+        expectedNextReconcileAt: subscription.nextReconcileAt,
+      };
+    });
+  }
+
+  async retryReinstallReconciliation(
+    shopId: string,
+    now = new Date(),
+  ): Promise<{
+    shopId: string;
+    subscriptionId: string;
+    reinstallPendingAt: Date;
+    expectedNextReconcileAt: Date;
+  } | null> {
+    return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+      const shop = await transaction.shop.findUnique({
+        where: { id: shopId },
+        select: { status: true, reinstallPendingAt: true },
+      });
+      if (!shop || shop.status !== "UNINSTALLED" || !shop.reinstallPendingAt) {
+        return null;
+      }
+
+      const subscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true, nextReconcileAt: true },
+      });
+      if (subscription?.nextReconcileAt) return null;
+
+      const markerWrite = await transaction.shop.updateMany({
+        where: {
+          id: shopId,
+          status: "UNINSTALLED",
+          reinstallPendingAt: shop.reinstallPendingAt,
+        },
+        data: { reinstallPendingAt: now },
+      });
+      if (markerWrite.count !== 1) return null;
+
+      const updatedSubscription = await transaction.subscription.upsert({
+        where: { shopId },
+        update: { nextReconcileAt: now },
+        create: {
+          shopId,
+          status: "NO_CONTRACT",
+          planId: null,
+          observedShopifyPlanHandle: null,
+          nextReconcileAt: now,
+        },
+        select: { id: true, nextReconcileAt: true },
+      });
+
+      if (!updatedSubscription.nextReconcileAt) {
+        throw new Error("Reinstall retry schedule was not persisted.");
+      }
+
+      return {
+        shopId,
+        subscriptionId: updatedSubscription.id,
+        reinstallPendingAt: now,
+        expectedNextReconcileAt: updatedSubscription.nextReconcileAt,
+      };
+    });
+  }
+
+  async getReinstallSubscription(shopId: string) {
+    return prisma.subscription.findUnique({
+      where: { shopId },
+      select: { nextReconcileAt: true },
     });
   }
 
@@ -216,7 +363,7 @@ export class ShopService {
   ): Promise<void> {
     const normalizedDomain = normalizeShopDomain(domain);
 
-    await prisma.$transaction(async (transaction) => {
+    await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
       const shop = await transaction.shop.findUnique({
         where: { domain: normalizedDomain },
         select: { id: true },
@@ -234,18 +381,10 @@ export class ShopService {
         data: {
           status: "UNINSTALLED",
           uninstalledAt,
+          reinstallPendingAt: null,
         },
       });
 
-      await transaction.shop.updateMany({
-        where: { id: shop.id },
-        data: { status: "UNINSTALLED" },
-      });
-
-      await transaction.subscription.updateMany({
-        where: { shopId: shop.id },
-        data: { status: "NO_CONTRACT" },
-      });
     });
   }
 }
