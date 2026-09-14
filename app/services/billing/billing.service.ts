@@ -791,9 +791,9 @@ async getSubscription(
       ({ counter }) => counter === BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
     );
     const paidIncluded = reconciledPlanMapping?.kind === "PAID_METERED" &&
-      subscription?.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
-      subscription?.status !== SubscriptionProjectionStatus.FROZEN &&
-      subscription?.status !== undefined &&
+      (subscription?.status === SubscriptionProjectionStatus.ACTIVE ||
+        subscription?.status === SubscriptionProjectionStatus.TRIALING ||
+        subscription?.status === SubscriptionProjectionStatus.FROZEN) &&
       paidPeriod &&
       periodCounter &&
       paidPeriod.status === BillingPeriodStatus.OPEN &&
@@ -858,6 +858,13 @@ async getSubscription(
       subscription.observedShopifyPlanHandle !== subscription.plan?.shopifyPlanHandle ||
       (reconciledPlanMapping.kind === "PAID_METERED" && !paidIncluded)
     ) {
+      return { ...base, availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false };
+    }
+
+    if (promotional.remaining <= 0 &&
+      !(reconciledPlanMapping.kind === "PAID_METERED" && paidIncluded!.remaining > 0) &&
+      purchased.available <= 0 &&
+      !freeLifetime) {
       return { ...base, availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false };
     }
 
