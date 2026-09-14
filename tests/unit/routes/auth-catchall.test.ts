@@ -20,6 +20,10 @@ vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
 
 const { loader } = await import("../../../app/routes/auth/catchall/route");
 
+function loaderArgs(url: string) {
+  return { request: new Request(url) } as Parameters<typeof loader>[0];
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   authenticateAdmin.mockResolvedValue({
@@ -34,7 +38,7 @@ beforeEach(() => {
 
 describe("auth catchall reinstall gate", () => {
   it("leaves an active shop lifecycle unchanged", async () => {
-    await expect(loader({ request: new Request("https://example.test/auth/callback") })).resolves.toBeNull();
+    await expect(loader(loaderArgs("https://example.test/auth/callback"))).resolves.toBeNull();
 
     expect(beginReinstallReconciliation).not.toHaveBeenCalled();
     expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
@@ -52,7 +56,7 @@ describe("auth catchall reinstall gate", () => {
 
     let error: unknown;
     try {
-      await loader({ request: new Request("https://example.test/auth/callback") });
+      await loader(loaderArgs("https://example.test/auth/callback"));
     } catch (caught) {
       error = caught;
     }
@@ -60,5 +64,30 @@ describe("auth catchall reinstall gate", () => {
     expect(error).toBeInstanceOf(Response);
     expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
     expect(enqueueBillingSubscriptionReconcileBestEffort).toHaveBeenCalledWith(reconciliation);
+  });
+
+  it("redirects a stopped reinstall without restarting or enqueueing it", async () => {
+    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED" });
+    beginReinstallReconciliation.mockResolvedValue(null);
+
+    let error: unknown;
+    try {
+      await loader(loaderArgs("https://example.test/auth/callback"));
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error).toBeInstanceOf(Response);
+    expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
+    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+  });
+
+  it("does not begin or enqueue reconciliation for a suspended shop", async () => {
+    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "SUSPENDED" });
+
+    await expect(loader(loaderArgs("https://example.test/auth/callback"))).resolves.toBeNull();
+
+    expect(beginReinstallReconciliation).not.toHaveBeenCalled();
+    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
   });
 });

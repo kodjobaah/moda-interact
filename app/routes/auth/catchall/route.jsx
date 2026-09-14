@@ -4,7 +4,7 @@ import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
 
-export const loader = async ({ request }) => {
+export const loader = async (/** @type {import("react-router").LoaderFunctionArgs} */ { request }) => {
   const { admin, session } = await authenticate.admin(request);
 
   if (admin && session) {
@@ -13,14 +13,14 @@ export const loader = async ({ request }) => {
       const reconciliation = await shopService.beginReinstallReconciliation(shop.id);
       if (reconciliation) {
         await enqueueBillingSubscriptionReconcileBestEffort(reconciliation);
-        throw redirect("/app/reinstalling");
       }
+      throw redirect("/app/reinstalling");
     }
   }
 
   return null;
 };
 
-export const headers = (headersArgs) => {
+export const headers = (/** @type {import("react-router").HeadersArgs} */ headersArgs) => {
   return boundary.headers(headersArgs);
 };

@@ -64,6 +64,7 @@ beforeEach(() => {
     shopId: shop.id,
     status: "NO_CONTRACT",
   });
+  dbMock.shop.updateMany.mockResolvedValue({ count: 1 });
 });
 
 describe("ShopService.markUninstalled", () => {
@@ -130,7 +131,69 @@ describe("ShopService.beginReinstallReconciliation", () => {
     expect(result?.reinstallPendingAt).toBe(pendingAt);
     expect(result?.expectedNextReconcileAt).toBe(nextReconcileAt);
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
-    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: {} }));
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not restart a stopped reinstall attempt", async () => {
+    const pendingAt = new Date("2026-09-08T12:00:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+
+    await expect(
+      new ShopService().beginReinstallReconciliation(shop.id),
+    ).resolves.toBeNull();
+    expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("returns the competing durable attempt after losing the marker CAS", async () => {
+    const pendingAt = new Date("2026-09-08T12:01:00.000Z");
+    const nextReconcileAt = new Date("2026-09-08T12:02:00.000Z");
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce({ status: "UNINSTALLED", reinstallPendingAt: null })
+      .mockResolvedValueOnce({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+    dbMock.subscription.findUnique
+      .mockResolvedValueOnce({ id: null, nextReconcileAt: null })
+      .mockResolvedValueOnce({ id: "subscription-1", nextReconcileAt });
+    dbMock.shop.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      new ShopService().beginReinstallReconciliation(shop.id),
+    ).resolves.toEqual({
+      shopId: shop.id,
+      subscriptionId: "subscription-1",
+      reinstallPendingAt: pendingAt,
+      expectedNextReconcileAt: nextReconcileAt,
+    });
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry while an attempt is still scheduled", async () => {
+    const pendingAt = new Date("2026-09-08T12:00:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: new Date() });
+
+    await expect(
+      new ShopService().retryReinstallReconciliation(shop.id),
+    ).resolves.toBeNull();
+    expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("does not update a subscription when retry loses its exact-marker CAS", async () => {
+    const pendingAt = new Date("2026-09-08T12:00:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(
+      new ShopService().retryReinstallReconciliation(shop.id),
+    ).resolves.toBeNull();
+    expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
+      where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: pendingAt },
+      data: { reinstallPendingAt: expect.any(Date) },
+    });
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
 });
 
@@ -230,7 +293,7 @@ describe("ShopService.resolveShopifyShop", () => {
       update: {},
     });
 
-    const query = admin.graphql.mock.calls[0]?.[0] as string;
+    const query = (admin.graphql as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as string;
     expect(query).toContain("shopLocales");
     expect(query).toMatch(
       /shop \{[\s\S]*shopAddress \{[\s\S]*\}\s*\}\s*shopLocales \{/,

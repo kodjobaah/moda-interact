@@ -211,37 +211,67 @@ export class ShopService {
       });
       if (!shop || shop.status !== "UNINSTALLED") return null;
 
-      const isFirstAttempt = !shop.reinstallPendingAt;
-      const reinstallPendingAt = shop.reinstallPendingAt ?? now;
-      if (!shop.reinstallPendingAt) {
-        await transaction.shop.updateMany({
+      const existingSubscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true, nextReconcileAt: true },
+      });
+
+      if (shop.reinstallPendingAt) {
+        if (!existingSubscription?.nextReconcileAt) return null;
+
+        return {
+          shopId,
+          subscriptionId: existingSubscription.id,
+          reinstallPendingAt: shop.reinstallPendingAt,
+          expectedNextReconcileAt: existingSubscription.nextReconcileAt,
+        };
+      }
+
+      const reinstallPendingAt = now;
+      const markerWrite = await transaction.shop.updateMany({
           where: {
             id: shopId,
             status: "UNINSTALLED",
             reinstallPendingAt: null,
           },
           data: { reinstallPendingAt },
+      });
+
+      if (markerWrite.count !== 1) {
+        const durableShop = await transaction.shop.findUnique({
+          where: { id: shopId },
+          select: { status: true, reinstallPendingAt: true },
         });
+        const durableSubscription = await transaction.subscription.findUnique({
+          where: { shopId },
+          select: { id: true, nextReconcileAt: true },
+        });
+
+        if (
+          durableShop?.status !== "UNINSTALLED" ||
+          !durableShop.reinstallPendingAt ||
+          !durableSubscription?.nextReconcileAt
+        ) {
+          return null;
+        }
+
+        return {
+          shopId,
+          subscriptionId: durableSubscription.id,
+          reinstallPendingAt: durableShop.reinstallPendingAt,
+          expectedNextReconcileAt: durableSubscription.nextReconcileAt,
+        };
       }
 
-      const existingSubscription = await transaction.subscription.findUnique({
-        where: { shopId },
-        select: { id: true, nextReconcileAt: true },
-      });
-      const expectedNextReconcileAt = isFirstAttempt
-        ? now
-        : existingSubscription?.nextReconcileAt ?? now;
       const subscription = await transaction.subscription.upsert({
         where: { shopId },
-        update: !isFirstAttempt && existingSubscription?.nextReconcileAt
-          ? {}
-          : { nextReconcileAt: expectedNextReconcileAt },
+        update: { nextReconcileAt: now },
         create: {
           shopId,
           status: "NO_CONTRACT",
           planId: null,
           observedShopifyPlanHandle: null,
-          nextReconcileAt: expectedNextReconcileAt,
+          nextReconcileAt: now,
         },
         select: { id: true, nextReconcileAt: true },
       });
@@ -277,11 +307,23 @@ export class ShopService {
         return null;
       }
 
-      await transaction.shop.updateMany({
-        where: { id: shopId, status: "UNINSTALLED", reinstallPendingAt: { not: null } },
+      const subscription = await transaction.subscription.findUnique({
+        where: { shopId },
+        select: { id: true, nextReconcileAt: true },
+      });
+      if (subscription?.nextReconcileAt) return null;
+
+      const markerWrite = await transaction.shop.updateMany({
+        where: {
+          id: shopId,
+          status: "UNINSTALLED",
+          reinstallPendingAt: shop.reinstallPendingAt,
+        },
         data: { reinstallPendingAt: now },
       });
-      const subscription = await transaction.subscription.upsert({
+      if (markerWrite.count !== 1) return null;
+
+      const updatedSubscription = await transaction.subscription.upsert({
         where: { shopId },
         update: { nextReconcileAt: now },
         create: {
@@ -294,15 +336,15 @@ export class ShopService {
         select: { id: true, nextReconcileAt: true },
       });
 
-      if (!subscription.nextReconcileAt) {
+      if (!updatedSubscription.nextReconcileAt) {
         throw new Error("Reinstall retry schedule was not persisted.");
       }
 
       return {
         shopId,
-        subscriptionId: subscription.id,
+        subscriptionId: updatedSubscription.id,
         reinstallPendingAt: now,
-        expectedNextReconcileAt: subscription.nextReconcileAt,
+        expectedNextReconcileAt: updatedSubscription.nextReconcileAt,
       };
     });
   }
@@ -341,11 +383,6 @@ export class ShopService {
           uninstalledAt,
           reinstallPendingAt: null,
         },
-      });
-
-      await transaction.shop.updateMany({
-        where: { id: shop.id },
-        data: { status: "UNINSTALLED", reinstallPendingAt: null },
       });
 
     });
