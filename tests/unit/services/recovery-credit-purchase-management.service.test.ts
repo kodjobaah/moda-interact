@@ -38,7 +38,7 @@ function database(purchases: any[]) {
       updateMany: vi.fn(async ({ where, data }: any) => { if (where.version !== aggregate.version) return { count: 0 }; aggregate.refundingQuantity += data.refundingQuantity.increment ?? -data.refundingQuantity.decrement; aggregate.version += 1; return { count: 1 }; }),
     },
   };
-  return { database: { recoveryCreditPurchase: { count: vi.fn(async ({ where }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).length), findMany: vi.fn(async ({ where, take }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).slice(0, take)) }, recoveryCreditRefund: { findUnique: vi.fn(async ({ where }: any) => { const refund = refunds.get(where.requestKey); return refund ? { ...refund, purchase: rows.get(refund.purchaseId) } : null; }) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
+  return { database: { recoveryCreditPurchase: { count: vi.fn(async ({ where }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).length), findMany: vi.fn(async ({ where, take }: any) => [...rows.values()].filter((row) => row.shopId === where.shopId).slice(0, take)), findFirst: vi.fn(async ({ where }: any) => { const row = rows.get(where.id); return row?.shopId === where.shopId ? row : null; }) }, recoveryCreditRefund: { findUnique: vi.fn(async ({ where }: any) => { const refund = refunds.get(where.requestKey); return refund ? { ...refund, purchase: rows.get(refund.purchaseId) } : null; }) }, $transaction: vi.fn(async (callback: any) => callback(transaction)) } as any, rows, aggregate, transaction };
 }
 
 describe("RecoveryCreditPurchaseManagementService", () => {
@@ -113,6 +113,25 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     fixture.database.$transaction = vi.fn().mockRejectedValue(new (await import("@prisma/client")).Prisma.PrismaClientKnownRequestError("duplicate request key", { code: "P2002", clientVersion: "6" }));
     await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-1" })).resolves.toMatchObject({ code: "REQUESTED", availableAmount: 2 });
     expect(fixture.database.recoveryCreditRefund.findUnique).toHaveBeenCalled();
+  });
+
+  it("resolves a different-request live-refund uniqueness conflict from persisted purchase state", async () => {
+    const fixture = database([purchase("one")]);
+    const winningRefund = { id: "refund-1", status: "REQUESTED", version: 0, providerReference: null, providerActionKind: null, providerConfirmedAt: null };
+    fixture.rows.get("one").status = "WITHDRAWN";
+    fixture.rows.get("one").refunds.push(winningRefund);
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database);
+    fixture.database.$transaction = vi.fn().mockRejectedValue(new (await import("@prisma/client")).Prisma.PrismaClientKnownRequestError("duplicate live refund", { code: "P2002", clientVersion: "6" }));
+
+    await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", requestId: "request-b" })).resolves.toEqual({
+      purchaseId: "one",
+      code: "REQUESTED",
+      currentAmount: 3,
+      reservedAmount: 1,
+      availableAmount: 2,
+    });
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    expect(fixture.database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "one", shopId: "shop-1" } }));
   });
 
   it("retries the whole refund transaction after a serialization conflict", async () => {

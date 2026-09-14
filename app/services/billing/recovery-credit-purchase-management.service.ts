@@ -360,8 +360,22 @@ export class RecoveryCreditPurchaseManagementService {
               },
             },
           });
-          if (!existing || existing.purchase.shopId !== input.shopId) throw error;
-          return outcomeForPurchase(existing.purchase as PurchaseRow);
+          if (existing?.purchase?.shopId === input.shopId) {
+            return outcomeForPurchase(existing.purchase as PurchaseRow);
+          }
+
+          const purchase = await this.database.recoveryCreditPurchase.findFirst({
+            where: { id: input.purchaseId, shopId: input.shopId },
+            include: {
+              refunds: {
+                where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+              },
+            },
+          });
+          if (purchase?.refunds[0]) return outcomeForPurchase(purchase as PurchaseRow);
+          throw error;
         }
         throw error;
       }
