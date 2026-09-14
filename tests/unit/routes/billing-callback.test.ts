@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   authenticateAdmin: vi.fn(),
   redirect: vi.fn((location: string) => ({ location })),
   resolveShop: vi.fn(),
+  getFence: vi.fn(),
   getState: vi.fn(),
   recordReturn: vi.fn(),
   recordFailure: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../../../app/shopify.server", () => ({
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
+    getHostedPlanVerificationFence: mocks.getFence,
     getMerchantShopifySubscriptionState: mocks.getState,
     recordHostedPlanChangeReturn: mocks.recordReturn,
     recordHostedPlanVerificationFailure: mocks.recordFailure,
@@ -51,6 +53,25 @@ const initialToken = Object.freeze({
   pendingShopifyPlanHandle: "free",
   pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
   nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+});
+const verificationFence = Object.freeze({
+  id: "subscription-1",
+  updatedAt: new Date("2026-08-30T00:00:00.000Z"),
+  status: "ACTIVE",
+  observedShopifyPlanHandle: "free",
+  planId: "free-1",
+  billingPeriodId: "period-1",
+  currentPeriodStart: null,
+  currentPeriodEnd: null,
+  trialEndsAt: null,
+  cancelAtPeriodEnd: false,
+  pendingShopifyPlanHandle: null,
+  pendingPlanId: null,
+  pendingEffectiveAt: null,
+  nextReconcileAt: null,
+  lastSyncedAt: null,
+  lastSyncErrorCode: null,
+  lastSyncErrorAt: null,
 });
 
 function subscription(overrides: Record<string, unknown> = {}) {
@@ -85,6 +106,7 @@ beforeEach(() => {
     session: { shop: "example.myshopify.com" },
   });
   mocks.resolveShop.mockResolvedValue(shop);
+  mocks.getFence.mockResolvedValue(verificationFence);
   mocks.getState.mockResolvedValue({
     status: "ACTIVE_SUBSCRIPTION",
     subscription: {
@@ -386,7 +408,7 @@ describe("hosted billing callback", () => {
     expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({
       shopId: "shop-1",
       requestedPlanHandle: handle,
-      verificationStartedAt: expect.any(Date),
+      verificationFence,
     }));
     expect(mocks.redirect).toHaveBeenCalledWith(`/app/billing/options?plan_change=${result}`);
   });
@@ -405,7 +427,7 @@ describe("hosted billing callback", () => {
 
     await runLoader("growth");
 
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationStartedAt: expect.any(Date) }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
   });
@@ -417,7 +439,7 @@ describe("hosted billing callback", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=no_active");
     mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
     await runLoader("free");
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified");
   });
 
@@ -426,6 +448,25 @@ describe("hosted billing callback", () => {
 
     await runLoader("growth");
 
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", expect.any(Date));
+    expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
+  });
+
+  it("captures the durable hosted verification fence before the Partner read", async () => {
+    await runLoader("growth");
+
+    expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
+    expect(mocks.getState).toHaveBeenCalledTimes(1);
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
+  });
+
+  it("passes the same durable hosted verification fence to provider failure recording", async () => {
+    mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
+    expect(mocks.getState).toHaveBeenCalledTimes(1);
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
   });
 });

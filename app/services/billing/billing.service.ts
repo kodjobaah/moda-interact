@@ -127,6 +127,56 @@ export type HostedPlanChangeReturnResult =
   | "no_active"
   | "unverified";
 
+export type HostedPlanVerificationFence = {
+  id: string | null;
+  updatedAt: Date | null;
+  status: SubscriptionProjectionStatus | null;
+  observedShopifyPlanHandle: string | null;
+  planId: string | null;
+  billingPeriodId: string | null;
+  currentPeriodStart: Date | null;
+  currentPeriodEnd: Date | null;
+  trialEndsAt: Date | null;
+  cancelAtPeriodEnd: boolean | null;
+  pendingShopifyPlanHandle: string | null;
+  pendingPlanId: string | null;
+  pendingEffectiveAt: Date | null;
+  nextReconcileAt: Date | null;
+  lastSyncedAt: Date | null;
+  lastSyncErrorCode: string | null;
+  lastSyncErrorAt: Date | null;
+};
+
+type HostedPlanVerificationFenceSource = HostedPlanVerificationFence | null;
+
+function sameFenceDate(left: Date | null, right: Date | null): boolean {
+  return left?.getTime() === right?.getTime();
+}
+
+function sameHostedPlanVerificationFence(
+  left: HostedPlanVerificationFenceSource,
+  right: HostedPlanVerificationFenceSource,
+): boolean {
+  if (!left || !right) return left === right;
+  return left.id === right.id &&
+    sameFenceDate(left.updatedAt, right.updatedAt) &&
+    left.status === right.status &&
+    left.observedShopifyPlanHandle === right.observedShopifyPlanHandle &&
+    left.planId === right.planId &&
+    left.billingPeriodId === right.billingPeriodId &&
+    sameFenceDate(left.currentPeriodStart, right.currentPeriodStart) &&
+    sameFenceDate(left.currentPeriodEnd, right.currentPeriodEnd) &&
+    sameFenceDate(left.trialEndsAt, right.trialEndsAt) &&
+    left.cancelAtPeriodEnd === right.cancelAtPeriodEnd &&
+    left.pendingShopifyPlanHandle === right.pendingShopifyPlanHandle &&
+    left.pendingPlanId === right.pendingPlanId &&
+    sameFenceDate(left.pendingEffectiveAt, right.pendingEffectiveAt) &&
+    sameFenceDate(left.nextReconcileAt, right.nextReconcileAt) &&
+    sameFenceDate(left.lastSyncedAt, right.lastSyncedAt) &&
+    left.lastSyncErrorCode === right.lastSyncErrorCode &&
+    sameFenceDate(left.lastSyncErrorAt, right.lastSyncErrorAt);
+}
+
 function assertPurchaseId(purchaseId: string): void {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(purchaseId)) {
     throw new Error("A valid recovery credit purchase ID is required.");
@@ -622,16 +672,62 @@ async getSubscription(
     return this.mapMerchantShopifySubscription(providerSubscription);
   }
 
+  async getHostedPlanVerificationFence(
+    shopId: string,
+  ): Promise<HostedPlanVerificationFence> {
+    const subscription = await this.database.subscription.findUnique({
+      where: { shopId },
+      select: {
+        id: true,
+        updatedAt: true,
+        status: true,
+        observedShopifyPlanHandle: true,
+        planId: true,
+        billingPeriodId: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        trialEndsAt: true,
+        cancelAtPeriodEnd: true,
+        pendingShopifyPlanHandle: true,
+        pendingPlanId: true,
+        pendingEffectiveAt: true,
+        nextReconcileAt: true,
+        lastSyncedAt: true,
+        lastSyncErrorCode: true,
+        lastSyncErrorAt: true,
+      },
+    });
+    return subscription ?? {
+      id: null,
+      updatedAt: null,
+      status: null,
+      observedShopifyPlanHandle: null,
+      planId: null,
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+      cancelAtPeriodEnd: null,
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+      pendingEffectiveAt: null,
+      nextReconcileAt: null,
+      lastSyncedAt: null,
+      lastSyncErrorCode: null,
+      lastSyncErrorAt: null,
+    };
+  }
+
   async recordHostedPlanChangeReturn({
     shopId,
     requestedPlanHandle,
     state,
-    verificationStartedAt,
+    verificationFence,
   }: {
     shopId: string;
     requestedPlanHandle: string;
     state: MerchantShopifySubscriptionState;
-    verificationStartedAt: Date;
+    verificationFence: HostedPlanVerificationFence;
   }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
@@ -649,11 +745,18 @@ async getSubscription(
           pendingShopifyPlanHandle: true,
           pendingEffectiveAt: true,
           nextReconcileAt: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          trialEndsAt: true,
+          cancelAtPeriodEnd: true,
+          lastSyncedAt: true,
+          lastSyncErrorCode: true,
+          lastSyncErrorAt: true,
         },
       });
 
-      if (current?.updatedAt && current.updatedAt > verificationStartedAt) {
-        return { result: "unverified", subscriptionId: current.id, nextReconcileAt: null };
+      if (!sameHostedPlanVerificationFence(current, verificationFence)) {
+        return { result: "unverified", subscriptionId: current?.id ?? null, nextReconcileAt: null };
       }
 
       if (state.status === "NO_ACTIVE_SUBSCRIPTION") {
@@ -696,9 +799,9 @@ async getSubscription(
         where: { shopId },
         data: {
           observedShopifyPlanHandle: currentHandle,
-          currentPeriodStart: provider.currentPeriodStart ? new Date(provider.currentPeriodStart) : undefined,
-          currentPeriodEnd: provider.currentPeriodEnd ? new Date(provider.currentPeriodEnd) : undefined,
-          trialEndsAt: provider.trialEndsAt ? new Date(provider.trialEndsAt) : undefined,
+          currentPeriodStart: provider.currentPeriodStart ? new Date(provider.currentPeriodStart) : null,
+          currentPeriodEnd: provider.currentPeriodEnd ? new Date(provider.currentPeriodEnd) : null,
+          trialEndsAt: provider.trialEndsAt ? new Date(provider.trialEndsAt) : null,
           cancelAtPeriodEnd: provider.cancelAtEndOfCycle,
           pendingShopifyPlanHandle: pendingHandle,
           pendingPlanId: mappedPendingPlanId,
@@ -718,16 +821,34 @@ async getSubscription(
 
   async recordHostedPlanVerificationFailure(
     shopId: string,
-    verificationStartedAt: Date,
+    verificationFence: HostedPlanVerificationFence,
   ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
     return this.database.$transaction(async (transaction) => {
       await lockInitialFreeActivationState(transaction, shopId);
       const current = await transaction.subscription.findUnique({
         where: { shopId },
-        select: { id: true, updatedAt: true },
+        select: {
+          id: true,
+          updatedAt: true,
+          status: true,
+          observedShopifyPlanHandle: true,
+          planId: true,
+          billingPeriodId: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          trialEndsAt: true,
+          cancelAtPeriodEnd: true,
+          pendingShopifyPlanHandle: true,
+          pendingPlanId: true,
+          pendingEffectiveAt: true,
+          nextReconcileAt: true,
+          lastSyncedAt: true,
+          lastSyncErrorCode: true,
+          lastSyncErrorAt: true,
+        },
       });
-      if (!current || current.updatedAt > verificationStartedAt) return null;
+      if (!sameHostedPlanVerificationFence(current, verificationFence)) return null;
       const updated = await transaction.subscription.updateMany({
         where: { shopId },
         data: {

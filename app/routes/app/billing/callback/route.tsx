@@ -170,12 +170,12 @@ export async function loader({
     return redirect("/app");
   }
 
-  const verificationStartedAt = new Date();
+  const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
   let verification;
   try {
     verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
   } catch {
-    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationStartedAt);
+    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence);
     if (retry) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
@@ -190,7 +190,7 @@ export async function loader({
     shopId: shop.id,
     requestedPlanHandle,
     state: verification,
-    verificationStartedAt,
+    verificationFence,
   });
   if (
     result.subscriptionId &&
