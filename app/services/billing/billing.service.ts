@@ -223,6 +223,16 @@ function hasProviderBeforeEvidence(
   );
 }
 
+function executableProviderSubscription(
+  snapshot: {
+    activeSubscription: import("./billing.types").ProviderSubscription | null;
+    latestLifecycleEvent: import("./billing.types").ProviderSubscriptionLifecycleEvent | null;
+  },
+): import("./billing.types").ProviderSubscription | null {
+  if (snapshot.latestLifecycleEvent?.state === "FROZEN") return null;
+  return snapshot.activeSubscription ?? null;
+}
+
 function unresolvedPurchaseMessage(): string {
   return "A recovery credit pack is already awaiting Shopify confirmation.";
 }
@@ -1268,25 +1278,38 @@ async getSubscription(
     } | null = null;
     let unavailableReason: string | null = null;
     const hasExactOpenLocalCycle = Boolean(
-      subscription?.plan?.active &&
-      subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
+      shop?.status === ShopStatus.ACTIVE &&
+      subscription?.status !== undefined &&
+      (subscription.status === SubscriptionProjectionStatus.ACTIVE || subscription.status === SubscriptionProjectionStatus.TRIALING) &&
+      subscription?.plan?.active === true &&
+      subscription?.plan?.recoveryCreditPackEnabled === true &&
+      isSafeNonNegativeInteger(subscription?.plan?.recoveryCreditsPerPack) &&
+      (subscription?.plan?.recoveryCreditsPerPack ?? 0) > 0 &&
+      Boolean(packMeter) &&
       hasDurableBillingPeriod(subscription) &&
       subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
       subscription.currentPeriodStart &&
       subscription.currentPeriodEnd &&
       subscription.currentPeriodStart.getTime() < subscription.currentPeriodEnd.getTime(),
     );
-    const billingPeriodPhase: BillingPeriodPhase | null = hasExactOpenLocalCycle && subscription
+    const billingPeriodPhase: BillingPeriodPhase | null = subscription &&
+      hasDurableBillingPeriod(subscription) &&
+      subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+      subscription.currentPeriodStart!.getTime() < subscription.currentPeriodEnd!.getTime()
       ? deriveBillingPeriodPhase(subscription.currentPeriodEnd)
       : null;
     if (
       shop?.shopifyShopId &&
-      hasExactOpenLocalCycle
+      billingPeriodPhase !== null
     ) {
       try {
-        const providerSubscription = await this.provider.getActiveSubscription({
+        if (!this.provider.getSubscriptionLifecycleSnapshot) {
+          throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
+        }
+        const lifecycleSnapshot = await this.provider.getSubscriptionLifecycleSnapshot({
           shopifyShopId: shop.shopifyShopId,
         });
+        const providerSubscription = executableProviderSubscription(lifecycleSnapshot);
         const providerPackMeter = providerSubscription?.usageItems.find(
           (item) => item.handle === packMeter,
         );
@@ -1312,11 +1335,20 @@ async getSubscription(
         recoveryCreditPackPurchaseEligible = Boolean(
           recoveryCreditPackMeterVerified &&
           subscription &&
+          hasExactOpenLocalCycle &&
           providerSubscription &&
+          Boolean(providerSubscription.providerSubscriptionId?.trim()) &&
           hasMatchingBillingCycle(subscription, providerSubscription) &&
           subscription?.billingPeriod?.status === BillingPeriodStatus.OPEN &&
           billingPeriodPhase === "ACTIVE",
         );
+        if (subscription?.plan?.kind === BillingPlanKind.PAID_METERED &&
+          (!subscription.plan.shopifyUsageEventHandle ||
+            subscription.plan.shopifyUsageEventHandle === packMeter ||
+            !providerSubscription?.usageEventHandles.includes(subscription.plan.shopifyUsageEventHandle) ||
+            !providerSubscription.usageItems.some((item) => item.handle === subscription.plan.shopifyUsageEventHandle))) {
+          recoveryCreditPackPurchaseEligible = false;
+        }
         if (!recoveryCreditPackPurchaseEligible) {
           unavailableReason = "Recovery credit packs are not currently available.";
         }
@@ -1331,6 +1363,9 @@ async getSubscription(
       orderBy: { createdAt: "desc" },
       include: { usageEvent: true },
     }) ?? Promise.resolve(null));
+    if (latestPurchase?.status === "REQUESTED") {
+      recoveryCreditPackPurchaseEligible = false;
+    }
 
     const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
     const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
@@ -1473,14 +1508,14 @@ async getSubscription(
         include: { plan: true, billingPeriod: true },
       }),
     ]);
-    if (!shop?.shopifyShopId || !subscription?.plan || (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING)) {
+    if (shop?.status !== ShopStatus.ACTIVE || !shop.shopifyShopId || !subscription?.plan || (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING)) {
       throw new Error("Recovery credit packs are unavailable for this subscription.");
     }
 
     const plan = subscription.plan;
     const packMeter = plan.shopifyRecoveryCreditPackEventHandle?.trim();
     const creditsGranted = plan.recoveryCreditsPerPack;
-    if (!plan.active || !plan.recoveryCreditPackEnabled || !packMeter || !creditsGranted || creditsGranted <= 0) {
+    if (!plan.active || !plan.recoveryCreditPackEnabled || !packMeter || !isSafeNonNegativeInteger(creditsGranted) || creditsGranted <= 0) {
       throw new Error("Recovery credit packs are not enabled for this plan.");
     }
     if (!hasDurableBillingPeriod(subscription)) {
@@ -1501,7 +1536,14 @@ async getSubscription(
       throw new Error("The recovery credit pack meter is not safely mapped.");
     }
 
-    const providerSubscription = await this.provider.getActiveSubscription({ shopifyShopId: shop.shopifyShopId });
+    if (!this.provider.getSubscriptionLifecycleSnapshot) {
+      throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
+    }
+    const lifecycleSnapshot = await this.provider.getSubscriptionLifecycleSnapshot({ shopifyShopId: shop.shopifyShopId });
+    const providerSubscription = executableProviderSubscription(lifecycleSnapshot);
+    if (!providerSubscription && lifecycleSnapshot.latestLifecycleEvent?.state === "FROZEN") {
+      throw new Error("The Shopify subscription is frozen.");
+    }
     const providerPackMeter = providerSubscription?.usageItems.find((item) => item.handle === packMeter);
     if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerPackMeter || !providerSubscription.usageEventHandles.includes(packMeter)) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
@@ -1520,6 +1562,9 @@ async getSubscription(
       throw new Error(RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION);
     }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
+      throw new Error("The recovery usage meter could not be verified with Shopify.");
+    }
+    if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageItems.some((item) => item.handle === plan.shopifyUsageEventHandle)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
     }
 

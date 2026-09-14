@@ -204,6 +204,8 @@
   "billingCommerce.topup.description": "Choose a one-time pack available for your current plan.",
   "billingCommerce.topup.planBenefit": "Your plan determines your top-up value.",
   "billingCommerce.topup.billingNote": "The charge is handled through Shopify. Purchased conversations do not replace or reset your subscription allowance.",
+  "billingCommerce.topup.reportingRetry": "Shopify confirmation is being retried. No new credits are active yet.",
+  "billingCommerce.topup.reportingNeedsAttention": "Shopify confirmation needs attention. No new credits are active yet.",
   "billingCommerce.topup.nonExpiring": "Purchased conversations do not expire.",
   "billingCommerce.topup.largestPack": "Largest pack",
   "billingCommerce.recoveryConversations": "recovery conversations",

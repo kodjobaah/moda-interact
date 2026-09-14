@@ -2,9 +2,9 @@ import TopUpPurchasePanel from "@/components/dashboard/TopUpPurchasePanel";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { authenticate } from "@/shopify.server";
-import { billingService } from "@/services/billing/billing.service";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
+import { billingService } from "@/services/billing/billing.service";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useLoaderData, useFetcher } from "react-router";
 import { randomUUID } from "node:crypto";
@@ -57,7 +57,7 @@ export default function BillingOptionsPage() {
     purchaseId,
   } = useLoaderData();
   const fetcher = useFetcher();
- const i18n = createMerchantI18n(merchantUi);
+  const i18n = createMerchantI18n(merchantUi);
 
   return (
         <s-page heading={i18n.t("usage.billable")}>
@@ -65,7 +65,11 @@ export default function BillingOptionsPage() {
             current={i18n.t("billingCommerce.page.title")}
             merchantUi={merchantUi}
           />
-        <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId }, { method: "post" })} />
+        <TopUpPurchasePanel
+          merchantUi={merchantUi}
+          topUpState={topUpState}
+          onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId }, { method: "post" })}
+        />
         </s-page>
 
   );

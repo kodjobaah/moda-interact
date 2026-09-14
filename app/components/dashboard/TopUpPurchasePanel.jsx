@@ -3,14 +3,14 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: { locale?: string, timeZone?: string }, topUpState: { configured: boolean, purchaseEligible: boolean, creditsPerPack: number|null, purchasedCreditsAvailable: number, shopifyPackMeter: { price?: { amount?: string, currency?: string|null } }|null, latestPurchase: { status: string, currentAmount: number }|null }, onPurchaseTopUp?: () => void }} props */
+/** @param {{ merchantUi?: { locale?: string, timeZone?: string }, topUpState: { configured: boolean, purchaseEligible: boolean, creditsPerPack: number|null, purchasedCreditsAvailable: number, shopifyPackMeter: { price?: object }|null, latestPurchase: { status: string, currentAmount: number, usageReportState?: string }|null }, onPurchaseTopUp?: () => void }} props */
 
 export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseTopUp }) {
   const i18n = createMerchantI18n(merchantUi);
   const purchase = topUpState.latestPurchase;
   const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
   const canPurchase = topUpState.purchaseEligible && !hasUnresolvedPurchase;
-  const price = topUpState.shopifyPackMeter?.price;
+  const reportState = purchase?.usageReportState;
 
   return <section className="moda-billing-panel">
     <div className="moda-panel-heading-row">
@@ -31,13 +31,18 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseT
     </div>
     {topUpState.configured && topUpState.creditsPerPack ? <article className="moda-topup-card moda-topup-card-featured">
       <div className="moda-topup-credit-count"><strong>{topUpState.creditsPerPack}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
-      {price?.amount && price.currency ? <div className="moda-topup-price">{price.amount} {price.currency}</div> : <p>{i18n.t("billingCommerce.topup.billingNote")}</p>}
+      <p>{i18n.t("billingCommerce.topup.billingNote")}</p>
       {canPurchase ? <button className="moda-action-button moda-action-button-primary" type="button" onClick={onPurchaseTopUp}>{i18n.t("billingCommerce.buy")}</button> : null}
-      {hasUnresolvedPurchase ? <p>{i18n.t("billingCommerce.topup.billingNote")}</p> : null}
+      {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
+      {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
     </article> : <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div>}
     {purchase && statuses.includes(purchase.status) ? <p>
       {purchase.status === "REQUESTED"
-        ? i18n.t("billing.recoveryCreditPurchasePending")
+        ? reportState === "RETRYABLE"
+          ? i18n.t("billingCommerce.topup.reportingRetry")
+          : reportState === "NEEDS_ATTENTION"
+            ? i18n.t("billingCommerce.topup.reportingNeedsAttention")
+            : i18n.t("billing.recoveryCreditPurchasePending")
         : `${i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}: ${i18n.formatNumber(purchase.currentAmount)}`}
     </p> : null}
   </section>;
@@ -51,7 +56,7 @@ TopUpPurchasePanel.propTypes = {
     creditsPerPack: PropTypes.number,
     purchasedCreditsAvailable: PropTypes.number.isRequired,
     shopifyPackMeter: PropTypes.shape({ price: PropTypes.object }),
-    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired }),
+    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string }),
   }).isRequired,
   onPurchaseTopUp: PropTypes.func,
 };

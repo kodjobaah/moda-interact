@@ -25,14 +25,12 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
       price: { amount: "10", currency: "USD" },
     },
     pendingFlatRatePlan: null,
-    usageItems: overrides.usageItems ?? (usageEventHandles.includes("credit-pack-meter")
-      ? [{
-          handle: "credit-pack-meter",
-          description: "Recovery credit pack",
-          price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
-          usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
-        }]
-      : []),
+    usageItems: overrides.usageItems ?? usageEventHandles.map((handle) => ({
+      handle,
+      description: handle === "credit-pack-meter" ? "Recovery credit pack" : "Recovery usage",
+      price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
+      usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
+    })),
     usageEventHandles,
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
@@ -44,6 +42,16 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
     providerSubscriptionId: "provider-1",
     providerUsageSnapshot: [],
     ...overrides,
+  };
+}
+
+function topUpProvider(subscription: ReturnType<typeof providerSubscription>) {
+  return {
+    getActiveSubscription: vi.fn(),
+    getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+      activeSubscription: subscription,
+      latestLifecycleEvent: null,
+    }),
   };
 }
 
@@ -81,7 +89,7 @@ function createDatabase({
     findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: false }),
   };
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
     subscription,
     billingPlan,
     billingPeriod,
@@ -973,6 +981,10 @@ describe("BillingService subscription projection", () => {
         currentPeriodStart: null,
         currentPeriodEnd: null,
       })),
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+        activeSubscription: providerSubscription({ planHandle: "free", currentPeriodStart: null, currentPeriodEnd: null }),
+        latestLifecycleEvent: null,
+      }),
     };
     const service = new BillingService(provider, database as never);
 
@@ -1002,8 +1014,8 @@ describe("BillingService subscription projection", () => {
       "shop-1",
       "BUY_RECOVERY_CREDIT_PACK",
       "11111111-1111-4111-8111-111111111111",
-    )).rejects.toThrow("The current local billing cycle could not be verified.");
-    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    )).rejects.toThrow("Recovery credit packs are unavailable for this subscription.");
+    expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
   });
 
   it("returns Shopify commercial facts and independent current/pending mappings", async () => {
@@ -2043,7 +2055,7 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
   };
   const transactionSubscription = { ...subscriptionState };
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
     subscription: {
       findUnique: vi.fn().mockResolvedValue(subscriptionState),
     },
@@ -2375,7 +2387,7 @@ describe("BillingService merchant billing state", () => {
         billingPeriod: period,
       };
       const database = {
-        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
         subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
         shopEntitlementCounter: {
           findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
@@ -2383,11 +2395,7 @@ describe("BillingService merchant billing state", () => {
         },
         usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 5 } }) },
       };
-      const provider = {
-        getActiveSubscription: vi.fn().mockResolvedValue(
-          providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }),
-        ),
-      };
+      const provider = topUpProvider(providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }));
 
       try {
         const result = await new BillingService(provider, database as never).getMerchantBillingState("shop-1");
@@ -2411,17 +2419,13 @@ describe("BillingService merchant billing state", () => {
       recoveryCreditPackEnabled: true,
       shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
     });
-    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(
-        providerSubscription({
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+    const provider = topUpProvider(providerSubscription({
           planHandle: "growth",
           currentPeriodStart: new Date("2026-10-01T00:00:00.000Z"),
           currentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
           usageEventHandles: ["credit-pack-meter", "message-meter"],
-        }),
-      ),
-    };
+        }));
 
     try {
       const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
@@ -2452,10 +2456,8 @@ describe("BillingService merchant billing state", () => {
         recoveryCreditPackEnabled: true,
         shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
       });
-      fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
-      const provider = {
-        getActiveSubscription: vi.fn().mockRejectedValue(new Error("Shopify unavailable")),
-      };
+      fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+      const provider = { getSubscriptionLifecycleSnapshot: vi.fn().mockRejectedValue(new Error("Shopify unavailable")) };
 
       try {
         const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
@@ -2476,12 +2478,8 @@ describe("BillingService merchant billing state", () => {
     const fixture = createValidPaidMerchantState();
     fixture.period.periodEnd = fixture.period.periodStart;
     fixture.state.subscription.currentPeriodEnd = fixture.period.periodEnd;
-    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(
-        providerSubscription({ currentPeriodEnd: fixture.period.periodEnd, usageEventHandles: ["credit-pack-meter"] }),
-      ),
-    };
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+    const provider = topUpProvider(providerSubscription({ currentPeriodEnd: fixture.period.periodEnd, usageEventHandles: ["credit-pack-meter"] }));
 
     const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
 
@@ -2489,7 +2487,7 @@ describe("BillingService merchant billing state", () => {
       billingPeriodPhase: null,
       recoveryCreditPackPurchaseEligible: false,
     });
-    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
   });
 
   it.each(["Paid", "Free"] as const)(
@@ -2530,16 +2528,12 @@ describe("BillingService merchant billing state", () => {
         observedShopifyPlanHandle: plan.shopifyPlanHandle, plan, billingPeriod: period,
       };
       const database = {
-        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
         subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
         shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue({ grantedQuantity: 20, committedQuantity: 3, reservedQuantity: 2 }) },
         usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 5 } }) },
       };
-      const provider = {
-        getActiveSubscription: vi.fn().mockResolvedValue(
-          providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }),
-        ),
-      };
+      const provider = topUpProvider(providerSubscription({ planHandle: plan.shopifyPlanHandle, currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, usageEventHandles: ["credit-pack-meter", "message-meter"] }));
 
       try {
         await expect(new BillingService(provider, database as never).getMerchantBillingState("shop-1"))
@@ -2966,7 +2960,7 @@ describe("BillingService recovery credit packs", () => {
     ["PAID_METERED", { kind: "PAID_METERED" }],
   ])("creates a pending pack request for a mapped %s plan", async (_name, planOverrides) => {
     const { database, usageEvents, shopEntitlementCounter } = createRecoveryCreditPurchaseDatabase(planOverrides);
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "11111111-1111-4111-8111-111111111111");
@@ -2987,6 +2981,47 @@ describe("BillingService recovery credit packs", () => {
     );
     expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
     expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the lifecycle snapshot provider method is absent", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.requestRecoveryCreditPack(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "abababab-abab-4aba-8aba-abababababab",
+    )).rejects.toThrow("Shopify lifecycle snapshot is not supported");
+    expect(usageEvents).toHaveLength(0);
+  });
+
+  it("treats effective FROZEN lifecycle evidence as non-executable", async () => {
+    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
+    const providerSubscriptionValue = providerSubscription({
+      usageEventHandles: ["message-meter", "credit-pack-meter"],
+    });
+    const provider = {
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
+        activeSubscription: providerSubscriptionValue,
+        latestLifecycleEvent: {
+          id: "frozen-event",
+          eventType: "SUBSCRIPTION_FROZEN",
+          state: "FROZEN",
+          occurredAt: new Date("2026-09-15T00:00:00.000Z"),
+          cancelEffectiveOn: null,
+          planHandle: "growth",
+          billingPeriod: "EVERY_30_DAYS",
+        },
+      }),
+    };
+    const service = new BillingService(provider as never, database as never);
+
+    await expect(service.requestRecoveryCreditPack(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd",
+    )).rejects.toThrow("Shopify subscription is frozen");
+    expect(usageEvents).toHaveLength(0);
   });
 
   it.each([
@@ -3013,14 +3048,10 @@ describe("BillingService recovery credit packs", () => {
         billingPeriod: { id: "period-1", periodStart, periodEnd: transitionEnd, status: "OPEN" },
       });
       Object.assign(transactionSubscription, subscriptionState);
-      const provider = {
-        getActiveSubscription: vi.fn().mockResolvedValue(
-          providerSubscription({
+      const provider = topUpProvider(providerSubscription({
             usageEventHandles: ["message-meter", "credit-pack-meter"],
             currentPeriodEnd: transitionEnd,
-          }),
-        ),
-      };
+          }));
       const service = new BillingService(provider, database as never);
 
       try {
@@ -3053,7 +3084,7 @@ describe("BillingService recovery credit packs", () => {
         });
       subscriptionState.billingPeriod.status = "CLOSED";
       transactionSubscription.billingPeriod.status = "CLOSED";
-      const provider = { getActiveSubscription: vi.fn() };
+      const provider = topUpProvider(providerSubscription());
       const service = new BillingService(provider, database as never);
 
       await expect(
@@ -3065,7 +3096,7 @@ describe("BillingService recovery credit packs", () => {
             : "d1111111-1111-4111-8111-111111111111",
         ),
       ).rejects.toThrow("current local billing cycle");
-      expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+      expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
       expect(usageEvents).toHaveLength(0);
       expect(purchases).toHaveLength(0);
     },
@@ -3073,7 +3104,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("returns the existing purchase without creating another usage event", async () => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
     const purchaseId = "22222222-2222-4222-8222-222222222222";
 
@@ -3086,7 +3117,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("blocks a second unresolved purchase for the same provider context", async () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "33333333-3333-4333-8333-333333333333");
@@ -3098,7 +3129,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("fails closed without creating an event when the pack meter is not verified", async () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter"] }));
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555"))
@@ -3112,8 +3143,7 @@ describe("BillingService recovery credit packs", () => {
     ["currency", { quantity: 0, costAmount: "0.00", costCurrency: null }],
   ])("fails closed when provider BEFORE %s evidence is missing", async (_name, usage) => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+    const provider = topUpProvider(providerSubscription({
         usageEventHandles: ["message-meter", "credit-pack-meter"],
         usageItems: [{
           handle: "credit-pack-meter",
@@ -3121,8 +3151,7 @@ describe("BillingService recovery credit packs", () => {
           price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
           usage,
         }],
-      })),
-    };
+      }));
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "56565656-5656-4565-8565-565656565656"))
@@ -3141,7 +3170,7 @@ describe("BillingService recovery credit packs", () => {
       billingPeriod: { id: "period-1", periodStart, periodEnd },
       plan,
     });
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "12121212-1212-4121-8121-121212121212"))
@@ -3154,12 +3183,12 @@ describe("BillingService recovery credit packs", () => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
     const subscription = await database.subscription.findUnique({ where: { shopId: "shop-1" } });
     database.subscription.findUnique.mockResolvedValue({ ...subscription, currentPeriodEnd: null });
-    const provider = { getActiveSubscription: vi.fn() };
+    const provider = topUpProvider(providerSubscription());
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "13131313-1313-4131-8131-131313131313"))
       .rejects.toThrow("current local billing cycle");
-    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
     expect(usageEvents).toHaveLength(0);
     expect(purchases).toHaveLength(0);
   });
@@ -3169,14 +3198,10 @@ describe("BillingService recovery credit packs", () => {
     ["provider cycle does not match", { currentPeriodStart: new Date("2026-09-02T00:00:00.000Z") }],
   ])("rejects when %s", async (_name, providerOverrides) => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(
-        providerSubscription({
+    const provider = topUpProvider(providerSubscription({
           usageEventHandles: ["message-meter", "credit-pack-meter"],
           ...providerOverrides,
-        }),
-      ),
-    };
+        }));
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "14141414-1414-4141-8141-141414141414"))
@@ -3187,7 +3212,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("rejects client-supplied invalid purchase identities before persistence", async () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const service = new BillingService({ getActiveSubscription: vi.fn() }, database as never);
+    const service = new BillingService(topUpProvider(providerSubscription()), database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "not-a-uuid"))
       .rejects.toThrow("valid recovery credit purchase ID");
@@ -3196,17 +3221,17 @@ describe("BillingService recovery credit packs", () => {
 
   it("replays an existing purchase without provider availability", async () => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
     const purchaseId = "66666666-6666-4666-8666-666666666666";
 
     await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
-    provider.getActiveSubscription.mockRejectedValue(new Error("Shopify unavailable"));
+    provider.getSubscriptionLifecycleSnapshot.mockRejectedValue(new Error("Shopify unavailable"));
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId))
       .resolves.toMatchObject({ id: purchaseId });
     expect(usageEvents).toHaveLength(1);
-    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
     expect(purchases).toHaveLength(1);
   });
 
@@ -3217,11 +3242,7 @@ describe("BillingService recovery credit packs", () => {
       const periodEnd = new Date("2026-10-01T00:00:00.000Z");
       vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
       const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
-      const provider = {
-        getActiveSubscription: vi.fn().mockResolvedValue(
-          providerSubscription({ currentPeriodEnd: periodEnd, usageEventHandles: ["message-meter", "credit-pack-meter"] }),
-        ),
-      };
+      const provider = topUpProvider(providerSubscription({ currentPeriodEnd: periodEnd, usageEventHandles: ["message-meter", "credit-pack-meter"] }));
       const service = new BillingService(provider, database as never);
       const purchaseId = phase === "DRAINING"
         ? "e1111111-1111-4111-8111-111111111111"
@@ -3234,12 +3255,12 @@ describe("BillingService recovery credit packs", () => {
             ? new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
             : periodEnd,
         );
-        provider.getActiveSubscription.mockRejectedValue(new Error("Shopify unavailable"));
+        provider.getSubscriptionLifecycleSnapshot.mockRejectedValue(new Error("Shopify unavailable"));
 
         await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId))
           .resolves.toMatchObject({ id: purchaseId });
         expect(created.id).toBe(purchaseId);
-        expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+        expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
         expect(usageEvents).toHaveLength(1);
         expect(purchases).toHaveLength(1);
       } finally {
@@ -3262,11 +3283,7 @@ describe("BillingService recovery credit packs", () => {
     const successorPeriod = { id: "period-2", periodStart: successorStart, periodEnd: successorEnd, status: "OPEN" };
     Object.assign(subscriptionState, { billingPeriodId: "period-2", currentPeriodStart: successorStart, currentPeriodEnd: successorEnd, billingPeriod: successorPeriod });
     Object.assign(transactionSubscription, subscriptionState);
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(
-        providerSubscription({ planHandle: "free", currentPeriodStart: successorStart, currentPeriodEnd: successorEnd, usageEventHandles: ["credit-pack-meter"] }),
-      ),
-    };
+    const provider = topUpProvider(providerSubscription({ planHandle: "free", currentPeriodStart: successorStart, currentPeriodEnd: successorEnd, usageEventHandles: ["credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     try {
@@ -3287,9 +3304,9 @@ describe("BillingService recovery credit packs", () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
     const plan = (await database.subscription.findUnique({ where: { shopId: "shop-1" } })).plan;
     const provider = {
-      getActiveSubscription: vi.fn().mockImplementation(async () => {
+      getSubscriptionLifecycleSnapshot: vi.fn().mockImplementation(async () => {
         plan.recoveryCreditsPerPack = 200;
-        return providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] });
+        return { activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null };
       }),
     };
     const service = new BillingService(provider, database as never);
@@ -3305,7 +3322,7 @@ describe("BillingService recovery credit packs", () => {
   ])("fails closed when the transaction re-read changes the %s", async (_name, transactionOverrides) => {
     const { database, purchases, usageEvents, transactionSubscription } = createRecoveryCreditPurchaseDatabase();
     Object.assign(transactionSubscription, transactionOverrides);
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "15151515-1515-4151-8151-151515151515"))
@@ -3320,7 +3337,7 @@ describe("BillingService recovery credit packs", () => {
     ["unmapped", { active: false }],
   ])("creates no usage event for %s top-ups", async (_name, planOverrides) => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase(planOverrides);
-    const service = new BillingService({ getActiveSubscription: vi.fn() }, database as never);
+    const service = new BillingService(topUpProvider(providerSubscription()), database as never);
 
     await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "88888888-8888-4888-8888-888888888888"))
       .rejects.toThrow();
@@ -3329,7 +3346,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("ignores client-supplied plan and pricing fields", async () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] })) };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
     await (service.requestRecoveryCreditPack as unknown as (...args: unknown[]) => Promise<unknown>)(
@@ -3353,7 +3370,7 @@ describe("BillingService recovery credit packs", () => {
       ...current,
       status: "UNMAPPED",
     });
-    const service = new BillingService({ getActiveSubscription: vi.fn() }, database as never);
+    const service = new BillingService(topUpProvider(providerSubscription()), database as never);
 
     await expect(
       service.requestRecoveryCreditPack(
@@ -3367,11 +3384,7 @@ describe("BillingService recovery credit packs", () => {
 
   it("recovers a concurrent same-id unique conflict by returning the committed purchase", async () => {
     const { database, purchases, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(
-        providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }),
-      ),
-    };
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const purchaseId = "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd";
     const winningUsageEvent = {
       id: "winner-usage-event",
@@ -3409,7 +3422,7 @@ describe("BillingService recovery credit packs", () => {
       status: "REQUESTED",
     });
 
-    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+    expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
     expect(usageEvents).toHaveLength(1);
     expect(purchases).toHaveLength(1);
   });
@@ -3422,9 +3435,9 @@ describe("BillingService recovery credit packs", () => {
       events.push("transaction");
       return originalTransaction(callback);
     });
-    const provider = { getActiveSubscription: vi.fn().mockImplementation(async () => {
+    const provider = { getSubscriptionLifecycleSnapshot: vi.fn().mockImplementation(async () => {
       events.push("provider");
-      return providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] });
+      return { activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null };
     }) };
     const service = new BillingService(provider, database as never);
 
