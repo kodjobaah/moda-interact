@@ -168,6 +168,18 @@ async function lockInitialFreeActivationState(
   `);
 }
 
+async function lockShopForInitialPaidActivation(
+  transaction: Prisma.TransactionClient,
+  shopId: string,
+): Promise<void> {
+  await transaction.$queryRaw(Prisma.sql`
+    SELECT "id"
+    FROM "shopify"."Shop"
+    WHERE "id" = ${shopId}
+    FOR UPDATE
+  `);
+}
+
 function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
   if (subscription.providerSubscriptionId?.trim()) {
     return `provider:${subscription.providerSubscriptionId.trim()}`;
@@ -926,14 +938,9 @@ async getSubscription(
           id: purchaseId,
           shopId,
           planId: currentPlan.id,
-          billingPeriodId: verifiedBillingPeriodId,
           shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
           shopifyEventHandleSnapshot: packMeter,
           creditsGranted,
-          providerSubscriptionIdSnapshot: providerSubscription.providerSubscriptionId,
-          providerUsageQuantityBeforeSnapshot: providerSubscription.providerUsageSnapshot.find((item) => item.handle === packMeter)?.quantity ?? 0,
-          providerUsageCostBeforeSnapshot: providerSubscription.providerUsageSnapshot.find((item) => item.handle === packMeter)?.costAmount ?? "0",
-          providerUsageCostCurrencyBeforeSnapshot: providerSubscription.providerUsageSnapshot.find((item) => item.handle === packMeter)?.costCurrency,
           usageEventId: usageEvent.id,
         },
         include: { usageEvent: true },
@@ -1146,6 +1153,7 @@ async getSubscription(
         providerSubscription.planHandle === expectedInitialSelection.pendingShopifyPlanHandle,
       );
       if (initialPaidActivation) {
+        await lockShopForInitialPaidActivation(transaction, shopId);
         const transactionalShop = await transaction.shop.findUnique({
           where: { id: shopId },
           select: { status: true },
@@ -1218,7 +1226,7 @@ async getSubscription(
         const billingPeriod = await transaction.billingPeriod.findUnique({
           where: { shopId_periodStart_periodEnd: { shopId, periodStart, periodEnd } },
         });
-        if (billingPeriod && (
+        const billingPeriodConflict = billingPeriod && (
           billingPeriod.status !== BillingPeriodStatus.OPEN ||
           billingPeriod.subscriptionId !== existingSubscription!.id ||
           billingPeriod.planId !== pendingPlan!.id ||
@@ -1226,8 +1234,42 @@ async getSubscription(
           billingPeriod.planNameSnapshot !== pendingPlan!.name ||
           billingPeriod.planKindSnapshot !== BillingPlanKind.PAID_METERED ||
           billingPeriod.includedRecoveryCreditsGranted !== allowance
-        )) {
-          throw new Error("The verified Shopify billing period conflicts with local state.");
+        );
+        const periodCounter = billingPeriod
+          ? await transaction.billingPeriodEntitlementCounter.findUnique({
+              where: { billingPeriodId_counter: { billingPeriodId: billingPeriod.id, counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS } },
+            })
+          : null;
+        const counterConflict = periodCounter && (
+          periodCounter.shopId !== shopId ||
+          periodCounter.billingPeriodId !== billingPeriod!.id ||
+          periodCounter.grantedQuantity !== allowance
+        );
+        const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
+          where: { shopId_counter: { shopId, counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS } },
+        });
+        const policy = lifetimeCounter
+          ? null
+          : await transaction.platformBillingPolicy.findUnique({ where: { id: "default" } });
+        const invalidLifetimePolicy = !lifetimeCounter && (
+          !policy ||
+          !Number.isSafeInteger(policy.lifetimeFreeRecoveryAllowance) ||
+          policy.lifetimeFreeRecoveryAllowance < 0
+        );
+        if (billingPeriodConflict || counterConflict || invalidLifetimePolicy) {
+          return transaction.subscription.update({
+            where: { shopId },
+            data: {
+              status: SubscriptionProjectionStatus.SYNC_ERROR,
+              planId: null,
+              billingPeriodId: null,
+              currentPeriodStart: null,
+              currentPeriodEnd: null,
+              lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
+              lastSyncErrorAt: now,
+              nextReconcileAt: null,
+            },
+          });
         }
         const committedPeriod = billingPeriod ?? await transaction.billingPeriod.create({
           data: {
@@ -1243,16 +1285,6 @@ async getSubscription(
             status: BillingPeriodStatus.OPEN,
           },
         });
-        const periodCounter = await transaction.billingPeriodEntitlementCounter.findUnique({
-          where: { billingPeriodId_counter: { billingPeriodId: committedPeriod.id, counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS } },
-        });
-        if (periodCounter && (
-          periodCounter.shopId !== shopId ||
-          periodCounter.billingPeriodId !== committedPeriod.id ||
-          periodCounter.grantedQuantity !== allowance
-        )) {
-          throw new Error("The verified billing period counter conflicts with local state.");
-        }
         if (!periodCounter) {
           await transaction.billingPeriodEntitlementCounter.create({
             data: {
@@ -1263,19 +1295,12 @@ async getSubscription(
             },
           });
         }
-        const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
-          where: { shopId_counter: { shopId, counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS } },
-        });
         if (!lifetimeCounter) {
-          const policy = await transaction.platformBillingPolicy.findUnique({ where: { id: "default" } });
-          if (!policy || !Number.isSafeInteger(policy.lifetimeFreeRecoveryAllowance) || policy.lifetimeFreeRecoveryAllowance < 0) {
-            throw new Error("The platform lifetime recovery allowance is not configured.");
-          }
           await transaction.shopEntitlementCounter.create({
             data: {
               shopId,
               counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS,
-              grantedQuantity: policy.lifetimeFreeRecoveryAllowance,
+              grantedQuantity: policy!.lifetimeFreeRecoveryAllowance,
               committedQuantity: 0,
               reservedQuantity: 0,
               refundingQuantity: 0,

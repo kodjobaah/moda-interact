@@ -205,6 +205,32 @@ describe("billing callback activation", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
+  it("does not classify a durable Paid configuration error as a Partner failure", async () => {
+    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "SYNC_ERROR",
+      planId: null,
+      observedShopifyPlanHandle: "growth",
+      billingPeriodId: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: paidToken.pendingEffectiveAt,
+      nextReconcileAt: null,
+      lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
+    }));
+
+    await runLoader("growth");
+
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
   it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
 
