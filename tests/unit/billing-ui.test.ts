@@ -87,6 +87,18 @@ describe("merchant billing UI", () => {
       "getMerchantBillingState(shop.id)",
     );
     expect(billingOptionsRouteSource).toContain(
+      "const hasMappedCurrentContract = data.verificationState === \"ACTIVE_SUBSCRIPTION\" && mappingStatus === \"MAPPED\"",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "configured: hasMappedCurrentContract ? data.topUp.configured : false",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "creditsPerPack: hasMappedCurrentContract ? data.topUp.creditsPerPack : null",
+    );
+    expect(billingOptionsRouteSource).toContain(
+      "shopifyPackMeter: hasMappedCurrentContract ? data.topUp.shopifyPackMeter : null",
+    );
+    expect(billingOptionsRouteSource).toContain(
       'managePlansHref="/app/billing/select"',
     );
     expect(billingOptionsRouteSource).not.toContain("fetch(");

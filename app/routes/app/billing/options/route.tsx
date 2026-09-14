@@ -87,15 +87,16 @@ export default function BillingOptionsPage() {
   const subscription = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.subscription : null;
   const mapping = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.modaMapping : null;
   const mappingStatus = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.mappingStatus : null;
+  const hasMappedCurrentContract = data.verificationState === "ACTIVE_SUBSCRIPTION" && mappingStatus === "MAPPED";
   const topUpState = data.topUp ? {
-    configured: data.topUp.configured,
+    configured: hasMappedCurrentContract ? data.topUp.configured : false,
     purchaseEligible: data.verificationState === "ACTIVE_SUBSCRIPTION" && mappingStatus === "MAPPED" && data.lifecycleState === "ACTIVE" && data.topUp.purchaseEligible,
-    creditsPerPack: data.topUp.creditsPerPack,
+    creditsPerPack: hasMappedCurrentContract ? data.topUp.creditsPerPack : null,
     paidIncludedCreditsAvailable: data.capacity?.paidIncluded?.remaining ?? null,
     freeLifetimeCreditsAvailable: data.capacity?.freeLifetime?.remaining ?? null,
     promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
     purchasedCreditsAvailable: data.capacity?.purchased.available ?? data.topUp.purchasedRecoveryCredits.available,
-    shopifyPackMeter: data.topUp.shopifyPackMeter,
+    shopifyPackMeter: hasMappedCurrentContract ? data.topUp.shopifyPackMeter : null,
     latestPurchase: fetcher.data?.purchase ?? data.topUp.latestPurchase,
   } : { configured: false, purchaseEligible: false, creditsPerPack: null, purchasedCreditsAvailable: 0, shopifyPackMeter: null, latestPurchase: null };
   const current = subscription ? { shopifyPlanHandle: subscription.planHandle, mappedModaPlanName: mapping?.name ?? null, price: subscription.price, interval: subscription.billingPeriod, cancelAtEndOfCycle: subscription.cancelAtEndOfCycle } : null;

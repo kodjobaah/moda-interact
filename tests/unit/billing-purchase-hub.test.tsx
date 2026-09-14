@@ -3,7 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
 
 vi.mock("../../app/components/dashboard/TopUpPurchasePanel", () => ({
-  default: () => null,
+  default: ({ topUpState }: { topUpState: { configured: boolean; creditsPerPack: number | null; shopifyPackMeter: unknown } }) => (
+    <div
+      data-configured={String(topUpState.configured)}
+      data-credits-per-pack={String(topUpState.creditsPerPack)}
+      data-shopify-pack-meter={String(topUpState.shopifyPackMeter)}
+    />
+  ),
 }));
 
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
@@ -71,5 +77,28 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Lifetime Free recoveries: 0");
     expect(markup).not.toContain("Promotional recoveries available</span>");
     expect(markup).not.toContain("purchased credits available</span>");
+  });
+
+  it("keeps an unmapped current contract authoritative and hides local pack configuration", () => {
+    const markup = render({
+      mappingStatus: "UNMAPPED",
+      current: { shopifyPlanHandle: "unknown-plan" },
+      topUpState: {
+        ...topUpState,
+        configured: false,
+        purchaseEligible: false,
+        creditsPerPack: null,
+        shopifyPackMeter: null,
+      },
+    });
+
+    expect(markup).toContain("unknown-plan");
+    expect(markup).toContain("Your subscription could not be safely mapped");
+    expect(markup).toContain('data-configured="false"');
+    expect(markup).toContain('data-credits-per-pack="null"');
+    expect(markup).toContain('data-shopify-pack-meter="null"');
+    expect(markup).toContain(">21</strong>");
+    expect(markup).toContain(">4</strong>");
+    expect(markup).not.toContain("Top-up purchase is unavailable until the current billing cycle");
   });
 });

@@ -15,6 +15,8 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
     ? i18n.t("billing.configurationUnavailableDescription")
     : verificationState === "VERIFICATION_UNAVAILABLE"
       ? i18n.t("billing.verificationUnavailableDescription")
+    : verificationState === "ACTIVE_SUBSCRIPTION" && mappingStatus === "UNMAPPED"
+      ? i18n.t("billing.configurationUnavailableDescription")
     : null;
   const topUpVerificationUnavailable = topUpState.configured
     && !topUpState.purchaseEligible
