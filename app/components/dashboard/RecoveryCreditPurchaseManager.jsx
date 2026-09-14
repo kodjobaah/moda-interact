@@ -2,7 +2,7 @@
 /* eslint-disable react/prop-types */
 /* eslint-disable jsx-a11y/no-autofocus */
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useFetcher, useRevalidator, useSearchParams } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
@@ -21,9 +21,9 @@ function eligible(purchase) {
 
 function outcomeText(i18n, outcome) {
   const values = {
-    current: outcome.currentAmount ?? 0,
-    reserved: outcome.reservedAmount ?? 0,
-    available: outcome.availableAmount ?? 0,
+    current: i18n.formatNumber(outcome.currentAmount ?? 0),
+    reserved: i18n.formatNumber(outcome.reservedAmount ?? 0),
+    available: i18n.formatNumber(outcome.availableAmount ?? 0),
   };
   return i18n.t(`billingPurchases.outcome.${outcome.code}`, values);
 }
@@ -38,7 +38,7 @@ export default function RecoveryCreditPurchaseManager({ merchantUi, page }) {
   const filter = FILTERS.includes(searchParams.get("filter")) ? searchParams.get("filter") : "ACTIVE";
   const purchases = useMemo(() => page?.purchases ?? [], [page]);
   const visible = useMemo(() => filter === "ALL" ? purchases : purchases.filter((purchase) => purchase.status === filter), [filter, purchases]);
-  const eligibleVisible = visible.filter(eligible);
+  const eligibleVisible = useMemo(() => visible.filter(eligible), [visible]);
   const selectedPurchases = purchases.filter((purchase) => selected.includes(purchase.id) && eligible(purchase));
   const isSubmitting = fetcher.state !== "idle";
   const outcomes = Array.isArray(fetcher.data) ? fetcher.data : [];
@@ -87,10 +87,8 @@ export default function RecoveryCreditPurchaseManager({ merchantUi, page }) {
     fetcher.submit({ intent: "reactivate", purchaseId }, { method: "post" });
   };
 
-  const formatMoney = (purchase, refund = false) => {
-    const money = refund && purchase.completedRefund
-      ? { amount: purchase.completedRefund.expectedProviderAmount, currency: purchase.completedRefund.expectedProviderCurrency }
-      : purchase.originalProviderPurchase;
+  const formatMoney = (purchase) => {
+    const money = purchase.originalProviderPurchase;
     if (!money) return i18n.t("billingPurchases.notAvailable");
     return i18n.formatMoney(money.amount, money.currency);
   };
@@ -132,8 +130,8 @@ export default function RecoveryCreditPurchaseManager({ merchantUi, page }) {
           </dl>
           {purchase.status === "ACTIVE" && !isEligible ? <p>{i18n.t("billingPurchases.noAvailableCredits")}</p> : null}
           {purchase.status === "COMPLETED" ? <p>{i18n.t("billingPurchases.completedCopy")}</p> : null}
-          {purchase.status === "REFUNDED" ? <><p>{i18n.t("billingPurchases.refundedCredits", { quantity: purchase.completedRefund?.finalCreditQuantity ?? 0 })}</p><p>{formatMoney(purchase, true)}</p>{purchase.completedRefund?.completedAt ? <p>{i18n.t("billingPurchases.refundCompleted", { date: i18n.formatDate(purchase.completedRefund.completedAt) })}</p> : null}</> : null}
-          {purchase.status === "WITHDRAWN" ? <p>{i18n.t("billingPurchases.refundSummary", { current: purchase.currentAmount, reserved: purchase.reservedAmount, available: purchase.availableAmount })}</p> : null}
+          {purchase.status === "REFUNDED" ? <React.Fragment><p>{i18n.t("billingPurchases.refundedCredits", { quantity: i18n.formatNumber(purchase.completedRefund?.finalCreditQuantity ?? 0) })}</p>{purchase.completedRefund?.completedAt ? <p>{i18n.t("billingPurchases.refundCompleted", { date: i18n.formatDate(purchase.completedRefund.completedAt) })}</p> : null}</React.Fragment> : null}
+          {purchase.status === "WITHDRAWN" ? <p>{i18n.t("billingPurchases.refundSummary", { current: i18n.formatNumber(purchase.currentAmount), reserved: i18n.formatNumber(purchase.reservedAmount), available: i18n.formatNumber(purchase.availableAmount) })}</p> : null}
           {canReactivate ? <button type="button" disabled={isSubmitting} onClick={() => setDialog({ type: "reactivate", purchase })}>{i18n.t("billingPurchases.reactivate")}</button> : null}
           {providerActionStarted ? <p>{i18n.t("billingPurchases.reactivationBlocked")}</p> : null}
         </article>;
