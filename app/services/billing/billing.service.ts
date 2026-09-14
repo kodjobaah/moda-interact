@@ -1004,20 +1004,26 @@ async getSubscription(
     const packMeter = subscription?.plan?.shopifyRecoveryCreditPackEventHandle?.trim() ?? null;
     let recoveryCreditPackMeterVerified = false;
     let recoveryCreditPackPurchaseEligible = false;
-    let billingPeriodPhase: BillingPeriodPhase | null = null;
-    if (
-      shop?.shopifyShopId &&
+    const hasExactOpenLocalCycle = Boolean(
       subscription?.plan?.active &&
       subscription.status !== SubscriptionProjectionStatus.NO_CONTRACT &&
-      hasDurableBillingPeriod(subscription)
+      hasDurableBillingPeriod(subscription) &&
+      subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+      subscription.currentPeriodStart &&
+      subscription.currentPeriodEnd &&
+      subscription.currentPeriodStart.getTime() < subscription.currentPeriodEnd.getTime(),
+    );
+    const billingPeriodPhase: BillingPeriodPhase | null = hasExactOpenLocalCycle
+      ? deriveBillingPeriodPhase(subscription.currentPeriodEnd)
+      : null;
+    if (
+      shop?.shopifyShopId &&
+      hasExactOpenLocalCycle
     ) {
       try {
         const providerSubscription = await this.provider.getActiveSubscription({
           shopifyShopId: shop.shopifyShopId,
         });
-        if (providerSubscription && hasMatchingBillingCycle(subscription, providerSubscription)) {
-          billingPeriodPhase = deriveBillingPeriodPhase(subscription.currentPeriodEnd);
-        }
         recoveryCreditPackMeterVerified = Boolean(
           providerSubscription &&
           packMeter &&

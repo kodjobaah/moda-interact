@@ -2018,6 +2018,95 @@ describe("BillingService merchant billing state", () => {
     },
   );
 
+  it("derives RECONCILING from the durable local period when Shopify has already advanced to the successor cycle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-01T00:00:00.000Z"));
+    const fixture = createValidPaidMerchantState();
+    Object.assign(fixture.plan, {
+      recoveryCreditPackEnabled: true,
+      shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+    });
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({
+          planHandle: "growth",
+          currentPeriodStart: new Date("2026-10-01T00:00:00.000Z"),
+          currentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+          usageEventHandles: ["credit-pack-meter", "message-meter"],
+        }),
+      ),
+    };
+
+    try {
+      const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
+
+      expect(result).toMatchObject({
+        billingPeriodPhase: "RECONCILING",
+        recoveryCreditPackMeterVerified: true,
+        recoveryCreditPackPurchaseEligible: false,
+      });
+      expect(result.paidIncluded).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(["DRAINING", "RECONCILING"] as const)(
+    "preserves durable local billing phase when Shopify verification fails: %s",
+    async (expectedPhase) => {
+      vi.useFakeTimers();
+      const periodEnd = new Date("2026-10-01T00:00:00.000Z");
+      vi.setSystemTime(
+        expectedPhase === "DRAINING"
+          ? new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
+          : periodEnd,
+      );
+      const fixture = createValidPaidMerchantState();
+      Object.assign(fixture.plan, {
+        recoveryCreditPackEnabled: true,
+        shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+      });
+      fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
+      const provider = {
+        getActiveSubscription: vi.fn().mockRejectedValue(new Error("Shopify unavailable")),
+      };
+
+      try {
+        const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
+
+        expect(result).toMatchObject({
+          billingPeriodPhase: expectedPhase,
+          recoveryCreditPackMeterVerified: false,
+          recoveryCreditPackPurchaseEligible: false,
+        });
+        if (expectedPhase === "RECONCILING") expect(result.paidIncluded).not.toBeNull();
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
+  it("does not derive a merchant billing phase from an invalid local cycle", async () => {
+    const fixture = createValidPaidMerchantState();
+    fixture.period.periodEnd = fixture.period.periodStart;
+    fixture.state.subscription.currentPeriodEnd = fixture.period.periodEnd;
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" });
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({ currentPeriodEnd: fixture.period.periodEnd, usageEventHandles: ["credit-pack-meter"] }),
+      ),
+    };
+
+    const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
+
+    expect(result).toMatchObject({
+      billingPeriodPhase: null,
+      recoveryCreditPackPurchaseEligible: false,
+    });
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+  });
+
   it.each(["Paid", "Free"] as const)(
     "keeps pack purchase eligible for exact ACTIVE cycle: %s",
     async (kind) => {
@@ -2750,6 +2839,8 @@ describe("BillingService recovery credit packs", () => {
   );
 
   it("restores Free pack eligibility on an exact successor BillingPeriod without changing lifetime Free state", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-02T00:00:00.000Z"));
     const successorStart = new Date("2026-10-01T00:00:00.000Z");
     const successorEnd = new Date("2026-10-31T00:00:00.000Z");
     const { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription } =
@@ -2768,14 +2859,18 @@ describe("BillingService recovery credit packs", () => {
     };
     const service = new BillingService(provider, database as never);
 
-    const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "f3333333-3333-4333-8333-333333333333");
+    try {
+      const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "f3333333-3333-4333-8333-333333333333");
 
-    expect(purchase.usageEventId).toEqual(expect.any(String));
-    expect(usageEvents[0]).toMatchObject({ billingPeriodId: "period-2" });
-    expect(usageEvents).toHaveLength(1);
-    expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
-    expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
-    expect(purchases).toHaveLength(1);
+      expect(purchase.usageEventId).toEqual(expect.any(String));
+      expect(usageEvents[0]).toMatchObject({ billingPeriodId: "period-2" });
+      expect(usageEvents).toHaveLength(1);
+      expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
+      expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
+      expect(purchases).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("fails closed when the durable configuration changes after provider verification", async () => {
