@@ -48,7 +48,7 @@ describe("SubscriptionChangePanel", () => {
 
   it("keeps cancellation distinct from a pending provider update", () => {
     const markup = render();
-    expect(markup).toContain("end at the end of the current billing period");
+    expect(markup).not.toContain("end at the end of the current billing period");
     expect(markup).toContain("starter");
   });
 

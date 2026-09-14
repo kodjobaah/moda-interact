@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
 import PendingRecoveries from "./PendingRecoveries";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
+import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
 
 const colors = scaleOrdinal(schemeTableau10);
 const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
@@ -32,13 +33,14 @@ function UsagePie({ title, events, i18n }) {
   );
 }
 
-export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi }) {
+export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity }) {
   const i18n = createMerchantI18n(merchantUi);
   const navigate = useNavigate();
   const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
   return (
     <s-page heading={i18n.t("usage.title")}>
       <Breadcrumbs current={i18n.t("usage.title")} merchantUi={merchantUi} />
+      <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
 
       <s-section>
                <div className="usage-overview-grid">
@@ -75,4 +77,4 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 }
 
 UsagePie.propTypes = { title: PropTypes.string, events: PropTypes.arrayOf(PropTypes.object), i18n: PropTypes.shape({ t: PropTypes.func, formatNumber: PropTypes.func }) };
-UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }) };
+UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object };

@@ -5,14 +5,20 @@ import TopUpPurchasePanel from "./TopUpPurchasePanel";
 import SubscriptionChangePanel from "./SubscriptionChangePanel";
 import "./BillingPurchaseHub.css";
 
-/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans", onPurchaseTopUp: () => void }} props */
-export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, managePlansHref, managePlansAvailable, initialView="topup", onPurchaseTopUp }) {
+/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, scheduledCancellation?: boolean, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans", onPurchaseTopUp: () => void }} props */
+export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, scheduledCancellation = false, managePlansHref, managePlansAvailable, initialView="topup", onPurchaseTopUp }) {
   const i18n=createMerchantI18n(merchantUi); const [view,setView]=useState(initialView);
   const currentName = verificationState === "VERIFICATION_UNAVAILABLE"
     ? i18n.t("common.unavailable")
     : current?.mappedModaPlanName ?? current?.shopifyPlanHandle ?? (verificationState === "NO_ACTIVE_SUBSCRIPTION" ? i18n.t("billing.viewPlans") : i18n.t("billing.configurationUnavailable"));
-  const stateCopy = lifecycleState === "FROZEN" || billingPeriodPhase === "DRAINING" || billingPeriodPhase === "RECONCILING"
-    ? i18n.t("billing.configurationUnavailableDescription")
+  const stateCopy = lifecycleState === "FROZEN"
+    ? i18n.t("billing.frozenDescription")
+    : scheduledCancellation && !pending && current?.currentPeriodEnd
+      ? i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current?.currentPeriodEnd) })
+      : capacity?.availability === "CONTRACT_REQUIRED"
+        ? i18n.t("billing.contractRequiredDescription")
+        : billingPeriodPhase === "DRAINING" || billingPeriodPhase === "RECONCILING"
+          ? i18n.t("billing.configurationUnavailableDescription")
     : verificationState === "VERIFICATION_UNAVAILABLE"
       ? i18n.t("billing.verificationUnavailableDescription")
     : null;
@@ -41,4 +47,4 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
   </div>;
 }
 
-BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]), onPurchaseTopUp:PropTypes.func.isRequired };
+BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, scheduledCancellation:PropTypes.bool, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]), onPurchaseTopUp:PropTypes.func.isRequired };

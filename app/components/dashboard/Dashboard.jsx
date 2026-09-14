@@ -3,8 +3,9 @@ import PropTypes from "prop-types";
 import { Link } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
+import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
 
-export default function Dashboard({ stats, recoveries, usageView, usagePagination, merchantUi }) {
+export default function Dashboard({ stats, recoveries, usageView, usagePagination, merchantUi, subscription, capacity }) {
   const i18n = createMerchantI18n(merchantUi);
   const usageUrl = `/app/usage?bill=${usageView}${usagePagination.billId ? `&billId=${usagePagination.billId}` : ""}`;
   const periodLabel = usagePagination.periodStart && usagePagination.periodEnd
@@ -14,6 +15,7 @@ export default function Dashboard({ stats, recoveries, usageView, usagePaginatio
   return (
     <s-page heading="Moda Interact">
       <Breadcrumbs current={periodLabel} merchantUi={merchantUi} />
+      <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
       <Stats {...stats} recoveries={recoveries} merchantUi={merchantUi} />
       <Link className="usage-detail-link dashboard-usage-link" to={usageUrl}>{i18n.t("dashboard.viewAllUsage")}</Link>
     </s-page>
@@ -26,4 +28,6 @@ Dashboard.propTypes = {
   usageView: PropTypes.string,
   usagePagination: PropTypes.object,
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  subscription: PropTypes.object,
+  capacity: PropTypes.object,
 };

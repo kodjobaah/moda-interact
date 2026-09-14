@@ -1,9 +1,30 @@
+import { createElement, type ReactNode } from "react";
 import { readFile } from "node:fs/promises";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useLoaderData } from "react-router";
+
+vi.mock("react-router", async () => {
+  const actual = await vi.importActual<typeof import("react-router")>(
+    "react-router",
+  );
+  return {
+    ...actual,
+    Link: ({ to, children }: { to: string; children: ReactNode }) =>
+      createElement("a", { href: to }, children),
+    useFetcher: vi.fn(() => ({ data: null, state: "idle" })),
+    useLoaderData: vi.fn(),
+  };
+});
 
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getMerchantBillingState = vi.fn();
+const getMerchantRecoveryCapacityState = vi.fn();
+const getSubscriptionProjection = vi.fn();
+const getMerchantShopifySubscriptionState = vi.fn();
+const getMerchantShopifyLifecycleState = vi.fn();
+const requestRecoveryCreditPack = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingRouteSource = await readFile(
@@ -37,17 +58,74 @@ vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getMerchantBillingState },
+  billingService: {
+    getMerchantBillingState,
+    getMerchantRecoveryCapacityState,
+    getSubscriptionProjection,
+    getMerchantShopifySubscriptionState,
+    getMerchantShopifyLifecycleState,
+    requestRecoveryCreditPack,
+  },
 }));
 vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
-const { loader } = await import("../../app/routes/app/billing/route");
+const { default: BillingRoute, loader } =
+  await import("../../app/routes/app/billing/route");
 const { loader: billingSelectLoader } =
   await import("../../app/routes/app/billing/select/route");
+const { action: billingAction } = await import("../../app/routes/app/billing/route");
+const { action: billingOptionsAction } =
+  await import("../../app/routes/app/billing/options/route");
 const { getMerchantSystemMessageAction } =
   await import("../../app/services/merchant-support/system-message-actions");
+
+const useLoaderDataMock = vi.mocked(useLoaderData);
+const renderBillingRoute = (overrides: Record<string, unknown> = {}) => {
+  useLoaderDataMock.mockReturnValue({
+    merchantUi: { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" },
+    subscription: {
+      status: "ACTIVE",
+      planKind: "FREE",
+      planName: "Free",
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      trialEndsAt: null,
+      cancelAtPeriodEnd: false,
+      pendingPlanName: null,
+      pendingEffectiveAt: null,
+    },
+    allowance: 10,
+    remaining: 10,
+    paidIncluded: null,
+    paidConfigurationUnavailable: false,
+    lifetimeFree: {
+      grantedQuantity: 10,
+      committedQuantity: 0,
+      reservedQuantity: 0,
+      remaining: 10,
+    },
+    usageQuantity: 0,
+    purchasedRecoveryCredits: {
+      grantedQuantity: 0,
+      committedQuantity: 0,
+      reservedQuantity: 0,
+      refundingQuantity: 0,
+      available: 0,
+    },
+    recoveryCreditPackEnabled: true,
+    recoveryCreditsPerPack: 10,
+    recoveryCreditPackMeter: "credit-pack-meter",
+    recoveryCreditPackMeterVerified: true,
+    recoveryCreditPackPurchaseEligible: true,
+    billingPeriodPhase: "ACTIVE",
+    lifecycleRestriction: "AVAILABLE",
+    purchaseId: "purchase-1",
+    ...overrides,
+  } as never);
+  return renderToStaticMarkup(createElement(BillingRoute));
+};
 
 const activeFreeSubscription = {
   status: "ACTIVE",
@@ -70,6 +148,10 @@ beforeEach(() => {
   });
   resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
   findShopSettings.mockResolvedValue(null);
+  getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED" });
+  getSubscriptionProjection.mockResolvedValue(null);
+  getMerchantShopifySubscriptionState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
+  getMerchantShopifyLifecycleState.mockResolvedValue({ state: "NO_ACTIVE_SUBSCRIPTION", subscription: null, latestEvent: null });
 });
 
 describe("merchant billing UI", () => {
@@ -111,6 +193,79 @@ describe("merchant billing UI", () => {
 
     expect(result.subscription).toMatchObject({ status: "NO_CONTRACT" });
     expect(hostedPricingRedirect).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for a scheduled cancellation before creating a top-up", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "AVAILABLE",
+      canStartRecovery: true,
+    });
+    getSubscriptionProjection.mockResolvedValue({
+      cancelAtPeriodEnd: true,
+      pendingPlan: null,
+    });
+
+    await expect(billingAction({
+      request: new Request("https://example.test/app/billing", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+  });
+
+  it("hides top-up while scheduled cancellation keeps Shopify plan management", () => {
+    const markup = renderBillingRoute({
+      subscription: {
+        ...activeFreeSubscription,
+        cancelAtPeriodEnd: true,
+        pendingPlanName: null,
+        pendingEffectiveAt: null,
+      },
+    });
+
+    expect(markup).toContain('href="/app/billing/select"');
+    expect(markup).not.toContain("<form");
+  });
+
+  it("hides top-up and plan management while capacity is frozen", () => {
+    const markup = renderBillingRoute({
+      lifecycleRestriction: "CONTRACT_FROZEN",
+    });
+
+    expect(markup).not.toContain("<form");
+    expect(markup).not.toContain('href="/app/billing/select"');
+  });
+
+  it("fails closed for a frozen capacity projection", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONTRACT_FROZEN",
+      canStartRecovery: false,
+    });
+    getSubscriptionProjection.mockResolvedValue(null);
+
+    await expect(billingAction({
+      request: new Request("https://example.test/app/billing", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+  });
+
+  it("fails closed for an effective no-contract options action", async () => {
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONTRACT_REQUIRED",
+      canStartRecovery: false,
+    });
+    getMerchantShopifyLifecycleState.mockResolvedValue({
+      state: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+      latestEvent: null,
+    });
+    getMerchantShopifySubscriptionState.mockResolvedValue({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+
+    await expect(billingOptionsAction({
+      request: new Request("https://example.test/app/billing/options", { method: "POST", body: "" }),
+    } as never)).rejects.toThrow("Shopify billing is restricted");
+    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
   });
 
   it("redirects the selection route to Shopify pricing with a top-level target", async () => {
