@@ -29,6 +29,10 @@ type BillingCallbackSubscription = Pick<
   | "pendingPlanId"
   | "pendingEffectiveAt"
   | "nextReconcileAt"
+  | "billingPeriodId"
+  | "currentPeriodStart"
+  | "currentPeriodEnd"
+  | "lastSyncErrorCode"
 > & {
   plan: Pick<BillingPlan, "kind" | "shopifyPlanHandle"> | null;
 };
@@ -36,6 +40,7 @@ type BillingCallbackSubscription = Pick<
 export function isVerifiedBillingCallback(
   subscription: BillingCallbackSubscription | null,
   requestedPlanHandle: string | null,
+  expectedPlanKind: "FREE" | "PAID_METERED" = "FREE",
 ): boolean {
   if (!subscription || !requestedPlanHandle) return false;
 
@@ -48,7 +53,7 @@ export function isVerifiedBillingCallback(
   const currentPlanMatches =
     subscription.observedShopifyPlanHandle === requestedPlanHandle &&
     subscription.planId !== null &&
-    subscription.plan?.kind === "FREE";
+    subscription.plan?.kind === expectedPlanKind;
 
   const pendingSelectionConflicts = subscription.pendingShopifyPlanHandle !== null && (
     subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
@@ -57,6 +62,26 @@ export function isVerifiedBillingCallback(
   );
 
   return currentPlanMatches && !pendingSelectionConflicts;
+}
+
+function isVerifiedPaidActivation(
+  subscription: BillingCallbackSubscription | null,
+  requestedPlanHandle: string,
+  planId: string,
+): boolean {
+  return Boolean(
+    subscription &&
+    subscription.status === SubscriptionProjectionStatus.ACTIVE &&
+    subscription.planId === planId &&
+    subscription.observedShopifyPlanHandle === requestedPlanHandle &&
+    subscription.billingPeriodId &&
+    subscription.currentPeriodStart &&
+    subscription.currentPeriodEnd &&
+    subscription.pendingShopifyPlanHandle === null &&
+    subscription.pendingPlanId === null &&
+    subscription.pendingEffectiveAt === null &&
+    subscription.nextReconcileAt,
+  );
 }
 
 
@@ -88,20 +113,33 @@ export async function loader({
     });
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
-  const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle);
+  const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
+    await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
   if (!activation) return redirect("/app");
 
   let partnerVerificationSucceeded = false;
   let partnerErrorAt: Date | null = null;
+  let syncedSubscription: BillingCallbackSubscription | null = null;
   try {
-    await billingService.syncSubscription(shop.id, activation.token ?? undefined);
+    syncedSubscription = await billingService.syncSubscription(shop.id, activation.token ?? undefined) as BillingCallbackSubscription | null;
     partnerVerificationSucceeded = true;
   } catch {
     partnerErrorAt = new Date();
   }
 
-  const subscription = await billingService.getSubscriptionProjection(shop.id);
-  if (partnerVerificationSucceeded && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle)) {
+  const subscription = activation.plan.kind === "PAID_METERED"
+    ? syncedSubscription
+    : await billingService.getSubscriptionProjection(shop.id);
+  const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
+  if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
+    await enqueueBillingSubscriptionReconcileBestEffort({
+      shopId: shop.id,
+      subscriptionId: subscription!.id,
+      expectedNextReconcileAt: subscription!.nextReconcileAt!,
+    });
+    return redirect("/app");
+  }
+  if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
     const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
     if (completed?.nextReconcileAt) {
       await enqueueBillingSubscriptionReconcileBestEffort({
@@ -114,6 +152,10 @@ export async function loader({
   }
 
   if (activation.mode !== "INITIAL" || !activation.token) {
+    return redirect("/app");
+  }
+
+  if (expectedPlanKind === "PAID_METERED" && syncedSubscription?.lastSyncErrorCode) {
     return redirect("/app");
   }
 

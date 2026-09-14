@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
   BILLING_SYSTEM_MESSAGE_CODES,
   createShopifyUsageIdempotencyKey,
 } from "@modainteract/moda-interact-shared/billing";
@@ -81,7 +82,380 @@ function createDatabase({
   return { database, state };
 }
 
+function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
+  const plan = {
+    id: "paid-1",
+    name: "Growth",
+    kind: "PAID_METERED",
+    shopifyPlanHandle: "growth",
+    shopifyUsageEventHandle: "message-meter",
+    active: true,
+    includedRecoveryConversationAllowance: 25,
+    ...overrides,
+  };
+  const periodStart = new Date("2026-09-01T00:00:00.000Z");
+  const periodEnd = new Date("2026-10-01T00:00:00.000Z");
+  const state = {
+    shopStatus: "ACTIVE",
+    onboardingCompleted: false,
+    subscription: {
+      id: "subscription-1",
+      shopId: "shop-1",
+      status: "ACTIVE",
+      planId: "paid-1",
+      plan,
+      observedShopifyPlanHandle: "growth",
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
+      nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      trialEndsAt: null,
+      billingPeriod: null as Record<string, unknown> | null,
+    },
+    periodCounter: null as Record<string, unknown> | null,
+    lifetimeCounter: null as Record<string, unknown> | null,
+  };
+  const subscription = {
+    findUnique: vi.fn().mockImplementation(async () => state.subscription),
+    upsert: vi.fn().mockImplementation(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => {
+      state.subscription = { ...state.subscription, ...create, ...update };
+      return state.subscription;
+    }),
+    update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.subscription = { ...state.subscription, ...data };
+      return state.subscription;
+    }),
+  };
+  const billingPeriod = {
+    findUnique: vi.fn().mockImplementation(async () => state.subscription.billingPeriod),
+    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.subscription.billingPeriod = { id: "period-1", ...data };
+      return state.subscription.billingPeriod;
+    }),
+    update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.subscription.billingPeriod = { ...state.subscription.billingPeriod, ...data };
+      return state.subscription.billingPeriod;
+    }),
+  };
+  const billingPeriodEntitlementCounter = {
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.periodCounter = { id: "counter-1", ...data };
+      return state.periodCounter;
+    }),
+  };
+  const shopEntitlementCounter = {
+    findUnique: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.lifetimeCounter = { id: "lifetime-1", ...data };
+      return state.lifetimeCounter;
+    }),
+  };
+  const shopSettings = {
+    findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: false }),
+    update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      state.onboardingCompleted = Boolean(data.onboardingCompleted);
+      return { onboardingCompleted: state.onboardingCompleted };
+    }),
+  };
+  const transaction = {
+    $queryRaw: vi.fn().mockResolvedValue([]),
+    shop: { findUnique: vi.fn().mockImplementation(async () => ({ status: state.shopStatus })) },
+    subscription,
+    shopSettings,
+    billingPlan: { findUnique: vi.fn().mockResolvedValue(plan) },
+    billingPeriod,
+    billingPeriodEntitlementCounter,
+    shopEntitlementCounter,
+    platformBillingPolicy: { findUnique: vi.fn().mockResolvedValue({ lifetimeFreeRecoveryAllowance: 5 }) },
+  };
+  const database = {
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    billingPlan: transaction.billingPlan,
+    $queryRaw: transaction.$queryRaw,
+    $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
+  };
+  return { database, state, billingPeriod, billingPeriodEntitlementCounter, shopEntitlementCounter };
+}
+
 describe("BillingService subscription projection", () => {
+  it("records a paid first-selection intent without activating it", async () => {
+    const { database, state } = createPaidActivationDatabase();
+    state.subscription.status = "NO_CONTRACT";
+    Object.assign(state.subscription, {
+      planId: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+    });
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.preparePaidActivation("shop-1", "growth");
+
+    expect(result).toMatchObject({ mode: "INITIAL", plan: { kind: "PAID_METERED" } });
+    expect(state.subscription).toMatchObject({ pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1" });
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("creates the exact paid period and included counter in the verified sync transaction", async () => {
+    const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    Object.assign(state.subscription, {
+      status: "NO_CONTRACT",
+      planId: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
+      nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", {
+      subscriptionId: "subscription-1",
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt,
+      nextReconcileAt: state.subscription.nextReconcileAt,
+      planKind: "PAID_METERED",
+    })).resolves.toMatchObject({ id: "subscription-1", status: "ACTIVE" });
+
+    expect(state.subscription.billingPeriod).toMatchObject({
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      planId: "paid-1",
+      shopifyPlanHandleSnapshot: "growth",
+      planNameSnapshot: "Growth",
+      planKindSnapshot: "PAID_METERED",
+      periodStart: new Date("2026-09-01T00:00:00.000Z"),
+      periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      includedRecoveryCreditsGranted: 25,
+      status: "OPEN",
+    });
+    expect(billingPeriodEntitlementCounter.create).toHaveBeenCalledWith({ data: expect.objectContaining({ grantedQuantity: 25 }) });
+    expect(shopEntitlementCounter.create).toHaveBeenCalledWith({ data: expect.objectContaining({ grantedQuantity: 5 }) });
+    expect(state.onboardingCompleted).toBe(true);
+  });
+
+  it.each([
+    ["inactive", { active: false }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["wrong kind", { kind: "FREE" }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["changed handle", { shopifyPlanHandle: "other" }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["missing meter", { shopifyUsageEventHandle: null }, "MISSING_USAGE_METER"],
+    ["unexposed meter", { shopifyUsageEventHandle: "other-meter" }, "MISSING_USAGE_METER"],
+    ["null allowance", { includedRecoveryConversationAllowance: null }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["negative allowance", { includedRecoveryConversationAllowance: -1 }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["fractional allowance", { includedRecoveryConversationAllowance: 1.5 }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["unsafe allowance", { includedRecoveryConversationAllowance: Number.MAX_SAFE_INTEGER + 1 }, "INVALID_PAID_PLAN_CONFIGURATION"],
+  ] as const)("transactionally revalidates the pending Paid plan for %s", async (_name, planOverride, errorCode) => {
+    const { database, state, billingPeriod, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase(planOverride);
+    Object.assign(state.subscription, {
+      status: "NO_CONTRACT",
+      planId: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
+      nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    const result = await service.syncSubscription("shop-1", {
+      subscriptionId: "subscription-1",
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt,
+      nextReconcileAt: state.subscription.nextReconcileAt,
+      planKind: "PAID_METERED",
+    });
+
+    expect(result).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: errorCode, nextReconcileAt: null });
+    expect(state.onboardingCompleted).toBe(false);
+    expect(state.subscription).toMatchObject({ pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" });
+    expect(billingPeriod.create).not.toHaveBeenCalled();
+    expect(billingPeriod.update).not.toHaveBeenCalled();
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+  });
+
+  it("locks and rereads the Shop before accepting initial Paid status", async () => {
+    const { database, state } = createPaidActivationDatabase();
+    Object.assign(state.subscription, {
+      status: "NO_CONTRACT",
+      planId: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: "growth",
+      pendingPlanId: "paid-1",
+      pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"),
+      nextReconcileAt: new Date("2026-09-12T00:00:00.000Z"),
+    });
+    const lockSql: string[] = [];
+    database.$queryRaw.mockImplementation(async (query: { sql?: string }) => {
+      lockSql.push(query.sql ?? "");
+      return [];
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1", {
+      subscriptionId: "subscription-1",
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt,
+      nextReconcileAt: state.subscription.nextReconcileAt,
+      planKind: "PAID_METERED",
+    });
+
+    expect(lockSql[0]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockSql[1]).toContain('FROM "billing"."Subscription"');
+    expect(lockSql[2]).toContain('FROM "shopify"."Shop"');
+    expect(lockSql[2]).toContain("FOR UPDATE");
+  });
+
+  it("fails closed when the current cycle is missing", async () => {
+    const { database, state } = createPaidActivationDatabase();
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ currentPeriodStart: null })) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION" });
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("fails closed for an invalid included allowance", async () => {
+    const { database, state } = createPaidActivationDatabase({ includedRecoveryConversationAllowance: -1 });
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION" });
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("fails closed for a paid trial", async () => {
+    const { database, state, billingPeriodEntitlementCounter } = createPaidActivationDatabase();
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ status: "TRIALING", trialEndsAt: new Date("2026-09-20T00:00:00.000Z"), currentPeriodStart: null, currentPeriodEnd: null })) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL", nextReconcileAt: null });
+    expect(state.onboardingCompleted).toBe(false);
+    expect(state.subscription.pendingPlanId).toBe("paid-1");
+    expect(state.subscription.pendingShopifyPlanHandle).toBe("growth");
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the initial Paid target has no provider usage meter", async () => {
+    const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase({ shopifyUsageEventHandle: null });
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ lastSyncErrorCode: "MISSING_USAGE_METER", nextReconcileAt: null });
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it.each(["UNINSTALLED", "SUSPENDED"] as const)("does not activate when the Shop becomes %s before commit", async (shopStatus) => {
+    const { database, state, billingPeriodEntitlementCounter } = createPaidActivationDatabase();
+    state.shopStatus = shopStatus;
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION", nextReconcileAt: null });
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("rejects a stale pending Paid identity without creating billing state", async () => {
+    const { database, state, billingPeriodEntitlementCounter } = createPaidActivationDatabase();
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "old-growth", pendingPlanId: "paid-old", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ planHandle: "growth" })) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-old", pendingShopifyPlanHandle: "old-growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.not.toMatchObject({ planId: "paid-old", billingPeriodId: expect.any(String) });
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("preserves replayed period and lifetime quantities", async () => {
+    const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    state.subscription.billingPeriod = {
+      id: "period-1", shopId: "shop-1", subscriptionId: "subscription-1", planId: "paid-1",
+      periodStart: new Date("2026-09-01T00:00:00.000Z"), periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      status: "OPEN", shopifyPlanHandleSnapshot: "growth", planNameSnapshot: "Growth", planKindSnapshot: "PAID_METERED", includedRecoveryCreditsGranted: 25,
+    };
+    state.periodCounter = { id: "counter-1", shopId: "shop-1", billingPeriodId: "period-1", grantedQuantity: 25, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 };
+    state.lifetimeCounter = { id: "lifetime-1", grantedQuantity: 5, committedQuantity: 2, reservedQuantity: 1, refundingQuantity: 1 };
+    billingPeriodEntitlementCounter.findUnique.mockResolvedValue(state.periodCounter);
+    shopEntitlementCounter.findUnique.mockResolvedValue(state.lifetimeCounter);
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+    await service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" });
+
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.periodCounter).toMatchObject({ grantedQuantity: 25, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 });
+    expect(state.lifetimeCounter).toMatchObject({ grantedQuantity: 5, committedQuantity: 2, reservedQuantity: 1, refundingQuantity: 1 });
+  });
+
+  it("fails closed without reopening a closed exact period", async () => {
+    const { database, state, billingPeriod, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    state.subscription.billingPeriod = {
+      id: "period-1", shopId: "shop-1", subscriptionId: "subscription-1", planId: "paid-1",
+      periodStart, periodEnd, status: "CLOSED", shopifyPlanHandleSnapshot: "growth", planNameSnapshot: "Growth",
+      planKindSnapshot: "PAID_METERED", includedRecoveryCreditsGranted: 25,
+    };
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", {
+      subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth",
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED",
+    })).resolves.toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION", nextReconcileAt: null });
+    expect(state.subscription.billingPeriod).toMatchObject({ status: "CLOSED" });
+    expect(billingPeriod.create).not.toHaveBeenCalled();
+    expect(billingPeriod.update).not.toHaveBeenCalled();
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed without overwriting a conflicting included counter grant", async () => {
+    const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    state.subscription.billingPeriod = {
+      id: "period-1", shopId: "shop-1", subscriptionId: "subscription-1", planId: "paid-1",
+      periodStart, periodEnd, status: "OPEN", shopifyPlanHandleSnapshot: "growth", planNameSnapshot: "Growth",
+      planKindSnapshot: "PAID_METERED", includedRecoveryCreditsGranted: 25,
+    };
+    const conflictingCounter = { id: "counter-1", shopId: "shop-1", billingPeriodId: "period-1", grantedQuantity: 99, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 };
+    billingPeriodEntitlementCounter.findUnique.mockResolvedValue(conflictingCounter);
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await expect(service.syncSubscription("shop-1", {
+      subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth",
+      pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED",
+    })).resolves.toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION" });
+    expect(conflictingCounter).toMatchObject({ grantedQuantity: 99, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 });
+    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(state.onboardingCompleted).toBe(false);
+  });
+
+  it("stores the exact drain-window schedule on successful first Paid activation", async () => {
+    const { database, state } = createPaidActivationDatabase();
+    Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date("2026-09-12T00:00:00.000Z"), nextReconcileAt: new Date("2026-09-12T00:00:00.000Z") });
+    const now = new Date("2026-09-14T00:00:00.000Z");
+    vi.setSystemTime(now);
+    try {
+      const provider = { getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) };
+      const service = new BillingService(provider, database as never);
+      await service.syncSubscription("shop-1", {
+        subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth",
+        pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED",
+      });
+      expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
+      expect(state.subscription.nextReconcileAt).toEqual(new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   function createFreeActivationDatabase({
     currentSubscription = null,
     onboardingCompleted = false,
@@ -800,6 +1174,7 @@ describe("BillingService subscription projection", () => {
       plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
     });
     const provider = {
+      getActiveSubscription: vi.fn(),
       getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
         activeSubscription: providerSubscription({
           currentFlatRatePlan: { handle: "growth", description: "Growth", price: { amount: "19", currency: "GBP" } },
@@ -848,6 +1223,7 @@ describe("BillingService subscription projection", () => {
   it("gives the latest frozen lifecycle event precedence over a live subscription", async () => {
     const { database } = createDatabase({ plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" } });
     const provider = {
+      getActiveSubscription: vi.fn(),
       getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
         activeSubscription: providerSubscription({ planHandle: "growth" }),
         latestLifecycleEvent: {
@@ -928,6 +1304,7 @@ describe("BillingService subscription projection", () => {
       plan: { id: "growth-1", name: "Growth", kind: "PAID_METERED" },
     });
     const provider = {
+      getActiveSubscription: vi.fn(),
       getSubscriptionLifecycleSnapshot: vi.fn().mockRejectedValue(new Error("Partner verification failed")),
     };
     const service = new BillingService(provider, database as never);
