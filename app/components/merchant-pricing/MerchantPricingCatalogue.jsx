@@ -5,6 +5,12 @@ import "./MerchantPricingCatalogue.css";
 
 void React;
 
+/**
+ * @typedef {{ contentKey: string, position: number, title: string, description: string }} PricingHighlight
+ * @typedef {{ shopifyPlanHandle: string, displayName: string, planKind: string, featured: boolean, localizedDescription: string, includedRecoveryCredits: number, allowancePeriod: string, billingPeriod: string, recurringAmountMinor: number, currency: string, highlights: PricingHighlight[] }} PricingPlan
+ */
+
+/** @param {{ merchantUi: object, pricingCatalogue?: PricingPlan[], showChoosePlanAction?: boolean }} props */
 export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue, showChoosePlanAction }) {
   const i18n = createMerchantI18n(merchantUi);
   const plans = pricingCatalogue ?? [];
