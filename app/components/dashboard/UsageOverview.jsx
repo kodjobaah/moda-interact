@@ -1,17 +1,27 @@
+// @ts-expect-error d3 has no declarations in the existing application dependencies.
 import { arc, pie, scaleOrdinal, schemeTableau10 } from "d3";
+import React from "react";
 import PropTypes from "prop-types";
 import { Link, useNavigate } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
 import PendingRecoveries from "./PendingRecoveries";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
+import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
+
+void React;
 
 const colors = scaleOrdinal(schemeTableau10);
+/** @type {Record<string, string>} */
 const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
 
+/** @param {{ title: string, events: Array<{ metric: string, quantity: number }>, i18n: any }} props */
 function UsagePie({ title, events, i18n }) {
-  const grouped = Object.entries(events.reduce((groups, event) => { groups[event.metric] = (groups[event.metric] ?? 0) + event.quantity; return groups; }, {})).map(([metric, value]) => ({ metric, value }));
-  const slices = pie().value((item) => item.value).sort(null)(grouped);
+  const totals = events.reduce((groups, event) => { groups[event.metric] = (groups[event.metric] ?? 0) + event.quantity; return groups; }, /** @type {Record<string, number>} */ ({}));
+  const grouped = Object.entries(totals).map(([metric, value]) => ({ metric, value }));
+  const valueForPie = /** @type {(item: { value: number }) => number} */ (item => item.value);
+  /** @type {any[]} */
+  const slices = pie().value(valueForPie).sort(null)(grouped);
   const createArc = arc().innerRadius(52).outerRadius(92);
   const total = grouped.reduce((sum, item) => sum + item.value, 0);
 
@@ -33,7 +43,20 @@ function UsagePie({ title, events, i18n }) {
   );
 }
 
-export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity }) {
+/**
+ * @param {{
+ *   usageSummary: { current: Array<{ metric: string, quantity: number }>, past: Array<{ metric: string, quantity: number }> },
+ *   billingPeriods: Array<{ id: string, status: string, periodStart: string | Date }>,
+ *   pendingRecoveries: object,
+ *   pendingRecoveriesUpdatedAt?: string,
+ *   merchantUi: object,
+ *   subscription: object,
+ *   capacity: object,
+ *   merchantExperienceState?: string,
+ *   pricingCatalogue?: Array<any>
+ * }} props
+ */
+export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity, merchantExperienceState, pricingCatalogue }) {
   const i18n = createMerchantI18n(merchantUi);
   const navigate = useNavigate();
   const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
@@ -48,9 +71,13 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 
         {/* existing billing information */}
 
-        <s-button href="/app/billing/options" variant="primary">
-          {i18n.t("billingCommerce.actions.manageCapacity")}
-        </s-button>
+        {merchantExperienceState === "NO_CONTRACT" ? (
+          <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction />
+        ) : (
+          <s-button href="/app/billing/options" variant="primary">
+            {i18n.t("billingCommerce.actions.manageCapacity")}
+          </s-button>
+        )}
       </div>
       </s-section>
       <s-section>
@@ -77,4 +104,4 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 }
 
 UsagePie.propTypes = { title: PropTypes.string, events: PropTypes.arrayOf(PropTypes.object), i18n: PropTypes.shape({ t: PropTypes.func, formatNumber: PropTypes.func }) };
-UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object };
+UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object, merchantExperienceState: PropTypes.string, pricingCatalogue: PropTypes.arrayOf(PropTypes.object) };

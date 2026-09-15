@@ -83,16 +83,36 @@ function validatePlan(plan, translation, planIndex) {
   });
 }
 
+function validateHighlights(highlights, planIndex) {
+  let previousPosition = -1;
+  highlights.forEach((highlight, highlightIndex) => {
+    const prefix = `plan ${planIndex} highlight ${highlightIndex}`;
+    if (!isSafeNonNegativeInteger(highlight.position) || highlight.position <= previousPosition) {
+      invalid(`${prefix} position is invalid`);
+    }
+    previousPosition = highlight.position;
+    validateText(highlight.contentKey, `${prefix} content key`);
+    const translation = highlight.translations?.[0];
+    if (highlight.translations?.length !== 1) invalid(`${prefix} translation is missing or duplicated`);
+    validateText(translation?.merchantTitle, `${prefix} title`, 120);
+    validateText(translation?.merchantDescription, `${prefix} description`, 2000);
+  });
+}
+
 export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
   const catalogueLocale = createMerchantI18n({ locale }).catalogueLocale;
   const plans = await db.merchantPricingPlan.findMany({
     where: { isActive: true },
     orderBy: { cataloguePosition: "asc" },
     include: {
-      translations: { where: { locale: catalogueLocale }, take: 1 },
+      translations: { where: { locale: catalogueLocale } },
       usageEvents: {
         orderBy: { position: "asc" },
         include: { tiers: { orderBy: { position: "asc" } } },
+      },
+      highlights: {
+        orderBy: { position: "asc" },
+        include: { translations: { where: { locale: catalogueLocale } } },
       },
     },
   });
@@ -101,8 +121,10 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
   return plans.map((plan, planIndex) => {
     if (plan.cataloguePosition <= previousPosition) invalid("catalogue positions are not strictly increasing");
     previousPosition = plan.cataloguePosition;
-    const translation = plan.translations?.[0];
+    if (plan.translations?.length !== 1) invalid(`plan ${planIndex} translation is missing or duplicated`);
+    const translation = plan.translations[0];
     validatePlan(plan, translation, planIndex);
+    validateHighlights(plan.highlights ?? [], planIndex);
     return {
       shopifyPlanHandle: plan.shopifyPlanHandle,
       displayName: plan.displayName,
@@ -115,6 +137,12 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
       billingPeriod: plan.billingPeriod,
       recurringAmountMinor: plan.recurringAmountMinor,
       currency: plan.currency,
+      highlights: (plan.highlights ?? []).map((highlight) => ({
+        contentKey: highlight.contentKey,
+        position: highlight.position,
+        title: highlight.translations[0].merchantTitle,
+        description: highlight.translations[0].merchantDescription,
+      })),
       usageEvents: plan.usageEvents.map((event) => ({
         cataloguePosition: event.position,
         eventHandle: event.eventHandle,

@@ -61,6 +61,7 @@ beforeEach(() => {
 
 describe("app home loader", () => {
   it("returns onboarding data without loading dashboard datasets", async () => {
+    readActiveMerchantPricingCatalogue.mockResolvedValue([{ shopifyPlanHandle: "free" }]);
     const result = await loader({
       request: new Request("https://example.test/app"),
     });
@@ -68,6 +69,7 @@ describe("app home loader", () => {
     expect(result).toMatchObject({
       settings: { onboardingCompleted: false },
       merchantExperienceState: "ONBOARDING",
+      pricingCatalogue: [{ shopifyPlanHandle: "free" }],
       subscription: null,
     });
     expect(getSubscription).not.toHaveBeenCalled();
@@ -95,6 +97,7 @@ describe("app home loader", () => {
   it("keeps a completed shop without an active plan on the merchant surface", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+    readActiveMerchantPricingCatalogue.mockResolvedValue([{ shopifyPlanHandle: "database-plan" }]);
 
     const result = await loader({
       request: new Request("https://example.test/app"),
@@ -103,6 +106,7 @@ describe("app home loader", () => {
     expect(result).toMatchObject({
       settings: { onboardingCompleted: true },
       subscription: { status: "NO_CONTRACT" },
+      pricingCatalogue: [{ shopifyPlanHandle: "database-plan" }],
       capacity: { availability: "CONTRACT_REQUIRED" },
     });
     expect(findRecoveries).toHaveBeenCalled();
