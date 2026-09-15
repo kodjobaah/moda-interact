@@ -4,6 +4,7 @@ const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const readMerchantSupportMessages = vi.fn();
 const findShopSettings = vi.fn();
+const getSubscription = vi.fn();
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -16,6 +17,9 @@ vi.mock("../../../app/services/merchant-support/merchant-support.service", () =>
 }));
 vi.mock("../../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
+}));
+vi.mock("../../../app/services/billing/billing.service", () => ({
+  billingService: { getSubscription },
 }));
 
 const { loader } = await import("../../../app/routes/app/route");
@@ -42,10 +46,11 @@ beforeEach(() => {
   });
   readMerchantSupportMessages.mockResolvedValue({ unread: 2 });
   findShopSettings.mockResolvedValue(null);
+  getSubscription.mockResolvedValue(null);
 });
 
 describe("app layout access", () => {
-  it.each(["/app", "/app/additional", "/app/billing", "/app/promotions", "/app/usage"])(
+  it.each(["/app", "/app/promotions", "/app/usage"])(
     "redirects pending reinstall before app-shell reads for product path: %s",
     async (pathname) => {
       resolveShopifyShop.mockResolvedValue({
@@ -63,7 +68,7 @@ describe("app layout access", () => {
   it("redirects suspended merchant before app-shell reads", async () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "SUSPENDED" });
 
-    await expectRedirect("/app/billing", "/app/merchant-support");
+    await expectRedirect("/app/promotions", "/app/merchant-support");
     expect(readMerchantSupportMessages).not.toHaveBeenCalled();
     expect(findShopSettings).not.toHaveBeenCalled();
   });

@@ -4,6 +4,7 @@ import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { billingService } from "@/services/billing/billing.service";
 import db from "@/db.server";
+import { canAccessMerchantSurface, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -13,11 +14,8 @@ export const loader = async ({ request }) => {
     db.shopSettings.findUnique({ where: { shopId: shop.id } }),
     billingService.getSubscription(shop.id),
   ]);
-  if (
-    !settings?.onboardingCompleted ||
-    !subscription ||
-    !["ACTIVE", "TRIALING"].includes(subscription.status)
-  ) {
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "PENDING_RECOVERIES")) {
     return Response.json({
       pendingRecoveries: {
         available: false,

@@ -14,7 +14,7 @@ export default function Dashboard({ stats, recoveries, usageView, usagePaginatio
 
   return (
     <s-page heading="Moda Interact">
-      <Breadcrumbs current={periodLabel} merchantUi={merchantUi} />
+      <Breadcrumbs items={[{ label: i18n.t("usage.title"), href: "/app" }]} current={periodLabel} merchantUi={merchantUi} />
       <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
       <Stats {...stats} recoveries={recoveries} merchantUi={merchantUi} />
       <Link className="usage-detail-link dashboard-usage-link" to={usageUrl}>{i18n.t("dashboard.viewAllUsage")}</Link>

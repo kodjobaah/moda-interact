@@ -73,7 +73,7 @@ export default function Onboarding({ merchantUi }) {
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
-          <s-button href="/app/billing" variant="primary">
+          <s-button href="/app/billing/select" variant="primary">
             {t("onboarding.choosePlan")}
           </s-button>
         </section>
@@ -89,7 +89,7 @@ export default function Onboarding({ merchantUi }) {
             </p>
 
             <div className="mi-hero-actions">
-              <s-button href="/app/billing" variant="primary">
+              <s-button href="/app/billing/select" variant="primary">
                 {t("onboarding.choosePlan")}
               </s-button>
               <a className="mi-text-link" href="#how-it-works">

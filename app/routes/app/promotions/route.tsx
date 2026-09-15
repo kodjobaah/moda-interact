@@ -13,12 +13,17 @@ import {
 } from "@/services/promotions/promotion.service";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import db from "@/db.server";
+import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import { billingService } from "@/services/billing/billing.service";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/promotions", capability: "read-promotions", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const subscription = await billingService.getSubscription(shop.id);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const pageValue = Number(new URL(request.url).searchParams.get("historyPage"));
   return {
     merchantUi: merchantUiContext(settings, session),
@@ -31,6 +36,10 @@ export async function action({ request }: ActionFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/promotions", capability: "select-promotions", redirectTo: "/app/merchant-support" });
+  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const subscription = await billingService.getSubscription(shop.id);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const formData = await request.formData();
   const campaignId = String(formData.get("campaignId") ?? "");
   try {

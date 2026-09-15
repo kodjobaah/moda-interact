@@ -39,7 +39,7 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
   const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
   return (
     <s-page heading={i18n.t("usage.title")}>
-      <Breadcrumbs current={i18n.t("usage.title")} merchantUi={merchantUi} />
+      <Breadcrumbs items={[]} current={i18n.t("usage.title")} merchantUi={merchantUi} />
       <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
 
       <s-section>

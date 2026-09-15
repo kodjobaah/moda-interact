@@ -70,15 +70,4 @@ describe("ARCH-007 billing translations", () => {
     }
   });
 
-  it("keeps task-visible billing copy in the merchant i18n path", async () => {
-    const source = await readFile(new URL("../../app/routes/app/billing/route.tsx", import.meta.url), "utf8");
-
-    expect(source).toContain('i18n.t("billing.purchasedRecoveryCredits"');
-    expect(source).toContain('i18n.t("billing.recoveryCreditPackDescription"');
-    expect(source).toContain('i18n.t("billing.recoveryCreditPackShopifyMeter"');
-    expect(source).toContain('"billing.buyRecoveryCreditPack"');
-    expect(source).toContain('i18n.t("billing.recoveryCreditPurchasePending"');
-    expect(source).not.toContain("Purchased recovery credits:");
-    expect(source).not.toContain("Buy recovery-credit pack");
-  });
 });

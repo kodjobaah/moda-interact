@@ -9,6 +9,7 @@ import { billingService } from "@/services/billing/billing.service";
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
+import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
@@ -24,14 +25,8 @@ export const loader = async ({ request }) => {
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
 
   const subscription = await billingService.getSubscription(shop.id);
-
-  if (
-    !settings?.onboardingCompleted ||
-    !subscription ||
-    !["ACTIVE", "TRIALING"].includes(subscription.status)
-  ) {
-    throw redirect("/app");
-  }
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "USAGE")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "USAGE"));
 
   const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
   const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
@@ -79,7 +74,7 @@ export default function UsagePage() {
   return (
     
     <s-page heading={i18n.t("usage.billable")}>
-      <Breadcrumbs current={i18n.t("usage.billable")} parent={periodLabel} parentHref={dashboardUrl} merchantUi={merchantUi} />
+      <Breadcrumbs items={[{ label: i18n.t("usage.title"), href: "/app" }, { label: periodLabel, href: dashboardUrl }]} current={i18n.t("usage.billable")} merchantUi={merchantUi} />
       <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} merchantUi={merchantUi} />
     </s-page>
   );

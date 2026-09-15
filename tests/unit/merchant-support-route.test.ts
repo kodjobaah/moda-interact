@@ -6,6 +6,8 @@ const resolveShopifyShop = vi.fn();
 const readMerchantSupportMessages = vi.fn();
 const composeMerchantMessage = vi.fn();
 const markMerchantSupportMessageRead = vi.fn();
+const findShopSettings = vi.fn();
+const getSubscription = vi.fn();
 const merchantSupportRouteSource = await readFile(
   new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url),
   "utf8",
@@ -21,6 +23,12 @@ vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({
   readMerchantSupportMessages,
   composeMerchantMessage,
   markMerchantSupportMessageRead,
+}));
+vi.mock("../../app/db.server", () => ({
+  default: { shopSettings: { findUnique: findShopSettings } },
+}));
+vi.mock("../../app/services/billing/billing.service", () => ({
+  billingService: { getSubscription },
 }));
 
 const { action, loader, countGraphemes, markUnreadMessages } = await import("../../app/routes/app/merchant-support/route");
@@ -39,6 +47,8 @@ describe("merchant support resource route", () => {
     readMerchantSupportMessages.mockResolvedValue({ items: [] });
     composeMerchantMessage.mockResolvedValue({ messageId: "message-1", translationId: null });
     markMerchantSupportMessageRead.mockResolvedValue(true);
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({ status: "ACTIVE" });
   });
 
   it("derives the tenant from authenticated Shopify context", async () => {

@@ -4,6 +4,11 @@ const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const getSubscription = vi.fn();
 const findShopSettings = vi.fn();
+const findBillingPeriods = vi.fn();
+const findRecoveries = vi.fn();
+const findUsageEvents = vi.fn();
+const countUsageEvents = vi.fn();
+const aggregateUsageEvents = vi.fn();
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -15,7 +20,16 @@ vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: { getSubscription },
 }));
 vi.mock("../../app/db.server", () => ({
-  default: { shopSettings: { findUnique: findShopSettings } },
+  default: {
+    shopSettings: { findUnique: findShopSettings },
+    billingPeriod: { findMany: findBillingPeriods },
+    checkoutRecovery: { findMany: findRecoveries },
+    usageEvent: {
+      findMany: findUsageEvents,
+      count: countUsageEvents,
+      aggregate: aggregateUsageEvents,
+    },
+  },
 }));
 
 const { loader } = await import("../../app/routes/app/usage/route");
@@ -31,15 +45,17 @@ beforeEach(() => {
     status: "ACTIVE",
   });
   findShopSettings.mockResolvedValue({ onboardingCompleted: false });
+  findBillingPeriods.mockResolvedValue([]);
+  findRecoveries.mockResolvedValue([]);
+  findUsageEvents.mockResolvedValue([]);
+  countUsageEvents.mockResolvedValue(0);
+  aggregateUsageEvents.mockResolvedValue({ _sum: { quantity: null } });
 });
 
 describe("usage route loader", () => {
-  it.each([
-    ["incomplete onboarding", { onboardingCompleted: false }, { status: "ACTIVE" }],
-    ["no contract", { onboardingCompleted: true }, { status: "NO_CONTRACT" }],
-  ])("redirects %s back to app", async (_label, settings, subscription) => {
-    findShopSettings.mockResolvedValue(settings);
-    getSubscription.mockResolvedValue(subscription);
+  it("redirects incomplete onboarding back to app", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: false });
+    getSubscription.mockResolvedValue({ status: "ACTIVE" });
 
     try {
       await loader({
@@ -52,5 +68,16 @@ describe("usage route loader", () => {
       expect(response.status).toBe(302);
       expect(response.headers.get("Location")).toBe("/app");
     }
+  });
+
+  it("allows historical usage for an onboarded no-contract shop", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+
+    await expect(loader({ request: new Request("https://example.test/app/usage") })).resolves.toMatchObject({
+      usageEvents: [],
+      usagePagination: { total: 0 },
+    });
+    expect(findUsageEvents).toHaveBeenCalled();
   });
 });

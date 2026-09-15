@@ -15,9 +15,13 @@ describe("explicit route configuration", () => {
   it("keeps embedded UI pages under the app layout", () => {
     expect(source).toContain('route("app", "./routes/app/route.jsx", [');
     expect(source).not.toContain('route("reinstalling", "./routes/app/reinstalling/route.jsx")');
-    expect(source).toContain('route("billing", "./routes/app/billing/route.tsx"),');
+    expect(source).toContain('route("billing/options", "./routes/app/billing/options/route.tsx"),');
+    expect(source).toContain('route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),');
+    expect(source).not.toContain('route("billing", "./routes/app/billing/route.tsx")');
+    expect(source).not.toContain('route("additional", "./routes/app/additional/route.jsx")');
     expect(source).toContain('route("promotions", "./routes/app/promotions/route.tsx"),');
     expect(source).toContain('route("merchant-support", "./routes/app/merchant-support/route.jsx"),');
+    expect(source).not.toContain('route("app/billing/options", "./routes/app/billing/options/route.tsx"),');
   });
 
   it("declares the restoration route as a standalone exact path", () => {
@@ -55,6 +59,9 @@ describe("explicit route configuration", () => {
       "app/routes/app.merchant-support.jsx",
       "app/routes/app.pending-recoveries.jsx",
       "app/routes/app.usage.jsx",
+      "app/routes/app/billing/route.tsx",
+      "app/routes/app/additional/route.jsx",
+      "app/routes/app/billing/recovery-credits/route.ts",
     ]) {
       await expect(access(new URL(`../../../${relativePath}`, import.meta.url))).rejects.toThrow();
     }

@@ -6,11 +6,19 @@ import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { billingService } from "@/services/billing/billing.service";
+import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import db from "@/db.server";
 
 export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request }) {
   const { admin, redirect, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/billing/select", capability: "manage-billing", redirectTo: "/app/merchant-support" });
+  const [settings, subscription] = await Promise.all([
+    db.shopSettings.findUnique({ where: { shopId: shop.id } }),
+    billingService.getSubscription(shop.id),
+  ]);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "PLAN_SELECT")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "PLAN_SELECT"));
 
   const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
   if (capacity.availability === "CONTRACT_FROZEN") {
