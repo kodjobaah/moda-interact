@@ -25,10 +25,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const pageValue = Number(new URL(request.url).searchParams.get("historyPage"));
+  const merchantUi = merchantUiContext(settings, session);
+  const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale;
   return {
-    merchantUi: merchantUiContext(settings, session),
-    offers: await getEligiblePromotionOffers(shop.id),
-    history: await getPromotionHistory(shop.id, pageValue),
+    merchantUi,
+    offers: await getEligiblePromotionOffers(shop.id, promotionLocale),
+    history: await getPromotionHistory(shop.id, promotionLocale, pageValue),
   };
 }
 
@@ -74,8 +76,8 @@ export default function PromotionsRoute() {
       {offers.length === 0 ? <p>{i18n.t("promotions.empty")}</p> : null}
       {offers.map((offer: PromotionOffer) => (
         <article key={offer.id}>
-          <h3>{offer.name}</h3>
-          {offer.merchantDescription ? <p>{offer.merchantDescription}</p> : null}
+          <h3>{offer.merchantTitle}</h3>
+          <p>{offer.merchantDescription}</p>
           <p>{i18n.t("promotions.credits", { quantity: offer.quantity })}</p>
           <p>{i18n.t("promotions.expires")}: {i18n.formatDate(offer.expiresAt)}</p>
           {offer.previouslyClaimed && !offer.exhausted ? <p>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</p> : null}
@@ -92,7 +94,7 @@ export default function PromotionsRoute() {
           <>
             {history.entries.map((entry: PromotionHistoryEntry) => (
               <article key={entry.campaignId}>
-                <h3>{entry.campaignName}</h3>
+                <h3>{entry.campaignTitle ?? i18n.t("promotions.history.titleUnavailable")}</h3>
                 <p>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</p>
                 <p>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</p>
                 <p>{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</p>

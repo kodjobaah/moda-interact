@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "โปรโมชันนี้ไม่พร้อมใช้งานสำหรับร้านค้าของคุณแล้ว",
   "promotions.error.unavailable": "ไม่สามารถเปลี่ยนโปรโมชันได้ขณะที่การสมัครใช้งานของคุณไม่พร้อมใช้งาน",
   "promotions.history.title": "ประวัติโปรโมชัน",
+  "promotions.history.titleUnavailable": "โปรโมชันไม่พร้อมใช้งาน",
   "promotions.history.empty": "ไม่มีประวัติโปรโมชันที่เลือก",
   "promotions.history.granted": "ได้รับ: {quantity}",
   "promotions.history.usedCredits": "ใช้แล้ว: {quantity}",

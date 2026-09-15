@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Tato akce již není pro váš obchod dostupná.",
   "promotions.error.unavailable": "Akce nelze měnit, když vaše předplatné není dostupné.",
   "promotions.history.title": "Historie akcí",
+  "promotions.history.titleUnavailable": "Akce není dostupná",
   "promotions.history.empty": "Žádná historie vybraných akcí.",
   "promotions.history.granted": "Přiděleno: {quantity}",
   "promotions.history.usedCredits": "Použito: {quantity}",

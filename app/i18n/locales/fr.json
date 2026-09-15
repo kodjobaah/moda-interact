@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Cette promotion n’est plus disponible pour votre boutique.",
   "promotions.error.unavailable": "Les promotions ne peuvent pas être modifiées lorsque votre abonnement est indisponible.",
   "promotions.history.title": "Historique des promotions",
+  "promotions.history.titleUnavailable": "Promotion indisponible",
   "promotions.history.empty": "Aucun historique de promotions sélectionnées.",
   "promotions.history.granted": "Accordés : {quantity}",
   "promotions.history.usedCredits": "Utilisés : {quantity}",
