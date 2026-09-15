@@ -1,15 +1,15 @@
+import React from "react";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: { locale?: string, timeZone?: string }, topUpState: { configured: boolean, purchaseEligible: boolean, offers: Array<{ eventHandle: string, cataloguePosition: number, creditsGranted: number, providerPrice: { currency?: string|null, tiers?: Array<{ amountPerUnit?: string, amount?: string }> }, providerUsage: object|null }>, offerVerificationState: string, purchasedCreditsAvailable: number, latestPurchase: { status: string, currentAmount: number, usageReportState?: string }|null }, onPurchaseTopUp?: () => void }} props */
+/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, offers?: Array<any>, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
 
-export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseTopUp }) {
+export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
   const purchase = topUpState.latestPurchase;
   const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
-  const canPurchase = topUpState.purchaseEligible && topUpState.offerVerificationState !== "VERIFICATION_UNAVAILABLE" && !hasUnresolvedPurchase;
   const reportState = purchase?.usageReportState;
   const offers = Array.isArray(topUpState.offers) ? topUpState.offers : [];
 
@@ -39,7 +39,6 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseT
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
-        {canPurchase ? <button className="moda-action-button moda-action-button-primary" type="button" onClick={onPurchaseTopUp}>{i18n.t("billingCommerce.buy")}</button> : null}
         {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
         {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
       </article>;
@@ -66,5 +65,4 @@ TopUpPurchasePanel.propTypes = {
     purchasedCreditsAvailable: PropTypes.number.isRequired,
     latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string }),
   }).isRequired,
-  onPurchaseTopUp: PropTypes.func,
 };

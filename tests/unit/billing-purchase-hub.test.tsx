@@ -31,7 +31,6 @@ function render(overrides: Record<string, unknown> = {}) {
       purchaseHistoryAvailable
       managePlansHref="/app/billing/select"
       managePlansAvailable
-      onPurchaseTopUp={() => {}}
       {...overrides}
     />,
   );
@@ -88,5 +87,37 @@ describe("BillingPurchaseHub", () => {
     const markup = render({ purchaseHistoryAvailable: false });
     expect(markup).not.toContain('href="/app/billing/recovery-credit-purchases"');
     expect(markup).not.toContain("Manage purchased credits");
+  });
+
+  it("renders one resolved offer without a purchase action", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [{
+          eventHandle: "recovery-small",
+          cataloguePosition: 0,
+          creditsGranted: 10,
+          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] },
+          providerUsage: null,
+        }],
+      },
+    });
+    expect(markup).toContain("10");
+    expect(markup).not.toContain(">Buy</button>");
+    expect(markup).not.toContain("fetcher");
+  });
+
+  it("renders multiple resolved offers in catalogue order without purchase actions", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [
+          { eventHandle: "recovery-small", cataloguePosition: 0, creditsGranted: 10, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] }, providerUsage: null },
+          { eventHandle: "recovery-large", cataloguePosition: 1, creditsGranted: 50, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "15.00" }] }, providerUsage: null },
+        ],
+      },
+    });
+    expect(markup.indexOf(">10<")).toBeLessThan(markup.indexOf(">50<"));
+    expect(markup).not.toContain(">Buy</button>");
   });
 });

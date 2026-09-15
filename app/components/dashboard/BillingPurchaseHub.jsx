@@ -7,8 +7,8 @@ import "./BillingPurchaseHub.css";
 
 const { useState } = React;
 
-/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, scheduledCancellation?: boolean, purchaseHistoryAvailable: boolean, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans", onPurchaseTopUp: () => void }} props */
-export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, scheduledCancellation = false, purchaseHistoryAvailable, managePlansHref, managePlansAvailable, initialView="topup", onPurchaseTopUp }) {
+/** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, scheduledCancellation?: boolean, purchaseHistoryAvailable: boolean, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans" }} props */
+export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, scheduledCancellation = false, purchaseHistoryAvailable, managePlansHref, managePlansAvailable, initialView="topup" }) {
   const i18n=createMerchantI18n(merchantUi); const [view,setView]=useState(initialView);
   const currentName = verificationState === "VERIFICATION_UNAVAILABLE"
     ? i18n.t("common.unavailable")
@@ -38,11 +38,11 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
     <div className="moda-view-switch"><button className={view==="topup"?"is-active":""} onClick={()=>setView("topup")}>{i18n.t("billingCommerce.actions.topup")}</button><button className={view==="plans"?"is-active":""} onClick={()=>setView("plans")}>{i18n.t("billingCommerce.actions.plan")}</button></div>
     {purchaseHistoryAvailable ? <p><a href="/app/billing/recovery-credit-purchases">{i18n.t("billingPurchases.manageLink")}</a></p> : null}
     {view === "topup" ? (
-      <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} onPurchaseTopUp={onPurchaseTopUp} />
+      <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} />
     ) : (
       <SubscriptionChangePanel merchantUi={merchantUi} current={current} pending={pending} requestedSelection={requestedSelection} providerVerificationState={verificationState} managePlansHref={managePlansHref} managePlansAvailable={managePlansAvailable} />
     )}
   </div>;
 }
 
-BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, scheduledCancellation:PropTypes.bool, purchaseHistoryAvailable:PropTypes.bool.isRequired, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]), onPurchaseTopUp:PropTypes.func.isRequired };
+BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, scheduledCancellation:PropTypes.bool, purchaseHistoryAvailable:PropTypes.bool.isRequired, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]) };
