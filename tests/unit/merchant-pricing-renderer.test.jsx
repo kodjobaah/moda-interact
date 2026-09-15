@@ -1,6 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import MerchantPricingCatalogue from "../../app/components/merchant-pricing/MerchantPricingCatalogue";
 import Onboarding from "../../app/components/onboarding/Onboarding";
 
 void React;
@@ -9,6 +10,10 @@ const merchantUi = { locale: "en-GB", timeZone: "UTC" };
 
 function render(pricingCatalogue) {
   return renderToStaticMarkup(<Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />);
+}
+
+function renderCatalogue(pricingCatalogue, showChoosePlanAction = false) {
+  return renderToStaticMarkup(<MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction={showChoosePlanAction} />);
 }
 
 const plan = {
@@ -86,6 +91,15 @@ describe("Onboarding merchant pricing renderer", () => {
     expect(markup).toContain("Pricing is currently unavailable.");
     expect(markup).not.toContain("Database Plan");
     expect(markup).not.toContain("£35");
+  });
+
+  it("keeps the reusable renderer in received order and gates its action on non-empty data", () => {
+    const secondPlan = { ...plan, shopifyPlanHandle: "second", displayName: "Second plan", cataloguePosition: 1, featured: false };
+    const markup = renderCatalogue([secondPlan, plan], true);
+
+    expect(markup.indexOf("Second plan")).toBeLessThan(markup.indexOf("Database Plan"));
+    expect(markup).toContain('href="/app/billing/select"');
+    expect(renderCatalogue([], true)).not.toContain('href="/app/billing/select"');
   });
 
   it("omits the Free proof item when the active catalogue has no Free plan", () => {

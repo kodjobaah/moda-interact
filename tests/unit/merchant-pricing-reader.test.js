@@ -69,6 +69,13 @@ describe("readActiveMerchantPricingCatalogue", () => {
       { shopifyPlanHandle: "paid", localizedDescription: "Localized paid plan", cataloguePosition: 2 },
     ]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { isActive: true }, orderBy: { cataloguePosition: "asc" } }));
+    expect(findMany.mock.calls[0][0].include).toMatchObject({
+      translations: { where: { locale: "en" } },
+      highlights: {
+        orderBy: { position: "asc" },
+        include: { translations: { where: { locale: "en" } } },
+      },
+    });
     expect(JSON.stringify(await readActiveMerchantPricingCatalogue({ locale: "en" }))).not.toContain("adminLabel");
   });
 
@@ -76,6 +83,15 @@ describe("readActiveMerchantPricingCatalogue", () => {
     findMany.mockResolvedValue([plan({ translations: [] })]);
     await expect(readActiveMerchantPricingCatalogue({ locale: "pt-BR" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
     expect(findMany.mock.calls[0][0].include.translations.where).toEqual({ locale: "pt-BR" });
+  });
+
+  it.each([
+    { name: "blank", translations: [{ locale: "en", merchantDescription: "   " }] },
+    { name: "duplicated", translations: [{ locale: "en", merchantDescription: "One" }, { locale: "en", merchantDescription: "Two" }] },
+  ])("fails closed for $name exact-locale plan translations", async ({ translations }) => {
+    findMany.mockResolvedValue([plan({ translations })]);
+
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
   });
 
   it("returns ordered exact-locale highlights and fails closed for missing or duplicate translations", async () => {

@@ -1,5 +1,6 @@
 // @ts-expect-error d3 has no declarations in the existing application dependencies.
 import { arc, pie, scaleOrdinal, schemeTableau10 } from "d3";
+import React from "react";
 import PropTypes from "prop-types";
 import { Link, useNavigate } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
@@ -7,6 +8,8 @@ import PendingRecoveries from "./PendingRecoveries";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
 import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
+
+void React;
 
 const colors = scaleOrdinal(schemeTableau10);
 /** @type {Record<string, string>} */
