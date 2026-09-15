@@ -20,6 +20,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "BILLING_OPTIONS") } });
+  const purchaseHistoryAvailable = canAccessMerchantSurface(merchantExperienceState, "BILLING_PURCHASE_HISTORY");
   const merchantUi = merchantUiContext(settings, session);
 
   try {
@@ -65,11 +66,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       verificationState,
       scheduledCancellation,
       requestedSelection,
+      purchaseHistoryAvailable,
     };
   } catch {
     const requestedPlanHandle = url.searchParams.get("requested_plan_handle")?.trim() ?? "";
     const planChange = url.searchParams.get("plan_change");
-    return { merchantUi, commercial: null, capacity: null, topUp: null, billingPeriodPhase: null, lifecycleState: "UNRESOLVED", purchaseId: null, verificationState: "VERIFICATION_UNAVAILABLE", scheduledCancellation: false, requestedSelection: requestedPlanHandle.length > 0 && requestedPlanHandle.length <= 128 && (planChange === "mismatch" || planChange === "unverified") ? { shopifyPlanHandle: requestedPlanHandle } : null };
+    return { merchantUi, commercial: null, capacity: null, topUp: null, billingPeriodPhase: null, lifecycleState: "UNRESOLVED", purchaseId: null, verificationState: "VERIFICATION_UNAVAILABLE", scheduledCancellation: false, requestedSelection: requestedPlanHandle.length > 0 && requestedPlanHandle.length <= 128 && (planChange === "mismatch" || planChange === "unverified") ? { shopifyPlanHandle: requestedPlanHandle } : null, purchaseHistoryAvailable };
   }
 }
 
@@ -137,7 +139,7 @@ export default function BillingOptionsPage() {
   return (
     <s-page heading={i18n.t("billingCommerce.page.title")}>
       <Breadcrumbs items={[]} current={i18n.t("billingCommerce.page.title")} merchantUi={data.merchantUi} />
-      <BillingPurchaseHub merchantUi={data.merchantUi} capacity={data.capacity} billingPeriodPhase={data.billingPeriodPhase} lifecycleState={data.lifecycleState} verificationState={data.verificationState} mappingStatus={mappingStatus} topUpState={topUpState} current={current} pending={pending} requestedSelection={data.requestedSelection} initialView={initialView} scheduledCancellation={data.scheduledCancellation} managePlansHref="/app/billing/select" managePlansAvailable={data.verificationState !== "VERIFICATION_UNAVAILABLE" && data.lifecycleState !== "FROZEN"} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId: data.purchaseId ?? "" }, { method: "post" })} />
+      <BillingPurchaseHub merchantUi={data.merchantUi} capacity={data.capacity} billingPeriodPhase={data.billingPeriodPhase} lifecycleState={data.lifecycleState} verificationState={data.verificationState} mappingStatus={mappingStatus} topUpState={topUpState} current={current} pending={pending} requestedSelection={data.requestedSelection} initialView={initialView} scheduledCancellation={data.scheduledCancellation} purchaseHistoryAvailable={data.purchaseHistoryAvailable} managePlansHref="/app/billing/select" managePlansAvailable={data.verificationState !== "VERIFICATION_UNAVAILABLE" && data.lifecycleState !== "FROZEN"} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId: data.purchaseId ?? "" }, { method: "post" })} />
     </s-page>
   );
 }
