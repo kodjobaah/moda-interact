@@ -112,10 +112,12 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             </div>
 
             <div className="mi-proof-strip" role="list" aria-label={t("onboarding.hero.highlightsLabel")}>
-              <div className="mi-proof-item" role="listitem">
-                <strong>{firstFreePlan?.includedRecoveryCredits ?? "-"}</strong>
-                <span>{t("onboarding.hero.freeConversations")}</span>
-              </div>
+              {firstFreePlan && (
+                <div className="mi-proof-item" role="listitem">
+                  <strong>{firstFreePlan.includedRecoveryCredits}</strong>
+                  <span>{t("onboarding.hero.freeConversations")}</span>
+                </div>
+              )}
               <div className="mi-proof-item" role="listitem">
                 <strong>20</strong>
                 <span>{t("onboarding.hero.languages")}</span>

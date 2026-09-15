@@ -81,4 +81,11 @@ describe("Onboarding merchant pricing renderer", () => {
     expect(markup).not.toContain("Database Plan");
     expect(markup).not.toContain("£35");
   });
+
+  it("omits the Free proof item when the active catalogue has no Free plan", () => {
+    const markup = render([{ ...plan, planKind: "PAID_METERED" }]);
+
+    expect(markup).not.toContain("free recovery conversations");
+    expect(markup).not.toContain(">-</strong>");
+  });
 });

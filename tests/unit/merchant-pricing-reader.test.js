@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SUPPORTED_ADMIN_LOCALES } from "../../app/i18n/catalogues";
 import { createMerchantI18n } from "../../app/utils/merchant-i18n";
+import ptBR from "../../app/i18n/locales/pt-BR.json";
+import ptPT from "../../app/i18n/locales/pt-PT.json";
 
 const findMany = vi.fn();
 
@@ -42,6 +44,20 @@ describe("readActiveMerchantPricingCatalogue", () => {
     expect(createMerchantI18n({ locale: "pt-PT" }).catalogueLocale).toBe("pt-PT");
     expect(createMerchantI18n({ locale: "zh-Hans" }).catalogueLocale).toBe("zh-Hans");
     expect(createMerchantI18n({ locale: "zh-Hant" }).catalogueLocale).toBe("zh-Hant");
+    const genericPricingKeys = [
+      "fixed", "graduated", "volume", "unavailable", "option",
+      "creditsPerUnit", "maximumUnits", "tierRange", "amountPerUnit", "flatAmount",
+    ];
+    const englishPlaceholders = [
+      "Fixed", "Graduated", "Volume", "Pricing is currently unavailable.",
+      "Pricing option {number}", "credits per unit", "Maximum units", "Up to",
+      "Amount per unit", "Flat amount",
+    ];
+    genericPricingKeys.forEach((key, index) => {
+      expect(ptBR[`onboarding.pricing.${key}`]).not.toBe(englishPlaceholders[index]);
+      expect(ptPT[`onboarding.pricing.${key}`]).not.toBe(englishPlaceholders[index]);
+    });
+    expect(ptBR).not.toEqual(ptPT);
   });
 
   it("queries active plans in catalogue order and returns the exact localized DTO", async () => {
@@ -88,6 +104,21 @@ describe("readActiveMerchantPricingCatalogue", () => {
         { position: 1, upTo: 10, amountPerUnitMinor: 50, flatAmountMinor: 0 },
         { position: 2, upTo: null, amountPerUnitMinor: 25, flatAmountMinor: 0 },
       ],
+    }] })]);
+
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+  });
+
+  it.each(["GRADUATED", "VOLUME"])("fails closed when %s pricing has a fixed amount", async (pricingMode) => {
+    findMany.mockResolvedValue([plan({ usageEvents: [{
+      position: 0,
+      eventHandle: "recovery",
+      creditsGrantedPerUnit: 1,
+      maximumUnitsPerBillingPeriod: null,
+      pricingMode,
+      currency: "GBP",
+      fixedUnitAmountMinor: 100,
+      tiers: [{ position: 0, upTo: null, amountPerUnitMinor: 100, flatAmountMinor: 0 }],
     }] })]);
 
     await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);

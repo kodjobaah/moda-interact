@@ -44,6 +44,9 @@ function validateUsageEvent(event, planCurrency, eventIndex) {
       invalid(`${prefix} FIXED pricing is invalid`);
     }
   } else if (event.pricingMode === "GRADUATED" || event.pricingMode === "VOLUME") {
+    if (event.fixedUnitAmountMinor !== null) {
+      invalid(`${prefix} tiered pricing cannot have a fixed amount`);
+    }
     if (!Array.isArray(event.tiers) || event.tiers.length < 1 || event.tiers.length > 6) {
       invalid(`${prefix} tier count is invalid`);
     }
