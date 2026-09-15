@@ -3,6 +3,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
+import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
 import "./Onboarding.css";
 
 void React;
@@ -13,59 +14,6 @@ function BenefitIcon({ children }) {
 
 BenefitIcon.propTypes = {
   children: PropTypes.node.isRequired,
-};
-
-function UsageEvent({ event, index, i18n, t }) {
-  const maximumUnits = event.maximumUnitsPerBillingPeriod === null
-    ? null
-    : <span>{t("onboarding.pricing.maximumUnits")}: {event.maximumUnitsPerBillingPeriod}</span>;
-
-  return (
-    <div className="mi-plan-topup" key={event.eventHandle}>
-      <span>{t("onboarding.pricing.option", { number: index + 1 })}</span>
-      <strong>{t(`onboarding.pricing.${event.pricingMode.toLowerCase()}`)}</strong>
-      {event.pricingMode === "FIXED" ? (
-        <div className="mi-pricing-detail">
-          <span>{i18n.formatMoney(event.fixedUnitAmountMinor / 100, event.currency)}</span>
-          <span>{event.creditsGrantedPerUnit} {t("onboarding.pricing.creditsPerUnit")}</span>
-          {maximumUnits}
-        </div>
-      ) : (
-        <>
-          <table className="mi-pricing-tiers">
-            <caption>{t("onboarding.pricing.tierRange")}</caption>
-            <thead>
-              <tr>
-                <th scope="col">{t("onboarding.pricing.tierRange")}</th>
-                <th scope="col">{t("onboarding.pricing.amountPerUnit")}</th>
-                <th scope="col">{t("onboarding.pricing.flatAmount")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {event.tiers.map((tier) => (
-                <tr key={tier.position}>
-                  <td>{tier.upTo === null ? "∞" : tier.upTo}</td>
-                  <td>{i18n.formatMoney(tier.amountPerUnitMinor / 100, event.currency)}</td>
-                  <td>{i18n.formatMoney(tier.flatAmountMinor / 100, event.currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mi-pricing-detail">
-            <span>{event.creditsGrantedPerUnit} {t("onboarding.pricing.creditsPerUnit")}</span>
-            {maximumUnits}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-UsageEvent.propTypes = {
-  event: PropTypes.object.isRequired,
-  index: PropTypes.number.isRequired,
-  i18n: PropTypes.object.isRequired,
-  t: PropTypes.func.isRequired,
 };
 
 export default function Onboarding({ merchantUi, pricingCatalogue }) {
@@ -87,9 +35,7 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
-          <s-button href="/app/billing/select" variant="primary">
-            {t("onboarding.choosePlan")}
-          </s-button>
+          {cataloguePlans.length > 0 && <s-button href="/app/billing/select" variant="primary">{t("onboarding.choosePlan")}</s-button>}
         </section>
 
         <section className="mi-hero" aria-labelledby="mi-onboarding-hero-title">
@@ -103,9 +49,7 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             </p>
 
             <div className="mi-hero-actions">
-              <s-button href="/app/billing/select" variant="primary">
-                {t("onboarding.choosePlan")}
-              </s-button>
+              {cataloguePlans.length > 0 && <s-button href="/app/billing/select" variant="primary">{t("onboarding.choosePlan")}</s-button>}
               <a className="mi-text-link" href="#how-it-works">
                 {t("onboarding.hero.howItWorks")}
               </a>
@@ -216,34 +160,7 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             <p>{t("onboarding.pricing.description")}</p>
           </div>
 
-          <div className="mi-plan-grid">
-            {cataloguePlans.length === 0 && <p className="mi-pricing-unavailable">{t("onboarding.pricing.unavailable")}</p>}
-            {cataloguePlans.map((plan) => (
-              <article
-                className={`mi-plan-card${plan.featured ? " mi-plan-card-featured" : ""}`}
-                key={plan.shopifyPlanHandle}
-              >
-                {plan.featured && (
-                  <div className="mi-plan-badge">{t("onboarding.pricing.mostPopular")}</div>
-                )}
-                <div className="mi-plan-name">{plan.displayName}</div>
-                <div className="mi-plan-price">
-                  {i18n.formatMoney(plan.recurringAmountMinor / 100, plan.currency)}
-                  {plan.billingPeriod === "EVERY_30_DAYS" && <span>{t("onboarding.pricing.perMonth")}</span>}
-                </div>
-                <p className="mi-plan-description">{plan.localizedDescription}</p>
-
-                <div className="mi-plan-allowance">
-                  <strong>{plan.includedRecoveryCredits}</strong>
-                  <span>{t(plan.allowancePeriod === "LIFETIME" ? "onboarding.pricing.lifetimeAllowance" : "onboarding.pricing.monthlyAllowance")}</span>
-                </div>
-
-                {plan.usageEvents.map((event, index) => (
-                  <UsageEvent event={event} index={index} i18n={i18n} t={t} key={event.eventHandle} />
-                ))}
-              </article>
-            ))}
-          </div>
+          <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={cataloguePlans} showChoosePlanAction={false} />
 
           <div className="mi-shared-features">
             <strong>{t("onboarding.pricing.sameProduct.title")}</strong>
@@ -271,5 +188,6 @@ Onboarding.propTypes = {
     recurringAmountMinor: PropTypes.number.isRequired,
     currency: PropTypes.string.isRequired,
     usageEvents: PropTypes.array.isRequired,
+    highlights: PropTypes.array.isRequired,
   })),
 };

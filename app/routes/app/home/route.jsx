@@ -150,6 +150,7 @@ console.log("Resolved shop settings:", settings);
     settings,
     merchantUi,
     merchantExperienceState,
+    pricingCatalogue,
 
     subscription: subscriptionState ? {
       status: subscriptionState.status,
@@ -215,7 +216,7 @@ export default function Index() {
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} />;
   }
 
   return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
