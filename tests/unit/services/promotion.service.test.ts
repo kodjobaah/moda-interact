@@ -141,8 +141,7 @@ describe("promotion service", () => {
   });
 
   it("projects the exact history translation and returns null when it is missing", async () => {
-    const findMany = vi.fn()
-      .mockResolvedValueOnce([{
+    const historyGrant = (translations: Array<{ merchantTitle: string }>) => ({
         quantity: 25,
         reservedQuantity: 0,
         committedQuantity: 0,
@@ -155,7 +154,7 @@ describe("promotion service", () => {
         selection: null,
         campaign: {
           id: "campaign-localized",
-          translations: [{ merchantTitle: "Titre français" }],
+          translations,
           scope: "GLOBAL",
           expiresAt: new Date("2026-09-30T00:00:00.000Z"),
           status: "ACTIVE",
@@ -163,29 +162,16 @@ describe("promotion service", () => {
           targetShopId: null,
           events: [],
         },
-      }])
-      .mockResolvedValueOnce([{
-        quantity: 25,
-        reservedQuantity: 0,
-        committedQuantity: 0,
-        selectionCount: 1,
-        firstSelectedAt: now,
-        lastSelectedAt: now,
-        firstUsedAt: null,
-        lastUsedAt: null,
-        exhaustedAt: null,
-        selection: null,
-        campaign: {
-          id: "campaign-missing",
-          translations: [],
-          scope: "GLOBAL",
-          expiresAt: new Date("2026-09-30T00:00:00.000Z"),
-          status: "ACTIVE",
-          targetPlanId: null,
-          targetShopId: null,
-          events: [],
-        },
-      }]);
+      });
+    const translationRows = [
+      { locale: "en", merchantTitle: "Internal English title" },
+      { locale: "fr", merchantTitle: "Titre français" },
+    ];
+    const findMany = vi.fn().mockImplementation((query) => Promise.resolve([historyGrant(
+      translationRows
+        .filter((translation) => translation.locale === query.select.campaign.select.translations.where.locale)
+        .map(({ merchantTitle }) => ({ merchantTitle })),
+    )]));
     const database = {
       shop: { findUnique: vi.fn().mockResolvedValue(context()) },
       promotionalCreditGrant: { count: vi.fn().mockResolvedValue(1), findMany },
@@ -204,7 +190,7 @@ describe("promotion service", () => {
     }));
     expect(history.entries[0].campaignTitle).toBe("Titre français");
 
-    const missingHistory = await getPromotionHistory("shop-1", "fr", 1, now, database as never);
+    const missingHistory = await getPromotionHistory("shop-1", "ja", 1, now, database as never);
     expect(missingHistory.entries[0].campaignTitle).toBeNull();
   });
 
@@ -251,9 +237,13 @@ describe("promotion service", () => {
     ["zh-Hans", "Simplified title", "Simplified description"],
     ["zh-Hant", "Traditional title", "Traditional description"],
   ])("reads the exact %s campaign translation", async (locale, title, description) => {
-    const findMany = vi.fn().mockResolvedValue([campaign({
-      translations: [{ locale, merchantTitle: title, merchantDescription: description }],
-    })]);
+    const translationRows = [
+      { locale: "en", merchantTitle: "Internal English title", merchantDescription: "Internal English description" },
+      { locale, merchantTitle: title, merchantDescription: description },
+    ];
+    const findMany = vi.fn().mockImplementation((query) => Promise.resolve([campaign({
+      translations: translationRows.filter((translation) => translation.locale === query.select.translations.where.locale),
+    })]));
     const database = {
       shop: { findUnique: vi.fn().mockResolvedValue(context()) },
       promotionCampaign: { findMany },
