@@ -25,18 +25,16 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
-    route("additional", "./routes/app/additional/route.jsx"),
-    route("billing", "./routes/app/billing/route.tsx"),
-    route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
+    route("usage", "./routes/app/usage/route.jsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
     route("merchant-support", "./routes/app/merchant-support/route.jsx"),
-    route("usage", "./routes/app/usage/route.jsx"),
+    route("billing/options", "./routes/app/billing/options/route.tsx"),
+    route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
   ]),
 
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
-  route("app/billing/options", "./routes/app/billing/options/route.tsx"),
   route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),
 
   route("webhooks", "./routes/webhooks/root/route.jsx"),

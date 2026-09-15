@@ -9,6 +9,7 @@ import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import { randomUUID } from "node:crypto";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useFetcher, useLoaderData } from "react-router";
+import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
@@ -16,6 +17,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const subscription = await billingService.getSubscription(shop.id);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "BILLING_OPTIONS") } });
   const merchantUi = merchantUiContext(settings, session);
 
   try {
@@ -73,6 +77,12 @@ export async function action({ request }: ActionFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/billing/options", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
+  const [settings, subscription] = await Promise.all([
+    db.shopSettings.findUnique({ where: { shopId: shop.id } }),
+    billingService.getSubscription(shop.id),
+  ]);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "BILLING_OPTIONS") } });
   const [capacity, lifecycle, commercial] = await Promise.all([
     billingService.getMerchantRecoveryCapacityState(shop.id),
     billingService.getMerchantShopifyLifecycleState(shop.id),
@@ -125,8 +135,8 @@ export default function BillingOptionsPage() {
   const initialView = data.requestedSelection ? "plans" : "topup";
 
   return (
-    <s-page heading={i18n.t("usage.billable")}>
-      <Breadcrumbs current={i18n.t("billingCommerce.page.title")} merchantUi={data.merchantUi} />
+    <s-page heading={i18n.t("billingCommerce.page.title")}>
+      <Breadcrumbs items={[]} current={i18n.t("billingCommerce.page.title")} merchantUi={data.merchantUi} />
       <BillingPurchaseHub merchantUi={data.merchantUi} capacity={data.capacity} billingPeriodPhase={data.billingPeriodPhase} lifecycleState={data.lifecycleState} verificationState={data.verificationState} mappingStatus={mappingStatus} topUpState={topUpState} current={current} pending={pending} requestedSelection={data.requestedSelection} initialView={initialView} scheduledCancellation={data.scheduledCancellation} managePlansHref="/app/billing/select" managePlansAvailable={data.verificationState !== "VERIFICATION_UNAVAILABLE" && data.lifecycleState !== "FROZEN"} onPurchaseTopUp={() => fetcher.submit({ intent: "BUY_RECOVERY_CREDIT_PACK", purchaseId: data.purchaseId ?? "" }, { method: "post" })} />
     </s-page>
   );

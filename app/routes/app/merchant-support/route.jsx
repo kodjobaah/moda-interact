@@ -16,6 +16,8 @@ import {
   readMerchantSupportMessages,
 } from "@/services/merchant-support/merchant-support.service";
 import { getMerchantSystemMessageAction } from "@/services/merchant-support/system-message-actions";
+import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import { billingService } from "@/services/billing/billing.service";
 
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
@@ -28,7 +30,9 @@ export async function loader({ request }) {
     pageSize: Number(url.searchParams.get("pageSize") ?? "25"),
   });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
-  return Response.json({ ...support, merchantUi: merchantUiContext(settings, session) });
+  const subscription = await billingService.getSubscription(shop.id);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  return Response.json({ ...support, merchantUi: merchantUiContext(settings, session), merchantExperienceState });
 }
 
 export async function action({ request }) {
@@ -105,7 +109,7 @@ export default function MerchantSupport() {
     <s-page heading={i18n.t("dashboard.messagesSent")}>
       <s-section heading="Support thread">
         {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
-          {messages.map((message) => <MessageCard key={message.id} message={message} i18n={i18n} />)}
+          {messages.map((message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
         </ol>}
         {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
           {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
@@ -164,14 +168,14 @@ export async function markUnreadMessages({
   return markedCount > 0;
 }
 
-function MessageCard({ message, i18n }) {
+function MessageCard({ message, i18n, merchantExperienceState }) {
   const isMerchant = message.kind === "MERCHANT";
   const label = isMerchant ? "You" : message.kind === "SYSTEM" ? "System" : "Moda Support";
   const hasTranslation = message.isTranslated === true;
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
   const systemAction = message.kind === "SYSTEM"
-    ? getMerchantSystemMessageAction(message.systemCode)
+    ? getMerchantSystemMessageAction(message.systemCode, merchantExperienceState)
     : null;
 
   return (
@@ -206,4 +210,5 @@ MessageCard.propTypes = {
   i18n: PropTypes.shape({
     formatDateTime: PropTypes.func.isRequired,
   }).isRequired,
+  merchantExperienceState: PropTypes.string.isRequired,
 };

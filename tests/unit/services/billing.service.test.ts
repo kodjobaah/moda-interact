@@ -1401,11 +1401,11 @@ describe("BillingService subscription projection", () => {
     );
     expect(persistedSystemCode).toBe(BILLING_SYSTEM_MESSAGE_CODES.SUBSCRIPTION_ENDED);
     expect(persistedSystemCode).toBe("BILLING_SUBSCRIPTION_ENDED");
-    expect(getMerchantSystemMessageAction(persistedSystemCode)).toEqual({
-      href: "/app/billing",
+    expect(getMerchantSystemMessageAction(persistedSystemCode, "ACTIVE")).toEqual({
+      href: "/app/billing/options",
       labelKey: "billing.viewPlans",
     });
-    expect(getMerchantSystemMessageAction("SUBSCRIPTION_ENDED")).toBeNull();
+    expect(getMerchantSystemMessageAction("SUBSCRIPTION_ENDED", "ACTIVE")).toBeNull();
   });
 
   it("persists a mapped free plan without requiring a usage meter", async () => {
