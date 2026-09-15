@@ -73,4 +73,23 @@ describe("readActiveMerchantPricingCatalogue", () => {
     findMany.mockResolvedValue([plan({ usageEvents: [{ position: 0, eventHandle: "recovery", creditsGrantedPerUnit: 1, maximumUnitsPerBillingPeriod: null, pricingMode: "FIXED", currency: "GBP", fixedUnitAmountMinor: 100, tiers: [{ position: 0, upTo: null, amountPerUnitMinor: 100, flatAmountMinor: 0 }] }] })]);
     await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
   });
+
+  it("fails closed when tier upper bounds are not strictly increasing", async () => {
+    findMany.mockResolvedValue([plan({ usageEvents: [{
+      position: 0,
+      eventHandle: "recovery",
+      creditsGrantedPerUnit: 1,
+      maximumUnitsPerBillingPeriod: null,
+      pricingMode: "GRADUATED",
+      currency: "GBP",
+      fixedUnitAmountMinor: null,
+      tiers: [
+        { position: 0, upTo: 10, amountPerUnitMinor: 100, flatAmountMinor: 0 },
+        { position: 1, upTo: 10, amountPerUnitMinor: 50, flatAmountMinor: 0 },
+        { position: 2, upTo: null, amountPerUnitMinor: 25, flatAmountMinor: 0 },
+      ],
+    }] })]);
+
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+  });
 });

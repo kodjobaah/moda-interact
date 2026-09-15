@@ -175,7 +175,7 @@
   "onboarding.pricing.sameProduct.description": "Recuperação no WhatsApp com IA, conversas multilíngues, análises de recuperação e nenhuma cobrança separada do WhatsApp fazem parte da experiência Moda.",
   "onboarding.topups.eyebrow": "Recargas flexíveis",
   "onboarding.topups.title": "Precisa de mais conversas? Assinantes recebem mais pela mesma recarga.",
-  "onboarding.topups.description": "Compre pacotes de £5, £10 ou £20 quando precisar de capacidade extra. Quanto maior o plano, mais conversas cada pacote adiciona.",
+  "onboarding.topups.description": "Add extra recovery capacity when needed. Availability and value are determined by your active plan.",
   "onboarding.topups.nonExpiringLabel": "Créditos comprados",
   "onboarding.topups.nonExpiringValue": "Não expiram",
   "onboarding.topups.subscriberValueLabel": "Benefício do assinante",
@@ -185,7 +185,7 @@
   "onboarding.topups.caption": "Os números mostram quantas conversas de recuperação cada pacote adiciona.",
   "onboarding.cta.eyebrow": "Pronto para começar?",
   "onboarding.cta.title": "Escolha seu plano e comece a recuperar checkouts abandonados.",
-  "onboarding.cta.description": "Comece com 5 conversas gratuitas para sempre ou escolha um plano mensal para mais capacidade e recargas melhores.",
+  "onboarding.cta.description": "Start free, or choose a monthly plan for more recovery capacity.",
   "onboarding.cta.shopifyManaged": "A seleção do plano e a cobrança são gerenciadas com segurança pela Shopify.",
   "billingCommerce.page.title": "Cobrança e capacidade de recuperação",
   "billingCommerce.page.eyebrow": "Capacidade de recuperação",
@@ -350,5 +350,11 @@
   "onboarding.pricing.fixed": "Fixed",
   "onboarding.pricing.graduated": "Graduated",
   "onboarding.pricing.volume": "Volume",
-  "onboarding.pricing.unavailable": "Pricing is currently unavailable."
+  "onboarding.pricing.unavailable": "Pricing is currently unavailable.",
+  "onboarding.pricing.option": "Pricing option {number}",
+  "onboarding.pricing.creditsPerUnit": "credits per unit",
+  "onboarding.pricing.maximumUnits": "Maximum units",
+  "onboarding.pricing.tierRange": "Up to",
+  "onboarding.pricing.amountPerUnit": "Amount per unit",
+  "onboarding.pricing.flatAmount": "Flat amount"
 }

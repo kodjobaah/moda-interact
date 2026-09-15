@@ -28,6 +28,7 @@ function validateText(value, field, maxLength = Infinity) {
 
 function validateUsageEvent(event, planCurrency, eventIndex) {
   const prefix = `usage event ${eventIndex}`;
+  if (!event || !Array.isArray(event.tiers)) invalid(`${prefix} shape is invalid`);
   validateText(event.eventHandle, `${prefix} handle`);
   validateCurrency(event.currency, `${prefix} currency`);
   if (event.currency !== planCurrency) invalid(`${prefix} currency differs from plan`);
@@ -46,15 +47,17 @@ function validateUsageEvent(event, planCurrency, eventIndex) {
     if (!Array.isArray(event.tiers) || event.tiers.length < 1 || event.tiers.length > 6) {
       invalid(`${prefix} tier count is invalid`);
     }
+    let previousUpperBound = 0;
     event.tiers.forEach((tier, tierIndex) => {
       if (tier.position !== tierIndex || !isSafeNonNegativeInteger(tier.amountPerUnitMinor) || !isSafeNonNegativeInteger(tier.flatAmountMinor)) {
         invalid(`${prefix} tier ${tierIndex} is invalid`);
       }
       if (tierIndex === event.tiers.length - 1) {
         if (tier.upTo !== null) invalid(`${prefix} final tier must be open-ended`);
-      } else if (!Number.isSafeInteger(tier.upTo) || tier.upTo <= 0) {
+      } else if (!Number.isSafeInteger(tier.upTo) || tier.upTo <= previousUpperBound) {
         invalid(`${prefix} tier ${tierIndex} upper bound is invalid`);
       }
+      if (tier.upTo !== null) previousUpperBound = tier.upTo;
     });
   } else {
     invalid(`${prefix} pricing mode is invalid`);

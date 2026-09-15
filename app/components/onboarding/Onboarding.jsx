@@ -1,8 +1,11 @@
 // @ts-nocheck
 
+import React from "react";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import "./Onboarding.css";
+
+void React;
 
 function BenefitIcon({ children }) {
   return <div className="mi-benefit-icon" aria-hidden="true">{children}</div>;
@@ -12,20 +15,62 @@ BenefitIcon.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
-function formatUsageEvent(event, i18n, t) {
-  if (event.pricingMode === "FIXED") {
-    return `${t("onboarding.pricing.fixed")}: ${i18n.formatMoney(event.fixedUnitAmountMinor / 100, event.currency)} / ${event.creditsGrantedPerUnit}`;
-  }
-  const tiers = event.tiers.map((tier) => {
-    const upperBound = tier.upTo === null ? "∞" : tier.upTo;
-    return `${upperBound}: ${i18n.formatMoney(tier.amountPerUnitMinor / 100, event.currency)}`;
-  });
-  return `${t(`onboarding.pricing.${event.pricingMode.toLowerCase()}`)}: ${tiers.join(" · ")}`;
+function UsageEvent({ event, index, i18n, t }) {
+  const maximumUnits = event.maximumUnitsPerBillingPeriod === null
+    ? null
+    : <span>{t("onboarding.pricing.maximumUnits")}: {event.maximumUnitsPerBillingPeriod}</span>;
+
+  return (
+    <div className="mi-plan-topup" key={event.eventHandle}>
+      <span>{t("onboarding.pricing.option", { number: index + 1 })}</span>
+      <strong>{t(`onboarding.pricing.${event.pricingMode.toLowerCase()}`)}</strong>
+      {event.pricingMode === "FIXED" ? (
+        <div className="mi-pricing-detail">
+          <span>{i18n.formatMoney(event.fixedUnitAmountMinor / 100, event.currency)}</span>
+          <span>{event.creditsGrantedPerUnit} {t("onboarding.pricing.creditsPerUnit")}</span>
+          {maximumUnits}
+        </div>
+      ) : (
+        <>
+          <table className="mi-pricing-tiers">
+            <caption>{t("onboarding.pricing.tierRange")}</caption>
+            <thead>
+              <tr>
+                <th scope="col">{t("onboarding.pricing.tierRange")}</th>
+                <th scope="col">{t("onboarding.pricing.amountPerUnit")}</th>
+                <th scope="col">{t("onboarding.pricing.flatAmount")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {event.tiers.map((tier) => (
+                <tr key={tier.position}>
+                  <td>{tier.upTo === null ? "∞" : tier.upTo}</td>
+                  <td>{i18n.formatMoney(tier.amountPerUnitMinor / 100, event.currency)}</td>
+                  <td>{i18n.formatMoney(tier.flatAmountMinor / 100, event.currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="mi-pricing-detail">
+            <span>{event.creditsGrantedPerUnit} {t("onboarding.pricing.creditsPerUnit")}</span>
+            {maximumUnits}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
+
+UsageEvent.propTypes = {
+  event: PropTypes.object.isRequired,
+  index: PropTypes.number.isRequired,
+  i18n: PropTypes.object.isRequired,
+  t: PropTypes.func.isRequired,
+};
 
 export default function Onboarding({ merchantUi, pricingCatalogue }) {
   const i18n = createMerchantI18n(merchantUi);
-  const t = (key) => i18n.t(key);
+  const t = (key, values) => i18n.t(key, values);
   const cataloguePlans = pricingCatalogue ?? [];
   const firstFreePlan = cataloguePlans.find((plan) => plan.planKind === "FREE");
 
@@ -174,12 +219,12 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             {cataloguePlans.map((plan) => (
               <article
                 className={`mi-plan-card${plan.featured ? " mi-plan-card-featured" : ""}`}
-                key={plan.id}
+                key={plan.shopifyPlanHandle}
               >
                 {plan.featured && (
                   <div className="mi-plan-badge">{t("onboarding.pricing.mostPopular")}</div>
                 )}
-                <div className="mi-plan-name">{plan.name}</div>
+                <div className="mi-plan-name">{plan.displayName}</div>
                 <div className="mi-plan-price">
                   {i18n.formatMoney(plan.recurringAmountMinor / 100, plan.currency)}
                   {plan.billingPeriod === "EVERY_30_DAYS" && <span>{t("onboarding.pricing.perMonth")}</span>}
@@ -191,11 +236,8 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
                   <span>{t(plan.allowancePeriod === "LIFETIME" ? "onboarding.pricing.free.allowance" : "onboarding.pricing.monthlyAllowance")}</span>
                 </div>
 
-                {plan.usageEvents.map((event) => (
-                  <div className="mi-plan-topup" key={event.eventHandle}>
-                    <span>{t("onboarding.pricing.topupLabel")}</span>
-                    <strong>{formatUsageEvent(event, i18n, t)}</strong>
-                  </div>
+                {plan.usageEvents.map((event, index) => (
+                  <UsageEvent event={event} index={index} i18n={i18n} t={t} key={event.eventHandle} />
                 ))}
               </article>
             ))}
@@ -206,39 +248,6 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             <span>{t("onboarding.pricing.sameProduct.description")}</span>
           </div>
         </section>
-
-        <section className="mi-section mi-topups" aria-labelledby="mi-topups-title">
-          <div className="mi-section-heading">
-            <div className="mi-eyebrow">{t("onboarding.topups.eyebrow")}</div>
-            <h2 id="mi-topups-title">{t("onboarding.topups.title")}</h2>
-            <p>{t("onboarding.topups.description")}</p>
-          </div>
-
-          <div className="mi-topup-layout">
-            <div className="mi-topup-explainer">
-              <div className="mi-topup-stat">
-                <span>{t("onboarding.topups.nonExpiringLabel")}</span>
-                <strong>{t("onboarding.topups.nonExpiringValue")}</strong>
-              </div>
-              <div className="mi-topup-stat">
-                <span>{t("onboarding.topups.subscriberValueLabel")}</span>
-                <strong>{t("onboarding.topups.subscriberValueValue")}</strong>
-              </div>
-              <p>{t("onboarding.topups.explainer")}</p>
-            </div>
-
-            <div className="mi-topup-ladder" aria-label={t("onboarding.topups.ladderLabel")}>
-              {cataloguePlans.flatMap((plan) => plan.usageEvents.map((event) => (
-                <article className="mi-topup-row" key={`${plan.shopifyPlanHandle}-${event.eventHandle}`}>
-                  <div className="mi-topup-amount">{plan.displayName}</div>
-                  <div className="mi-topup-values"><div><span>{event.eventHandle}</span><strong>{formatUsageEvent(event, i18n, t)}</strong></div></div>
-                </article>
-              )))}
-              <div className="mi-topup-caption">{t("onboarding.topups.caption")}</div>
-            </div>
-          </div>
-        </section>
-
 
       </div>
     </s-page>
