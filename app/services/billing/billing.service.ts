@@ -242,6 +242,24 @@ function executableProviderSubscription(
   return snapshot.activeSubscription ?? null;
 }
 
+function sameRecoveryCreditProviderEvidence(
+  left: import("./billing.types").ProviderSubscription,
+  right: import("./billing.types").ProviderSubscription,
+  eventHandle: string,
+): boolean {
+  const comparable = (subscription: import("./billing.types").ProviderSubscription) => ({
+    planHandle: subscription.planHandle,
+    status: subscription.status,
+    providerSubscriptionId: subscription.providerSubscriptionId,
+    currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null,
+    currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+    usageEventHandles: [...subscription.usageEventHandles].sort(),
+    usageItem: subscription.usageItems.find((item) => item.handle === eventHandle) ?? null,
+  });
+
+  return JSON.stringify(comparable(left)) === JSON.stringify(comparable(right));
+}
+
 function unresolvedPurchaseMessage(): string {
   return "A recovery credit pack is already awaiting Shopify confirmation.";
 }
@@ -1507,8 +1525,8 @@ async getSubscription(
     }
 
     const plan = subscription.plan;
-    if (!plan.active || !plan.recoveryCreditPackEnabled) {
-      throw new Error("Recovery credit packs are not enabled for this plan.");
+    if (!plan.active) {
+      throw new Error("Recovery credit packs are unavailable for this plan.");
     }
     if (!hasDurableBillingPeriod(subscription)) {
       throw new Error("The current local billing cycle could not be verified.");
@@ -1528,7 +1546,7 @@ async getSubscription(
       throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
     }
     const lifecycleSnapshot = await this.provider.getSubscriptionLifecycleSnapshot({ shopifyShopId: shop.shopifyShopId });
-    const providerSubscription = executableProviderSubscription(lifecycleSnapshot);
+    let providerSubscription = executableProviderSubscription(lifecycleSnapshot);
     if (!providerSubscription && lifecycleSnapshot.latestLifecycleEvent?.state === "FROZEN") {
       throw new Error("The Shopify subscription is frozen.");
     }
@@ -1537,13 +1555,13 @@ async getSubscription(
     }
     const merchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
     const selectedEvent = merchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
-    const providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
+    let providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
     if (!merchantPricingPlan || !selectedEvent || !providerPackMeter || !providerSubscription.usageEventHandles.includes(eventHandle)) {
       throw new Error("The selected recovery credit offer could not be verified with Shopify.");
     }
     const creditsGranted = selectedEvent.creditsGrantedPerUnit;
-    const providerBeforeEvidence = providerPackMeter.usage;
-    if (!hasProviderBeforeEvidence(providerBeforeEvidence)) {
+    const initialProviderBeforeEvidence = providerPackMeter.usage;
+    if (!hasProviderBeforeEvidence(initialProviderBeforeEvidence)) {
       throw new Error("Shopify recovery credit usage before evidence is unavailable.");
     }
     if (!hasMatchingBillingCycle(subscription, providerSubscription, verifiedBillingPeriodId)) {
@@ -1552,12 +1570,20 @@ async getSubscription(
     if (deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE") {
       throw new Error(RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION);
     }
-    if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle as string)) {
-      throw new Error("The recovery usage meter could not be verified with Shopify.");
+    const revalidatedLifecycleSnapshot = await this.provider.getSubscriptionLifecycleSnapshot({ shopifyShopId: shop.shopifyShopId });
+    const revalidatedProviderSubscription = executableProviderSubscription(revalidatedLifecycleSnapshot);
+    if (
+      !revalidatedProviderSubscription ||
+      !sameRecoveryCreditProviderEvidence(providerSubscription, revalidatedProviderSubscription, eventHandle)
+    ) {
+      throw new Error("Recovery credit pack provider configuration changed during purchase request.");
     }
-    if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageItems.some((item) => item.handle === plan.shopifyUsageEventHandle)) {
-      throw new Error("The recovery usage meter could not be verified with Shopify.");
+    providerSubscription = revalidatedProviderSubscription;
+    providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
+    if (!providerPackMeter || !hasProviderBeforeEvidence(providerPackMeter.usage)) {
+      throw new Error("Shopify recovery credit usage before evidence is unavailable.");
     }
+    const providerBeforeEvidence = providerPackMeter.usage;
     const providerContextIdentity = deriveShopifyProviderContextIdentity({
       providerSubscriptionId: providerSubscription.providerSubscriptionId,
       planHandle: providerSubscription.planHandle,
