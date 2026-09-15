@@ -21,6 +21,7 @@ import {
 } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
+import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
 import db from "@/db.server";
 
@@ -61,11 +62,12 @@ const {
 
 console.log("Resolved shop settings:", settings);
   const merchantUi = merchantUiContext(settings, session);
+  const onboardingState = resolveMerchantExperienceState({ shop, settings });
 /*
    * Let the merchant complete onboarding first.
    */
   if (!settings || !settings.onboardingCompleted) {
-    return { settings, merchantUi, subscription: null };
+    return { settings, merchantUi, merchantExperienceState: onboardingState, subscription: null };
   }
 
   const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
@@ -79,6 +81,7 @@ console.log("Resolved shop settings:", settings);
     billingService.getSubscription(shop.id),
     billingService.getSubscriptionProjection(shop.id),
   ]);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
 
   console.log("Resolved subscription:", subscription);
   const subscriptionState = subscription ?? {
@@ -129,6 +132,7 @@ console.log("Resolved shop settings:", settings);
   return {
     settings,
     merchantUi,
+    merchantExperienceState,
 
     subscription: subscriptionState ? {
       status: subscriptionState.status,
@@ -174,6 +178,7 @@ export default function Index() {
   const {
     settings,
     merchantUi,
+    merchantExperienceState,
     subscription,
     stats,
     recoveries,
@@ -187,7 +192,7 @@ export default function Index() {
   } = useLoaderData();
   const [searchParams] = useSearchParams();
 
-  if (!settings?.onboardingCompleted) {
+  if (merchantExperienceState === "ONBOARDING" || !settings?.onboardingCompleted) {
     return <Onboarding merchantUi={merchantUi} />;
   }
 

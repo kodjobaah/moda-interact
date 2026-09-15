@@ -86,14 +86,6 @@ const getSubscription = vi.fn();
 const requestRecoveryCreditPack = vi.fn();
 const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
-const billingCallbackSource = await readFile(
-  new URL("../../app/routes/app/billing/callback/route.tsx", import.meta.url),
-  "utf8",
-);
-const billingSelectSource = await readFile(
-  new URL("../../app/routes/app/billing/select/route.jsx", import.meta.url),
-  "utf8",
-);
 const billingOptionsRouteSource = await readFile(
   new URL("../../app/routes/app/billing/options/route.tsx", import.meta.url),
   "utf8",
@@ -127,13 +119,10 @@ vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
 }));
 
-const { default: BillingRoute, loader } =
+const { default: BillingRoute } =
   await import("../../app/routes/app/billing/options/route");
-const { loader: billingSelectLoader } =
-  await import("../../app/routes/app/billing/select/route");
 const { action: billingOptionsAction } =
   await import("../../app/routes/app/billing/options/route");
-const billingRouteSource = billingOptionsRouteSource;
 const billingAction = billingOptionsAction;
 const useLoaderDataMock = vi.mocked(useLoaderData);
 const renderBillingRoute = (overrides: Record<string, unknown> = {}) => {

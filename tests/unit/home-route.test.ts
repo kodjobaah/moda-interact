@@ -62,9 +62,25 @@ describe("app home loader", () => {
 
     expect(result).toMatchObject({
       settings: { onboardingCompleted: false },
+      merchantExperienceState: "ONBOARDING",
       subscription: null,
     });
     expect(getSubscription).not.toHaveBeenCalled();
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+    expect(findRecoveries).not.toHaveBeenCalled();
+    expect(findBillingPeriods).not.toHaveBeenCalled();
+    expect(findUsageEvents).not.toHaveBeenCalled();
+  });
+
+  it("keeps detail requests on the onboarding surface", async () => {
+    const result = await loader({
+      request: new Request("https://example.test/app?view=detail"),
+    });
+
+    expect(result).toMatchObject({
+      merchantExperienceState: "ONBOARDING",
+      subscription: null,
+    });
     expect(readPendingRecoveries).not.toHaveBeenCalled();
     expect(findRecoveries).not.toHaveBeenCalled();
     expect(findBillingPeriods).not.toHaveBeenCalled();

@@ -74,4 +74,26 @@ describe("merchant route access policy", () => {
     expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
     expect(getMerchantNavigation("REINSTALLING")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
   });
+
+  it.each([
+    ["SIGNED_OUT", []],
+    ["REINSTALLING", ["/app/merchant-support"]],
+    ["SUPPORT_ONLY", ["/app/merchant-support"]],
+    ["ONBOARDING", ["/app", "/app/billing/options", "/app/merchant-support"]],
+    ["ACTIVE", ["/app", "/app/billing/options", "/app/merchant-support", "/app/promotions"]],
+    ["NO_CONTRACT", ["/app", "/app/billing/options", "/app/merchant-support"]],
+    ["FROZEN", ["/app", "/app/billing/options", "/app/merchant-support"]],
+    ["BILLING_ATTENTION", ["/app", "/app/billing/options", "/app/merchant-support"]],
+  ] as const)("returns the complete ordered navigation for %s", (state, hrefs) => {
+    expect(getMerchantNavigation(state).map((item) => item.href)).toEqual(hrefs);
+    expect(getMerchantNavigation(state).every((item) => (
+      item.id === "home"
+        ? canAccessMerchantSurface(state, "HOME")
+        : item.id === "billing"
+          ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
+          : item.id === "promotions"
+            ? canAccessMerchantSurface(state, "PROMOTIONS")
+            : canAccessMerchantSurface(state, "SUPPORT")
+    ))).toBe(true);
+  });
 });
