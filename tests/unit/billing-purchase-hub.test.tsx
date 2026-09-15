@@ -31,6 +31,7 @@ function render(overrides: Record<string, unknown> = {}) {
       topUpState={topUpState}
       current={{ shopifyPlanHandle: "growth", mappedModaPlanName: "Growth" }}
       pending={null}
+      purchaseHistoryAvailable
       managePlansHref="/app/billing/select"
       managePlansAvailable
       onPurchaseTopUp={() => {}}
@@ -79,5 +80,17 @@ describe("BillingPurchaseHub", () => {
     expect(markup).toContain("Growth");
     expect(markup).toContain("Included recoveries this period: 21 of 30 remaining");
     expect(markup).toContain("Manage purchased credits");
+  });
+
+  it("renders the purchased-credit history link when the policy allows it", () => {
+    const markup = render({ purchaseHistoryAvailable: true });
+    expect(markup).toContain('href="/app/billing/recovery-credit-purchases"');
+    expect(markup).toContain("Manage purchased credits");
+  });
+
+  it("hides the purchased-credit history link when the policy denies it", () => {
+    const markup = render({ purchaseHistoryAvailable: false });
+    expect(markup).not.toContain('href="/app/billing/recovery-credit-purchases"');
+    expect(markup).not.toContain("Manage purchased credits");
   });
 });

@@ -1,5 +1,8 @@
+import { createElement, type ReactNode } from "react";
 import { access, readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useLoaderData } from "react-router";
 
 const readSource = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
 const routesSource = await readSource("../../app/routes.ts");
@@ -56,12 +59,6 @@ describe("canonical merchant billing UI", () => {
     }
   });
 });
-import { createElement, type ReactNode } from "react";
-import { readFile } from "node:fs/promises";
-import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { useLoaderData } from "react-router";
-
 vi.mock("react-router", async () => {
   const actual = await vi.importActual<typeof import("react-router")>(
     "react-router",
@@ -88,6 +85,13 @@ const findShopSettings = vi.fn();
 const hostedPricingRedirect = vi.fn();
 const billingOptionsRouteSource = await readFile(
   new URL("../../app/routes/app/billing/options/route.tsx", import.meta.url),
+  "utf8",
+);
+const purchaseHistoryRouteSource = await readFile(
+  new URL(
+    "../../app/routes/app/billing/recovery-credit-purchases/route.tsx",
+    import.meta.url,
+  ),
   "utf8",
 );
 const billingPurchaseHubSource = await readFile(
@@ -120,6 +124,8 @@ vi.mock("../../app/db.server", () => ({
 }));
 
 const { default: BillingRoute } =
+  await import("../../app/routes/app/billing/options/route");
+const { loader: billingOptionsLoader } =
   await import("../../app/routes/app/billing/options/route");
 const { action: billingOptionsAction } =
   await import("../../app/routes/app/billing/options/route");
@@ -164,6 +170,7 @@ const renderBillingRoute = (overrides: Record<string, unknown> = {}) => {
     recoveryCreditPackPurchaseEligible: true,
     billingPeriodPhase: "ACTIVE",
     lifecycleState: "ACTIVE",
+    purchaseHistoryAvailable: true,
     verificationState: "ACTIVE_SUBSCRIPTION",
     lifecycleRestriction: "AVAILABLE",
     purchaseId: "purchase-1",
@@ -284,5 +291,24 @@ describe("merchant billing UI", () => {
       labelKey: "billing.viewPlans",
     });
     expect(getMerchantSystemMessageAction("UNKNOWN_BILLING_CODE", "ACTIVE")).toBeNull();
+  });
+
+  it("keeps purchase-history authorization on the canonical surface", () => {
+    expect(purchaseHistoryRouteSource).toContain('"BILLING_PURCHASE_HISTORY"');
+  });
+
+  it.each([
+    ["ONBOARDING", false, { onboardingCompleted: false }, "NO_CONTRACT"],
+    ["ACTIVE", true, { onboardingCompleted: true }, "ACTIVE"],
+    ["NO_CONTRACT", true, { onboardingCompleted: true }, "NO_CONTRACT"],
+    ["FROZEN", true, { onboardingCompleted: true }, "FROZEN"],
+    ["BILLING_ATTENTION", true, { onboardingCompleted: true }, "UNMAPPED"],
+  ] as const)("derives purchase-history presentation for %s", async (_state, expected, settings, subscriptionStatus) => {
+    findShopSettings.mockResolvedValue(settings);
+    getSubscription.mockResolvedValue({ status: subscriptionStatus });
+    const data = await billingOptionsLoader({
+      request: new Request("https://example.test/app/billing/options"),
+    } as never);
+    expect(data.purchaseHistoryAvailable).toBe(expected);
   });
 });
