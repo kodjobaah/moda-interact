@@ -4,14 +4,14 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: { locale?: string, timeZone?: string }, topUpState: { configured: boolean, purchaseEligible: boolean, creditsPerPack: number|null, purchasedCreditsAvailable: number, shopifyPackMeter: { price?: object }|null, latestPurchase: { status: string, currentAmount: number, usageReportState?: string }|null }, onPurchaseTopUp?: () => void }} props */
+/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, offers?: Array<any>, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
 
-export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseTopUp }) {
+export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
   const purchase = topUpState.latestPurchase;
   const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
-  const canPurchase = topUpState.purchaseEligible && !hasUnresolvedPurchase;
   const reportState = purchase?.usageReportState;
+  const offers = Array.isArray(topUpState.offers) ? topUpState.offers : [];
 
   return <section className="moda-billing-panel">
     <div className="moda-panel-heading-row">
@@ -30,13 +30,19 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState, onPurchaseT
       <div className="moda-info-banner-icon">↗</div>
       <div><strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong><p>{i18n.t("billingCommerce.topup.billingNote")}</p></div>
     </div>
-    {topUpState.configured && topUpState.creditsPerPack ? <article className="moda-topup-card moda-topup-card-featured">
-      <div className="moda-topup-credit-count"><strong>{topUpState.creditsPerPack}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
-      <p>{i18n.t("billingCommerce.topup.billingNote")}</p>
-      {canPurchase ? <button className="moda-action-button moda-action-button-primary" type="button" onClick={onPurchaseTopUp}>{i18n.t("billingCommerce.buy")}</button> : null}
-      {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
-      {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
-    </article> : <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div>}
+    {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : offers.map((offer) => {
+      const tier = offer.providerPrice?.tiers?.[0];
+      const providerAmount = tier?.amountPerUnit ?? tier?.amount;
+      const providerPrice = providerAmount && offer.providerPrice?.currency
+        ? i18n.formatMoney(Number(providerAmount), offer.providerPrice.currency)
+        : null;
+      return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
+        <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
+        {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
+        {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
+        {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
+      </article>;
+    })}
     {purchase && statuses.includes(purchase.status) ? <p>
       {purchase.status === "REQUESTED"
         ? reportState === "RETRYABLE"
@@ -54,10 +60,9 @@ TopUpPurchasePanel.propTypes = {
   topUpState: PropTypes.shape({
     configured: PropTypes.bool.isRequired,
     purchaseEligible: PropTypes.bool.isRequired,
-    creditsPerPack: PropTypes.number,
+    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
+    offerVerificationState: PropTypes.string.isRequired,
     purchasedCreditsAvailable: PropTypes.number.isRequired,
-    shopifyPackMeter: PropTypes.shape({ price: PropTypes.object }),
     latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string }),
   }).isRequired,
-  onPurchaseTopUp: PropTypes.func,
 };

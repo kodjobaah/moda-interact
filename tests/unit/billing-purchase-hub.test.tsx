@@ -2,15 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
 
-vi.mock("../../app/components/dashboard/TopUpPurchasePanel", () => ({
-  default: () => null,
-}));
-
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
 const topUpState = {
   configured: true,
   purchaseEligible: true,
-  creditsPerPack: 10,
+  offers: [],
+  offerVerificationState: "VERIFIED",
   purchasedCreditsAvailable: 4,
   latestPurchase: null,
 };
@@ -34,7 +31,6 @@ function render(overrides: Record<string, unknown> = {}) {
       purchaseHistoryAvailable
       managePlansHref="/app/billing/select"
       managePlansAvailable
-      onPurchaseTopUp={() => {}}
       {...overrides}
     />,
   );
@@ -59,9 +55,9 @@ describe("BillingPurchaseHub", () => {
       verificationState: "ACTIVE_SUBSCRIPTION",
       current: { shopifyPlanHandle: "free", mappedModaPlanName: "Free" },
       billingPeriodPhase: null,
-      topUpState: { ...topUpState, purchaseEligible: false },
+      topUpState: { ...topUpState, purchaseEligible: false, offerVerificationState: "VERIFICATION_UNAVAILABLE" },
     });
-    expect(markup).toContain("Top-up purchase is unavailable until the current billing cycle and recovery-credit meter are verified.");
+    expect(markup).toContain("We couldn&#x27;t verify top-up availability right now. Please try again later.");
     expect(markup).not.toContain(">Buy</button>");
   });
 
@@ -71,7 +67,6 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Included recoveries this period: 0");
     expect(markup).not.toContain("Lifetime Free recoveries: 0");
     expect(markup).not.toContain("Promotional recoveries available</span>");
-    expect(markup).not.toContain("purchased credits available</span>");
   });
 
   it("warns for a genuine UNMAPPED subscription without hiding independent balances", () => {
@@ -92,5 +87,37 @@ describe("BillingPurchaseHub", () => {
     const markup = render({ purchaseHistoryAvailable: false });
     expect(markup).not.toContain('href="/app/billing/recovery-credit-purchases"');
     expect(markup).not.toContain("Manage purchased credits");
+  });
+
+  it("renders one resolved offer without a purchase action", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [{
+          eventHandle: "recovery-small",
+          cataloguePosition: 0,
+          creditsGranted: 10,
+          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] },
+          providerUsage: null,
+        }],
+      },
+    });
+    expect(markup).toContain("10");
+    expect(markup).not.toContain(">Buy</button>");
+    expect(markup).not.toContain("fetcher");
+  });
+
+  it("renders multiple resolved offers in catalogue order without purchase actions", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [
+          { eventHandle: "recovery-small", cataloguePosition: 0, creditsGranted: 10, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] }, providerUsage: null },
+          { eventHandle: "recovery-large", cataloguePosition: 1, creditsGranted: 50, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "15.00" }] }, providerUsage: null },
+        ],
+      },
+    });
+    expect(markup.indexOf(">10<")).toBeLessThan(markup.indexOf(">50<"));
+    expect(markup).not.toContain(">Buy</button>");
   });
 });

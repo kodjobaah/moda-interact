@@ -126,6 +126,22 @@ describe("ShopifyBillingProvider", () => {
       .resolves.toMatchObject({ planHandle: "growth", usageEventHandles: ["message-meter"] });
   });
 
+  it("keeps returned subscription items when their prices are inactive", async () => {
+    process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
+    process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
+    process.env.SHOPIFY_APP_ID = "app-1";
+    const inactiveFlat = { ...flat("growth"), price: { ...flat("growth").price, active: false } };
+    const inactiveTiered = { ...tiered("credit-meter"), price: { ...tiered("credit-meter").price, active: false } };
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response(subscription([inactiveFlat, inactiveTiered])));
+
+    await expect(new ShopifyBillingProvider().getActiveSubscription({ shopifyShopId: "shop-1" }))
+      .resolves.toMatchObject({
+        planHandle: "growth",
+        usageEventHandles: ["credit-meter"],
+        usageItems: [{ handle: "credit-meter", price: { active: false } }],
+      });
+  });
+
   it("returns no contract without manufacturing a plan", async () => {
     process.env.SHOPIFY_PARTNER_ORG_ID = "org-1";
     process.env.SHOPIFY_PARTNER_ACCESS_TOKEN = "token-1";
