@@ -27,6 +27,7 @@ function plan(overrides = {}) {
     currency: "GBP",
     translations: [{ locale: "en", merchantDescription: "A free plan" }],
     usageEvents: [],
+    highlights: [],
     ...overrides,
   };
 }
@@ -75,6 +76,37 @@ describe("readActiveMerchantPricingCatalogue", () => {
     findMany.mockResolvedValue([plan({ translations: [] })]);
     await expect(readActiveMerchantPricingCatalogue({ locale: "pt-BR" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
     expect(findMany.mock.calls[0][0].include.translations.where).toEqual({ locale: "pt-BR" });
+  });
+
+  it("returns ordered exact-locale highlights and fails closed for missing or duplicate translations", async () => {
+    findMany.mockResolvedValue([plan({
+      translations: [{ locale: "pt-BR", merchantDescription: "Descricao" }],
+      highlights: [
+        { contentKey: "00000000-0000-0000-0000-000000000001", position: 0, translations: [{ locale: "pt-BR", merchantTitle: "Primeiro", merchantDescription: "Um" }] },
+        { contentKey: "00000000-0000-0000-0000-000000000002", position: 1, translations: [{ locale: "pt-BR", merchantTitle: "Segundo", merchantDescription: "Dois" }] },
+      ],
+    })]);
+
+    await expect(readActiveMerchantPricingCatalogue({ locale: "pt-BR" })).resolves.toMatchObject([{
+      localizedDescription: "Descricao",
+      highlights: [
+        { contentKey: "00000000-0000-0000-0000-000000000001", title: "Primeiro", description: "Um", position: 0 },
+        { contentKey: "00000000-0000-0000-0000-000000000002", title: "Segundo", description: "Dois", position: 1 },
+      ],
+    }]);
+
+    const dto = await readActiveMerchantPricingCatalogue({ locale: "pt-BR" });
+    expect(JSON.stringify(dto)).not.toContain("adminLabel");
+    expect(JSON.stringify(dto)).not.toContain("merchantPricingPlanHighlightId");
+
+    findMany.mockResolvedValue([plan({ highlights: [{ contentKey: "00000000-0000-0000-0000-000000000001", position: 0, translations: [] }] })]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+
+    findMany.mockResolvedValue([plan({ highlights: [{ contentKey: "00000000-0000-0000-0000-000000000001", position: 0, translations: [
+      { locale: "en", merchantTitle: "One", merchantDescription: "One" },
+      { locale: "en", merchantTitle: "Two", merchantDescription: "Two" },
+    ] }] })]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
   });
 
   it("supports an empty active catalogue", async () => {

@@ -55,21 +55,27 @@ const plan = {
       tiers: [{ position: 0, upTo: null, amountPerUnitMinor: 20, flatAmountMinor: 0 }],
     },
   ],
+  highlights: [
+    { contentKey: "highlight-1", position: 0, title: "Localized highlight", description: "Admin-authored detail." },
+  ],
 };
 
 describe("Onboarding merchant pricing renderer", () => {
-  it("renders DTO names, descriptions, featured state, and every usage pricing mode", () => {
+  it("renders structured DTO card content and hides raw usage pricing mechanics", () => {
     const markup = render([plan]);
 
     expect(markup).toContain("Database Plan");
     expect(markup).toContain("Description from the pricing database.");
-    expect(markup).toContain("mi-plan-card-featured");
-    expect(markup).toContain("Fixed");
-    expect(markup).toContain("Graduated");
-    expect(markup).toContain("Volume");
-    expect(markup).toContain("12 credits per unit");
-    expect(markup).toContain("Amount per unit");
-    expect(markup).toContain("Flat amount");
+    expect(markup).toContain("mi-pricing-catalogue-card-featured");
+    expect(markup).toContain("Localized highlight");
+    expect(markup).toContain("Admin-authored detail.");
+    expect(markup).toContain("£35");
+    expect(markup).toContain("42");
+    expect(markup).not.toContain("Fixed");
+    expect(markup).not.toContain("Graduated");
+    expect(markup).not.toContain("Volume");
+    expect(markup).not.toContain("Amount per unit");
+    expect(markup).not.toContain("Flat amount");
     expect(markup).not.toContain("fixed-internal-name");
     expect(markup).toContain('href="/app/billing/select"');
   });

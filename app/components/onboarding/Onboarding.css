@@ -304,114 +304,6 @@
   font-weight: 900;
 }
 
-.mi-plan-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.mi-plan-card {
-  position: relative;
-  padding: 20px;
-  border: 1px solid var(--mi-line);
-  border-radius: 22px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
-}
-
-.mi-plan-card-featured {
-  border-color: rgba(42, 106, 77, 0.3);
-  box-shadow: 0 18px 38px rgba(20, 61, 44, 0.13);
-  transform: translateY(-4px);
-}
-
-.mi-plan-badge {
-  display: inline-block;
-  margin-bottom: 12px;
-  padding: 6px 9px;
-  border-radius: 999px;
-  background: var(--mi-green-800);
-  color: white;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.mi-plan-name {
-  color: var(--mi-green-900);
-  font-size: 24px;
-  font-weight: 850;
-}
-
-.mi-plan-price {
-  margin: 7px 0 10px;
-  color: var(--mi-green-900);
-  font-size: 38px;
-  font-weight: 900;
-  letter-spacing: -0.045em;
-}
-
-.mi-plan-price span {
-  margin-left: 4px;
-  color: var(--mi-muted);
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0;
-}
-
-.mi-plan-description {
-  min-height: 68px;
-  margin: 0 0 14px;
-  color: var(--mi-muted);
-  font-size: 14px;
-  line-height: 1.55;
-}
-
-.mi-plan-allowance {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 14px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, var(--mi-green-900), var(--mi-green-700));
-  color: white;
-}
-
-.mi-plan-allowance strong {
-  font-size: 28px;
-}
-
-.mi-plan-allowance span {
-  font-size: 12px;
-  color: rgba(255,255,255,0.86);
-}
-
-.mi-plan-topup {
-  margin-top: 11px;
-  padding: 12px 14px;
-  border: 1px solid var(--mi-line);
-  border-radius: 14px;
-  background: white;
-}
-
-.mi-plan-topup span,
-.mi-plan-topup strong {
-  display: block;
-}
-
-.mi-plan-topup span {
-  color: var(--mi-muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 800;
-}
-
-.mi-plan-topup strong {
-  margin-top: 4px;
-  color: var(--mi-green-900);
-  font-size: 13px;
-}
-
 .mi-shared-features {
   display: flex;
   align-items: center;
@@ -598,8 +490,7 @@
 }
 
 @media (max-width: 1100px) {
-  .mi-benefit-grid,
-  .mi-plan-grid {
+  .mi-benefit-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -649,13 +540,8 @@
   }
 
   .mi-benefit-grid,
-  .mi-plan-grid,
   .mi-flow {
     grid-template-columns: 1fr;
-  }
-
-  .mi-plan-card-featured {
-    transform: none;
   }
 
   .mi-shared-features {

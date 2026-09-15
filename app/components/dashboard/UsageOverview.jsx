@@ -5,6 +5,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import PendingRecoveries from "./PendingRecoveries";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
+import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
 
 const colors = scaleOrdinal(schemeTableau10);
 const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
@@ -33,7 +34,7 @@ function UsagePie({ title, events, i18n }) {
   );
 }
 
-export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity }) {
+export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity, merchantExperienceState, pricingCatalogue }) {
   const i18n = createMerchantI18n(merchantUi);
   const navigate = useNavigate();
   const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
@@ -48,9 +49,13 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 
         {/* existing billing information */}
 
-        <s-button href="/app/billing/options" variant="primary">
-          {i18n.t("billingCommerce.actions.manageCapacity")}
-        </s-button>
+        {merchantExperienceState === "NO_CONTRACT" ? (
+          <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction />
+        ) : (
+          <s-button href="/app/billing/options" variant="primary">
+            {i18n.t("billingCommerce.actions.manageCapacity")}
+          </s-button>
+        )}
       </div>
       </s-section>
       <s-section>
@@ -77,4 +82,4 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 }
 
 UsagePie.propTypes = { title: PropTypes.string, events: PropTypes.arrayOf(PropTypes.object), i18n: PropTypes.shape({ t: PropTypes.func, formatNumber: PropTypes.func }) };
-UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object };
+UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object, merchantExperienceState: PropTypes.string, pricingCatalogue: PropTypes.arrayOf(PropTypes.object) };
