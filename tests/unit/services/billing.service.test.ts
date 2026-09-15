@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Prisma } from "@prisma/client";
 import {
   APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
   BILLING_SYSTEM_MESSAGE_CODES,
@@ -2030,6 +2031,8 @@ describe("BillingService hosted plan-change return", () => {
 function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
   const purchases = new Map<string, Record<string, unknown>>();
   const usageEvents: Record<string, unknown>[] = [];
+  const transactionEvents: string[] = [];
+  const transactionOptions: unknown[] = [];
   const shopEntitlementCounter = {
     update: vi.fn(),
     upsert: vi.fn(),
@@ -2069,19 +2072,31 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
     recoveryCreditPurchase: {
       findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
     },
-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
+    $transaction: vi.fn(async (
+      callback: (transaction: unknown) => Promise<unknown>,
+      options?: unknown,
+    ) => {
+      transactionOptions.push(options);
+      return callback({
+      $queryRaw: vi.fn(async () => {
+        transactionEvents.push("subscription-lock");
+        return [];
+      }),
       subscription: {
         findUnique: vi.fn().mockResolvedValue(transactionSubscription),
       },
       recoveryCreditPurchase: {
         findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
-        findFirst: vi.fn().mockImplementation(async ({ where }: { where: { shopId: string; status: string; shopifyEventHandleSnapshot: string } }) =>
-          [...purchases.values()].find((purchase) =>
+        findFirst: vi.fn().mockImplementation(async ({ where }: { where: { shopId: string; status: string; shopifyEventHandleSnapshot: string } }) => {
+          transactionEvents.push("unresolved-lookup");
+          return [...purchases.values()].find((purchase) =>
             purchase.shopId === where.shopId &&
             purchase.status === where.status &&
             purchase.shopifyEventHandleSnapshot === where.shopifyEventHandleSnapshot,
-          ) ?? null),
+          ) ?? null;
+        }),
         create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+          transactionEvents.push("purchase-write");
           const purchase = { ...data, status: "REQUESTED", usageEvent: usageEvents.at(-1) };
           purchases.set(String(data.id), purchase);
           return purchase;
@@ -2089,14 +2104,16 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
       },
       usageEvent: {
         create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+          transactionEvents.push("usage-event-write");
           usageEvents.push(data);
           return data;
         }),
       },
       shopEntitlementCounter,
-    })),
+      });
+    }),
   };
-  return { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription, merchantPricingPlan };
+  return { database, purchases, usageEvents, transactionEvents, transactionOptions, shopEntitlementCounter, subscriptionState, transactionSubscription, merchantPricingPlan };
 }
 
 describe("BillingService merchant billing state", () => {
@@ -2998,6 +3015,30 @@ describe("BillingService recovery credit packs", () => {
     );
     expect(shopEntitlementCounter.update).not.toHaveBeenCalled();
     expect(shopEntitlementCounter.upsert).not.toHaveBeenCalled();
+  });
+
+  it("uses Serializable isolation and locks Subscription before single-flight lookup", async () => {
+    const { database, transactionEvents, transactionOptions } = createRecoveryCreditPurchaseDatabase();
+    const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
+    const service = new BillingService(provider, database as never);
+
+    await service.requestRecoveryCreditPack(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "10101010-1010-4010-8010-101010101010",
+      "credit-pack-meter",
+    );
+
+    expect(transactionOptions).toEqual([
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    ]);
+    expect(transactionEvents.indexOf("subscription-lock")).toBeGreaterThanOrEqual(0);
+    expect(transactionEvents.indexOf("subscription-lock")).toBeLessThan(
+      transactionEvents.indexOf("unresolved-lookup"),
+    );
+    expect(transactionEvents.indexOf("unresolved-lookup")).toBeLessThan(
+      transactionEvents.indexOf("usage-event-write"),
+    );
   });
 
   it("fails closed when the lifecycle snapshot provider method is absent", async () => {

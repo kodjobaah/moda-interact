@@ -1622,7 +1622,7 @@ async getSubscription(
           shopifyEventHandleSnapshot: eventHandle,
         },
         orderBy: { createdAt: "asc" },
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
       if (unresolved) throw new Error(unresolvedPurchaseMessage());
 
       const currentSubscription = await transaction.subscription.findUnique({
@@ -1688,7 +1688,7 @@ async getSubscription(
         },
         include: { usageEvent: true },
       });
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {
         const replay = await this.database.recoveryCreditPurchase.findUnique({
