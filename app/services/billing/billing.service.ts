@@ -1622,7 +1622,7 @@ async getSubscription(
           shopifyEventHandleSnapshot: eventHandle,
         },
         orderBy: { createdAt: "asc" },
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      });
       if (unresolved) throw new Error(unresolvedPurchaseMessage());
 
       const currentSubscription = await transaction.subscription.findUnique({
