@@ -21,6 +21,7 @@ import {
 } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
+import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
 import {
   canAccessMerchantSurface,
   resolveMerchantExperienceState,
@@ -66,11 +67,12 @@ const {
 console.log("Resolved shop settings:", settings);
   const merchantUi = merchantUiContext(settings, session);
   const onboardingState = resolveMerchantExperienceState({ shop, settings });
+  const pricingCatalogue = await readActiveMerchantPricingCatalogue({ locale: merchantUi.locale });
 /*
    * Let the merchant complete onboarding first.
    */
   if (!settings || !settings.onboardingCompleted) {
-    return { settings, merchantUi, merchantExperienceState: onboardingState, subscription: null };
+    return { settings, merchantUi, merchantExperienceState: onboardingState, pricingCatalogue, subscription: null };
   }
 
   const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
@@ -194,6 +196,7 @@ export default function Index() {
     settings,
     merchantUi,
     merchantExperienceState,
+    pricingCatalogue,
     subscription,
     stats,
     recoveries,
@@ -208,7 +211,7 @@ export default function Index() {
   const [searchParams] = useSearchParams();
 
   if (merchantExperienceState === "ONBOARDING" || !settings?.onboardingCompleted) {
-    return <Onboarding merchantUi={merchantUi} />;
+    return <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
   }
 
   if (searchParams.get("view") !== "detail") {

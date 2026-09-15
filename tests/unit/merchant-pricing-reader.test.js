@@ -1,0 +1,76 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPPORTED_ADMIN_LOCALES } from "../../app/i18n/catalogues";
+import { createMerchantI18n } from "../../app/utils/merchant-i18n";
+
+const findMany = vi.fn();
+
+vi.mock("../../app/db.server", () => ({
+  default: { merchantPricingPlan: { findMany } },
+}));
+
+const { readActiveMerchantPricingCatalogue } = await import("../../app/services/merchant-pricing/merchant-pricing.server");
+
+function plan(overrides = {}) {
+  return {
+    shopifyPlanHandle: "free",
+    displayName: "Free",
+    planKind: "FREE",
+    isActive: true,
+    cataloguePosition: 0,
+    featured: false,
+    includedRecoveryCredits: 5,
+    allowancePeriod: "LIFETIME",
+    billingPeriod: "EVERY_30_DAYS",
+    recurringAmountMinor: 0,
+    currency: "GBP",
+    translations: [{ locale: "en", merchantDescription: "A free plan" }],
+    usageEvents: [],
+    ...overrides,
+  };
+}
+
+describe("readActiveMerchantPricingCatalogue", () => {
+  beforeEach(() => findMany.mockReset());
+
+  it("keeps the exact 20-locale registry and distinct regional/script variants", () => {
+    expect(new Set(SUPPORTED_ADMIN_LOCALES)).toEqual(new Set([
+      "cs", "da", "de", "en", "es", "fi", "fr", "it", "ja", "ko",
+      "nb", "nl", "pl", "pt-BR", "pt-PT", "sv", "th", "tr", "zh-Hans", "zh-Hant",
+    ]));
+    expect(createMerchantI18n({ locale: "en-GB" }).catalogueLocale).toBe("en");
+    expect(createMerchantI18n({ locale: "pt-BR" }).catalogueLocale).toBe("pt-BR");
+    expect(createMerchantI18n({ locale: "pt-PT" }).catalogueLocale).toBe("pt-PT");
+    expect(createMerchantI18n({ locale: "zh-Hans" }).catalogueLocale).toBe("zh-Hans");
+    expect(createMerchantI18n({ locale: "zh-Hant" }).catalogueLocale).toBe("zh-Hant");
+  });
+
+  it("queries active plans in catalogue order and returns the exact localized DTO", async () => {
+    findMany.mockResolvedValue([plan(), plan({ shopifyPlanHandle: "paid", displayName: "Paid", cataloguePosition: 2, translations: [{ locale: "en", merchantDescription: "Localized paid plan" }] })]);
+
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en-GB" })).resolves.toMatchObject([
+      { shopifyPlanHandle: "free", localizedDescription: "A free plan", cataloguePosition: 0 },
+      { shopifyPlanHandle: "paid", localizedDescription: "Localized paid plan", cataloguePosition: 2 },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { isActive: true }, orderBy: { cataloguePosition: "asc" } }));
+    expect(JSON.stringify(await readActiveMerchantPricingCatalogue({ locale: "en" }))).not.toContain("adminLabel");
+  });
+
+  it("requires the exact resolved locale and does not fall back to English", async () => {
+    findMany.mockResolvedValue([plan({ translations: [] })]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "pt-BR" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+    expect(findMany.mock.calls[0][0].include.translations.where).toEqual({ locale: "pt-BR" });
+  });
+
+  it("supports an empty active catalogue", async () => {
+    findMany.mockResolvedValue([]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).resolves.toEqual([]);
+  });
+
+  it("fails closed for corrupt order and usage pricing", async () => {
+    findMany.mockResolvedValue([plan({ cataloguePosition: 2 }), plan({ shopifyPlanHandle: "other", cataloguePosition: 1 })]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+
+    findMany.mockResolvedValue([plan({ usageEvents: [{ position: 0, eventHandle: "recovery", creditsGrantedPerUnit: 1, maximumUnitsPerBillingPeriod: null, pricingMode: "FIXED", currency: "GBP", fixedUnitAmountMinor: 100, tiers: [{ position: 0, upTo: null, amountPerUnitMinor: 100, flatAmountMinor: 0 }] }] })]);
+    await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+  });
+});

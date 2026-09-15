@@ -170,15 +170,7 @@
   "onboarding.pricing.mostPopular": "Mais popular",
   "onboarding.pricing.monthlyAllowance": "conversas de recuperação / mês",
   "onboarding.pricing.free.allowance": "conversas de recuperação para sempre",
-  "onboarding.pricing.free.description": "Experimente toda a experiência de recuperação antes de assinar.",
-  "onboarding.pricing.starter.description": "Para lojas menores que querem tornar a recuperação no WhatsApp parte regular da operação.",
-  "onboarding.pricing.growth.description": "Para lojas em crescimento com mais checkouts abandonados para recuperar todos os meses.",
-  "onboarding.pricing.scale.description": "Para lojistas de alto volume que executam recuperação em escala.",
   "onboarding.pricing.topupLabel": "Valor da recarga",
-  "onboarding.pricing.free.topup": "£5 → 10 · £10 → 22 · £20 → 50",
-  "onboarding.pricing.starter.topup": "£5 → 15 · £10 → 32 · £20 → 70",
-  "onboarding.pricing.growth.topup": "£5 → 18 · £10 → 40 · £20 → 90",
-  "onboarding.pricing.scale.topup": "£5 → 20 · £10 → 45 · £20 → 100",
   "onboarding.pricing.sameProduct.title": "O mesmo produto principal em todos os planos.",
   "onboarding.pricing.sameProduct.description": "Recuperação no WhatsApp com IA, conversas multilíngues, análises de recuperação e nenhuma cobrança separada do WhatsApp fazem parte da experiência Moda.",
   "onboarding.topups.eyebrow": "Recargas flexíveis",
@@ -354,5 +346,9 @@
   "billingPurchases.outcome.ALREADY_WITHDRAWN": "Esta compra já tem um reembolso em andamento.",
   "billingPurchases.outcome.ALREADY_REFUNDED": "Esta compra já foi reembolsada.",
   "billingPurchases.outcome.COMPLETED": "Esta compra foi concluída e não possui créditos para reembolso.",
-  "billingPurchases.outcome.NOT_FOUND": "Esta compra não foi encontrada."
+  "billingPurchases.outcome.NOT_FOUND": "Esta compra não foi encontrada.",
+  "onboarding.pricing.fixed": "Fixed",
+  "onboarding.pricing.graduated": "Graduated",
+  "onboarding.pricing.volume": "Volume",
+  "onboarding.pricing.unavailable": "Pricing is currently unavailable."
 }

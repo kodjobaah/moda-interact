@@ -1,52 +1,8 @@
+// @ts-nocheck
+
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import "./Onboarding.css";
-
-const plans = [
-  {
-    id: "free",
-    name: "Free",
-    price: "£0",
-    allowance: "5",
-    allowanceLabelKey: "onboarding.pricing.free.allowance",
-    descriptionKey: "onboarding.pricing.free.description",
-    topupKey: "onboarding.pricing.free.topup",
-  },
-  {
-    id: "starter",
-    name: "Starter",
-    price: "£35",
-    allowance: "100",
-    allowanceLabelKey: "onboarding.pricing.monthlyAllowance",
-    descriptionKey: "onboarding.pricing.starter.description",
-    topupKey: "onboarding.pricing.starter.topup",
-    featured: true,
-  },
-  {
-    id: "growth",
-    name: "Growth",
-    price: "£75",
-    allowance: "250",
-    allowanceLabelKey: "onboarding.pricing.monthlyAllowance",
-    descriptionKey: "onboarding.pricing.growth.description",
-    topupKey: "onboarding.pricing.growth.topup",
-  },
-  {
-    id: "scale",
-    name: "Scale",
-    price: "£149",
-    allowance: "500",
-    allowanceLabelKey: "onboarding.pricing.monthlyAllowance",
-    descriptionKey: "onboarding.pricing.scale.description",
-    topupKey: "onboarding.pricing.scale.topup",
-  },
-];
-
-const topUps = [
-  { amount: "£5", free: "10", starter: "15", growth: "18", scale: "20" },
-  { amount: "£10", free: "22", starter: "32", growth: "40", scale: "45" },
-  { amount: "£20", free: "50", starter: "70", growth: "90", scale: "100" },
-];
 
 function BenefitIcon({ children }) {
   return <div className="mi-benefit-icon" aria-hidden="true">{children}</div>;
@@ -56,9 +12,22 @@ BenefitIcon.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
-export default function Onboarding({ merchantUi }) {
+function formatUsageEvent(event, i18n, t) {
+  if (event.pricingMode === "FIXED") {
+    return `${t("onboarding.pricing.fixed")}: ${i18n.formatMoney(event.fixedUnitAmountMinor / 100, event.currency)} / ${event.creditsGrantedPerUnit}`;
+  }
+  const tiers = event.tiers.map((tier) => {
+    const upperBound = tier.upTo === null ? "∞" : tier.upTo;
+    return `${upperBound}: ${i18n.formatMoney(tier.amountPerUnitMinor / 100, event.currency)}`;
+  });
+  return `${t(`onboarding.pricing.${event.pricingMode.toLowerCase()}`)}: ${tiers.join(" · ")}`;
+}
+
+export default function Onboarding({ merchantUi, pricingCatalogue }) {
   const i18n = createMerchantI18n(merchantUi);
   const t = (key) => i18n.t(key);
+  const cataloguePlans = pricingCatalogue ?? [];
+  const firstFreePlan = cataloguePlans.find((plan) => plan.planKind === "FREE");
 
   return (
     <s-page heading={t("onboarding.title")}>
@@ -99,7 +68,7 @@ export default function Onboarding({ merchantUi }) {
 
             <div className="mi-proof-strip" role="list" aria-label={t("onboarding.hero.highlightsLabel")}>
               <div className="mi-proof-item" role="listitem">
-                <strong>5</strong>
+                <strong>{firstFreePlan?.includedRecoveryCredits ?? "-"}</strong>
                 <span>{t("onboarding.hero.freeConversations")}</span>
               </div>
               <div className="mi-proof-item" role="listitem">
@@ -201,7 +170,8 @@ export default function Onboarding({ merchantUi }) {
           </div>
 
           <div className="mi-plan-grid">
-            {plans.map((plan) => (
+            {cataloguePlans.length === 0 && <p className="mi-pricing-unavailable">{t("onboarding.pricing.unavailable")}</p>}
+            {cataloguePlans.map((plan) => (
               <article
                 className={`mi-plan-card${plan.featured ? " mi-plan-card-featured" : ""}`}
                 key={plan.id}
@@ -211,20 +181,22 @@ export default function Onboarding({ merchantUi }) {
                 )}
                 <div className="mi-plan-name">{plan.name}</div>
                 <div className="mi-plan-price">
-                  {plan.price}
-                  {plan.id !== "free" && <span>{t("onboarding.pricing.perMonth")}</span>}
+                  {i18n.formatMoney(plan.recurringAmountMinor / 100, plan.currency)}
+                  {plan.billingPeriod === "EVERY_30_DAYS" && <span>{t("onboarding.pricing.perMonth")}</span>}
                 </div>
-                <p className="mi-plan-description">{t(plan.descriptionKey)}</p>
+                <p className="mi-plan-description">{plan.localizedDescription}</p>
 
                 <div className="mi-plan-allowance">
-                  <strong>{plan.allowance}</strong>
-                  <span>{t(plan.allowanceLabelKey)}</span>
+                  <strong>{plan.includedRecoveryCredits}</strong>
+                  <span>{t(plan.allowancePeriod === "LIFETIME" ? "onboarding.pricing.free.allowance" : "onboarding.pricing.monthlyAllowance")}</span>
                 </div>
 
-                <div className="mi-plan-topup">
-                  <span>{t("onboarding.pricing.topupLabel")}</span>
-                  <strong>{t(plan.topupKey)}</strong>
-                </div>
+                {plan.usageEvents.map((event) => (
+                  <div className="mi-plan-topup" key={event.eventHandle}>
+                    <span>{t("onboarding.pricing.topupLabel")}</span>
+                    <strong>{formatUsageEvent(event, i18n, t)}</strong>
+                  </div>
+                ))}
               </article>
             ))}
           </div>
@@ -256,17 +228,12 @@ export default function Onboarding({ merchantUi }) {
             </div>
 
             <div className="mi-topup-ladder" aria-label={t("onboarding.topups.ladderLabel")}>
-              {topUps.map((pack) => (
-                <article className="mi-topup-row" key={pack.amount}>
-                  <div className="mi-topup-amount">{pack.amount}</div>
-                  <div className="mi-topup-values">
-                    <div><span>Free</span><strong>{pack.free}</strong></div>
-                    <div><span>Starter</span><strong>{pack.starter}</strong></div>
-                    <div><span>Growth</span><strong>{pack.growth}</strong></div>
-                    <div className="mi-scale-value"><span>Scale</span><strong>{pack.scale}</strong></div>
-                  </div>
+              {cataloguePlans.flatMap((plan) => plan.usageEvents.map((event) => (
+                <article className="mi-topup-row" key={`${plan.shopifyPlanHandle}-${event.eventHandle}`}>
+                  <div className="mi-topup-amount">{plan.displayName}</div>
+                  <div className="mi-topup-values"><div><span>{event.eventHandle}</span><strong>{formatUsageEvent(event, i18n, t)}</strong></div></div>
                 </article>
-              ))}
+              )))}
               <div className="mi-topup-caption">{t("onboarding.topups.caption")}</div>
             </div>
           </div>
@@ -280,4 +247,18 @@ export default function Onboarding({ merchantUi }) {
 
 Onboarding.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
+    shopifyPlanHandle: PropTypes.string.isRequired,
+    displayName: PropTypes.string.isRequired,
+    planKind: PropTypes.string.isRequired,
+    cataloguePosition: PropTypes.number.isRequired,
+    featured: PropTypes.bool.isRequired,
+    localizedDescription: PropTypes.string.isRequired,
+    includedRecoveryCredits: PropTypes.number.isRequired,
+    allowancePeriod: PropTypes.string.isRequired,
+    billingPeriod: PropTypes.string.isRequired,
+    recurringAmountMinor: PropTypes.number.isRequired,
+    currency: PropTypes.string.isRequired,
+    usageEvents: PropTypes.array.isRequired,
+  })),
 };
