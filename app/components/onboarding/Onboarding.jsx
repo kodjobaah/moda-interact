@@ -233,7 +233,7 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
 
                 <div className="mi-plan-allowance">
                   <strong>{plan.includedRecoveryCredits}</strong>
-                  <span>{t(plan.allowancePeriod === "LIFETIME" ? "onboarding.pricing.free.allowance" : "onboarding.pricing.monthlyAllowance")}</span>
+                  <span>{t(plan.allowancePeriod === "LIFETIME" ? "onboarding.pricing.lifetimeAllowance" : "onboarding.pricing.monthlyAllowance")}</span>
                 </div>
 
                 {plan.usageEvents.map((event, index) => (

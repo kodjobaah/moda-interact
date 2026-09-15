@@ -169,7 +169,7 @@
   "onboarding.pricing.perMonth": "/ måned",
   "onboarding.pricing.mostPopular": "Mest populær",
   "onboarding.pricing.monthlyAllowance": "gendannelsessamtaler / måned",
-  "onboarding.pricing.free.allowance": "livstids-gendannelsessamtaler",
+  "onboarding.pricing.lifetimeAllowance": "livstids-gendannelsessamtaler",
   "onboarding.pricing.topupLabel": "Top-up-værdi",
   "onboarding.pricing.sameProduct.title": "Samme kerneprodukt på alle planer.",
   "onboarding.pricing.sameProduct.description": "AI-drevet WhatsApp-gendannelse, flersprogede samtaler, gendannelsesanalyse og ingen separat WhatsApp-regning er en del af Moda-oplevelsen.",
