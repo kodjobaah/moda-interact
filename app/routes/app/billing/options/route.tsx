@@ -98,7 +98,12 @@ export async function action({ request }: ActionFunctionArgs) {
     throw new Error("Recovery credit packs are unavailable while Shopify billing is restricted.");
   }
   const formData = await request.formData();
-  const purchase = await billingService.requestRecoveryCreditPack(shop.id, String(formData.get("intent") ?? ""), String(formData.get("purchaseId") ?? ""));
+  const purchase = await billingService.requestRecoveryCreditPack(
+    shop.id,
+    String(formData.get("intent") ?? ""),
+    String(formData.get("purchaseId") ?? ""),
+    String(formData.get("eventHandle") ?? ""),
+  );
   return {
     purchase: {
       status: purchase.status,

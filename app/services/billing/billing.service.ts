@@ -24,6 +24,7 @@ import {
   BILLING_SYSTEM_MESSAGE_CODES,
   APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
   createShopifyUsageIdempotencyKey,
+  deriveShopifyProviderContextIdentity,
 } from "@modainteract/moda-interact-shared/billing";
 
 
@@ -109,6 +110,10 @@ export function deriveBillingPeriodPhase(
 
 const RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION =
   "Recovery credit packs are temporarily unavailable while the current Shopify billing cycle is being confirmed.";
+
+function isSafeNonNegativeNumber(value: number | null | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
 
 function isSafeNonNegativeInteger(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
@@ -219,7 +224,7 @@ function hasProviderBeforeEvidence(
 ): usage is { quantity: number; costAmount: string; costCurrency: string } {
   return Boolean(
     usage &&
-    isSafeNonNegativeInteger(usage.quantity) &&
+    isSafeNonNegativeNumber(usage.quantity) &&
     typeof usage.costAmount === "string" &&
     usage.costAmount.trim() &&
     typeof usage.costCurrency === "string" &&
@@ -436,6 +441,26 @@ export class BillingService {
     private readonly dispatchTranslation: TranslationDispatch =
       enqueueTranslationBestEffort,
   ) {}
+
+  private async readMerchantPricingPlan(planHandle: string) {
+    if (this.database.merchantPricingPlan?.findUnique) {
+      const plan = await this.database.merchantPricingPlan.findUnique({
+        where: { shopifyPlanHandle: planHandle },
+        include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+      });
+      return plan
+        ? {
+            shopifyPlanHandle: plan.shopifyPlanHandle,
+            usageEvents: plan.usageEvents.map((event: { position: number; eventHandle: string; creditsGrantedPerUnit: number }) => ({
+              cataloguePosition: event.position,
+              eventHandle: event.eventHandle,
+              creditsGrantedPerUnit: event.creditsGrantedPerUnit,
+            })),
+          }
+        : null;
+    }
+    return readMerchantPricingPlanForProvider({ planHandle });
+  }
 
   async prepareFreeActivation(
     shopId: string,
@@ -1303,9 +1328,7 @@ async getSubscription(
         });
         const providerSubscription = executableProviderSubscription(lifecycleSnapshot);
         if (providerSubscription) {
-          const merchantPricingPlan = await readMerchantPricingPlanForProvider({
-            planHandle: providerSubscription.planHandle,
-          });
+          const merchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
           const resolved = resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan });
           recoveryCreditOffers = resolved.offers;
           recoveryCreditOfferDiagnostics = resolved.diagnostics;
@@ -1316,7 +1339,6 @@ async getSubscription(
           subscription &&
           hasExactOpenLocalCycle &&
           providerSubscription &&
-          Boolean(providerSubscription.providerSubscriptionId?.trim()) &&
           hasMatchingBillingCycle(subscription, providerSubscription) &&
           subscription?.billingPeriod?.status === BillingPeriodStatus.OPEN &&
           billingPeriodPhase === "ACTIVE",
@@ -1455,11 +1477,14 @@ async getSubscription(
     };
   }
 
-  async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string) {
+  async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string, eventHandle: string) {
     if (intent !== RECOVERY_CREDIT_PURCHASE_INTENT) {
       throw new Error("Unsupported billing action.");
     }
     assertPurchaseId(purchaseId);
+    if (typeof eventHandle !== "string" || !eventHandle.trim() || eventHandle.length > 128) {
+      throw new Error("A valid recovery credit offer is required.");
+    }
 
     const existingPurchase = await this.database.recoveryCreditPurchase.findUnique({
       where: { id: purchaseId },
@@ -1482,9 +1507,7 @@ async getSubscription(
     }
 
     const plan = subscription.plan;
-    const packMeter = plan.shopifyRecoveryCreditPackEventHandle?.trim();
-    const creditsGranted = plan.recoveryCreditsPerPack;
-    if (!plan.active || !plan.recoveryCreditPackEnabled || !packMeter || !isSafeNonNegativeInteger(creditsGranted) || creditsGranted <= 0) {
+    if (!plan.active || !plan.recoveryCreditPackEnabled) {
       throw new Error("Recovery credit packs are not enabled for this plan.");
     }
     if (!hasDurableBillingPeriod(subscription)) {
@@ -1501,10 +1524,6 @@ async getSubscription(
     ) {
       throw new Error("The current local billing cycle could not be verified.");
     }
-    if (plan.kind === BillingPlanKind.PAID_METERED && (!plan.shopifyUsageEventHandle || plan.shopifyUsageEventHandle === packMeter)) {
-      throw new Error("The recovery credit pack meter is not safely mapped.");
-    }
-
     if (!this.provider.getSubscriptionLifecycleSnapshot) {
       throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
     }
@@ -1513,13 +1532,16 @@ async getSubscription(
     if (!providerSubscription && lifecycleSnapshot.latestLifecycleEvent?.state === "FROZEN") {
       throw new Error("The Shopify subscription is frozen.");
     }
-    const providerPackMeter = providerSubscription?.usageItems.find((item) => item.handle === packMeter);
-    if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle || !providerPackMeter || !providerSubscription.usageEventHandles.includes(packMeter)) {
+    if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
-    if (!providerSubscription.providerSubscriptionId) {
-      throw new Error("The Shopify subscription identity could not be verified.");
+    const merchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
+    const selectedEvent = merchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
+    const providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
+    if (!merchantPricingPlan || !selectedEvent || !providerPackMeter || !providerSubscription.usageEventHandles.includes(eventHandle)) {
+      throw new Error("The selected recovery credit offer could not be verified with Shopify.");
     }
+    const creditsGranted = selectedEvent.creditsGrantedPerUnit;
     const providerBeforeEvidence = providerPackMeter.usage;
     if (!hasProviderBeforeEvidence(providerBeforeEvidence)) {
       throw new Error("Shopify recovery credit usage before evidence is unavailable.");
@@ -1535,6 +1557,17 @@ async getSubscription(
     }
     if (plan.kind === BillingPlanKind.PAID_METERED && !providerSubscription.usageItems.some((item) => item.handle === plan.shopifyUsageEventHandle)) {
       throw new Error("The recovery usage meter could not be verified with Shopify.");
+    }
+    const providerContextIdentity = deriveShopifyProviderContextIdentity({
+      providerSubscriptionId: providerSubscription.providerSubscriptionId,
+      planHandle: providerSubscription.planHandle,
+      currentPeriodStart: providerSubscription.currentPeriodStart,
+      currentPeriodEnd: providerSubscription.currentPeriodEnd,
+    });
+    const currentMerchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
+    const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
+    if (!currentSelectedEvent || currentSelectedEvent.creditsGrantedPerUnit !== creditsGranted) {
+      throw new Error("Recovery credit pack configuration changed during purchase request.");
     }
 
     try {
@@ -1560,9 +1593,7 @@ async getSubscription(
         where: {
           shopId,
           status: "REQUESTED",
-          providerSubscriptionIdSnapshot: providerSubscription.providerSubscriptionId as string,
-          billingPeriodId: verifiedBillingPeriodId,
-          shopifyEventHandleSnapshot: packMeter,
+          shopifyEventHandleSnapshot: eventHandle,
         },
         orderBy: { createdAt: "asc" },
       });
@@ -1573,27 +1604,21 @@ async getSubscription(
         include: { plan: true, billingPeriod: true },
       });
       const currentPlan = currentSubscription?.plan;
-      const currentPackMeter = currentPlan?.shopifyRecoveryCreditPackEventHandle?.trim();
       if (
         !currentSubscription ||
         !currentPlan ||
         (currentSubscription.status !== SubscriptionProjectionStatus.ACTIVE && currentSubscription.status !== SubscriptionProjectionStatus.TRIALING) ||
         !currentPlan.active ||
-        !currentPlan.recoveryCreditPackEnabled ||
-        !currentPackMeter ||
-        !currentPlan.recoveryCreditsPerPack ||
-        currentPlan.recoveryCreditsPerPack <= 0 ||
         !currentSubscription.billingPeriod ||
         currentSubscription.billingPeriod.id !== currentSubscription.billingPeriodId ||
         currentSubscription.billingPeriod.status !== BillingPeriodStatus.OPEN ||
         !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
         deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE" ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
-        currentPackMeter !== packMeter ||
-        currentPlan.recoveryCreditsPerPack !== creditsGranted ||
+        currentSelectedEvent?.creditsGrantedPerUnit !== creditsGranted ||
         (currentPlan.kind === BillingPlanKind.PAID_METERED &&
           (!currentPlan.shopifyUsageEventHandle ||
-            currentPlan.shopifyUsageEventHandle === currentPackMeter ||
+            currentPlan.shopifyUsageEventHandle === eventHandle ||
             !providerSubscription.usageEventHandles.includes(currentPlan.shopifyUsageEventHandle)))
       ) {
         throw new Error("Recovery credit pack configuration changed during purchase request.");
@@ -1612,7 +1637,7 @@ async getSubscription(
           sourceType: "RECOVERY_CREDIT_PURCHASE",
           sourceId: purchaseId,
           shopifyReportState: "PENDING",
-          shopifyEventHandle: packMeter,
+          shopifyEventHandle: eventHandle,
           shopifyIdempotencyKey: createShopifyUsageIdempotencyKey(shopId, usageEventId),
         },
       });
@@ -1623,8 +1648,8 @@ async getSubscription(
           planId: currentPlan.id,
           billingPeriodId: currentSubscription.billingPeriodId as string,
           shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
-          shopifyEventHandleSnapshot: packMeter,
-          providerSubscriptionIdSnapshot: providerSubscription.providerSubscriptionId as string,
+          shopifyEventHandleSnapshot: eventHandle,
+          providerSubscriptionIdSnapshot: providerContextIdentity,
           providerUsageQuantityBeforeSnapshot: providerBeforeEvidence.quantity,
           providerUsageCostBeforeSnapshot: providerBeforeEvidence.costAmount,
           providerUsageCostCurrencyBeforeSnapshot: providerBeforeEvidence.costCurrency,

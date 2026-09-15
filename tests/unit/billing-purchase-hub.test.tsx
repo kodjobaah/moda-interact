@@ -89,7 +89,7 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Manage purchased credits");
   });
 
-  it("renders one resolved offer without a purchase action", () => {
+  it("renders one resolved offer with its selected handle", () => {
     const markup = render({
       topUpState: {
         ...topUpState,
@@ -103,11 +103,11 @@ describe("BillingPurchaseHub", () => {
       },
     });
     expect(markup).toContain("10");
-    expect(markup).not.toContain(">Buy</button>");
-    expect(markup).not.toContain("fetcher");
+    expect(markup).toContain(">Buy</button>");
+    expect(markup).toContain('name="eventHandle" value="recovery-small"');
   });
 
-  it("renders multiple resolved offers in catalogue order without purchase actions", () => {
+  it("renders multiple resolved offers in catalogue order with selected handles", () => {
     const markup = render({
       topUpState: {
         ...topUpState,
@@ -118,6 +118,7 @@ describe("BillingPurchaseHub", () => {
       },
     });
     expect(markup.indexOf(">10<")).toBeLessThan(markup.indexOf(">50<"));
-    expect(markup).not.toContain(">Buy</button>");
+    expect(markup).toContain('name="eventHandle" value="recovery-small"');
+    expect(markup).toContain('name="eventHandle" value="recovery-large"');
   });
 });

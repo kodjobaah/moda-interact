@@ -1013,7 +1013,7 @@ describe("BillingService subscription projection", () => {
     await expect(service.requestRecoveryCreditPack(
       "shop-1",
       "BUY_RECOVERY_CREDIT_PACK",
-      "11111111-1111-4111-8111-111111111111",
+      "11111111-1111-4111-8111-111111111111", "credit-pack-meter",
     )).rejects.toThrow("Recovery credit packs are unavailable for this subscription.");
     expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
   });
@@ -2054,10 +2054,17 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
     plan,
   };
   const transactionSubscription = { ...subscriptionState };
+  const merchantPricingPlan = {
+    shopifyPlanHandle: "growth",
+    usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+  };
   const database = {
     shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
     subscription: {
       findUnique: vi.fn().mockResolvedValue(subscriptionState),
+    },
+    merchantPricingPlan: {
+      findUnique: vi.fn().mockResolvedValue(merchantPricingPlan),
     },
     recoveryCreditPurchase: {
       findUnique: vi.fn().mockImplementation(async ({ where }: { where: { id: string } }) => purchases.get(where.id) ?? null),
@@ -2085,7 +2092,7 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
       shopEntitlementCounter,
     })),
   };
-  return { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription };
+  return { database, purchases, usageEvents, shopEntitlementCounter, subscriptionState, transactionSubscription, merchantPricingPlan };
 }
 
 describe("BillingService merchant billing state", () => {
@@ -2530,6 +2537,12 @@ describe("BillingService merchant billing state", () => {
       const database = {
         shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
         subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+        merchantPricingPlan: {
+          findUnique: vi.fn().mockResolvedValue({
+            shopifyPlanHandle: plan.shopifyPlanHandle,
+            usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+          }),
+        },
         shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue({ grantedQuantity: 20, committedQuantity: 3, reservedQuantity: 2 }) },
         usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 5 } }) },
       };
@@ -2963,7 +2976,7 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
-    const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "11111111-1111-4111-8111-111111111111");
+    const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "11111111-1111-4111-8111-111111111111", "credit-pack-meter");
 
     expect(purchase).toMatchObject({ id: "11111111-1111-4111-8111-111111111111", creditsGranted: 100, status: "REQUESTED" });
     expect(usageEvents).toHaveLength(1);
@@ -2990,7 +3003,7 @@ describe("BillingService recovery credit packs", () => {
     await expect(service.requestRecoveryCreditPack(
       "shop-1",
       "BUY_RECOVERY_CREDIT_PACK",
-      "abababab-abab-4aba-8aba-abababababab",
+      "abababab-abab-4aba-8aba-abababababab", "credit-pack-meter",
     )).rejects.toThrow("Shopify lifecycle snapshot is not supported");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3019,7 +3032,7 @@ describe("BillingService recovery credit packs", () => {
     await expect(service.requestRecoveryCreditPack(
       "shop-1",
       "BUY_RECOVERY_CREDIT_PACK",
-      "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd",
+      "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd", "credit-pack-meter",
     )).rejects.toThrow("Shopify subscription is frozen");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3062,6 +3075,7 @@ describe("BillingService recovery credit packs", () => {
             kind === "FREE"
               ? `f${phase === "DRAINING" ? "1" : "2"}111111-1111-4111-8111-111111111111`
               : `a${phase === "DRAINING" ? "1" : "2"}111111-1111-4111-8111-111111111111`,
+            "credit-pack-meter",
           ),
         ).rejects.toThrow("temporarily unavailable");
         expect(usageEvents).toHaveLength(0);
@@ -3093,7 +3107,7 @@ describe("BillingService recovery credit packs", () => {
           "BUY_RECOVERY_CREDIT_PACK",
           kind === "Free"
             ? "c1111111-1111-4111-8111-111111111111"
-            : "d1111111-1111-4111-8111-111111111111",
+            : "d1111111-1111-4111-8111-111111111111", "credit-pack-meter",
         ),
       ).rejects.toThrow("current local billing cycle");
       expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
@@ -3108,8 +3122,8 @@ describe("BillingService recovery credit packs", () => {
     const service = new BillingService(provider, database as never);
     const purchaseId = "22222222-2222-4222-8222-222222222222";
 
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter");
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter");
 
     expect(purchases).toHaveLength(1);
     expect(usageEvents).toHaveLength(1);
@@ -3120,8 +3134,8 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "33333333-3333-4333-8333-333333333333");
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "44444444-4444-4444-8444-444444444444"))
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "33333333-3333-4333-8333-333333333333", "credit-pack-meter");
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "44444444-4444-4444-8444-444444444444", "credit-pack-meter"))
       .rejects.toThrow("already awaiting Shopify confirmation");
 
     expect(usageEvents).toHaveLength(1);
@@ -3132,7 +3146,7 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter"] }));
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "55555555-5555-4555-8555-555555555555", "credit-pack-meter"))
       .rejects.toThrow("could not be verified");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3154,7 +3168,7 @@ describe("BillingService recovery credit packs", () => {
       }));
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "56565656-5656-4565-8565-565656565656"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "56565656-5656-4565-8565-565656565656", "credit-pack-meter"))
       .rejects.toThrow("before evidence is unavailable");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3173,7 +3187,7 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "12121212-1212-4121-8121-121212121212"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "12121212-1212-4121-8121-121212121212", "credit-pack-meter"))
       .rejects.toThrow("current local billing cycle");
     expect(usageEvents).toHaveLength(0);
     expect(purchases).toHaveLength(0);
@@ -3186,7 +3200,7 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription());
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "13131313-1313-4131-8131-131313131313"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "13131313-1313-4131-8131-131313131313", "credit-pack-meter"))
       .rejects.toThrow("current local billing cycle");
     expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
     expect(usageEvents).toHaveLength(0);
@@ -3204,7 +3218,7 @@ describe("BillingService recovery credit packs", () => {
         }));
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "14141414-1414-4141-8141-141414141414"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "14141414-1414-4141-8141-141414141414", "credit-pack-meter"))
       .rejects.toThrow("current Shopify billing cycle");
     expect(usageEvents).toHaveLength(0);
     expect(purchases).toHaveLength(0);
@@ -3225,10 +3239,10 @@ describe("BillingService recovery credit packs", () => {
     const service = new BillingService(provider, database as never);
     const purchaseId = "66666666-6666-4666-8666-666666666666";
 
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter");
     provider.getSubscriptionLifecycleSnapshot.mockRejectedValue(new Error("Shopify unavailable"));
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter"))
       .resolves.toMatchObject({ id: purchaseId });
     expect(usageEvents).toHaveLength(1);
     expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
@@ -3249,7 +3263,7 @@ describe("BillingService recovery credit packs", () => {
         : "e2222222-2222-4222-8222-222222222222";
 
       try {
-        const created = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId);
+        const created = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter");
         vi.setSystemTime(
           phase === "DRAINING"
             ? new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)
@@ -3257,7 +3271,7 @@ describe("BillingService recovery credit packs", () => {
         );
         provider.getSubscriptionLifecycleSnapshot.mockRejectedValue(new Error("Shopify unavailable"));
 
-        await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId))
+        await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", purchaseId, "credit-pack-meter"))
           .resolves.toMatchObject({ id: purchaseId });
         expect(created.id).toBe(purchaseId);
         expect(provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(1);
@@ -3287,7 +3301,7 @@ describe("BillingService recovery credit packs", () => {
     const service = new BillingService(provider, database as never);
 
     try {
-      const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "f3333333-3333-4333-8333-333333333333");
+      const purchase = await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "f3333333-3333-4333-8333-333333333333", "credit-pack-meter");
 
       expect(purchase.usageEventId).toEqual(expect.any(String));
       expect(usageEvents[0]).toMatchObject({ billingPeriodId: "period-2" });
@@ -3301,17 +3315,19 @@ describe("BillingService recovery credit packs", () => {
   });
 
   it("fails closed when the durable configuration changes after provider verification", async () => {
-    const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
-    const plan = (await database.subscription.findUnique({ where: { shopId: "shop-1" } })).plan;
+    const { database, usageEvents, merchantPricingPlan } = createRecoveryCreditPurchaseDatabase();
+    let merchantPricingReads = 0;
+    database.merchantPricingPlan.findUnique.mockImplementation(async () => {
+      merchantPricingReads += 1;
+      if (merchantPricingReads === 2) merchantPricingPlan.usageEvents[0].creditsGrantedPerUnit = 200;
+      return structuredClone(merchantPricingPlan);
+    });
     const provider = {
-      getSubscriptionLifecycleSnapshot: vi.fn().mockImplementation(async () => {
-        plan.recoveryCreditsPerPack = 200;
-        return { activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null };
-      }),
+      getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({ activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null }),
     };
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "77777777-7777-4777-8777-777777777777"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "77777777-7777-4777-8777-777777777777", "credit-pack-meter"))
       .rejects.toThrow("configuration changed");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3325,7 +3341,7 @@ describe("BillingService recovery credit packs", () => {
     const provider = topUpProvider(providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }));
     const service = new BillingService(provider, database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "15151515-1515-4151-8151-151515151515"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "15151515-1515-4151-8151-151515151515", "credit-pack-meter"))
       .rejects.toThrow("configuration changed");
     expect(usageEvents).toHaveLength(0);
     expect(purchases).toHaveLength(0);
@@ -3339,7 +3355,7 @@ describe("BillingService recovery credit packs", () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase(planOverrides);
     const service = new BillingService(topUpProvider(providerSubscription()), database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "88888888-8888-4888-8888-888888888888"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "88888888-8888-4888-8888-888888888888", "credit-pack-meter"))
       .rejects.toThrow();
     expect(usageEvents).toHaveLength(0);
   });
@@ -3353,6 +3369,7 @@ describe("BillingService recovery credit packs", () => {
       "shop-1",
       "BUY_RECOVERY_CREDIT_PACK",
       "99999999-9999-4999-8999-999999999999",
+      "credit-pack-meter",
       { creditsGranted: 1, planId: "attacker-plan", meter: "attacker-meter", price: "0" },
     );
 
@@ -3376,7 +3393,7 @@ describe("BillingService recovery credit packs", () => {
       service.requestRecoveryCreditPack(
         "shop-1",
         "BUY_RECOVERY_CREDIT_PACK",
-        "abababab-abab-4bab-8bab-abababababab",
+        "abababab-abab-4bab-8bab-abababababab", "credit-pack-meter",
       ),
     ).rejects.toThrow("unavailable for this subscription");
     expect(usageEvents).toHaveLength(0);
@@ -3415,6 +3432,7 @@ describe("BillingService recovery credit packs", () => {
         "shop-1",
         "BUY_RECOVERY_CREDIT_PACK",
         purchaseId,
+        "credit-pack-meter",
       ),
     ).resolves.toMatchObject({
       id: purchaseId,
@@ -3441,7 +3459,7 @@ describe("BillingService recovery credit packs", () => {
     }) };
     const service = new BillingService(provider, database as never);
 
-    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+    await service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "credit-pack-meter");
 
     expect(events).toEqual(["provider", "transaction"]);
   });
