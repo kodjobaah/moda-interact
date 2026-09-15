@@ -134,7 +134,7 @@ describe("app home loader", () => {
     });
   });
 
-  it("keeps effective no-contract and frozen merchants on the dashboard data path", async () => {
+  it("keeps historical dashboard data readable without reading pending recoveries for denied states", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
     getSubscriptionProjection.mockResolvedValue({ status: "NO_CONTRACT" });
@@ -150,8 +150,16 @@ describe("app home loader", () => {
     expect(result).toMatchObject({
       subscription: { status: "NO_CONTRACT" },
       capacity: { availability: "CONTRACT_FROZEN", canStartRecovery: false },
+      pendingRecoveries: {
+        available: false,
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0,
+        items: [],
+      },
     });
-    expect(readPendingRecoveries).toHaveBeenCalled();
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
   });
 
   it("redirects pending reinstall before reading product data", async () => {

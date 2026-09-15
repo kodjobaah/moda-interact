@@ -21,7 +21,10 @@ import {
 } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
-import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import {
+  canAccessMerchantSurface,
+  resolveMerchantExperienceState,
+} from "@/services/shop/merchant-route-access-policy";
 
 import db from "@/db.server";
 
@@ -90,11 +93,23 @@ console.log("Resolved shop settings:", settings);
     observedShopifyPlanHandle: capacity.observedShopifyPlanHandle,
   };
 
-  const pendingRecoveries = await readPendingRecoveries({
-    shopId: shop.id,
-    shopDomain: shop.domain,
-    page: pendingPage,
-  });
+  const pendingRecoveries = canAccessMerchantSurface(
+    merchantExperienceState,
+    "PENDING_RECOVERIES",
+  )
+    ? await readPendingRecoveries({
+        shopId: shop.id,
+        shopDomain: shop.domain,
+        page: pendingPage,
+      })
+    : {
+        available: false,
+        page: 1,
+        pageSize: 10,
+        total: 0,
+        totalPages: 0,
+        items: [],
+      };
 
   const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
   console.log("Resolved recoveries:", recoveries);
