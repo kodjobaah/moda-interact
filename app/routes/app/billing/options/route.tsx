@@ -122,16 +122,16 @@ export default function BillingOptionsPage() {
   const hasMappedCurrentContract = data.verificationState === "ACTIVE_SUBSCRIPTION"
     && mappingStatus === "MAPPED";
   const topUpState = data.topUp ? {
-    configured: hasMappedCurrentContract ? data.topUp.configured : false,
+    configured: hasMappedCurrentContract && data.topUp.recoveryCreditOffers.length > 0,
     purchaseEligible: data.verificationState === "ACTIVE_SUBSCRIPTION" && mappingStatus === "MAPPED" && data.lifecycleState === "ACTIVE" && !data.scheduledCancellation && data.topUp.purchaseEligible,
-    creditsPerPack: hasMappedCurrentContract ? data.topUp.creditsPerPack : null,
+    offers: hasMappedCurrentContract ? data.topUp.recoveryCreditOffers : [],
+    offerVerificationState: data.topUp.recoveryCreditOfferVerificationState,
     paidIncludedCreditsAvailable: data.capacity?.paidIncluded?.remaining ?? null,
     freeLifetimeCreditsAvailable: data.capacity?.freeLifetime?.remaining ?? null,
     promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
     purchasedCreditsAvailable: data.capacity?.purchased.available ?? data.topUp.purchasedRecoveryCredits.available,
-    shopifyPackMeter: hasMappedCurrentContract ? data.topUp.shopifyPackMeter : null,
     latestPurchase: fetcher.data?.purchase ?? data.topUp.latestPurchase,
-  } : { configured: false, purchaseEligible: false, creditsPerPack: null, purchasedCreditsAvailable: 0, shopifyPackMeter: null, latestPurchase: null };
+  } : { configured: false, purchaseEligible: false, offers: [], offerVerificationState: "VERIFICATION_UNAVAILABLE", purchasedCreditsAvailable: 0, latestPurchase: null };
   const current = subscription ? { shopifyPlanHandle: subscription.planHandle, mappedModaPlanName: mapping?.name ?? null, price: subscription.price, interval: subscription.billingPeriod, currentPeriodEnd: subscription.currentPeriodEnd, cancelAtEndOfCycle: subscription.cancelAtEndOfCycle } : null;
   const pending = subscription?.pendingUpdate ? { shopifyPlanHandle: subscription.pendingUpdate.planHandle, price: subscription.pendingUpdate.price, effectiveAt: subscription.pendingUpdate.effectiveAt } : null;
   const initialView = data.requestedSelection ? "plans" : "topup";

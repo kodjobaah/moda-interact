@@ -182,10 +182,10 @@ export class ShopifyBillingProvider
     }
 
     const flatRateItems = subscription.items.filter(
-      (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+      (item) => item.handle && item.price?.__typename === "FlatRatePrice",
     );
     const tieredItems = subscription.items.filter(
-      (item) => item.handle && item.price?.__typename === "TieredPrice" && item.price.active,
+      (item) => item.handle && item.price?.__typename === "TieredPrice",
     );
     const planHandle = flatRateItems[0]?.handle;
 
@@ -196,7 +196,7 @@ export class ShopifyBillingProvider
     }
 
     const pendingFlatRateItems = subscription.pendingUpdate?.items.filter(
-      (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+      (item) => item.handle && item.price?.__typename === "FlatRatePrice",
     ) ?? [];
 
     if (pendingFlatRateItems.length > 1) {
@@ -431,17 +431,17 @@ function parseLifecycleActiveSubscription(
 ): ProviderSubscription | null {
   if (!subscription) return null;
   const flatRateItems = subscription.items.filter(
-    (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+    (item) => item.handle && item.price?.__typename === "FlatRatePrice",
   );
   const tieredItems = subscription.items.filter(
-    (item) => item.handle && item.price?.__typename === "TieredPrice" && item.price.active,
+    (item) => item.handle && item.price?.__typename === "TieredPrice",
   );
   const planHandle = flatRateItems[0]?.handle;
   if (!planHandle || flatRateItems.length !== 1) {
     throw new Error("Active Shopify subscription must have exactly one active flat-rate plan handle");
   }
   const pendingFlatRateItems = subscription.pendingUpdate?.items.filter(
-    (item) => item.handle && item.price?.__typename === "FlatRatePrice" && item.price.active,
+    (item) => item.handle && item.price?.__typename === "FlatRatePrice",
   ) ?? [];
   if (pendingFlatRateItems.length > 1) {
     throw new Error("Pending Shopify subscription update must have at most one active flat-rate plan handle");

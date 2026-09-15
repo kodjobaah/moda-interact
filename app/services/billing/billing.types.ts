@@ -75,6 +75,16 @@ export interface ProviderUsageSnapshot {
   costCurrency: string | null;
 }
 
+export interface RecoveryCreditOffer {
+  eventHandle: string;
+  cataloguePosition: number;
+  creditsGranted: number;
+  providerPrice: ProviderUsageItem["price"];
+  providerUsage: ProviderUsageItem["usage"];
+}
+
+export type RecoveryCreditOfferVerificationState = "VERIFIED" | "VERIFICATION_UNAVAILABLE";
+
 export type ProviderSubscriptionLifecycleEventType =
   | "SUBSCRIPTION_CREATED"
   | "SUBSCRIPTION_UPDATED"

@@ -116,6 +116,7 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
       recurringAmountMinor: plan.recurringAmountMinor,
       currency: plan.currency,
       usageEvents: plan.usageEvents.map((event) => ({
+        cataloguePosition: event.position,
         eventHandle: event.eventHandle,
         creditsGrantedPerUnit: event.creditsGrantedPerUnit,
         maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
@@ -131,4 +132,73 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
       })),
     };
   });
+}
+
+export function resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan }) {
+  if (!providerSubscription || (providerSubscription.status !== "ACTIVE" && providerSubscription.status !== "TRIALING")) {
+    throw new Error("A live provider subscription is required to resolve recovery-credit offers.");
+  }
+
+  if (!merchantPricingPlan || merchantPricingPlan.shopifyPlanHandle !== providerSubscription.planHandle) {
+    return { offers: [], diagnostics: [] };
+  }
+
+  const providerItems = new Map(
+    (providerSubscription.usageItems ?? [])
+      .filter((item) => typeof item?.handle === "string" && item.handle.trim())
+      .map((item) => [item.handle, item]),
+  );
+  const diagnostics = [];
+  const offers = (merchantPricingPlan.usageEvents ?? [])
+    .slice()
+    .sort((left, right) => left.position - right.position)
+    .flatMap((event) => {
+      const providerItem = providerItems.get(event.eventHandle);
+      if (!providerItem) return [];
+      return [{
+        eventHandle: event.eventHandle,
+        cataloguePosition: event.position,
+        creditsGranted: event.creditsGrantedPerUnit,
+        providerPrice: providerItem.price,
+        providerUsage: providerItem.usage,
+      }];
+    });
+
+  for (const handle of providerItems.keys()) {
+    if (!(merchantPricingPlan.usageEvents ?? []).some((event) => event.eventHandle === handle)) {
+      if (diagnostics.length < 10) diagnostics.push({ code: "UNKNOWN_PROVIDER_METER", handle });
+    }
+  }
+
+  return { offers, diagnostics };
+}
+
+export async function readMerchantPricingPlanForProvider({ planHandle } = {}) {
+  validateText(planHandle, "provider plan handle");
+  const plan = await db.merchantPricingPlan.findUnique({
+    where: { shopifyPlanHandle: planHandle },
+    include: {
+      usageEvents: {
+        orderBy: { position: "asc" },
+        include: { tiers: { orderBy: { position: "asc" } } },
+      },
+    },
+  });
+  if (!plan) return null;
+  validatePlan(plan, { merchantDescription: plan.displayName }, 0);
+  return {
+    shopifyPlanHandle: plan.shopifyPlanHandle,
+    cataloguePosition: plan.cataloguePosition,
+    usageEvents: plan.usageEvents.map((event) => ({
+      cataloguePosition: event.position,
+      position: event.position,
+      eventHandle: event.eventHandle,
+      creditsGrantedPerUnit: event.creditsGrantedPerUnit,
+      maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
+      pricingMode: event.pricingMode,
+      currency: event.currency,
+      fixedUnitAmountMinor: event.fixedUnitAmountMinor,
+      tiers: event.tiers,
+    })),
+  };
 }

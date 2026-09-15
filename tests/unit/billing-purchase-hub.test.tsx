@@ -2,15 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
 
-vi.mock("../../app/components/dashboard/TopUpPurchasePanel", () => ({
-  default: () => null,
-}));
-
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
 const topUpState = {
   configured: true,
   purchaseEligible: true,
-  creditsPerPack: 10,
+  offers: [],
+  offerVerificationState: "VERIFIED",
   purchasedCreditsAvailable: 4,
   latestPurchase: null,
 };
@@ -59,9 +56,9 @@ describe("BillingPurchaseHub", () => {
       verificationState: "ACTIVE_SUBSCRIPTION",
       current: { shopifyPlanHandle: "free", mappedModaPlanName: "Free" },
       billingPeriodPhase: null,
-      topUpState: { ...topUpState, purchaseEligible: false },
+      topUpState: { ...topUpState, purchaseEligible: false, offerVerificationState: "VERIFICATION_UNAVAILABLE" },
     });
-    expect(markup).toContain("Top-up purchase is unavailable until the current billing cycle and recovery-credit meter are verified.");
+    expect(markup).toContain("We couldn&#x27;t verify top-up availability right now. Please try again later.");
     expect(markup).not.toContain(">Buy</button>");
   });
 
@@ -71,7 +68,6 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Included recoveries this period: 0");
     expect(markup).not.toContain("Lifetime Free recoveries: 0");
     expect(markup).not.toContain("Promotional recoveries available</span>");
-    expect(markup).not.toContain("purchased credits available</span>");
   });
 
   it("warns for a genuine UNMAPPED subscription without hiding independent balances", () => {

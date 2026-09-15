@@ -10,7 +10,7 @@ vi.mock("../../app/db.server", () => ({
   default: { merchantPricingPlan: { findMany } },
 }));
 
-const { readActiveMerchantPricingCatalogue } = await import("../../app/services/merchant-pricing/merchant-pricing.server");
+const { readActiveMerchantPricingCatalogue, resolveCurrentRecoveryCreditOffers } = await import("../../app/services/merchant-pricing/merchant-pricing.server");
 
 function plan(overrides = {}) {
   return {
@@ -122,5 +122,53 @@ describe("readActiveMerchantPricingCatalogue", () => {
     }] })]);
 
     await expect(readActiveMerchantPricingCatalogue({ locale: "en" })).rejects.toThrow(/^MERCHANT_PRICING_CATALOGUE_INVALID:/);
+  });
+});
+
+describe("resolveCurrentRecoveryCreditOffers", () => {
+  const providerItem = (handle, amount = "4.00") => ({
+    handle,
+    price: { kind: "TIERED", active: false, currency: "USD", tiersMode: "VOLUME", tiers: [{ upTo: null, amountPerUnit: amount, amount }] },
+    usage: { quantity: 2, costAmount: amount, costCurrency: "USD" },
+  });
+  const providerSubscription = (usageItems, planHandle = "growth") => ({
+    status: "ACTIVE",
+    planHandle,
+    usageItems,
+  });
+  const plan = (shopifyPlanHandle = "growth", usageEvents = []) => ({ shopifyPlanHandle, isActive: false, usageEvents });
+
+  it("intersects exact handles in position order and uses live provider values", () => {
+    const result = resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([providerItem("second", "8.00"), providerItem("first")]),
+      merchantPricingPlan: plan("growth", [
+        { position: 1, eventHandle: "second", creditsGrantedPerUnit: 40 },
+        { position: 0, eventHandle: "first", creditsGrantedPerUnit: 12 },
+      ]),
+    });
+    expect(result.offers).toEqual([
+      expect.objectContaining({ eventHandle: "first", cataloguePosition: 0, creditsGranted: 12, providerPrice: expect.objectContaining({ active: false }), providerUsage: expect.objectContaining({ costAmount: "4.00" }) }),
+      expect.objectContaining({ eventHandle: "second", cataloguePosition: 1, creditsGranted: 40, providerPrice: expect.objectContaining({ tiers: [{ amountPerUnit: "8.00", amount: "8.00", upTo: null }] }) }),
+    ]);
+  });
+
+  it("omits missing events, records unknown provider meters, and never crosses plan handles", () => {
+    const result = resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([providerItem("known"), providerItem("unknown")]),
+      merchantPricingPlan: plan("growth", [{ position: 0, eventHandle: "known", creditsGrantedPerUnit: 5 }]),
+    });
+    expect(result.offers).toHaveLength(1);
+    expect(result.diagnostics).toEqual([{ code: "UNKNOWN_PROVIDER_METER", handle: "unknown" }]);
+    expect(resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([providerItem("known")], "other-plan"),
+      merchantPricingPlan: plan("growth", [{ position: 0, eventHandle: "known", creditsGrantedPerUnit: 5 }]),
+    })).toEqual({ offers: [], diagnostics: [] });
+  });
+
+  it.each([[[]], [[{ position: 0, eventHandle: "missing", creditsGrantedPerUnit: 5 }]]])("returns an empty valid intersection for %j", (usageEvents) => {
+    expect(resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([]),
+      merchantPricingPlan: plan("growth", usageEvents),
+    }).offers).toEqual([]);
   });
 });
