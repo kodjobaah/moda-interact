@@ -39,6 +39,14 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
+        <form method="post" onSubmit={(event) => {
+          event.currentTarget.purchaseId.value = crypto.randomUUID();
+        }}>
+          <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
+          <input type="hidden" name="purchaseId" value="" />
+          <input type="hidden" name="eventHandle" value={offer.eventHandle} />
+          <button type="submit" disabled={!topUpState.purchaseEligible}>Buy</button>
+        </form>
         {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
         {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
       </article>;
