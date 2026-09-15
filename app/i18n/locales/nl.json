@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Deze promotie is niet langer beschikbaar voor je winkel.",
   "promotions.error.unavailable": "Promoties kunnen niet worden gewijzigd zolang je abonnement niet beschikbaar is.",
   "promotions.history.title": "Promotiegeschiedenis",
+  "promotions.history.titleUnavailable": "Promotie niet beschikbaar",
   "promotions.history.empty": "Geen geschiedenis van geselecteerde promoties.",
   "promotions.history.granted": "Toegekend: {quantity}",
   "promotions.history.usedCredits": "Gebruikt: {quantity}",

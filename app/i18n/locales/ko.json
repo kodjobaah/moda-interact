@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "이 프로모션은 더 이상 스토어에서 사용할 수 없습니다.",
   "promotions.error.unavailable": "구독을 사용할 수 없는 동안에는 프로모션을 변경할 수 없습니다.",
   "promotions.history.title": "프로모션 기록",
+  "promotions.history.titleUnavailable": "프로모션을 사용할 수 없습니다",
   "promotions.history.empty": "선택한 프로모션 기록이 없습니다.",
   "promotions.history.granted": "지급: {quantity}",
   "promotions.history.usedCredits": "사용: {quantity}",

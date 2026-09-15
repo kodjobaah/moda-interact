@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Questa promozione non è più disponibile per il tuo negozio.",
   "promotions.error.unavailable": "Le promozioni non possono essere modificate mentre l’abbonamento non è disponibile.",
   "promotions.history.title": "Cronologia promozioni",
+  "promotions.history.titleUnavailable": "Promozione non disponibile",
   "promotions.history.empty": "Nessuna cronologia delle promozioni selezionate.",
   "promotions.history.granted": "Assegnati: {quantity}",
   "promotions.history.usedCredits": "Utilizzati: {quantity}",

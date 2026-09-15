@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "このプロモーションはストアで利用できなくなりました。",
   "promotions.error.unavailable": "サブスクリプションが利用できない間はプロモーションを変更できません。",
   "promotions.history.title": "プロモーション履歴",
+  "promotions.history.titleUnavailable": "プロモーションは利用できません",
   "promotions.history.empty": "選択済みプロモーションの履歴はありません。",
   "promotions.history.granted": "付与: {quantity}",
   "promotions.history.usedCredits": "使用済み: {quantity}",

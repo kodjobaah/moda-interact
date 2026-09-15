@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Tämä kampanja ei ole enää saatavilla kaupallesi.",
   "promotions.error.unavailable": "Kampanjoita ei voi vaihtaa, kun tilauksesi ei ole käytettävissä.",
   "promotions.history.title": "Kampanjahistoria",
+  "promotions.history.titleUnavailable": "Kampanja ei ole saatavilla",
   "promotions.history.empty": "Ei valittujen kampanjoiden historiaa.",
   "promotions.history.granted": "Myönnetty: {quantity}",
   "promotions.history.usedCredits": "Käytetty: {quantity}",

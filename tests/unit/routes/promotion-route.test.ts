@@ -39,8 +39,14 @@ describe("promotion merchant route", () => {
   });
 
   it("renders authored campaign text without internal metadata", () => {
-    expect(routeSource).toContain("offer.name");
+    expect(routeSource).toContain("offer.merchantTitle");
     expect(routeSource).toContain("offer.merchantDescription");
+    expect(routeSource).toContain("entry.campaignTitle ?? i18n.t(\"promotions.history.titleUnavailable\")");
+    expect(routeSource).toContain("const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale");
+    expect(routeSource).toContain("getEligiblePromotionOffers(shop.id, promotionLocale)");
+    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, pageValue)");
+    expect(routeSource).not.toContain("offer.name");
+    expect(routeSource).not.toContain("entry.campaignName");
     for (const internalField of ["platformAdminId", "targetPlanId", "targetShopId", "requestKey", "audit"]) {
       expect(routeSource).not.toContain(internalField);
     }

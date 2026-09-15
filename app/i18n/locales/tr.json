@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Bu promosyon mağazanız için artık kullanılamıyor.",
   "promotions.error.unavailable": "Aboneliğiniz kullanılamaz durumdayken promosyonlar değiştirilemez.",
   "promotions.history.title": "Promosyon geçmişi",
+  "promotions.history.titleUnavailable": "Promosyon kullanılamıyor",
   "promotions.history.empty": "Seçilen promosyon geçmişi yok.",
   "promotions.history.granted": "Verilen: {quantity}",
   "promotions.history.usedCredits": "Kullanılan: {quantity}",

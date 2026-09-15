@@ -27,6 +27,7 @@ function campaign(overrides = {}) {
     id: "campaign-1",
     name: "Recovery launch",
     merchantDescription: "A launch offer",
+    translations: [{ locale: "en", merchantTitle: "Localized launch", merchantDescription: "A localized launch offer" }],
     scope: "GLOBAL",
     quantity: 25,
     startsAt: new Date("2026-09-01T00:00:00.000Z"),
@@ -55,7 +56,7 @@ describe("promotion service", () => {
       selection: { shopId: "shop-1" },
       campaign: {
         id: "campaign-1",
-        name: "Recovery launch",
+        translations: [{ merchantTitle: "Localized launch" }],
         scope: "GLOBAL",
         expiresAt: new Date("2026-09-30T00:00:00.000Z"),
         status: "ACTIVE",
@@ -98,7 +99,7 @@ describe("promotion service", () => {
       selection: { shopId: "shop-1" },
       campaign: {
         id: "campaign-1",
-        name: "Recovery launch",
+        translations: [{ merchantTitle: "Localized launch" }],
         scope: "GLOBAL",
         expiresAt: new Date("2026-09-30T00:00:00.000Z"),
         status: "ACTIVE",
@@ -113,7 +114,7 @@ describe("promotion service", () => {
       promotionalCreditGrant: { count, findMany },
     };
 
-    const history = await getPromotionHistory("shop-1", 2, now, database as never);
+    const history = await getPromotionHistory("shop-1", "en", 2, now, database as never);
 
     expect(count).toHaveBeenCalledWith({ where: { shopId: "shop-1" } });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -123,7 +124,7 @@ describe("promotion service", () => {
       select: expect.objectContaining({
         campaign: expect.objectContaining({ select: expect.objectContaining({
           id: true,
-          name: true,
+          translations: { where: { locale: "en" }, select: { merchantTitle: true } },
           expiresAt: true,
           events: { where: { kind: "REOPENED" }, orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
         }) }),
@@ -139,6 +140,60 @@ describe("promotion service", () => {
     expect(history.entries[0]).not.toHaveProperty("requestKey");
   });
 
+  it("projects the exact history translation and returns null when it is missing", async () => {
+    const historyGrant = (translations: Array<{ merchantTitle: string }>) => ({
+        quantity: 25,
+        reservedQuantity: 0,
+        committedQuantity: 0,
+        selectionCount: 1,
+        firstSelectedAt: now,
+        lastSelectedAt: now,
+        firstUsedAt: null,
+        lastUsedAt: null,
+        exhaustedAt: null,
+        selection: null,
+        campaign: {
+          id: "campaign-localized",
+          translations,
+          scope: "GLOBAL",
+          expiresAt: new Date("2026-09-30T00:00:00.000Z"),
+          status: "ACTIVE",
+          targetPlanId: null,
+          targetShopId: null,
+          events: [],
+        },
+      });
+    const translationRows = [
+      { locale: "en", merchantTitle: "Internal English title" },
+      { locale: "fr", merchantTitle: "Titre français" },
+    ];
+    const findMany = vi.fn().mockImplementation((query) => Promise.resolve([historyGrant(
+      translationRows
+        .filter((translation) => translation.locale === query.select.campaign.select.translations.where.locale)
+        .map(({ merchantTitle }) => ({ merchantTitle })),
+    )]));
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionalCreditGrant: { count: vi.fn().mockResolvedValue(1), findMany },
+    };
+
+    const history = await getPromotionHistory("shop-1", "fr", 1, now, database as never);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        campaign: expect.objectContaining({
+          select: expect.objectContaining({
+            translations: { where: { locale: "fr" }, select: { merchantTitle: true } },
+          }),
+        }),
+      }),
+    }));
+    expect(history.entries[0].campaignTitle).toBe("Titre français");
+
+    const missingHistory = await getPromotionHistory("shop-1", "ja", 1, now, database as never);
+    expect(missingHistory.entries[0].campaignTitle).toBeNull();
+  });
+
   it("returns only currently running campaigns targeted to the shop or its plan", async () => {
     const findMany = vi.fn().mockResolvedValue([campaign()]);
     const database = {
@@ -146,7 +201,7 @@ describe("promotion service", () => {
       promotionCampaign: { findMany },
     };
 
-    const offers = await getEligiblePromotionOffers("shop-1", now, database as never);
+    const offers = await getEligiblePromotionOffers("shop-1", "en", now, database as never);
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
@@ -162,7 +217,8 @@ describe("promotion service", () => {
     }));
     expect(offers[0]).toEqual(expect.objectContaining({
       id: "campaign-1",
-      name: "Recovery launch",
+      merchantTitle: "Localized launch",
+      merchantDescription: "A localized launch offer",
       quantity: 25,
       remainingQuantity: 25,
       eligible: true,
@@ -171,6 +227,49 @@ describe("promotion service", () => {
     }));
     expect(offers[0]).not.toHaveProperty("targetPlanId");
     expect(offers[0]).not.toHaveProperty("targetShopId");
+  });
+
+  it.each([
+    ["fr", "French title", "French description"],
+    ["ja", "Japanese title", "Japanese description"],
+    ["pt-BR", "Brazilian title", "Brazilian description"],
+    ["pt-PT", "Portuguese title", "Portuguese description"],
+    ["zh-Hans", "Simplified title", "Simplified description"],
+    ["zh-Hant", "Traditional title", "Traditional description"],
+  ])("reads the exact %s campaign translation", async (locale, title, description) => {
+    const translationRows = [
+      { locale: "en", merchantTitle: "Internal English title", merchantDescription: "Internal English description" },
+      { locale, merchantTitle: title, merchantDescription: description },
+    ];
+    const findMany = vi.fn().mockImplementation((query) => Promise.resolve([campaign({
+      translations: translationRows.filter((translation) => translation.locale === query.select.translations.where.locale),
+    })]));
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findMany },
+    };
+
+    const offers = await getEligiblePromotionOffers("shop-1", locale, now, database as never);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        translations: { where: { locale }, select: { merchantTitle: true, merchantDescription: true } },
+      }),
+    }));
+    expect(offers[0]).toMatchObject({ merchantTitle: title, merchantDescription: description });
+    expect(offers[0]).not.toHaveProperty("name");
+  });
+
+  it("omits an active campaign with no exact translation", async () => {
+    const findMany = vi.fn().mockResolvedValue([campaign({
+      translations: [],
+    })]);
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue(context()) },
+      promotionCampaign: { findMany },
+    };
+
+    await expect(getEligiblePromotionOffers("shop-1", "fr", now, database as never)).resolves.toEqual([]);
   });
 
   it.each([
@@ -183,7 +282,7 @@ describe("promotion service", () => {
       promotionCampaign: { findMany },
     };
 
-    await getEligiblePromotionOffers("shop-1", now, database as never);
+    await getEligiblePromotionOffers("shop-1", "en", now, database as never);
 
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
@@ -205,7 +304,7 @@ describe("promotion service", () => {
     ]);
     const database = { shop: { findUnique: vi.fn().mockResolvedValue(context()) }, promotionCampaign: { findMany } };
 
-    const offers = await getEligiblePromotionOffers("shop-1", now, database as never);
+    const offers = await getEligiblePromotionOffers("shop-1", "en", now, database as never);
 
     expect(offers).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "campaign-old", previouslyClaimed: true, currentlySelected: false, remainingQuantity: 20 }),

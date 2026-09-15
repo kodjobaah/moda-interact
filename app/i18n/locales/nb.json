@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Denne kampanjen er ikke lenger tilgjengelig for butikken din.",
   "promotions.error.unavailable": "Kampanjer kan ikke endres mens abonnementet ditt er utilgjengelig.",
   "promotions.history.title": "Kampanjehistorikk",
+  "promotions.history.titleUnavailable": "Kampanjen er utilgjengelig",
   "promotions.history.empty": "Ingen historikk for valgte kampanjer.",
   "promotions.history.granted": "Tildelt: {quantity}",
   "promotions.history.usedCredits": "Brukt: {quantity}",

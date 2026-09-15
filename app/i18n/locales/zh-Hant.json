@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "此促銷已不再適用於您的商店。",
   "promotions.error.unavailable": "訂閱無法使用時不能變更促銷。",
   "promotions.history.title": "促銷歷史",
+  "promotions.history.titleUnavailable": "促銷無法使用",
   "promotions.history.empty": "沒有已選擇的促銷歷史。",
   "promotions.history.granted": "已授予：{quantity}",
   "promotions.history.usedCredits": "已使用：{quantity}",

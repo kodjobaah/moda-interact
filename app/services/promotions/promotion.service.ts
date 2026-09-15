@@ -117,7 +117,7 @@ export function projectPromotionHistoryRow(
     selection: { shopId: string } | null;
     campaign: {
       id: string;
-      name: string;
+      translations: Array<{ merchantTitle: string }>;
       scope: string;
       expiresAt: Date;
       status: string;
@@ -133,7 +133,7 @@ export function projectPromotionHistoryRow(
 ) {
   return {
     campaignId: grant.campaign.id,
-    campaignName: grant.campaign.name,
+    campaignTitle: grant.campaign.translations?.[0]?.merchantTitle ?? null,
     quantityGranted: grant.quantity,
     committedQuantity: grant.committedQuantity,
     remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity),
@@ -167,8 +167,7 @@ async function readContext(database: PromotionDatabase, shopId: string): Promise
 
 function merchantOffer(campaign: {
   id: string;
-  name: string;
-  merchantDescription: string | null;
+  translations: Array<{ merchantTitle: string; merchantDescription: string }>;
   scope: string;
   quantity: number;
   startsAt: Date;
@@ -189,8 +188,8 @@ function merchantOffer(campaign: {
   const grant = campaign.promotionalCreditGrants[0] ?? null;
   return {
     id: campaign.id,
-    name: campaign.name,
-    merchantDescription: campaign.merchantDescription,
+    merchantTitle: campaign.translations[0].merchantTitle,
+    merchantDescription: campaign.translations[0].merchantDescription,
     scope: campaign.scope,
     quantity: campaign.quantity,
     expiresAt: campaign.expiresAt,
@@ -205,6 +204,7 @@ function merchantOffer(campaign: {
 
 export async function getEligiblePromotionOffers(
   shopId: string,
+  locale: string,
   now = new Date(),
   database: PromotionDatabase = prisma,
 ) {
@@ -224,8 +224,7 @@ export async function getEligiblePromotionOffers(
     },
     select: {
       id: true,
-      name: true,
-      merchantDescription: true,
+      translations: { where: { locale }, select: { merchantTitle: true, merchantDescription: true } },
       scope: true,
       quantity: true,
       startsAt: true,
@@ -240,11 +239,14 @@ export async function getEligiblePromotionOffers(
     },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
   });
-  return campaigns.map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
+  return campaigns
+    .filter((campaign: Parameters<typeof merchantOffer>[0]) => campaign.translations.length === 1)
+    .map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
 }
 
 export async function getPromotionHistory(
   shopId: string,
+  locale: string,
   page = 1,
   now = new Date(),
   database: PromotionDatabase = prisma,
@@ -274,7 +276,7 @@ export async function getPromotionHistory(
         campaign: {
           select: {
             id: true,
-            name: true,
+            translations: { where: { locale }, select: { merchantTitle: true } },
             scope: true,
             expiresAt: true,
             status: true,

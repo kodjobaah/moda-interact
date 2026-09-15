@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "Diese Aktion ist für Ihren Shop nicht mehr verfügbar.",
   "promotions.error.unavailable": "Aktionen können nicht geändert werden, wenn Ihr Abonnement nicht verfügbar ist.",
   "promotions.history.title": "Aktionsverlauf",
+  "promotions.history.titleUnavailable": "Aktion nicht verfügbar",
   "promotions.history.empty": "Kein Verlauf ausgewählter Aktionen.",
   "promotions.history.granted": "Zugewiesen: {quantity}",
   "promotions.history.usedCredits": "Verwendet: {quantity}",

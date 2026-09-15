@@ -269,6 +269,7 @@
   "promotions.error.notEligible": "此促销已不再适用于您的店铺。",
   "promotions.error.unavailable": "订阅不可用时无法更改促销。",
   "promotions.history.title": "促销历史",
+  "promotions.history.titleUnavailable": "促销不可用",
   "promotions.history.empty": "没有已选择的促销历史。",
   "promotions.history.granted": "已授予：{quantity}",
   "promotions.history.usedCredits": "已使用：{quantity}",
