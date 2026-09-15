@@ -10,6 +10,7 @@ const readPendingRecoveries = vi.fn();
 const findRecoveries = vi.fn();
 const findBillingPeriods = vi.fn();
 const findUsageEvents = vi.fn();
+const readActiveMerchantPricingCatalogue = vi.fn();
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -22,6 +23,9 @@ vi.mock("../../app/services/billing/billing.service", () => ({
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries,
+}));
+vi.mock("../../app/services/merchant-pricing/merchant-pricing.server", () => ({
+  readActiveMerchantPricingCatalogue,
 }));
 vi.mock("../../app/db.server", () => ({
   default: {
@@ -49,6 +53,7 @@ beforeEach(() => {
   getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED", observedShopifyPlanHandle: null });
   getSubscriptionProjection.mockResolvedValue(null);
   readPendingRecoveries.mockResolvedValue({ available: true, items: [] });
+  readActiveMerchantPricingCatalogue.mockResolvedValue([]);
   findRecoveries.mockResolvedValue([]);
   findBillingPeriods.mockResolvedValue([]);
   findUsageEvents.mockResolvedValue([]);
