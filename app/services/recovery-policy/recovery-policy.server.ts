@@ -69,7 +69,14 @@ export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(
       startsAt: discount.startsAt, endsAt: discount.endsAt,
       singleRedeemCode: discount.singleRedeemCode, fixedSelectable: discount.fixedSelectable,
     })),
+    merchantFixedDiscount: resolveFixedIdentity(settings.fixedShopifyDiscountId, catalogue?.discounts ?? []),
+    effectiveFixedDiscount: resolveFixedIdentity(effective.fixedShopifyDiscountId, catalogue?.discounts ?? []),
   };
+}
+
+function resolveFixedIdentity(id: string | null, discounts: Array<{ id: string; title: string | null }>) {
+  if (!id) return null;
+  return { id, title: discounts.find((discount) => discount.id === id)?.title ?? null };
 }
 
 export function isCurrentlyRunning(discount: DiscountValue, now: Date) {
