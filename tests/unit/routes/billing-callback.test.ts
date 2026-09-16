@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   completeFreeActivation: vi.fn(),
   scheduleInitialFreeReconciliationIfCurrent: vi.fn(),
   enqueueReconcile: vi.fn(),
+  enqueueDiscountSync: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -37,6 +38,9 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
 }));
 vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
   enqueueBillingSubscriptionReconcileBestEffort: mocks.enqueueReconcile,
+}));
+vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", () => ({
+  enqueueSubscriptionActivatedDiscountSyncBestEffort: mocks.enqueueDiscountSync,
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
@@ -138,6 +142,7 @@ beforeEach(() => {
   });
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
+  mocks.enqueueDiscountSync.mockResolvedValue(undefined);
 });
 
 describe("billing callback activation", () => {
@@ -149,6 +154,7 @@ describe("billing callback activation", () => {
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
   });
 
   it("records and completes a first paid activation only after matching verification", async () => {
@@ -175,6 +181,7 @@ describe("billing callback activation", () => {
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));
+    expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
   });
 
   it("does not activate a pending paid handle when Shopify still reports another plan", async () => {
