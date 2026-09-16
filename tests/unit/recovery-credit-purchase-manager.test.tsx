@@ -4,11 +4,17 @@ import { describe, expect, it, vi } from "vitest";
 import RecoveryCreditPurchaseManager from "../../app/components/dashboard/RecoveryCreditPurchaseManager";
 
 const routeSource = await readFile(
-  new URL("../../app/routes/app/billing/recovery-credit-purchases/route.tsx", import.meta.url),
+  new URL(
+    "../../app/routes/app/billing/recovery-credit-purchases/route.tsx",
+    import.meta.url,
+  ),
   "utf8",
 );
 const managerSource = await readFile(
-  new URL("../../app/components/dashboard/RecoveryCreditPurchaseManager.jsx", import.meta.url),
+  new URL(
+    "../../app/components/dashboard/RecoveryCreditPurchaseManager.jsx",
+    import.meta.url,
+  ),
   "utf8",
 );
 const routesSource = await readFile(
@@ -19,7 +25,8 @@ const routesSource = await readFile(
 let filter = "ALL";
 
 vi.mock("react-router", async () => {
-  const actual = await vi.importActual<typeof import("react-router")>("react-router");
+  const actual =
+    await vi.importActual<typeof import("react-router")>("react-router");
   return {
     ...actual,
     useFetcher: () => ({ state: "idle", data: null, submit: vi.fn() }),
@@ -45,7 +52,16 @@ function purchase(id: string, status: string, availableAmount: number) {
     planHandle: "growth",
     originalProviderPurchase: { amount: "12.50", currency: "USD" },
     latestRefund: status === "WITHDRAWN" ? { status: "REQUESTED" } : null,
-    completedRefund: status === "REFUNDED" ? { finalCreditQuantity: 2, expectedProviderAmount: "5.00", expectedProviderCurrency: "USD", completedAt: date } : null,
+    completedRefund:
+      status === "REFUNDED"
+        ? {
+            finalCreditQuantity: 2,
+            expectedProviderAmount: "5.00",
+            expectedProviderCurrency: "USD",
+            completedAt: date,
+          }
+        : null,
+    refundEligible: id === "historical" ? false : null,
   };
 }
 
@@ -61,6 +77,7 @@ function render() {
         purchases: [
           purchase("requested", "REQUESTED", 0),
           purchase("active", "ACTIVE", 2),
+          purchase("historical", "ACTIVE", 2),
           purchase("empty-active", "ACTIVE", 0),
           purchase("withdrawn", "WITHDRAWN", 0),
           purchase("completed", "COMPLETED", 0),
@@ -82,6 +99,9 @@ describe("purchased credit history manager", () => {
     expect(markup).toContain("Completed");
     expect(markup).toContain("Refunded");
     expect(markup).toContain("No credits are available to refund");
+    expect(markup).toContain(
+      "no longer refundable under the current subscription",
+    );
     expect(markup).toContain("Reactivate credits");
     expect(markup).toContain("All purchased credits have been used.");
     expect(markup).toContain("Credits refunded: 2");
@@ -91,13 +111,18 @@ describe("purchased credit history manager", () => {
   });
 
   it("keeps refund requests server-authoritative and bounded to unique purchase IDs", () => {
-    expect(managerSource).toContain('form.set("requestId", crypto.randomUUID())');
-    expect(managerSource).toContain('selectedPurchases.forEach((purchase) => form.append("purchaseId", purchase.id))');
+    expect(managerSource).toContain(
+      'form.set("requestId", crypto.randomUUID())',
+    );
+    expect(managerSource).toContain("selectedPurchases.forEach");
+    expect(managerSource).toContain('form.append("purchaseId", purchase.id)');
     expect(managerSource).not.toContain('form.set("quantity"');
     expect(managerSource).not.toContain('form.set("amount"');
     expect(managerSource).not.toContain('form.set("currency"');
     expect(routeSource).toContain("purchaseIds.length > 20");
-    expect(routeSource).toContain("session.onlineAccessInfo?.associated_user?.id");
+    expect(routeSource).toContain(
+      "session.onlineAccessInfo?.associated_user?.id",
+    );
   });
 
   it("uses authenticated shop resolution and separate read/manage capabilities", () => {
@@ -107,16 +132,24 @@ describe("purchased credit history manager", () => {
     expect(routeSource).toContain("shopId: shop.id");
     expect(routesSource).toContain('route("billing/recovery-credit-purchases"');
     expect(routeSource).toContain("FILTER_TO_STATUS");
-    expect(routeSource).toContain('resolvePurchaseHistoryFilter(url.searchParams.get("filter"))');
+    expect(routeSource).toContain(
+      'resolvePurchaseHistoryFilter(url.searchParams.get("filter"))',
+    );
     expect(managerSource).toContain("const visible = purchases;");
-    expect(managerSource).not.toContain("purchases.filter((purchase) => purchase.status === filter)");
+    expect(managerSource).not.toContain(
+      "purchases.filter((purchase) => purchase.status === filter)",
+    );
   });
 
   it("keeps server-provided rows visible and preserves the canonical filter during pagination", () => {
     filter = "ALL";
     const markup = render();
     expect(markup).toContain("Awaiting Shopify confirmation");
-    expect(managerSource).toContain('setSearchParams({ filter, page: String((page?.page ?? 1) - 1) })');
-    expect(managerSource).toContain('setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })');
+    expect(managerSource).toContain(
+      "setSearchParams({ filter, page: String((page?.page ?? 1) - 1) })",
+    );
+    expect(managerSource).toContain(
+      "setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })",
+    );
   });
 });
