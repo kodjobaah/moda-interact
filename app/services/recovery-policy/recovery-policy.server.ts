@@ -55,7 +55,27 @@ export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(
   if (!settings) throw new RecoveryPolicyValidationError("SETTINGS_NOT_FOUND");
   const merchant = toPolicy(settings, "MERCHANT");
   const effective = override ? toPolicy(override, "ADMIN_OVERRIDE") : merchant;
-  return { merchant, effective, override, catalogue, discounts: catalogue?.discounts ?? [] };
+  const discounts = catalogue?.status === "CURRENT"
+    ? catalogue.discounts.filter((discount) => isCurrentlyRunning(discount, now))
+    : [];
+  return {
+    merchant,
+    effective,
+    overrideActive: Boolean(override),
+    catalogueStatus: catalogue?.status ?? "UNAVAILABLE",
+    discounts: discounts.map((discount) => ({
+      id: discount.id, title: discount.title, summary: discount.summary,
+      method: discount.method, providerStatus: discount.providerStatus,
+      startsAt: discount.startsAt, endsAt: discount.endsAt,
+      singleRedeemCode: discount.singleRedeemCode, fixedSelectable: discount.fixedSelectable,
+    })),
+  };
+}
+
+export function isCurrentlyRunning(discount: DiscountValue, now: Date) {
+  return discount.isAvailable && discount.providerStatus === "ACTIVE" &&
+    (!discount.startsAt || discount.startsAt <= now) &&
+    (!discount.endsAt || discount.endsAt > now);
 }
 
 export function parseMerchantRecoveryPolicy(input: {
@@ -65,10 +85,11 @@ export function parseMerchantRecoveryPolicy(input: {
   followUpEnabled: unknown;
   followUpDelayMinutes?: unknown;
 }) {
+  if (typeof input.recoveryDelayMinutes !== "string" || !input.recoveryDelayMinutes.trim()) throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
   const recoveryDelayMinutes = Number(input.recoveryDelayMinutes);
   const recoveryOfferMode = String(input.recoveryOfferMode) as RecoveryOfferMode;
   const followUpEnabled = input.followUpEnabled === true || input.followUpEnabled === "true" || input.followUpEnabled === "on";
-  const followUpDelayMinutes = input.followUpDelayMinutes === "" || input.followUpDelayMinutes == null
+  const followUpDelayMinutes = !followUpEnabled ? null : input.followUpDelayMinutes === "" || input.followUpDelayMinutes == null
     ? null
     : Number(input.followUpDelayMinutes);
   const fixedShopifyDiscountId = input.fixedShopifyDiscountId ? String(input.fixedShopifyDiscountId) : null;

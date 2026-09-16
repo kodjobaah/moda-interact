@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "จำนวนหน่วยสูงสุด",
   "onboarding.pricing.tierRange": "ไม่เกิน",
   "onboarding.pricing.amountPerUnit": "จำนวนเงินต่อหน่วย",
-  "onboarding.pricing.flatAmount": "จำนวนเงินคงที่"
+  "onboarding.pricing.flatAmount": "จำนวนเงินคงที่",
+  "recoverySettings.effectiveOffer": "ข้อเสนอที่มีผล: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "การติดตามผลที่มีผล: หลัง {value} นาที",
+  "recoverySettings.effectiveFollowUpDisabled": "การติดตามผลที่มีผล: ปิดใช้งาน",
+  "recoverySettings.effectiveFixedDiscount": "ส่วนลดแบบคงที่ที่มีผล: {value}",
+  "recoverySettings.discount.summary": "สรุป: {value}",
+  "recoverySettings.discount.method": "วิธี: {value}",
+  "recoverySettings.discount.status": "สถานะ: {value}",
+  "recoverySettings.discount.startsAt": "เริ่ม: {value}",
+  "recoverySettings.discount.endsAt": "สิ้นสุด: {value}",
+  "recoverySettings.discount.code": "รหัสแลกรับ: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "อัตโนมัติ",
+  "recoverySettings.discount.method.CODE": "โค้ด",
+  "recoverySettings.discount.status.ACTIVE": "ใช้งานอยู่"
 }

@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maximalt antal enheter",
   "onboarding.pricing.tierRange": "Upp till",
   "onboarding.pricing.amountPerUnit": "Belopp per enhet",
-  "onboarding.pricing.flatAmount": "Fast belopp"
+  "onboarding.pricing.flatAmount": "Fast belopp",
+  "recoverySettings.effectiveOffer": "Effektivt erbjudande: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Effektiv uppföljning: efter {value} minuter",
+  "recoverySettings.effectiveFollowUpDisabled": "Effektiv uppföljning: inaktiverad",
+  "recoverySettings.effectiveFixedDiscount": "Effektiv fast rabatt: {value}",
+  "recoverySettings.discount.summary": "Sammanfattning: {value}",
+  "recoverySettings.discount.method": "Metod: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Börjar: {value}",
+  "recoverySettings.discount.endsAt": "Slutar: {value}",
+  "recoverySettings.discount.code": "Inlösenkod: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatisk",
+  "recoverySettings.discount.method.CODE": "Kod",
+  "recoverySettings.discount.status.ACTIVE": "Aktiv"
 }

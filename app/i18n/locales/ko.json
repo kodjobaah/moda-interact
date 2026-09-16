@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "최대 단위 수",
   "onboarding.pricing.tierRange": "최대",
   "onboarding.pricing.amountPerUnit": "단위당 금액",
-  "onboarding.pricing.flatAmount": "고정 금액"
+  "onboarding.pricing.flatAmount": "고정 금액",
+  "recoverySettings.effectiveOffer": "적용 중인 제안: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "적용 중인 후속 메시지: {value}분 후",
+  "recoverySettings.effectiveFollowUpDisabled": "적용 중인 후속 메시지: 사용 안 함",
+  "recoverySettings.effectiveFixedDiscount": "적용 중인 고정 할인: {value}",
+  "recoverySettings.discount.summary": "요약: {value}",
+  "recoverySettings.discount.method": "방식: {value}",
+  "recoverySettings.discount.status": "상태: {value}",
+  "recoverySettings.discount.startsAt": "시작: {value}",
+  "recoverySettings.discount.endsAt": "종료: {value}",
+  "recoverySettings.discount.code": "사용 코드: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "자동",
+  "recoverySettings.discount.method.CODE": "코드",
+  "recoverySettings.discount.status.ACTIVE": "활성"
 }

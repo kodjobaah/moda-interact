@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maximale eenheden",
   "onboarding.pricing.tierRange": "Tot",
   "onboarding.pricing.amountPerUnit": "Bedrag per eenheid",
-  "onboarding.pricing.flatAmount": "Vast bedrag"
+  "onboarding.pricing.flatAmount": "Vast bedrag",
+  "recoverySettings.effectiveOffer": "Effectieve aanbieding: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Effectieve follow-up: na {value} minuten",
+  "recoverySettings.effectiveFollowUpDisabled": "Effectieve follow-up: uitgeschakeld",
+  "recoverySettings.effectiveFixedDiscount": "Effectieve vaste korting: {value}",
+  "recoverySettings.discount.summary": "Samenvatting: {value}",
+  "recoverySettings.discount.method": "Methode: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Begint: {value}",
+  "recoverySettings.discount.endsAt": "Eindigt: {value}",
+  "recoverySettings.discount.code": "Inwisselcode: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatisch",
+  "recoverySettings.discount.method.CODE": "Code",
+  "recoverySettings.discount.status.ACTIVE": "Actief"
 }

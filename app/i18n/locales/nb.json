@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maksimalt antall enheter",
   "onboarding.pricing.tierRange": "Opptil",
   "onboarding.pricing.amountPerUnit": "Beløp per enhet",
-  "onboarding.pricing.flatAmount": "Fast beløp"
+  "onboarding.pricing.flatAmount": "Fast beløp",
+  "recoverySettings.effectiveOffer": "Gjeldende tilbud: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Gjeldende oppfølging: etter {value} minutter",
+  "recoverySettings.effectiveFollowUpDisabled": "Gjeldende oppfølging: deaktivert",
+  "recoverySettings.effectiveFixedDiscount": "Gjeldende fast rabatt: {value}",
+  "recoverySettings.discount.summary": "Sammendrag: {value}",
+  "recoverySettings.discount.method": "Metode: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Starter: {value}",
+  "recoverySettings.discount.endsAt": "Slutter: {value}",
+  "recoverySettings.discount.code": "Innløsningskode: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatisk",
+  "recoverySettings.discount.method.CODE": "Kode",
+  "recoverySettings.discount.status.ACTIVE": "Aktiv"
 }

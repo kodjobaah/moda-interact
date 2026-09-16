@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maksimum birim",
   "onboarding.pricing.tierRange": "Şuna kadar",
   "onboarding.pricing.amountPerUnit": "Birim başına tutar",
-  "onboarding.pricing.flatAmount": "Sabit tutar"
+  "onboarding.pricing.flatAmount": "Sabit tutar",
+  "recoverySettings.effectiveOffer": "Geçerli teklif: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Geçerli takip: {value} dakika sonra",
+  "recoverySettings.effectiveFollowUpDisabled": "Geçerli takip: devre dışı",
+  "recoverySettings.effectiveFixedDiscount": "Geçerli sabit indirim: {value}",
+  "recoverySettings.discount.summary": "Özet: {value}",
+  "recoverySettings.discount.method": "Yöntem: {value}",
+  "recoverySettings.discount.status": "Durum: {value}",
+  "recoverySettings.discount.startsAt": "Başlangıç: {value}",
+  "recoverySettings.discount.endsAt": "Bitiş: {value}",
+  "recoverySettings.discount.code": "Kullanım kodu: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Otomatik",
+  "recoverySettings.discount.method.CODE": "Kod",
+  "recoverySettings.discount.status.ACTIVE": "Etkin"
 }

@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "最大單位數",
   "onboarding.pricing.tierRange": "上限",
   "onboarding.pricing.amountPerUnit": "每單位金額",
-  "onboarding.pricing.flatAmount": "固定金額"
+  "onboarding.pricing.flatAmount": "固定金額",
+  "recoverySettings.effectiveOffer": "生效的優惠方案：{value}",
+  "recoverySettings.effectiveFollowUpEnabled": "生效的後續訊息：{value} 分鐘後",
+  "recoverySettings.effectiveFollowUpDisabled": "生效的後續訊息：已停用",
+  "recoverySettings.effectiveFixedDiscount": "生效的固定折扣：{value}",
+  "recoverySettings.discount.summary": "摘要：{value}",
+  "recoverySettings.discount.method": "方式：{value}",
+  "recoverySettings.discount.status": "狀態：{value}",
+  "recoverySettings.discount.startsAt": "開始時間：{value}",
+  "recoverySettings.discount.endsAt": "結束時間：{value}",
+  "recoverySettings.discount.code": "兌換碼：{value}",
+  "recoverySettings.discount.method.AUTOMATIC": "自動折扣",
+  "recoverySettings.discount.method.CODE": "折扣碼",
+  "recoverySettings.discount.status.ACTIVE": "啟用中"
 }

@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maksymalna liczba jednostek",
   "onboarding.pricing.tierRange": "Do",
   "onboarding.pricing.amountPerUnit": "Kwota za jednostkę",
-  "onboarding.pricing.flatAmount": "Kwota stała"
+  "onboarding.pricing.flatAmount": "Kwota stała",
+  "recoverySettings.effectiveOffer": "Obowiązująca oferta: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Obowiązujące przypomnienie: po {value} minutach",
+  "recoverySettings.effectiveFollowUpDisabled": "Obowiązujące przypomnienie: wyłączone",
+  "recoverySettings.effectiveFixedDiscount": "Obowiązujący stały rabat: {value}",
+  "recoverySettings.discount.summary": "Podsumowanie: {value}",
+  "recoverySettings.discount.method": "Metoda: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Rozpoczyna się: {value}",
+  "recoverySettings.discount.endsAt": "Kończy się: {value}",
+  "recoverySettings.discount.code": "Kod realizacji: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatyczna",
+  "recoverySettings.discount.method.CODE": "Kod",
+  "recoverySettings.discount.status.ACTIVE": "Aktywny"
 }

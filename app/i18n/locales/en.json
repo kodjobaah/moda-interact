@@ -338,7 +338,6 @@
   "billingPurchases.originalAmount": "Original purchase amount",
   "billingPurchases.notAvailable": "Not available",
   "billingPurchases.noAvailableCredits": "No credits are available to refund because all remaining credits are in progress.",
-  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.completedCopy": "All purchased credits have been used.",
   "billingPurchases.refundedCredits": "Credits refunded: {quantity}",
   "billingPurchases.refundCompleted": "Refund completed {date}",
@@ -375,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maximum units",
   "onboarding.pricing.tierRange": "Up to",
   "onboarding.pricing.amountPerUnit": "Amount per unit",
-  "onboarding.pricing.flatAmount": "Flat amount"
+  "onboarding.pricing.flatAmount": "Flat amount",
+  "recoverySettings.effectiveOffer": "Effective offer: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Effective follow-up: after {value} minutes",
+  "recoverySettings.effectiveFollowUpDisabled": "Effective follow-up: disabled",
+  "recoverySettings.effectiveFixedDiscount": "Effective fixed discount: {value}",
+  "recoverySettings.discount.summary": "Summary: {value}",
+  "recoverySettings.discount.method": "Method: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Starts: {value}",
+  "recoverySettings.discount.endsAt": "Ends: {value}",
+  "recoverySettings.discount.code": "Redeem code: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatic",
+  "recoverySettings.discount.method.CODE": "Code",
+  "recoverySettings.discount.status.ACTIVE": "Active"
 }

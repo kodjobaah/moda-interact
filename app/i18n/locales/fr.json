@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Unités maximales",
   "onboarding.pricing.tierRange": "Jusqu’à",
   "onboarding.pricing.amountPerUnit": "Montant par unité",
-  "onboarding.pricing.flatAmount": "Montant fixe"
+  "onboarding.pricing.flatAmount": "Montant fixe",
+  "recoverySettings.effectiveOffer": "Offre effective : {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Relance effective : après {value} minutes",
+  "recoverySettings.effectiveFollowUpDisabled": "Relance effective : désactivée",
+  "recoverySettings.effectiveFixedDiscount": "Remise fixe effective : {value}",
+  "recoverySettings.discount.summary": "Résumé : {value}",
+  "recoverySettings.discount.method": "Méthode : {value}",
+  "recoverySettings.discount.status": "Statut : {value}",
+  "recoverySettings.discount.startsAt": "Débute : {value}",
+  "recoverySettings.discount.endsAt": "Se termine : {value}",
+  "recoverySettings.discount.code": "Code de réduction : {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatique",
+  "recoverySettings.discount.method.CODE": "Code",
+  "recoverySettings.discount.status.ACTIVE": "Actif"
 }

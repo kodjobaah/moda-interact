@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "最大单位数",
   "onboarding.pricing.tierRange": "上限",
   "onboarding.pricing.amountPerUnit": "每单位金额",
-  "onboarding.pricing.flatAmount": "固定金额"
+  "onboarding.pricing.flatAmount": "固定金额",
+  "recoverySettings.effectiveOffer": "生效的优惠方案：{value}",
+  "recoverySettings.effectiveFollowUpEnabled": "生效的跟进消息：{value} 分钟后",
+  "recoverySettings.effectiveFollowUpDisabled": "生效的跟进消息：已停用",
+  "recoverySettings.effectiveFixedDiscount": "生效的固定折扣：{value}",
+  "recoverySettings.discount.summary": "摘要：{value}",
+  "recoverySettings.discount.method": "方式：{value}",
+  "recoverySettings.discount.status": "状态：{value}",
+  "recoverySettings.discount.startsAt": "开始时间：{value}",
+  "recoverySettings.discount.endsAt": "结束时间：{value}",
+  "recoverySettings.discount.code": "兑换码：{value}",
+  "recoverySettings.discount.method.AUTOMATIC": "自动折扣",
+  "recoverySettings.discount.method.CODE": "折扣码",
+  "recoverySettings.discount.status.ACTIVE": "有效"
 }

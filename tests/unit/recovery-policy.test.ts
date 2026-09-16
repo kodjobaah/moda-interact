@@ -16,7 +16,7 @@ describe("recovery policy validation", () => {
 
   it("requires a delay for enabled follow-up and clears it when disabled", () => {
     expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "true" })).toThrow();
-    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "60" })).toThrow();
+    expect(parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "60" })).toMatchObject({ followUpEnabled: false, followUpDelayMinutes: null });
   });
 
   it("recognizes only currently selectable discounts", () => {

@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "最大単位数",
   "onboarding.pricing.tierRange": "上限",
   "onboarding.pricing.amountPerUnit": "単位あたりの金額",
-  "onboarding.pricing.flatAmount": "固定額"
+  "onboarding.pricing.flatAmount": "固定額",
+  "recoverySettings.effectiveOffer": "有効なオファー: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "有効なフォローアップ: {value}分後",
+  "recoverySettings.effectiveFollowUpDisabled": "有効なフォローアップ: 無効",
+  "recoverySettings.effectiveFixedDiscount": "有効な固定割引: {value}",
+  "recoverySettings.discount.summary": "概要: {value}",
+  "recoverySettings.discount.method": "方法: {value}",
+  "recoverySettings.discount.status": "ステータス: {value}",
+  "recoverySettings.discount.startsAt": "開始: {value}",
+  "recoverySettings.discount.endsAt": "終了: {value}",
+  "recoverySettings.discount.code": "利用コード: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "自動",
+  "recoverySettings.discount.method.CODE": "コード",
+  "recoverySettings.discount.status.ACTIVE": "有効"
 }

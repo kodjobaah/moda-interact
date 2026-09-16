@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maximální počet jednotek",
   "onboarding.pricing.tierRange": "Do",
   "onboarding.pricing.amountPerUnit": "Částka za jednotku",
-  "onboarding.pricing.flatAmount": "Pevná částka"
+  "onboarding.pricing.flatAmount": "Pevná částka",
+  "recoverySettings.effectiveOffer": "Platná nabídka: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Platné následné oslovení: po {value} minutách",
+  "recoverySettings.effectiveFollowUpDisabled": "Platné následné oslovení: vypnuto",
+  "recoverySettings.effectiveFixedDiscount": "Platná pevná sleva: {value}",
+  "recoverySettings.discount.summary": "Souhrn: {value}",
+  "recoverySettings.discount.method": "Metoda: {value}",
+  "recoverySettings.discount.status": "Stav: {value}",
+  "recoverySettings.discount.startsAt": "Začíná: {value}",
+  "recoverySettings.discount.endsAt": "Končí: {value}",
+  "recoverySettings.discount.code": "Slevový kód: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatická",
+  "recoverySettings.discount.method.CODE": "Kód",
+  "recoverySettings.discount.status.ACTIVE": "Aktivní"
 }

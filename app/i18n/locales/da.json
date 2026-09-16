@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maksimale enheder",
   "onboarding.pricing.tierRange": "Op til",
   "onboarding.pricing.amountPerUnit": "Beløb pr. enhed",
-  "onboarding.pricing.flatAmount": "Fast beløb"
+  "onboarding.pricing.flatAmount": "Fast beløb",
+  "recoverySettings.effectiveOffer": "Effektivt tilbud: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Effektiv opfølgning: efter {value} minutter",
+  "recoverySettings.effectiveFollowUpDisabled": "Effektiv opfølgning: deaktiveret",
+  "recoverySettings.effectiveFixedDiscount": "Effektiv fast rabat: {value}",
+  "recoverySettings.discount.summary": "Oversigt: {value}",
+  "recoverySettings.discount.method": "Metode: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Starter: {value}",
+  "recoverySettings.discount.endsAt": "Slutter: {value}",
+  "recoverySettings.discount.code": "Indløsningskode: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatisk",
+  "recoverySettings.discount.method.CODE": "Kode",
+  "recoverySettings.discount.status.ACTIVE": "Aktiv"
 }

@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Maximale Einheiten",
   "onboarding.pricing.tierRange": "Bis zu",
   "onboarding.pricing.amountPerUnit": "Betrag pro Einheit",
-  "onboarding.pricing.flatAmount": "Pauschalbetrag"
+  "onboarding.pricing.flatAmount": "Pauschalbetrag",
+  "recoverySettings.effectiveOffer": "Wirksames Angebot: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Wirksame Nachfassnachricht: nach {value} Minuten",
+  "recoverySettings.effectiveFollowUpDisabled": "Wirksame Nachfassnachricht: deaktiviert",
+  "recoverySettings.effectiveFixedDiscount": "Wirksamer fester Rabatt: {value}",
+  "recoverySettings.discount.summary": "Zusammenfassung: {value}",
+  "recoverySettings.discount.method": "Methode: {value}",
+  "recoverySettings.discount.status": "Status: {value}",
+  "recoverySettings.discount.startsAt": "Beginn: {value}",
+  "recoverySettings.discount.endsAt": "Ende: {value}",
+  "recoverySettings.discount.code": "Einlösecode: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatisch",
+  "recoverySettings.discount.method.CODE": "Code",
+  "recoverySettings.discount.status.ACTIVE": "Aktiv"
 }

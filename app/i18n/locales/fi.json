@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Yksiköiden enimmäismäärä",
   "onboarding.pricing.tierRange": "Enintään",
   "onboarding.pricing.amountPerUnit": "Hinta yksikköä kohti",
-  "onboarding.pricing.flatAmount": "Kiinteä hinta"
+  "onboarding.pricing.flatAmount": "Kiinteä hinta",
+  "recoverySettings.effectiveOffer": "Voimassa oleva tarjous: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Voimassa oleva seuranta: {value} minuutin kuluttua",
+  "recoverySettings.effectiveFollowUpDisabled": "Voimassa oleva seuranta: pois käytöstä",
+  "recoverySettings.effectiveFixedDiscount": "Voimassa oleva kiinteä alennus: {value}",
+  "recoverySettings.discount.summary": "Yhteenveto: {value}",
+  "recoverySettings.discount.method": "Menetelmä: {value}",
+  "recoverySettings.discount.status": "Tila: {value}",
+  "recoverySettings.discount.startsAt": "Alkaa: {value}",
+  "recoverySettings.discount.endsAt": "Päättyy: {value}",
+  "recoverySettings.discount.code": "Lunastuskoodi: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automaattinen",
+  "recoverySettings.discount.method.CODE": "Koodi",
+  "recoverySettings.discount.status.ACTIVE": "Aktiivinen"
 }

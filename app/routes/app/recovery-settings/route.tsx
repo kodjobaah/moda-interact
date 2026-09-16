@@ -35,7 +35,7 @@ export async function action({ request }: ActionFunctionArgs) {
       recoveryOfferMode: form.get("recoveryOfferMode"),
       fixedShopifyDiscountId: form.get("recoveryOfferMode") === "FIXED" ? form.get("fixedShopifyDiscountId") : null,
       followUpEnabled: form.get("followUpEnabled"),
-      followUpDelayMinutes: form.get("followUpDelayMinutes"),
+      followUpDelayMinutes: form.get("followUpEnabled") ? form.get("followUpDelayMinutes") : null,
     });
     return { ok: true };
   } catch (error) {
@@ -51,7 +51,7 @@ export default function RecoverySettingsRoute() {
   const effective = data.effective;
   return <main style={{ maxWidth: 800, margin: "0 auto", padding: 24 }}>
     <h1>{i18n.t("recoverySettings.title")}</h1>
-    {data.override ? <p role="status">{i18n.t("recoverySettings.adminOverride")}</p> : null}
+    {data.overrideActive ? <p role="status">{i18n.t("recoverySettings.adminOverride")}</p> : null}
     {actionData?.ok ? <p role="status">{i18n.t("recoverySettings.saved")}</p> : null}
     {actionData?.ok === false ? <p role="alert">{i18n.t("recoverySettings.invalid")}</p> : null}
     <Form method="post">
@@ -60,9 +60,9 @@ export default function RecoverySettingsRoute() {
         {(["NONE", "FIXED", "AI_BEST_APPLICABLE"] as const).map((mode) => <label key={mode} style={{ display: "block" }}><input type="radio" name="recoveryOfferMode" value={mode} defaultChecked={data.merchant.recoveryOfferMode === mode} />{i18n.t(`recoverySettings.offer.${mode}`)}</label>)}
         <p>{i18n.t("recoverySettings.aiDescription")}</p>
         <p>{i18n.t("recoverySettings.effectiveOffer", { value: i18n.t(`recoverySettings.offer.${effective.recoveryOfferMode}`) })}</p>
-        {data.catalogue?.status === "CURRENT" ? data.discounts.map((discount: DiscountRow) => <label key={discount.id} style={{ display: "block", opacity: discount.fixedSelectable ? 1 : 0.6 }}><input type="radio" name="fixedShopifyDiscountId" value={discount.id} defaultChecked={data.merchant.fixedShopifyDiscountId === discount.id} disabled={!discount.fixedSelectable} />{discount.title} ({discount.method}){discount.singleRedeemCode ? ` - ${discount.singleRedeemCode}` : ""}{!discount.fixedSelectable ? ` - ${i18n.t("recoverySettings.offer.notSelectable")}` : ""}</label>) : <p>{i18n.t("recoverySettings.offer.catalogueUnavailable")}</p>}
+        {data.catalogueStatus === "CURRENT" ? data.discounts.map((discount: DiscountRow) => <label key={discount.id} style={{ display: "block", opacity: discount.fixedSelectable ? 1 : 0.6 }}><input type="radio" name="fixedShopifyDiscountId" value={discount.id} defaultChecked={data.merchant.fixedShopifyDiscountId === discount.id} disabled={!discount.fixedSelectable} />{discount.title} {discount.summary ?? ""} ({i18n.t(`recoverySettings.discount.method.${discount.method}`)}){discount.singleRedeemCode ? ` - ${discount.singleRedeemCode}` : ""}{discount.startsAt ? ` ${i18n.t("recoverySettings.discount.starts", { value: i18n.formatDateTime(discount.startsAt) })}` : ""}{discount.endsAt ? ` ${i18n.t("recoverySettings.discount.ends", { value: i18n.formatDateTime(discount.endsAt) })}` : ""} {i18n.t(`recoverySettings.discount.status.${discount.providerStatus}`)}{!discount.fixedSelectable ? ` - ${i18n.t("recoverySettings.offer.notSelectable")}` : ""}</label>) : <p>{i18n.t("recoverySettings.offer.catalogueUnavailable")}</p>}
       </section>
-      <section><h2>{i18n.t("recoverySettings.followUp.title")}</h2><label><input type="checkbox" name="followUpEnabled" defaultChecked={data.merchant.followUpEnabled} />{i18n.t("recoverySettings.followUp.enable")}</label><label>{i18n.t("recoverySettings.followUp.delay")} <input type="number" name="followUpDelayMinutes" min="1" max="10080" defaultValue={data.merchant.followUpDelayMinutes ?? ""} /></label><p>{i18n.t("recoverySettings.effectiveFollowUp", { value: effective.followUpEnabled ? `${effective.followUpDelayMinutes} minutes` : "disabled" })}</p><p>{i18n.t("recoverySettings.followUp.creditWarning")}</p></section>
+      <section><h2>{i18n.t("recoverySettings.followUp.title")}</h2><label><input type="checkbox" name="followUpEnabled" defaultChecked={data.merchant.followUpEnabled} />{i18n.t("recoverySettings.followUp.enable")}</label><label>{i18n.t("recoverySettings.followUp.delay")} <input type="number" name="followUpDelayMinutes" min="1" max="10080" defaultValue={data.merchant.followUpDelayMinutes ?? ""} /></label><p>{effective.followUpEnabled ? i18n.t("recoverySettings.effectiveFollowUpEnabled", { value: effective.followUpDelayMinutes }) : i18n.t("recoverySettings.effectiveFollowUpDisabled")}</p><p>{i18n.t("recoverySettings.followUp.creditWarning")}</p></section>
       <button type="submit">{i18n.t("recoverySettings.save")}</button>
     </Form>
   </main>;

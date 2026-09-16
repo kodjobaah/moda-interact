@@ -374,5 +374,18 @@
   "onboarding.pricing.maximumUnits": "Unità massime",
   "onboarding.pricing.tierRange": "Fino a",
   "onboarding.pricing.amountPerUnit": "Importo per unità",
-  "onboarding.pricing.flatAmount": "Importo fisso"
+  "onboarding.pricing.flatAmount": "Importo fisso",
+  "recoverySettings.effectiveOffer": "Offerta effettiva: {value}",
+  "recoverySettings.effectiveFollowUpEnabled": "Follow-up effettivo: dopo {value} minuti",
+  "recoverySettings.effectiveFollowUpDisabled": "Follow-up effettivo: disattivato",
+  "recoverySettings.effectiveFixedDiscount": "Sconto fisso effettivo: {value}",
+  "recoverySettings.discount.summary": "Riepilogo: {value}",
+  "recoverySettings.discount.method": "Metodo: {value}",
+  "recoverySettings.discount.status": "Stato: {value}",
+  "recoverySettings.discount.startsAt": "Inizia: {value}",
+  "recoverySettings.discount.endsAt": "Termina: {value}",
+  "recoverySettings.discount.code": "Codice di riscatto: {value}",
+  "recoverySettings.discount.method.AUTOMATIC": "Automatico",
+  "recoverySettings.discount.method.CODE": "Codice",
+  "recoverySettings.discount.status.ACTIVE": "Attivo"
 }
