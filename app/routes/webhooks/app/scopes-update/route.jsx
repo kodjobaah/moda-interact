@@ -19,13 +19,6 @@ export const action = async ({ request }) => {
   const requestedAt = new Date();
 
   const syncRequest = await db.$transaction(async (transaction) => {
-    if (session) {
-      await transaction.session.update({
-        where: { id: session.id },
-        data: { scope: current },
-      });
-    }
-
     const shopIdentity = await transaction.shop.findUnique({
       where: { domain: shop },
       select: { id: true },
@@ -33,6 +26,13 @@ export const action = async ({ request }) => {
     if (!shopIdentity) return null;
 
     await lockShopLifecycleRow(transaction, shopIdentity.id);
+    if (session) {
+      await transaction.session.update({
+        where: { id: session.id },
+        data: { scope: current },
+      });
+    }
+
     const shopRecord = await transaction.shop.findUnique({
       where: { id: shopIdentity.id },
       select: {
