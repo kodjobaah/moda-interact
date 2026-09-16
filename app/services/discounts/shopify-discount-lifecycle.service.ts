@@ -35,36 +35,6 @@ export function isDiscountSyncEligible(input: {
   );
 }
 
-export async function getDiscountSyncEligibility(shopId: string) {
-  const shop = await db.shop.findUnique({
-    where: { id: shopId },
-    select: {
-      id: true,
-      domain: true,
-      status: true,
-      settings: { select: { onboardingCompleted: true } },
-      subscription: { select: { status: true } },
-    },
-  });
-  if (!shop) return null;
-
-  const session = await db.session.findFirst({
-    where: { shop: shop.domain },
-    select: { scope: true },
-    orderBy: { expires: "desc" },
-  });
-
-  return {
-    shop,
-    eligible: isDiscountSyncEligible({
-      shopStatus: shop.status,
-      onboardingCompleted: shop.settings?.onboardingCompleted === true,
-      subscriptionStatus: shop.subscription?.status,
-      sessionScope: session?.scope,
-    }),
-  };
-}
-
 export async function markDiscountCatalogueSyncRequired(
   transaction: Prisma.TransactionClient,
   shopId: string,
@@ -93,9 +63,16 @@ export async function markDiscountCatalogueUnavailable(
   shopId: string,
   unavailableAt: Date,
 ): Promise<void> {
-  await transaction.shopifyDiscountCatalogue.updateMany({
+  await transaction.shopifyDiscountCatalogue.upsert({
     where: { shopId },
-    data: {
+    create: {
+      shopId,
+      status: "UNAVAILABLE",
+      activeSyncToken: null,
+      syncStartedAt: null,
+      unavailableAt,
+    },
+    update: {
       status: "UNAVAILABLE",
       activeSyncToken: null,
       syncStartedAt: null,
@@ -104,7 +81,11 @@ export async function markDiscountCatalogueUnavailable(
   });
   await transaction.shopifyDiscount.updateMany({
     where: { shopId },
-    data: { isAvailable: false, unavailableAt },
+    data: { isAvailable: false },
+  });
+  await transaction.shopifyDiscount.updateMany({
+    where: { shopId, unavailableAt: null },
+    data: { unavailableAt },
   });
 }
 
@@ -132,17 +113,41 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
 ): Promise<void> {
   const requestedAt = new Date();
   try {
-    const eligibility = await getDiscountSyncEligibility(shopId);
-    if (!eligibility?.eligible) return;
+    const syncRequest = await db.$transaction(async (transaction) => {
+      const shop = await transaction.shop.findUnique({
+        where: { id: shopId },
+        select: {
+          id: true,
+          domain: true,
+          status: true,
+          settings: { select: { onboardingCompleted: true } },
+          subscription: { select: { status: true } },
+        },
+      });
+      if (!shop) return null;
 
-    await db.$transaction(async (transaction) => {
+      const offlineSession = await transaction.session.findFirst({
+        where: { shop: shop.domain, isOnline: false },
+        select: { scope: true },
+        orderBy: { expires: "desc" },
+      });
+      const eligible = isDiscountSyncEligible({
+        shopStatus: shop.status,
+        onboardingCompleted: shop.settings?.onboardingCompleted === true,
+        subscriptionStatus: shop.subscription?.status,
+        sessionScope: offlineSession?.scope,
+      });
+      if (!eligible) return null;
+
       await markDiscountCatalogueSyncRequired(transaction, shopId, requestedAt);
+      return { shopId: shop.id, shopDomain: shop.domain };
     });
 
+    if (!syncRequest) return;
     await publishShopifyDiscountSyncJob({
       event: buildDiscountSyncJob({
         shopId,
-        shopDomain: eligibility.shop.domain,
+        shopDomain: syncRequest.shopDomain,
         reason: "SUBSCRIPTION_ACTIVATED",
         requestedAt,
       }),

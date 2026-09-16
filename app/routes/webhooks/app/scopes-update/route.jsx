@@ -37,13 +37,19 @@ export const action = async ({ request }) => {
     });
     if (!shopRecord) return null;
 
+    const offlineSession = await transaction.session.findFirst({
+      where: { shop: shopRecord.domain, isOnline: false },
+      select: { scope: true },
+      orderBy: { expires: "desc" },
+    });
+    const offlineScope = offlineSession?.scope ?? null;
     const eligible = isDiscountSyncEligible({
       shopStatus: shopRecord.status,
       onboardingCompleted: shopRecord.settings?.onboardingCompleted === true,
       subscriptionStatus: shopRecord.subscription?.status,
-      sessionScope: current,
+      sessionScope: offlineScope,
     });
-    if (!hasReadDiscountsScope(current)) {
+    if (!offlineSession || !hasReadDiscountsScope(offlineScope)) {
       await markDiscountCatalogueUnavailable(transaction, shopRecord.id, requestedAt);
       return null;
     }

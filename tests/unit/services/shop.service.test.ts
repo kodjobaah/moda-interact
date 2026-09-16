@@ -24,6 +24,7 @@ const dbMock = {
     upsert: vi.fn(),
   },
   shopifyDiscountCatalogue: {
+    upsert: vi.fn(),
     updateMany: vi.fn(),
   },
   shopifyDiscount: {
@@ -62,6 +63,7 @@ beforeEach(() => {
   dbMock.subscription.upsert.mockReset();
   dbMock.shopSettings.upsert.mockReset();
   dbMock.shopifyDiscountCatalogue.updateMany.mockReset();
+  dbMock.shopifyDiscountCatalogue.upsert.mockReset();
   dbMock.shopifyDiscount.updateMany.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
   dbMock.shop.upsert.mockResolvedValue(shop);
@@ -87,18 +89,29 @@ describe("ShopService.markUninstalled", () => {
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
     expect(dbMock.subscription.updateMany).not.toHaveBeenCalled();
-    expect(dbMock.shopifyDiscountCatalogue.updateMany).toHaveBeenCalledWith({
+    expect(dbMock.shopifyDiscountCatalogue.upsert).toHaveBeenCalledWith({
       where: { shopId: shop.id },
-      data: {
+      create: {
+        shopId: shop.id,
+        status: "UNAVAILABLE",
+        activeSyncToken: null,
+        syncStartedAt: null,
+        unavailableAt: uninstalledAt,
+      },
+      update: {
         status: "UNAVAILABLE",
         activeSyncToken: null,
         syncStartedAt: null,
         unavailableAt: uninstalledAt,
       },
     });
-    expect(dbMock.shopifyDiscount.updateMany).toHaveBeenCalledWith({
+    expect(dbMock.shopifyDiscount.updateMany).toHaveBeenNthCalledWith(1, {
       where: { shopId: shop.id },
-      data: { isAvailable: false, unavailableAt: uninstalledAt },
+      data: { isAvailable: false },
+    });
+    expect(dbMock.shopifyDiscount.updateMany).toHaveBeenNthCalledWith(2, {
+      where: { shopId: shop.id, unavailableAt: null },
+      data: { unavailableAt: uninstalledAt },
     });
   });
 
