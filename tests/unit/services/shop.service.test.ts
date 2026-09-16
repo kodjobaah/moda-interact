@@ -10,6 +10,7 @@ const shop = {
 
 const dbMock = {
   $transaction: vi.fn(),
+  $queryRaw: vi.fn(),
   shop: {
     findUnique: vi.fn(),
     upsert: vi.fn(),
@@ -55,6 +56,7 @@ function adminFor(shopData: Record<string, unknown>) {
 
 beforeEach(() => {
   dbMock.$transaction.mockReset();
+  dbMock.$queryRaw.mockReset();
   dbMock.shop.findUnique.mockReset();
   dbMock.shop.upsert.mockReset();
   dbMock.shop.updateMany.mockReset();
@@ -66,6 +68,7 @@ beforeEach(() => {
   dbMock.shopifyDiscountCatalogue.upsert.mockReset();
   dbMock.shopifyDiscount.updateMany.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
+  dbMock.$queryRaw.mockResolvedValue([]);
   dbMock.shop.upsert.mockResolvedValue(shop);
   dbMock.shopSettings.upsert.mockResolvedValue({
     shopId: shop.id,
@@ -79,7 +82,9 @@ beforeEach(() => {
 
 describe("ShopService.markUninstalled", () => {
   it("marks the shop while preserving the subscription projection", async () => {
-    dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce({ id: shop.id })
+      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: null });
     const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
 
     await new ShopService().markUninstalled(shop.domain, uninstalledAt);
@@ -116,7 +121,9 @@ describe("ShopService.markUninstalled", () => {
   });
 
   it("uses a conditional cutoff write for duplicate delivery", async () => {
-    dbMock.shop.findUnique.mockResolvedValue({ id: shop.id });
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce({ id: shop.id })
+      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: null });
     dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
     const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
 
@@ -127,6 +134,24 @@ describe("ShopService.markUninstalled", () => {
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
     expect(dbMock.shop.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses the persisted uninstall timestamp for duplicate invalidation", async () => {
+    const persistedAt = new Date("2026-09-08T10:00:00.000Z");
+    const retryAt = new Date("2026-09-08T11:00:00.000Z");
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce({ id: shop.id })
+      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: persistedAt });
+    dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
+
+    await new ShopService().markUninstalled(shop.domain, retryAt);
+
+    expect(dbMock.shopifyDiscountCatalogue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ unavailableAt: persistedAt }),
+        update: expect.objectContaining({ unavailableAt: persistedAt }),
+      }),
+    );
   });
 });
 

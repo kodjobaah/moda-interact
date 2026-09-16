@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   publish: vi.fn(),
   transaction: vi.fn(),
   shopFindUnique: vi.fn(),
+  queryRaw: vi.fn(),
   sessionFindFirst: vi.fn(),
   catalogueUpsert: vi.fn(),
   discountUpdateMany: vi.fn(),
@@ -27,6 +28,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.transaction.mockImplementation(async (callback) => callback({
     shop: { findUnique: mocks.shopFindUnique },
+    $queryRaw: mocks.queryRaw,
     session: { findFirst: mocks.sessionFindFirst },
     shopifyDiscountCatalogue: { upsert: mocks.catalogueUpsert },
     shopifyDiscount: { updateMany: mocks.discountUpdateMany },
@@ -54,6 +56,7 @@ describe("Shopify discount lifecycle contract", () => {
       select: { scope: true },
       orderBy: { expires: "desc" },
     });
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     expect(mocks.catalogueUpsert).not.toHaveBeenCalled();
     expect(mocks.publish).not.toHaveBeenCalled();
   });
@@ -71,6 +74,7 @@ describe("Shopify discount lifecycle contract", () => {
     await enqueueSubscriptionActivatedDiscountSyncBestEffort("shop-1");
 
     expect(mocks.catalogueUpsert).toHaveBeenCalledTimes(1);
+    expect(mocks.queryRaw).toHaveBeenCalledTimes(1);
     expect(mocks.publish).toHaveBeenCalledWith({
       event: expect.objectContaining({
         shopId: "shop-1",

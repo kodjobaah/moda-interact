@@ -13,7 +13,10 @@ import {
 } from "@modainteract/moda-interact-shared/internationalization";
 
 import prisma from "../../db.server";
-import { markDiscountCatalogueUnavailable } from "../discounts/shopify-discount-lifecycle.service";
+import {
+  lockShopLifecycleRow,
+  markDiscountCatalogueUnavailable,
+} from "../discounts/shopify-discount-lifecycle.service";
 
 
 export interface ResolveShopifyShopInput {
@@ -365,14 +368,21 @@ export class ShopService {
     const normalizedDomain = normalizeShopDomain(domain);
 
     await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
-      const shop = await transaction.shop.findUnique({
+      const shopIdentity = await transaction.shop.findUnique({
         where: { domain: normalizedDomain },
         select: { id: true },
       });
 
-      if (!shop) {
+      if (!shopIdentity) {
         return;
       }
+
+      await lockShopLifecycleRow(transaction, shopIdentity.id);
+      const shop = await transaction.shop.findUnique({
+        where: { id: shopIdentity.id },
+        select: { id: true, uninstalledAt: true },
+      });
+      if (!shop) return;
 
       await transaction.shop.updateMany({
         where: {
@@ -386,7 +396,11 @@ export class ShopService {
         },
       });
 
-      await markDiscountCatalogueUnavailable(transaction, shop.id, uninstalledAt);
+      await markDiscountCatalogueUnavailable(
+        transaction,
+        shop.id,
+        shop.uninstalledAt ?? uninstalledAt,
+      );
 
     });
   }

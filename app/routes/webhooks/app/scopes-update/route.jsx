@@ -6,6 +6,7 @@ import {
   isDiscountSyncEligible,
   markDiscountCatalogueSyncRequired,
   markDiscountCatalogueUnavailable,
+  lockShopLifecycleRow,
 } from "@/services/discounts/shopify-discount-lifecycle.service";
 import { publishShopifyDiscountSyncJob } from "@/services/webhooks/shopify-webhook-queue.server";
 
@@ -25,8 +26,15 @@ export const action = async ({ request }) => {
       });
     }
 
-    const shopRecord = await transaction.shop.findUnique({
+    const shopIdentity = await transaction.shop.findUnique({
       where: { domain: shop },
+      select: { id: true },
+    });
+    if (!shopIdentity) return null;
+
+    await lockShopLifecycleRow(transaction, shopIdentity.id);
+    const shopRecord = await transaction.shop.findUnique({
+      where: { id: shopIdentity.id },
       select: {
         id: true,
         domain: true,

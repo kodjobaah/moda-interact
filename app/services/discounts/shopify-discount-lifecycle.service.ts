@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   parseShopifyDiscountSyncJob,
   type ShopifyDiscountSyncJob,
@@ -32,6 +32,15 @@ export function isDiscountSyncEligible(input: {
     input.onboardingCompleted &&
     (input.subscriptionStatus === "ACTIVE" || input.subscriptionStatus === "TRIALING") &&
     hasReadDiscountsScope(input.sessionScope)
+  );
+}
+
+export async function lockShopLifecycleRow(
+  transaction: Prisma.TransactionClient,
+  shopId: string,
+): Promise<void> {
+  await transaction.$queryRaw(
+    Prisma.sql`SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${shopId} FOR UPDATE`,
   );
 }
 
@@ -116,6 +125,13 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
     const syncRequest = await db.$transaction(async (transaction) => {
       const shop = await transaction.shop.findUnique({
         where: { id: shopId },
+        select: { id: true },
+      });
+      if (!shop) return null;
+
+      await lockShopLifecycleRow(transaction, shop.id);
+      const authoritativeShop = await transaction.shop.findUnique({
+        where: { id: shop.id },
         select: {
           id: true,
           domain: true,
@@ -124,23 +140,23 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
           subscription: { select: { status: true } },
         },
       });
-      if (!shop) return null;
+      if (!authoritativeShop) return null;
 
       const offlineSession = await transaction.session.findFirst({
-        where: { shop: shop.domain, isOnline: false },
+        where: { shop: authoritativeShop.domain, isOnline: false },
         select: { scope: true },
         orderBy: { expires: "desc" },
       });
       const eligible = isDiscountSyncEligible({
-        shopStatus: shop.status,
-        onboardingCompleted: shop.settings?.onboardingCompleted === true,
-        subscriptionStatus: shop.subscription?.status,
+        shopStatus: authoritativeShop.status,
+        onboardingCompleted: authoritativeShop.settings?.onboardingCompleted === true,
+        subscriptionStatus: authoritativeShop.subscription?.status,
         sessionScope: offlineSession?.scope,
       });
       if (!eligible) return null;
 
       await markDiscountCatalogueSyncRequired(transaction, shopId, requestedAt);
-      return { shopId: shop.id, shopDomain: shop.domain };
+      return { shopId: authoritativeShop.id, shopDomain: authoritativeShop.domain };
     });
 
     if (!syncRequest) return;
