@@ -23,6 +23,12 @@ const dbMock = {
   shopSettings: {
     upsert: vi.fn(),
   },
+  shopifyDiscountCatalogue: {
+    updateMany: vi.fn(),
+  },
+  shopifyDiscount: {
+    updateMany: vi.fn(),
+  },
 };
 
 vi.mock("../../../app/db.server", () => ({
@@ -55,6 +61,8 @@ beforeEach(() => {
   dbMock.subscription.findUnique.mockReset();
   dbMock.subscription.upsert.mockReset();
   dbMock.shopSettings.upsert.mockReset();
+  dbMock.shopifyDiscountCatalogue.updateMany.mockReset();
+  dbMock.shopifyDiscount.updateMany.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
   dbMock.shop.upsert.mockResolvedValue(shop);
   dbMock.shopSettings.upsert.mockResolvedValue({
@@ -79,6 +87,19 @@ describe("ShopService.markUninstalled", () => {
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
     expect(dbMock.subscription.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.shopifyDiscountCatalogue.updateMany).toHaveBeenCalledWith({
+      where: { shopId: shop.id },
+      data: {
+        status: "UNAVAILABLE",
+        activeSyncToken: null,
+        syncStartedAt: null,
+        unavailableAt: uninstalledAt,
+      },
+    });
+    expect(dbMock.shopifyDiscount.updateMany).toHaveBeenCalledWith({
+      where: { shopId: shop.id },
+      data: { isAvailable: false, unavailableAt: uninstalledAt },
+    });
   });
 
   it("uses a conditional cutoff write for duplicate delivery", async () => {

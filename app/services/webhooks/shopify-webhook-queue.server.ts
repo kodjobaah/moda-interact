@@ -2,6 +2,8 @@ import { Queue } from "bullmq";
 import { createBullMQTelemetry } from "@modainteract/moda-interact-shared/observability/bullmq";
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
+  parseShopifyDiscountSyncJob,
+  type ShopifyDiscountSyncJob,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
   type ShopifyCartActivityEventV2,
@@ -11,6 +13,7 @@ import {
 import {
   createShopifyWebhookJobId,
   createShopifyOrderJobId,
+  createShopifyDiscountSyncJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 const JOB_PUBLISH_TIMEOUT_MS = 3_500;
@@ -20,13 +23,15 @@ const bullMQTelemetry = createBullMQTelemetry({
 
 type ShopifyWebhookQueueName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName
-  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.queueName;
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.queueName
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.queueName;
 
 type ShopifyWebhookQueueJobName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName
-  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName;
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.jobName;
 
 type ShopifyWebhookPublicationOutcome = "enqueued" | "duplicate";
 
@@ -61,14 +66,22 @@ let orderQueue: Queue<
   ShopifyWebhookQueueJobName
 > | null = null;
 
+let discountSyncQueue: Queue<
+  ShopifyDiscountSyncJob,
+  void,
+  ShopifyWebhookQueueJobName
+> | null = null;
+
 export async function resetShopifyWebhookQueuesForTests(): Promise<void> {
   await Promise.all([
     typeof checkoutQueue?.close === "function" ? checkoutQueue.close() : undefined,
     typeof orderQueue?.close === "function" ? orderQueue.close() : undefined,
+    typeof discountSyncQueue?.close === "function" ? discountSyncQueue.close() : undefined,
   ]);
 
   checkoutQueue = null;
   orderQueue = null;
+  discountSyncQueue = null;
 }
 
 function getQueueConnection() {
@@ -132,6 +145,29 @@ function getOrderQueue() {
   }
 
   return orderQueue;
+}
+
+function getDiscountSyncQueue() {
+  if (!discountSyncQueue) {
+    discountSyncQueue = new Queue(
+      SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.queueName,
+      {
+        connection: getQueueConnection(),
+        telemetry: bullMQTelemetry,
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: "exponential",
+            delay: 1000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      },
+    );
+  }
+
+  return discountSyncQueue;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string) {
@@ -383,4 +419,56 @@ export async function publishShopifyOrderCompletedEvent(input: {
     jobId,
     outcome: "enqueued",
   };
+}
+
+export async function publishShopifyDiscountSyncJob(input: {
+  event: ShopifyDiscountSyncJob;
+}): Promise<ShopifyWebhookPublicationResult> {
+  const queue = getDiscountSyncQueue();
+  const event = parseShopifyDiscountSyncJob(input.event);
+  const jobId = createShopifyDiscountSyncJobId(event);
+  const existingJob = await queue.getJob(jobId);
+
+  if (existingJob) {
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId,
+      outcome: "duplicate",
+    };
+  }
+
+  try {
+    const addedJob = await withTimeout(
+      queue.add(
+        SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.jobName,
+        event,
+        { jobId },
+      ),
+      JOB_PUBLISH_TIMEOUT_MS,
+      `Timed out publishing job ${jobId}`,
+    );
+
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId: addedJob.id ?? jobId,
+      outcome: "enqueued",
+    };
+  } catch (error) {
+    if (isDuplicateJobError(error)) {
+      return {
+        queue: queue.name as ShopifyWebhookQueueName,
+        jobId,
+        outcome: "duplicate",
+      };
+    }
+
+    if (error instanceof ShopifyWebhookPublicationError) {
+      throw error;
+    }
+
+    throw new ShopifyWebhookPublicationError(
+      error instanceof Error ? error.message : "Failed to publish discount sync job",
+      "QUEUE_ADD_FAILED",
+    );
+  }
 }

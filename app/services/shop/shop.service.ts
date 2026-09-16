@@ -13,6 +13,7 @@ import {
 } from "@modainteract/moda-interact-shared/internationalization";
 
 import prisma from "../../db.server";
+import { markDiscountCatalogueUnavailable } from "../discounts/shopify-discount-lifecycle.service";
 
 
 export interface ResolveShopifyShopInput {
@@ -384,6 +385,8 @@ export class ShopService {
           reinstallPendingAt: null,
         },
       });
+
+      await markDiscountCatalogueUnavailable(transaction, shop.id, uninstalledAt);
 
     });
   }
