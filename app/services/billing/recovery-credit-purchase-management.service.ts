@@ -121,6 +121,7 @@ export type ReactivationOutcome =
 
 type RefundRequest = {
   shopId: string;
+  shopifyShopId: string;
   purchaseId: string;
   requestId: string;
   shopifyUserId?: string | null;
@@ -327,13 +328,13 @@ export class RecoveryCreditPurchaseManagementService {
   }
 
   async requestRefund(
-    input: RefundRequest & { shopifyShopId?: string },
+    input: RefundRequest,
   ): Promise<RefundOutcome> {
     return this.requestRefundWithRetry(input);
   }
 
   async requestRefundBatch(
-    input: BatchRefundRequest & { shopifyShopId?: string },
+    input: BatchRefundRequest,
   ): Promise<RefundOutcome[]> {
     const uniquePurchaseIds = [...new Set(input.purchaseIds)].slice(
       0,
@@ -512,7 +513,7 @@ export class RecoveryCreditPurchaseManagementService {
   }
 
   private async requestRefundWithRetry(
-    input: RefundRequest & { shopifyShopId?: string },
+    input: RefundRequest,
   ): Promise<RefundOutcome> {
     for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
       try {
@@ -564,6 +565,20 @@ export class RecoveryCreditPurchaseManagementService {
                 ),
               };
             }
+            if (
+              typeof input.shopifyShopId !== "string" ||
+              !input.shopifyShopId.trim()
+            )
+              return {
+                purchaseId: input.purchaseId,
+                code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT",
+                currentAmount: purchase.currentAmount,
+                reservedAmount: purchase.reservedAmount,
+                availableAmount: Math.max(
+                  purchase.currentAmount - purchase.reservedAmount,
+                  0,
+                ),
+              };
             const availableAmount = Math.max(
               purchase.currentAmount - purchase.reservedAmount,
               0,
@@ -577,9 +592,8 @@ export class RecoveryCreditPurchaseManagementService {
                 availableAmount,
               };
             if (
-              input.shopifyShopId &&
-              (purchase.providerPurchaseAmount == null ||
-                Number(purchase.providerPurchaseAmount) <= 0)
+              purchase.providerPurchaseAmount == null ||
+              Number(purchase.providerPurchaseAmount) <= 0
             )
               return {
                 purchaseId: input.purchaseId,
@@ -588,13 +602,7 @@ export class RecoveryCreditPurchaseManagementService {
                 reservedAmount: purchase.reservedAmount,
                 availableAmount,
               };
-            if (
-              input.shopifyShopId &&
-              !(await this.isCurrentProviderContext(
-                purchase,
-                input.shopifyShopId,
-              ))
-            ) {
+            if (!(await this.isCurrentProviderContext(purchase, input.shopifyShopId))) {
               return {
                 purchaseId: input.purchaseId,
                 code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT",
@@ -762,7 +770,8 @@ export class RecoveryCreditPurchaseManagementService {
       shop?.shopifyShopId !== shopifyShopId ||
       !subscription ||
       !providerSubscription ||
-      providerSubscription.status !== "ACTIVE"
+      providerSubscription.status !== "ACTIVE" &&
+      providerSubscription.status !== "TRIALING"
     )
       return false;
     const providerIdentity = deriveShopifyProviderContextIdentity({

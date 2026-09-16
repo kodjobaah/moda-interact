@@ -254,10 +254,15 @@ describe("RecoveryCreditPurchaseManagementService", () => {
 
   it("withdraws fresh available capacity and holds it in the aggregate", async () => {
     const fixture = database([purchase("one")]);
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()),
+    };
     const result = await new RecoveryCreditPurchaseManagementService(
       fixture.database,
+      provider as any,
     ).requestRefund({
       shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
       purchaseId: "one",
       requestId: "request-1",
       quantity: 999,
@@ -354,6 +359,89 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(result.code).toBe("REQUESTED");
   });
 
+  it.each(["ACTIVE", "TRIALING"])(
+    "accepts a current %s subscription context",
+    async (status) => {
+      const current = providerSubscription({ status });
+      const fixture = database([purchase("one")]);
+      fixture.rows.get("one").providerSubscriptionIdSnapshot =
+        deriveShopifyProviderContextIdentity(current);
+      const result = await new RecoveryCreditPurchaseManagementService(
+        fixture.database,
+        { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
+      ).requestRefund({
+        shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
+        purchaseId: "one",
+        requestId: "request-1",
+      });
+      expect(result.code).toBe("REQUESTED");
+    },
+  );
+
+  it("rejects a mismatched trialing subscription context", async () => {
+    const current = providerSubscription({
+      status: "TRIALING",
+      currentPeriodEnd: new Date("2026-11-01T00:00:00.000Z"),
+    });
+    const fixture = database([purchase("one")]);
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(
+        providerSubscription({ status: "TRIALING" }),
+      );
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+      { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
+    ).requestRefund({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      purchaseId: "one",
+      requestId: "request-1",
+    });
+    expect(result.code).toBe("REFUND_NOT_CURRENT_PROVIDER_CONTEXT");
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "0", "-1"])(
+    "rejects a non-positive provider amount before provider proof (%s)",
+    async (providerPurchaseAmount) => {
+      const fixture = database([purchase("one")]);
+      fixture.rows.get("one").providerPurchaseAmount = providerPurchaseAmount;
+      const provider = { getActiveSubscription: vi.fn() };
+      const result = await new RecoveryCreditPurchaseManagementService(
+        fixture.database,
+        provider as any,
+      ).requestRefund({
+        shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
+        purchaseId: "one",
+        requestId: "request-1",
+      });
+      expect(result.code).toBe("REFUND_NOT_AVAILABLE");
+      expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+      expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([undefined, "   "])(
+    "rejects a missing or blank Shopify shop identity without mutation (%s)",
+    async (shopifyShopId) => {
+      const fixture = database([purchase("one")]);
+      const result = await new RecoveryCreditPurchaseManagementService(
+        fixture.database,
+        { getActiveSubscription: vi.fn() } as any,
+      ).requestRefund({
+        shopId: "shop-1",
+        shopifyShopId: shopifyShopId as string,
+        purchaseId: "one",
+        requestId: "request-1",
+      });
+      expect(result.code).toBe("REFUND_NOT_CURRENT_PROVIDER_CONTEXT");
+      expect(fixture.rows.get("one").status).toBe("ACTIVE");
+      expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not refund a zero-cost purchase", async () => {
     const fixture = database([purchase("one")]);
     fixture.rows.get("one").providerPurchaseAmount = null;
@@ -376,6 +464,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       fixture.database,
     ).requestRefund({
       shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
       purchaseId: "one",
       requestId: "request-1",
     });
@@ -391,6 +480,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       fixture.database,
     ).requestRefund({
       shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
       purchaseId: "one",
       requestId: "request-1",
     });
@@ -406,12 +496,17 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       purchase("one"),
       purchase("two", "shop-1", "COMPLETED", 0, 0),
     ]);
+    const current = providerSubscription();
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
     const service = new RecoveryCreditPurchaseManagementService(
       fixture.database,
+      { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
     );
     await expect(
       service.requestRefundBatch({
         shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
         purchaseIds: ["one", "two", "one"],
         requestId: "batch-1",
       }),
@@ -424,17 +519,23 @@ describe("RecoveryCreditPurchaseManagementService", () => {
 
   it("replays a live refund without creating another row", async () => {
     const fixture = database([purchase("one")]);
+    const current = providerSubscription();
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
     const service = new RecoveryCreditPurchaseManagementService(
       fixture.database,
+      { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
     );
     await service.requestRefund({
       shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
       purchaseId: "one",
       requestId: "request-1",
     });
     await expect(
       service.requestRefund({
         shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
         purchaseId: "one",
         requestId: "request-1",
       }),
@@ -446,11 +547,16 @@ describe("RecoveryCreditPurchaseManagementService", () => {
 
   it("resolves a request-key uniqueness conflict from the persisted refund state", async () => {
     const fixture = database([purchase("one")]);
+    const current = providerSubscription();
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
     const service = new RecoveryCreditPurchaseManagementService(
       fixture.database,
+      { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
     );
     await service.requestRefund({
       shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
       purchaseId: "one",
       requestId: "request-1",
     });
@@ -466,6 +572,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     await expect(
       service.requestRefund({
         shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
         purchaseId: "one",
         requestId: "request-1",
       }),
@@ -523,6 +630,9 @@ describe("RecoveryCreditPurchaseManagementService", () => {
 
   it("retries the whole refund transaction after a serialization conflict", async () => {
     const fixture = database([purchase("one")]);
+    const current = providerSubscription();
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
     const originalTransaction = fixture.database.$transaction;
     fixture.database.$transaction = vi
       .fn()
@@ -538,8 +648,10 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     await expect(
       new RecoveryCreditPurchaseManagementService(
         fixture.database,
+        { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
       ).requestRefund({
         shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
         purchaseId: "one",
         requestId: "request-1",
       }),
