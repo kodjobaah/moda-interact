@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Reserverade / pågår",
   "billingPurchases.availableCredits": "Tillgängliga nu",
   "billingPurchases.originalAmount": "Ursprungligt köpbelopp",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Inte tillgängligt",
   "billingPurchases.noAvailableCredits": "Inga krediter är tillgängliga för återbetalning eftersom alla återstående krediter används i pågående konversationer.",
   "billingPurchases.completedCopy": "Alla köpta krediter har använts.",

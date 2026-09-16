@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Gereserveerd / in behandeling",
   "billingPurchases.availableCredits": "Nu beschikbaar",
   "billingPurchases.originalAmount": "Oorspronkelijk aankoopbedrag",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Niet beschikbaar",
   "billingPurchases.noAvailableCredits": "Er zijn geen credits beschikbaar voor terugbetaling omdat alle resterende credits in behandeling zijn.",
   "billingPurchases.completedCopy": "Alle gekochte credits zijn gebruikt.",

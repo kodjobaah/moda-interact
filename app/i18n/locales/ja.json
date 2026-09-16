@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "予約済み / 処理中",
   "billingPurchases.availableCredits": "現在利用可能",
   "billingPurchases.originalAmount": "元の購入金額",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "利用不可",
   "billingPurchases.noAvailableCredits": "残りのクレジットはすべて処理中のため、返金可能なクレジットはありません。",
   "billingPurchases.completedCopy": "購入済みクレジットはすべて使用済みです。",

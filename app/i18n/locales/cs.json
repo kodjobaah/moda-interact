@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Rezervováno / probíhá",
   "billingPurchases.availableCredits": "Nyní k dispozici",
   "billingPurchases.originalAmount": "Původní částka nákupu",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Není k dispozici",
   "billingPurchases.noAvailableCredits": "Žádné kredity nejsou k dispozici k vrácení peněz, protože všechny zbývající kredity se právě používají.",
   "billingPurchases.completedCopy": "Všechny zakoupené kredity byly použity.",

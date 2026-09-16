@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Ayrılmış / devam ediyor",
   "billingPurchases.availableCredits": "Şu anda kullanılabilir",
   "billingPurchases.originalAmount": "İlk satın alma tutarı",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Kullanılamıyor",
   "billingPurchases.noAvailableCredits": "Kalan tüm krediler kullanımda olduğundan geri ödenebilecek kredi yok.",
   "billingPurchases.completedCopy": "Satın alınan tüm krediler kullanıldı.",

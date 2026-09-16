@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "สำรองไว้ / กำลังใช้งาน",
   "billingPurchases.availableCredits": "พร้อมใช้งานตอนนี้",
   "billingPurchases.originalAmount": "ยอดซื้อเดิม",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "ไม่พร้อมใช้งาน",
   "billingPurchases.noAvailableCredits": "ไม่มีเครดิตที่สามารถขอคืนเงินได้ เนื่องจากเครดิตที่เหลือทั้งหมดกำลังใช้งานอยู่",
   "billingPurchases.completedCopy": "เครดิตที่ซื้อทั้งหมดถูกใช้แล้ว",

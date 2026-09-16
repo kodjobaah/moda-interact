@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Riservati / in corso",
   "billingPurchases.availableCredits": "Disponibili ora",
   "billingPurchases.originalAmount": "Importo originale dell’acquisto",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Non disponibile",
   "billingPurchases.noAvailableCredits": "Non ci sono crediti disponibili per il rimborso perché tutti i crediti rimanenti sono in corso di utilizzo.",
   "billingPurchases.completedCopy": "Tutti i crediti acquistati sono stati utilizzati.",

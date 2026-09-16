@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Reservados / em andamento",
   "billingPurchases.availableCredits": "Disponíveis agora",
   "billingPurchases.originalAmount": "Valor original da compra",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Indisponível",
   "billingPurchases.noAvailableCredits": "Não há créditos disponíveis para reembolso porque todos os créditos restantes estão em andamento.",
   "billingPurchases.completedCopy": "Todos os créditos comprados foram utilizados.",

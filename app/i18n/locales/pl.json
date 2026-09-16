@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "Zarezerwowane / w toku",
   "billingPurchases.availableCredits": "Dostępne teraz",
   "billingPurchases.originalAmount": "Pierwotna kwota zakupu",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "Niedostępne",
   "billingPurchases.noAvailableCredits": "Brak kredytów dostępnych do zwrotu, ponieważ wszystkie pozostałe kredyty są w toku.",
   "billingPurchases.completedCopy": "Wszystkie zakupione kredyty zostały wykorzystane.",

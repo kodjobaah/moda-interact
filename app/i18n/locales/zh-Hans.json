@@ -316,6 +316,7 @@
   "billingPurchases.reservedCredits": "已预留 / 进行中",
   "billingPurchases.availableCredits": "当前可用",
   "billingPurchases.originalAmount": "原始购买金额",
+  "billingPurchases.historicalNotRefundable": "These credits remain usable, but this purchase is no longer refundable under the current subscription.",
   "billingPurchases.notAvailable": "不可用",
   "billingPurchases.noAvailableCredits": "没有可退款的额度，因为所有剩余额度都正在使用中。",
   "billingPurchases.completedCopy": "所有已购买额度均已使用。",
