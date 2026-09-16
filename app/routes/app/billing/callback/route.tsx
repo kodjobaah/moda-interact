@@ -17,6 +17,7 @@ import {
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -138,6 +139,7 @@ export async function loader({
         subscriptionId: subscription!.id,
         expectedNextReconcileAt: subscription!.nextReconcileAt!,
       });
+      await enqueueSubscriptionActivatedDiscountSyncBestEffort(shop.id);
       return redirect("/app");
     }
 
@@ -150,6 +152,7 @@ export async function loader({
           expectedNextReconcileAt: completed.nextReconcileAt,
         });
       }
+      await enqueueSubscriptionActivatedDiscountSyncBestEffort(shop.id);
       return redirect("/app");
     }
 

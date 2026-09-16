@@ -26,7 +26,9 @@ import {
   publishShopifyCheckoutUpdatedEvent,
   publishShopifyCartActivityEvent,
   publishShopifyOrderCompletedEvent,
+  publishShopifyDiscountSyncJob,
 } from "./shopify-webhook-queue.server";
+import { buildDiscountSyncJob } from "../discounts/shopify-discount-lifecycle.service";
 import { recordShopifyWebhookOutcome } from "./shopify-webhook-observability.server";
 import { getActiveTraceId } from "../otel/otel.runtime";
 import {
@@ -139,7 +141,21 @@ export async function ingestShopifyWebhook(
       return new Response(null, { status: 200 });
     }
 
-    if (!plan) {
+    let publication;
+    const discountWebhookTopic = normalizeDiscountWebhookTopic(metadata.providerTopic);
+
+    if (discountWebhookTopic) {
+      publication = await publishShopifyDiscountSyncJob({
+        event: buildDiscountSyncJob({
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          reason: "DISCOUNT_WEBHOOK",
+          requestedAt: metadata.triggeredAt ?? metadata.receivedAt,
+          deliveryId: metadata.deliveryId,
+          webhookTopic: discountWebhookTopic,
+        }),
+      });
+    } else if (!plan) {
       recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
@@ -155,9 +171,7 @@ export async function ingestShopifyWebhook(
       return new Response(null, { status: 200 });
     }
 
-    let publication;
-
-    if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
+    if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -187,7 +201,7 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCartActivityEvent({
         event: ShopifyCartActivityEventV2Schema.parse(event),
       });
-    } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
+    } else if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -218,7 +232,7 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCheckoutCreatedEvent({
         event: ShopifyCheckoutCreatedEventV2Schema.parse(event),
       });
-    } else if (plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
+    } else if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -249,7 +263,7 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCheckoutUpdatedEvent({
         event: ShopifyCheckoutUpdatedEventV2Schema.parse(event),
       });
-    } else {
+    } else if (!publication) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -436,5 +450,23 @@ function isCartTopic(providerTopic: string): boolean {
     .replaceAll(".", "_")
     .replaceAll("-", "_")
     .startsWith("CART");
+}
+
+function normalizeDiscountWebhookTopic(
+  providerTopic: string,
+): "discounts/create" | "discounts/update" | "discounts/delete" | "discounts/redeemcode_added" | "discounts/redeemcode_removed" | null {
+  const normalized = providerTopic.trim().toLowerCase();
+  const topic = normalized === "discounts_redeemcode_added"
+    ? "discounts/redeemcode_added"
+    : normalized === "discounts_redeemcode_removed"
+      ? "discounts/redeemcode_removed"
+      : normalized.replaceAll("_", "/");
+  return topic === "discounts/create" ||
+    topic === "discounts/update" ||
+    topic === "discounts/delete" ||
+    topic === "discounts/redeemcode_added" ||
+    topic === "discounts/redeemcode_removed"
+    ? topic
+    : null;
 }
 

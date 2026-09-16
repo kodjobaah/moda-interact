@@ -42,6 +42,11 @@ const publicationMock = {
     jobId: "order-job",
     outcome: "enqueued",
   })),
+  publishShopifyDiscountSyncJob: vi.fn(async () => ({
+    queue: "shopify-discount-sync",
+    jobId: "discount-sync-job",
+    outcome: "enqueued",
+  })),
 };
 
 vi.mock("../../../app/db.server", () => ({ default: dbMock }));
@@ -59,6 +64,7 @@ function resetState() {
   publicationMock.publishShopifyCheckoutUpdatedEvent.mockClear();
   publicationMock.publishShopifyCartActivityEvent.mockClear();
   publicationMock.publishShopifyOrderCompletedEvent.mockClear();
+  publicationMock.publishShopifyDiscountSyncJob.mockClear();
   delete process.env.REDIS_URL;
 }
 
@@ -130,6 +136,30 @@ beforeEach(() => {
 });
 
 describe("shopify webhook ingress", () => {
+  it.each([
+    ["DISCOUNTS_CREATE", "discounts/create"],
+    ["DISCOUNTS_UPDATE", "discounts/update"],
+    ["DISCOUNTS_DELETE", "discounts/delete"],
+    ["DISCOUNTS_REDEEMCODE_ADDED", "discounts/redeemcode_added"],
+    ["DISCOUNTS_REDEEMCODE_REMOVED", "discounts/redeemcode_removed"],
+  ])("publishes %s as a canonical discount sync job", async (topic, webhookTopic) => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(checkoutInput({ topic }));
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyDiscountSyncJob).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        schemaVersion: 1,
+        shopId: "shop_1",
+        shopDomain: "shop.myshopify.com",
+        reason: "DISCOUNT_WEBHOOK",
+        deliveryId: "delivery-1",
+        webhookTopic,
+      }),
+    });
+  });
+
   it("does not contain the legacy receipt, outbox, GraphQL, or unified-queue paths", () => {
     const source = readFileSync(
       new URL(
