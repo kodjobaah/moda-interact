@@ -44,7 +44,7 @@ describe("merchant route access policy", () => {
       "SUPPORT",
       "SUPPORT",
       "HOME", "BILLING_OPTIONS", "SUPPORT", "PLAN_SELECT",
-      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "PROMOTIONS", "SUPPORT", "PLAN_SELECT", "PENDING_RECOVERIES",
+      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "PROMOTIONS", "RECOVERY_SETTINGS", "SUPPORT", "PLAN_SELECT", "PENDING_RECOVERIES",
       "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT", "PLAN_SELECT",
       "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT",
       "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT", "PLAN_SELECT",
@@ -70,7 +70,7 @@ describe("merchant route access policy", () => {
       { id: "billing", href: "/app/billing/options" },
       { id: "messages", href: "/app/merchant-support" },
     ]);
-    expect(getMerchantNavigation("ACTIVE")).toHaveLength(4);
+    expect(getMerchantNavigation("ACTIVE")).toHaveLength(5);
     expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
     expect(getMerchantNavigation("REINSTALLING")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
   });
@@ -80,7 +80,7 @@ describe("merchant route access policy", () => {
     ["REINSTALLING", ["/app/merchant-support"]],
     ["SUPPORT_ONLY", ["/app/merchant-support"]],
     ["ONBOARDING", ["/app", "/app/billing/options", "/app/merchant-support"]],
-    ["ACTIVE", ["/app", "/app/billing/options", "/app/merchant-support", "/app/promotions"]],
+    ["ACTIVE", ["/app", "/app/billing/options", "/app/merchant-support", "/app/promotions", "/app/recovery-settings"]],
     ["NO_CONTRACT", ["/app", "/app/billing/options", "/app/merchant-support"]],
     ["FROZEN", ["/app", "/app/billing/options", "/app/merchant-support"]],
     ["BILLING_ATTENTION", ["/app", "/app/billing/options", "/app/merchant-support"]],
@@ -93,6 +93,8 @@ describe("merchant route access policy", () => {
           ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
           : item.id === "promotions"
             ? canAccessMerchantSurface(state, "PROMOTIONS")
+            : item.id === "recoverySettings"
+              ? canAccessMerchantSurface(state, "RECOVERY_SETTINGS")
             : canAccessMerchantSurface(state, "SUPPORT")
     ))).toBe(true);
   });
