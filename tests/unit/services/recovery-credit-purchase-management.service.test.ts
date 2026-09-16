@@ -73,6 +73,16 @@ function database(purchases: any[]) {
   const transaction: any = {
     recoveryCreditPurchase: {
       findUnique: vi.fn(async ({ where }: any) => rows.get(where.id) ?? null),
+      findFirst: vi.fn(async ({ where }: any) =>
+        [...rows.values()].find(
+          (row) =>
+            row.shopId === where.shopId &&
+            row.shopifyEventHandleSnapshot === where.shopifyEventHandleSnapshot &&
+            row.status === where.status,
+        )
+          ? { id: [...rows.values()].find((row) => row.shopId === where.shopId && row.shopifyEventHandleSnapshot === where.shopifyEventHandleSnapshot && row.status === where.status).id }
+          : null,
+      ),
       updateMany: vi.fn(async ({ where, data }: any) => {
         const row = rows.get(where.id);
         if (
@@ -92,6 +102,18 @@ function database(purchases: any[]) {
       }),
     },
     recoveryCreditRefund: {
+      findFirst: vi.fn(async ({ where }: any) => {
+        for (const row of rows.values()) {
+          const refund = row.refunds.find(
+            (candidate: any) =>
+              row.shopId === where.shopId &&
+              candidate.eventHandleSnapshot === where.eventHandleSnapshot &&
+              where.status.in.includes(candidate.status),
+          );
+          if (refund) return { id: refund.id ?? "refund", purchaseId: row.id };
+        }
+        return null;
+      }),
       create: vi.fn(async ({ data }: any) => {
         const row = rows.get(data.purchaseId);
         const refund = { ...data, id: "refund-1", version: 0 };
@@ -101,6 +123,7 @@ function database(purchases: any[]) {
       }),
       updateMany: vi.fn(async () => ({ count: 1 })),
     },
+    $queryRaw: vi.fn().mockResolvedValue([]),
     shopEntitlementCounter: {
       findUnique: vi.fn(async () => aggregate),
       updateMany: vi.fn(async ({ where, data }: any) => {
@@ -282,6 +305,43 @@ describe("RecoveryCreditPurchaseManagementService", () => {
         }),
       }),
     );
+    expect(fixture.transaction.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns METER_BUSY without mutation for a pending purchase on the same handle", async () => {
+    const fixture = database([purchase("one"), purchase("pending")]);
+    fixture.rows.get("pending").status = "REQUESTED";
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+    ).requestRefund({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      purchaseId: "one",
+      requestId: "request-1",
+    });
+    expect(result.code).toBe("METER_BUSY");
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    expect(fixture.rows.get("one").status).toBe("ACTIVE");
+  });
+
+  it("returns METER_BUSY without mutation for a live refund on another purchase", async () => {
+    const fixture = database([purchase("one"), purchase("other")]);
+    fixture.rows.get("other").refunds.push({
+      id: "refund-other",
+      status: "PROVIDER_ACTION_REQUIRED",
+      eventHandleSnapshot: "pack-meter",
+    });
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+    ).requestRefund({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      purchaseId: "one",
+      requestId: "request-1",
+    });
+    expect(result.code).toBe("METER_BUSY");
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    expect(fixture.rows.get("one").status).toBe("ACTIVE");
   });
 
   it("requires the current provider context before creating a refund hold", async () => {
@@ -589,6 +649,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       providerReference: null,
       providerActionKind: null,
       providerConfirmedAt: null,
+      automaticCorrectionUsageEventId: null,
     };
     fixture.rows.get("one").status = "WITHDRAWN";
     fixture.rows.get("one").refunds.push(winningRefund);
@@ -668,6 +729,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       providerReference: null,
       providerActionKind: null,
       providerConfirmedAt: null,
+      automaticCorrectionUsageEventId: null,
     });
     const result = await new RecoveryCreditPurchaseManagementService(
       fixture.database,
@@ -690,6 +752,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       providerReference: "ref",
       providerActionKind: "REFUND",
       providerConfirmedAt: null,
+      automaticCorrectionUsageEventId: null,
     });
     await expect(
       new RecoveryCreditPurchaseManagementService(
@@ -708,6 +771,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       providerReference: null,
       providerActionKind: null,
       providerConfirmedAt: null,
+      automaticCorrectionUsageEventId: null,
     });
     await expect(
       new RecoveryCreditPurchaseManagementService(

@@ -81,6 +81,10 @@ export interface RecoveryCreditOffer {
   creditsGranted: number;
   providerPrice: ProviderUsageItem["price"];
   providerUsage: ProviderUsageItem["usage"];
+  providerNextUnitCost: { amount: string; currency: string } | null;
+  purchaseEligible: boolean;
+  blockReason: "PURCHASE_PENDING" | "REFUND_PENDING" | null;
+  pendingPurchase: { id: string; usageReportState: string } | null;
 }
 
 export type RecoveryCreditOfferVerificationState = "VERIFIED" | "VERIFICATION_UNAVAILABLE";

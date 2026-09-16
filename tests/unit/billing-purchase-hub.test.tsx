@@ -1,5 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
 
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
@@ -97,8 +97,10 @@ describe("BillingPurchaseHub", () => {
           eventHandle: "recovery-small",
           cataloguePosition: 0,
           creditsGranted: 10,
-          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] },
-          providerUsage: null,
+          providerNextUnitCost: { amount: "4.00", currency: "USD" },
+          purchaseEligible: true,
+          blockReason: null,
+          pendingPurchase: null,
         }],
       },
     });
@@ -112,13 +114,30 @@ describe("BillingPurchaseHub", () => {
       topUpState: {
         ...topUpState,
         offers: [
-          { eventHandle: "recovery-small", cataloguePosition: 0, creditsGranted: 10, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "4.00" }] }, providerUsage: null },
-          { eventHandle: "recovery-large", cataloguePosition: 1, creditsGranted: 50, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "15.00" }] }, providerUsage: null },
+          { eventHandle: "recovery-small", cataloguePosition: 0, creditsGranted: 10, providerNextUnitCost: { amount: "4.00", currency: "USD" }, purchaseEligible: true, blockReason: null, pendingPurchase: null },
+          { eventHandle: "recovery-large", cataloguePosition: 1, creditsGranted: 50, providerNextUnitCost: { amount: "15.00", currency: "USD" }, purchaseEligible: true, blockReason: null, pendingPurchase: null },
         ],
       },
     });
     expect(markup.indexOf(">10<")).toBeLessThan(markup.indexOf(">50<"));
     expect(markup).toContain('name="eventHandle" value="recovery-small"');
     expect(markup).toContain('name="eventHandle" value="recovery-large"');
+  });
+
+  it("disables only the busy offer and renders its meter-specific state", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [
+          { eventHandle: "busy", cataloguePosition: 0, creditsGranted: 10, providerNextUnitCost: { amount: "4.00", currency: "USD" }, purchaseEligible: false, blockReason: "REFUND_PENDING", pendingPurchase: null },
+          { eventHandle: "available", cataloguePosition: 1, creditsGranted: 50, providerNextUnitCost: { amount: "15.00", currency: "USD" }, purchaseEligible: true, blockReason: null, pendingPurchase: null },
+        ],
+      },
+    });
+    expect(markup).toContain("This top-up is temporarily unavailable");
+    expect((markup.match(/disabled=""/g) ?? []).length).toBe(1);
+    expect(markup).toContain("$4.00");
+    expect(markup).toContain("$15.00");
+    expect(markup).not.toContain("per conversation");
   });
 });

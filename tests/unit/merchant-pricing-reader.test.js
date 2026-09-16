@@ -200,6 +200,41 @@ describe("resolveCurrentRecoveryCreditOffers", () => {
     ]);
   });
 
+  it("derives the next unit cost for volume and graduated pricing", () => {
+    const volume = resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([providerItem("volume")]),
+      merchantPricingPlan: plan("growth", [{ position: 0, eventHandle: "volume", creditsGrantedPerUnit: 5 }]),
+    });
+    expect(volume.offers[0].providerNextUnitCost).toEqual({ amount: "4", currency: "USD" });
+
+    const graduated = resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([{
+        ...providerItem("graduated"),
+        price: { kind: "TIERED", active: false, currency: "USD", tiersMode: "GRADUATED", tiers: [
+          { upTo: 5, amountPerUnit: "10", amount: "0" },
+          { upTo: null, amountPerUnit: "4", amount: "0" },
+        ] },
+        usage: { quantity: 5, costAmount: "50", costCurrency: "USD" },
+      }]),
+      merchantPricingPlan: plan("growth", [{ position: 0, eventHandle: "graduated", creditsGrantedPerUnit: 5 }]),
+    });
+    expect(graduated.offers[0].providerNextUnitCost).toEqual({ amount: "4", currency: "USD" });
+  });
+
+  it("fails closed when quantity or pricing is malformed", () => {
+    const result = resolveCurrentRecoveryCreditOffers({
+      providerSubscription: providerSubscription([
+        { ...providerItem("missing-quantity"), usage: {} },
+        { ...providerItem("unsupported"), price: { kind: "TIERED", currency: "USD", tiersMode: "FIXED", tiers: [] } },
+      ]),
+      merchantPricingPlan: plan("growth", [
+        { position: 0, eventHandle: "missing-quantity", creditsGrantedPerUnit: 5 },
+        { position: 1, eventHandle: "unsupported", creditsGrantedPerUnit: 5 },
+      ]),
+    });
+    expect(result.offers.map((offer) => offer.providerNextUnitCost)).toEqual([null, null]);
+  });
+
   it("omits missing events, records unknown provider meters, and never crosses plan handles", () => {
     const result = resolveCurrentRecoveryCreditOffers({
       providerSubscription: providerSubscription([providerItem("known"), providerItem("unknown")]),

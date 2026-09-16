@@ -194,11 +194,14 @@ export default function RecoveryCreditPurchaseManager({
             const isEligible = eligible(purchase);
             const refund = purchase.latestRefund;
             const canReactivate =
-              purchase.status === "WITHDRAWN" && refund?.status === "REQUESTED";
+              purchase.status === "WITHDRAWN" &&
+              refund?.status === "REQUESTED" &&
+              refund.automaticCorrectionUsageEventId == null;
             const providerActionStarted =
               purchase.status === "WITHDRAWN" &&
               refund &&
-              refund.status !== "REQUESTED";
+              (refund.status !== "REQUESTED" ||
+                refund.automaticCorrectionUsageEventId != null);
             return (
               <article key={purchase.id} role="listitem">
                 {filter === "ALL" && purchase.status === "REQUESTED" ? (

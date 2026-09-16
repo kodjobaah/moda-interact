@@ -38,7 +38,12 @@ vi.mock("react-router", async () => {
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
 const date = "2026-09-14T00:00:00.000Z";
 
-function purchase(id: string, status: string, availableAmount: number) {
+function purchase(
+  id: string,
+  status: string,
+  availableAmount: number,
+  correctionId: string | null = null,
+) {
   return {
     id,
     status,
@@ -51,7 +56,10 @@ function purchase(id: string, status: string, availableAmount: number) {
     planName: "Growth",
     planHandle: "growth",
     originalProviderPurchase: { amount: "12.50", currency: "USD" },
-    latestRefund: status === "WITHDRAWN" ? { status: "REQUESTED" } : null,
+    latestRefund:
+      status === "WITHDRAWN"
+        ? { status: "REQUESTED", automaticCorrectionUsageEventId: correctionId }
+        : null,
     completedRefund:
       status === "REFUNDED"
         ? {
@@ -151,5 +159,25 @@ describe("purchased credit history manager", () => {
     expect(managerSource).toContain(
       "setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })",
     );
+  });
+
+  it("blocks reactivation after Background links an automatic correction", () => {
+    const markup = renderToStaticMarkup(
+      <RecoveryCreditPurchaseManager
+        merchantUi={merchantUi}
+        filter="ALL"
+        page={{
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          purchases: [purchase("corrected", "WITHDRAWN", 0, "usage-event-1")],
+        }}
+      />,
+    );
+    expect(markup).toContain("Refund pending");
+    expect(markup).toContain(
+      "This refund can no longer be cancelled in-app because settlement may have started.",
+    );
+    expect(markup).not.toContain("Reactivate credits");
   });
 });

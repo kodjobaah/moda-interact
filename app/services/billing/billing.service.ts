@@ -13,6 +13,8 @@ import {
   Prisma,
   PromotionCampaignStatus,
   PromotionTargetScope,
+  RecoveryCreditPurchaseStatus,
+  RecoveryCreditRefundStatus,
   ShopStatus,
   SubscriptionProjectionStatus,
 } from "@prisma/client";
@@ -124,6 +126,11 @@ const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
 
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
 export const INITIAL_BILLING_RETRY_DELAY_MS = 60_000;
+const LIVE_RECOVERY_CREDIT_REFUND_STATUSES = [
+  RecoveryCreditRefundStatus.REQUESTED,
+  RecoveryCreditRefundStatus.PROVIDER_ACTION_REQUIRED,
+  RecoveryCreditRefundStatus.NEEDS_ATTENTION,
+] as const;
 
 export type InitialFreeActivationToken = Readonly<{
   subscriptionId: string;
@@ -1378,9 +1385,58 @@ async getSubscription(
       orderBy: { createdAt: "desc" },
       include: { usageEvent: true },
     }) ?? Promise.resolve(null));
-    if (latestPurchase?.status === "REQUESTED") {
-      recoveryCreditPackPurchaseEligible = false;
+    const globalPurchaseEligibility = recoveryCreditPackPurchaseEligible;
+    const offerHandles = recoveryCreditOffers.map((offer) => offer.eventHandle);
+    const pendingPurchases = offerHandles.length
+      ? await (this.database.recoveryCreditPurchase?.findMany?.({
+          where: {
+            shopId,
+            status: RecoveryCreditPurchaseStatus.REQUESTED,
+            shopifyEventHandleSnapshot: { in: offerHandles },
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          include: { usageEvent: true },
+        }) ?? [])
+      : [];
+    const liveRefunds = offerHandles.length
+      ? await (this.database.recoveryCreditRefund?.findMany?.({
+          where: {
+            shopId,
+            eventHandleSnapshot: { in: offerHandles },
+            status: { in: [...LIVE_RECOVERY_CREDIT_REFUND_STATUSES] },
+          },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true, eventHandleSnapshot: true, status: true },
+        }) ?? [])
+      : [];
+    const pendingPurchaseByHandle = new Map<string, (typeof pendingPurchases)[number]>();
+    for (const pendingPurchase of pendingPurchases) {
+      if (!pendingPurchaseByHandle.has(pendingPurchase.shopifyEventHandleSnapshot)) {
+        pendingPurchaseByHandle.set(pendingPurchase.shopifyEventHandleSnapshot, pendingPurchase);
+      }
     }
+    const liveRefundByHandle = new Map<string, (typeof liveRefunds)[number]>();
+    for (const liveRefund of liveRefunds) {
+      if (!liveRefundByHandle.has(liveRefund.eventHandleSnapshot)) {
+        liveRefundByHandle.set(liveRefund.eventHandleSnapshot, liveRefund);
+      }
+    }
+    recoveryCreditOffers = recoveryCreditOffers.map((offer) => {
+      const pendingPurchase = pendingPurchaseByHandle.get(offer.eventHandle) ?? null;
+      const liveRefund = liveRefundByHandle.get(offer.eventHandle) ?? null;
+      return {
+        ...offer,
+        purchaseEligible: globalPurchaseEligibility && !pendingPurchase && !liveRefund,
+        blockReason: pendingPurchase ? "PURCHASE_PENDING" : liveRefund ? "REFUND_PENDING" : null,
+        pendingPurchase: pendingPurchase
+          ? {
+              id: pendingPurchase.id,
+              usageReportState: pendingPurchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
+            }
+          : null,
+      };
+    });
+    recoveryCreditPackPurchaseEligible = recoveryCreditOffers.some((offer) => offer.purchaseEligible);
 
     const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
     const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
@@ -1618,12 +1674,28 @@ async getSubscription(
       const unresolved = await transaction.recoveryCreditPurchase.findFirst?.({
         where: {
           shopId,
-          status: "REQUESTED",
+          status: RecoveryCreditPurchaseStatus.REQUESTED,
           shopifyEventHandleSnapshot: eventHandle,
         },
-        orderBy: { createdAt: "asc" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true },
       });
       if (unresolved) throw new Error(unresolvedPurchaseMessage());
+
+      const unresolvedRefund = await transaction.recoveryCreditRefund?.findFirst?.({
+        where: {
+          shopId,
+          eventHandleSnapshot: eventHandle,
+          status: { in: [...LIVE_RECOVERY_CREDIT_REFUND_STATUSES] },
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true },
+      });
+      if (unresolvedRefund) {
+        throw new Error(
+          "Another billing change for this recovery-credit meter is already being processed.",
+        );
+      }
 
       const currentSubscription = await transaction.subscription.findUnique({
         where: { shopId },

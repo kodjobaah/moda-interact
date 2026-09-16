@@ -9,7 +9,6 @@ const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
   const purchase = topUpState.latestPurchase;
-  const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
   const reportState = purchase?.usageReportState;
   const offers = Array.isArray(topUpState.offers) ? topUpState.offers : [];
 
@@ -31,24 +30,23 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       <div><strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong><p>{i18n.t("billingCommerce.topup.billingNote")}</p></div>
     </div>
     {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : offers.map((offer) => {
-      const tier = offer.providerPrice?.tiers?.[0];
-      const providerAmount = tier?.amountPerUnit ?? tier?.amount;
-      const providerPrice = providerAmount && offer.providerPrice?.currency
-        ? i18n.formatMoney(Number(providerAmount), offer.providerPrice.currency)
+      const providerPrice = offer.providerNextUnitCost
+        ? i18n.formatMoney(offer.providerNextUnitCost.amount, offer.providerNextUnitCost.currency)
         : null;
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
-        {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
+        {providerPrice ? <p>{providerPrice}</p> : null}
         <form method="post" onSubmit={(event) => {
           event.currentTarget.purchaseId.value = crypto.randomUUID();
         }}>
           <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
           <input type="hidden" name="purchaseId" value="" />
           <input type="hidden" name="eventHandle" value={offer.eventHandle} />
-          <button type="submit" disabled={!topUpState.purchaseEligible}>Buy</button>
+          <button type="submit" disabled={!topUpState.purchaseEligible || !offer.purchaseEligible}>Buy</button>
         </form>
-        {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
-        {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
+        {offer.pendingPurchase?.usageReportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
+        {offer.pendingPurchase?.usageReportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
+        {offer.blockReason === "REFUND_PENDING" ? <p>{i18n.t("billingCommerce.topup.meterBusy")}</p> : null}
       </article>;
     })}
     {purchase && statuses.includes(purchase.status) ? <p>
@@ -68,7 +66,7 @@ TopUpPurchasePanel.propTypes = {
   topUpState: PropTypes.shape({
     configured: PropTypes.bool.isRequired,
     purchaseEligible: PropTypes.bool.isRequired,
-    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
+    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerNextUnitCost: PropTypes.shape({ amount: PropTypes.string.isRequired, currency: PropTypes.string.isRequired }), purchaseEligible: PropTypes.bool.isRequired, blockReason: PropTypes.oneOf(["PURCHASE_PENDING", "REFUND_PENDING"]), pendingPurchase: PropTypes.shape({ id: PropTypes.string.isRequired, usageReportState: PropTypes.string.isRequired }) })),
     offerVerificationState: PropTypes.string.isRequired,
     purchasedCreditsAvailable: PropTypes.number.isRequired,
     latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string }),

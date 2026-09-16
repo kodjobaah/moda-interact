@@ -49,6 +49,7 @@ type PurchaseRow = {
     createdAt: Date;
     completedAt: Date | null;
     providerActionKind: string | null;
+    automaticCorrectionUsageEventId: string | null;
   }>;
 };
 
@@ -80,6 +81,7 @@ type RefundSummary = {
   expectedProviderCurrency: string | null;
   createdAt: string;
   completedAt: string | null;
+  automaticCorrectionUsageEventId: string | null;
 };
 
 export type PurchaseHistoryPage = {
@@ -98,6 +100,7 @@ export type RefundOutcomeCode =
   | "COMPLETED"
   | "NOT_FOUND"
   | "CROSS_SHOP"
+  | "METER_BUSY"
   | "REFUND_NOT_CURRENT_PROVIDER_CONTEXT";
 
 export type RefundOutcome = {
@@ -170,6 +173,7 @@ function refundSummary(
     expectedProviderCurrency: refund.expectedProviderCurrency,
     createdAt: refund.createdAt.toISOString(),
     completedAt: refund.completedAt?.toISOString() ?? null,
+    automaticCorrectionUsageEventId: refund.automaticCorrectionUsageEventId,
   };
 }
 
@@ -301,6 +305,7 @@ export class RecoveryCreditPurchaseManagementService {
               createdAt: true,
               completedAt: true,
               providerActionKind: true,
+              automaticCorrectionUsageEventId: true,
             },
           },
         },
@@ -373,6 +378,7 @@ export class RecoveryCreditPurchaseManagementService {
               purchase.status !== RecoveryCreditPurchaseStatus.WITHDRAWN ||
               !refund ||
               refund.status !== RecoveryCreditRefundStatus.REQUESTED ||
+              refund.automaticCorrectionUsageEventId !== null ||
               refund.providerReference ||
               refund.providerActionKind ||
               refund.providerConfirmedAt
@@ -394,6 +400,7 @@ export class RecoveryCreditPurchaseManagementService {
                     providerReference: null,
                     providerActionKind: null,
                     providerConfirmedAt: null,
+                    automaticCorrectionUsageEventId: null,
                   },
                   data: {
                     status: RecoveryCreditRefundStatus.CANCELLED,
@@ -441,6 +448,7 @@ export class RecoveryCreditPurchaseManagementService {
                   providerReference: null,
                   providerActionKind: null,
                   providerConfirmedAt: null,
+                  automaticCorrectionUsageEventId: null,
                 },
                 data: {
                   status: RecoveryCreditRefundStatus.CANCELLED,
@@ -602,6 +610,42 @@ export class RecoveryCreditPurchaseManagementService {
                 reservedAmount: purchase.reservedAmount,
                 availableAmount,
               };
+            if ("$queryRaw" in transaction && typeof transaction.$queryRaw === "function") {
+              await transaction.$queryRaw(Prisma.sql`
+                SELECT "id"
+                FROM "billing"."Subscription"
+                WHERE "shopId" = ${input.shopId}
+                FOR UPDATE
+              `);
+            }
+            const eventHandle = purchase.shopifyEventHandleSnapshot;
+            const pendingPurchase = await transaction.recoveryCreditPurchase?.findFirst?.({
+              where: {
+                shopId: input.shopId,
+                status: RecoveryCreditPurchaseStatus.REQUESTED,
+                shopifyEventHandleSnapshot: eventHandle,
+              },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: { id: true },
+            });
+            const competingRefund = await transaction.recoveryCreditRefund?.findFirst?.({
+              where: {
+                shopId: input.shopId,
+                eventHandleSnapshot: eventHandle,
+                status: { in: [...LIVE_REFUND_STATUSES] },
+              },
+              orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+              select: { id: true, purchaseId: true },
+            });
+            if (pendingPurchase || competingRefund) {
+              return {
+                purchaseId: input.purchaseId,
+                code: "METER_BUSY",
+                currentAmount: purchase.currentAmount,
+                reservedAmount: purchase.reservedAmount,
+                availableAmount,
+              };
+            }
             if (!(await this.isCurrentProviderContext(purchase, input.shopifyShopId))) {
               return {
                 purchaseId: input.purchaseId,

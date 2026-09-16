@@ -1,10 +1,63 @@
 // @ts-nocheck
 
 import db from "@/db.server";
+import { Prisma } from "@prisma/client";
 import { createMerchantI18n } from "@/utils/merchant-i18n";
 
 const INVALID_PREFIX = "MERCHANT_PRICING_CATALOGUE_INVALID:";
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
+
+function parseProviderDecimal(value) {
+  if (value === null || value === undefined) return null;
+  try {
+    const decimal = new Prisma.Decimal(value);
+    return decimal.isFinite() ? decimal : null;
+  } catch {
+    return null;
+  }
+}
+
+function nonNegativeDecimal(value) {
+  return value.lt(0) ? new Prisma.Decimal(0) : value;
+}
+
+function calculateProviderUsageCost(price, quantity) {
+  if (!price || price.kind !== "TIERED" || !quantity?.isFinite?.() || quantity.lt(0) || !Array.isArray(price.tiers) || price.tiers.length === 0) return null;
+  const tiers = price.tiers.map((tier) => ({
+    upTo: tier.upTo === null ? null : parseProviderDecimal(tier.upTo),
+    unit: parseProviderDecimal(tier.amountPerUnit),
+    flat: parseProviderDecimal(tier.amount),
+  }));
+  if (tiers.some((tier) => !tier.unit || !tier.flat || tier.unit.lt(0) || tier.flat.lt(0) || (tier.upTo !== null && !tier.upTo))) return null;
+  const mode = String(price.tiersMode ?? "").toUpperCase();
+  if (mode === "VOLUME") {
+    const tier = tiers.find((candidate) => candidate.upTo === null || quantity.lte(candidate.upTo));
+    return tier ? tier.flat.plus(quantity.mul(tier.unit)) : null;
+  }
+  if (mode !== "GRADUATED") return null;
+  let total = new Prisma.Decimal(0);
+  let lower = new Prisma.Decimal(0);
+  for (const tier of tiers) {
+    const upper = tier.upTo ?? quantity;
+    const segment = nonNegativeDecimal(quantity.lt(upper) ? quantity.minus(lower) : upper.minus(lower));
+    total = total.plus(segment.mul(tier.unit).plus(tier.flat));
+    if (quantity.lte(upper)) return total;
+    lower = upper;
+  }
+  return null;
+}
+
+function resolveNextProviderUnitCost(providerItem) {
+  const currency = providerItem?.price?.currency;
+  const quantity = parseProviderDecimal(providerItem?.usage?.quantity);
+  if (!currency || !quantity || quantity.lt(0)) return null;
+  const before = calculateProviderUsageCost(providerItem.price, quantity);
+  const after = calculateProviderUsageCost(providerItem.price, quantity.plus(1));
+  if (!before || !after) return null;
+  const delta = after.minus(before);
+  if (!delta.isFinite() || delta.lt(0)) return null;
+  return { amount: delta.toString(), currency };
+}
 
 function invalid(message) {
   throw new Error(`${INVALID_PREFIX} ${message}`);
@@ -189,6 +242,10 @@ export function resolveCurrentRecoveryCreditOffers({ providerSubscription, merch
         creditsGranted: event.creditsGrantedPerUnit,
         providerPrice: providerItem.price,
         providerUsage: providerItem.usage,
+        providerNextUnitCost: resolveNextProviderUnitCost(providerItem),
+        purchaseEligible: true,
+        blockReason: null,
+        pendingPurchase: null,
       }];
     });
 
