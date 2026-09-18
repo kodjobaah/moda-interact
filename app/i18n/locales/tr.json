@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Kullanılamıyor",
   "billingPurchases.noAvailableCredits": "Kalan tüm krediler kullanımda olduğundan geri ödenebilecek kredi yok.",
   "billingPurchases.completedCopy": "Satın alınan tüm krediler kullanıldı.",
+  "billingPurchases.historicalNotRefundable": "Bu krediler kullanılmaya devam edebilir, ancak bu satın alma işlemi mevcut abonelik kapsamında artık iade edilemez.",
   "billingPurchases.refundedCredits": "Geri ödenen krediler: {quantity}",
   "billingPurchases.refundCompleted": "Geri ödeme tamamlandı {date}",
   "billingPurchases.refundSummary": "Geri ödeme bekliyor. Mevcut: {current}; ayrılmış: {reserved}; geri ödeme için tutuluyor: {available}.",

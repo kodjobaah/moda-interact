@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "ไม่พร้อมใช้งาน",
   "billingPurchases.noAvailableCredits": "ไม่มีเครดิตที่สามารถขอคืนเงินได้ เนื่องจากเครดิตที่เหลือทั้งหมดกำลังใช้งานอยู่",
   "billingPurchases.completedCopy": "เครดิตที่ซื้อทั้งหมดถูกใช้แล้ว",
+  "billingPurchases.historicalNotRefundable": "เครดิตเหล่านี้ยังคงใช้งานได้ แต่การซื้อนี้ไม่สามารถขอคืนเงินได้อีกภายใต้การสมัครใช้งานปัจจุบัน",
   "billingPurchases.refundedCredits": "เครดิตที่คืนเงินแล้ว: {quantity}",
   "billingPurchases.refundCompleted": "คืนเงินเสร็จสิ้น {date}",
   "billingPurchases.refundSummary": "รอการคืนเงิน ปัจจุบัน: {current}; สำรองไว้: {reserved}; กันไว้เพื่อคืนเงิน: {available}",

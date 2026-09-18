@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Niedostępne",
   "billingPurchases.noAvailableCredits": "Brak kredytów dostępnych do zwrotu, ponieważ wszystkie pozostałe kredyty są w toku.",
   "billingPurchases.completedCopy": "Wszystkie zakupione kredyty zostały wykorzystane.",
+  "billingPurchases.historicalNotRefundable": "Te kredyty nadal można wykorzystać, ale ten zakup nie podlega już zwrotowi w ramach bieżącej subskrypcji.",
   "billingPurchases.refundedCredits": "Zwrócone kredyty: {quantity}",
   "billingPurchases.refundCompleted": "Zwrot zakończony {date}",
   "billingPurchases.refundSummary": "Zwrot oczekuje. Bieżące: {current}; zarezerwowane: {reserved}; zatrzymane do zwrotu: {available}.",

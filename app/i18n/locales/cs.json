@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Není k dispozici",
   "billingPurchases.noAvailableCredits": "Žádné kredity nejsou k dispozici k vrácení peněz, protože všechny zbývající kredity se právě používají.",
   "billingPurchases.completedCopy": "Všechny zakoupené kredity byly použity.",
+  "billingPurchases.historicalNotRefundable": "Tyto kredity zůstávají použitelné, ale tento nákup již nelze v rámci aktuálního předplatného refundovat.",
   "billingPurchases.refundedCredits": "Vrácené kredity: {quantity}",
   "billingPurchases.refundCompleted": "Vrácení peněz dokončeno {date}",
   "billingPurchases.refundSummary": "Vrácení peněz čeká. Aktuální: {current}; rezervováno: {reserved}; zadrženo pro vrácení: {available}.",

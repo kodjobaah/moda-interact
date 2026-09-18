@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "利用不可",
   "billingPurchases.noAvailableCredits": "残りのクレジットはすべて処理中のため、返金可能なクレジットはありません。",
   "billingPurchases.completedCopy": "購入済みクレジットはすべて使用済みです。",
+  "billingPurchases.historicalNotRefundable": "これらのクレジットは引き続き利用できますが、現在のサブスクリプションではこの購入は返金対象ではなくなりました。",
   "billingPurchases.refundedCredits": "返金済みクレジット: {quantity}",
   "billingPurchases.refundCompleted": "返金完了 {date}",
   "billingPurchases.refundSummary": "返金保留中。現在: {current}、予約済み: {reserved}、返金用に確保: {available}。",

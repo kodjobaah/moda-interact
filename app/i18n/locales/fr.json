@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Indisponible",
   "billingPurchases.noAvailableCredits": "Aucun crédit n’est disponible au remboursement, car tous les crédits restants sont en cours d’utilisation.",
   "billingPurchases.completedCopy": "Tous les crédits achetés ont été utilisés.",
+  "billingPurchases.historicalNotRefundable": "Ces crédits restent utilisables, mais cet achat n’est plus remboursable dans le cadre de l’abonnement actuel.",
   "billingPurchases.refundedCredits": "Crédits remboursés : {quantity}",
   "billingPurchases.refundCompleted": "Remboursement terminé {date}",
   "billingPurchases.refundSummary": "Remboursement en attente. Actuels : {current} ; réservés : {reserved} ; retenus pour remboursement : {available}.",

@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Ikke tilgængelig",
   "billingPurchases.noAvailableCredits": "Ingen kreditter kan refunderes, fordi alle resterende kreditter er i gang.",
   "billingPurchases.completedCopy": "Alle købte kreditter er blevet brugt.",
+  "billingPurchases.historicalNotRefundable": "Disse kreditter kan stadig bruges, men dette køb kan ikke længere refunderes under det aktuelle abonnement.",
   "billingPurchases.refundedCredits": "Refunderede kreditter: {quantity}",
   "billingPurchases.refundCompleted": "Refusion fuldført {date}",
   "billingPurchases.refundSummary": "Refusion afventer. Aktuelle: {current}; reserverede: {reserved}; tilbageholdt til refusion: {available}.",

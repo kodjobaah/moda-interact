@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "無法使用",
   "billingPurchases.noAvailableCredits": "沒有可退款的額度，因為所有剩餘額度都正在使用中。",
   "billingPurchases.completedCopy": "所有已購買額度均已使用。",
+  "billingPurchases.historicalNotRefundable": "這些額度仍可繼續使用，但根據目前的訂閱，此次購買已不再符合退款條件。",
   "billingPurchases.refundedCredits": "已退款額度：{quantity}",
   "billingPurchases.refundCompleted": "退款完成 {date}",
   "billingPurchases.refundSummary": "退款待處理。目前：{current}；已預留：{reserved}；為退款保留：{available}。",

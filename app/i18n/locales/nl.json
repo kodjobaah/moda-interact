@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Niet beschikbaar",
   "billingPurchases.noAvailableCredits": "Er zijn geen credits beschikbaar voor terugbetaling omdat alle resterende credits in behandeling zijn.",
   "billingPurchases.completedCopy": "Alle gekochte credits zijn gebruikt.",
+  "billingPurchases.historicalNotRefundable": "Deze credits blijven bruikbaar, maar deze aankoop komt onder het huidige abonnement niet langer in aanmerking voor terugbetaling.",
   "billingPurchases.refundedCredits": "Terugbetaalde credits: {quantity}",
   "billingPurchases.refundCompleted": "Terugbetaling voltooid {date}",
   "billingPurchases.refundSummary": "Terugbetaling in behandeling. Huidig: {current}; gereserveerd: {reserved}; vastgehouden voor terugbetaling: {available}.",

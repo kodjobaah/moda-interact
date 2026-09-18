@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Ei saatavilla",
   "billingPurchases.noAvailableCredits": "Hyvitettäviä krediittejä ei ole saatavilla, koska kaikki jäljellä olevat krediitit ovat käytössä.",
   "billingPurchases.completedCopy": "Kaikki ostetut krediitit on käytetty.",
+  "billingPurchases.historicalNotRefundable": "Nämä krediitit ovat edelleen käytettävissä, mutta tätä ostosta ei enää voida hyvittää nykyisen tilauksen puitteissa.",
   "billingPurchases.refundedCredits": "Hyvitetyt krediitit: {quantity}",
   "billingPurchases.refundCompleted": "Hyvitys valmis {date}",
   "billingPurchases.refundSummary": "Hyvitys odottaa. Nykyiset: {current}; varatut: {reserved}; hyvitystä varten pidätetyt: {available}.",

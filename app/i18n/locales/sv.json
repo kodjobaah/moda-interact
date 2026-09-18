@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Inte tillgängligt",
   "billingPurchases.noAvailableCredits": "Inga krediter är tillgängliga för återbetalning eftersom alla återstående krediter används i pågående konversationer.",
   "billingPurchases.completedCopy": "Alla köpta krediter har använts.",
+  "billingPurchases.historicalNotRefundable": "Dessa krediter kan fortfarande användas, men köpet kan inte längre återbetalas inom den nuvarande prenumerationen.",
   "billingPurchases.refundedCredits": "Återbetalda krediter: {quantity}",
   "billingPurchases.refundCompleted": "Återbetalning slutförd {date}",
   "billingPurchases.refundSummary": "Återbetalning väntar. Aktuella: {current}; reserverade: {reserved}; hålls för återbetalning: {available}.",

@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "No disponible",
   "billingPurchases.noAvailableCredits": "No hay créditos disponibles para reembolso porque todos los créditos restantes están en curso.",
   "billingPurchases.completedCopy": "Se han utilizado todos los créditos comprados.",
+  "billingPurchases.historicalNotRefundable": "Estos créditos siguen estando disponibles para su uso, pero esta compra ya no es reembolsable con la suscripción actual.",
   "billingPurchases.refundedCredits": "Créditos reembolsados: {quantity}",
   "billingPurchases.refundCompleted": "Reembolso completado {date}",
   "billingPurchases.refundSummary": "Reembolso pendiente. Actuales: {current}; reservados: {reserved}; retenidos para reembolso: {available}.",

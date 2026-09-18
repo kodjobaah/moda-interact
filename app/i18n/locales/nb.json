@@ -318,6 +318,7 @@
   "billingPurchases.notAvailable": "Ikke tilgjengelig",
   "billingPurchases.noAvailableCredits": "Ingen kreditter er tilgjengelige for refusjon fordi alle gjenværende kreditter er i bruk.",
   "billingPurchases.completedCopy": "Alle kjøpte kreditter er brukt.",
+  "billingPurchases.historicalNotRefundable": "Disse kredittene kan fortsatt brukes, men dette kjøpet kan ikke lenger refunderes under det nåværende abonnementet.",
   "billingPurchases.refundedCredits": "Refunderte kreditter: {quantity}",
   "billingPurchases.refundCompleted": "Refusjon fullført {date}",
   "billingPurchases.refundSummary": "Refusjon venter. Gjeldende: {current}; reservert: {reserved}; holdt av for refusjon: {available}.",
