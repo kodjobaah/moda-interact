@@ -242,8 +242,27 @@ describe("BillingService subscription projection", () => {
     expect(state.onboardingCompleted).toBe(false);
   });
 
+  it("records a paid first-selection intent after onboarding is already complete", async () => {
+    const { database, state } = createPaidActivationDatabase();
+    state.onboardingCompleted = true;
+    state.subscription.status = "NO_CONTRACT";
+    Object.assign(state.subscription, {
+      planId: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+    });
+    const service = new BillingService({} as never, database as never);
+
+    const result = await service.preparePaidActivation("shop-1", "growth");
+
+    expect(result).toMatchObject({ mode: "INITIAL", plan: { kind: "PAID_METERED" } });
+    expect(state.subscription).toMatchObject({ pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1" });
+  });
+
   it("creates the exact paid period and included counter in the verified sync transaction", async () => {
     const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    state.onboardingCompleted = true;
     Object.assign(state.subscription, {
       status: "NO_CONTRACT",
       planId: null,
@@ -640,12 +659,12 @@ describe("BillingService subscription projection", () => {
     await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeTruthy();
   });
 
-  it("rejects a shop without a Subscription when onboarding is already complete", async () => {
+  it("accepts a fresh shop when onboarding is already complete", async () => {
     const { database } = createFreeActivationDatabase({ onboardingCompleted: true });
     const service = new BillingService({} as never, database as never);
 
-    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeNull();
-    expect(database.subscription.upsert).not.toHaveBeenCalled();
+    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toMatchObject({ mode: "INITIAL" });
+    expect(database.subscription.upsert).toHaveBeenCalled();
   });
 
   it("does not overwrite an active different-plan subscription", async () => {
@@ -963,10 +982,11 @@ describe("BillingService subscription projection", () => {
   });
 
   it("commits one guarded Partner-error retry for the current token", async () => {
-    const { database } = createFreeActivationDatabase();
+    const { database, state } = createFreeActivationDatabase();
     const service = new BillingService({} as never, database as never);
     const activation = await service.prepareFreeActivation("shop-1", "free");
     if (!activation?.token) throw new Error("Expected an initial activation token.");
+    state.onboardingCompleted = true;
     database.subscription.update.mockClear();
     const nextReconcileAt = new Date("2026-09-12T10:01:00.000Z");
     const partnerErrorAt = new Date("2026-09-12T10:00:30.000Z");
