@@ -461,6 +461,24 @@
   color: rgba(255,255,255,0.82);
 }
 
+.mi-cta-link {
+  color: inherit;
+  font-weight: 650;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.mi-cta-link:hover {
+  color: white;
+}
+
+.mi-cta-link:focus-visible {
+  outline: 2px solid white;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
 .mi-eyebrow-light {
   border-color: rgba(255,255,255,0.2);
   background: rgba(255,255,255,0.1);
