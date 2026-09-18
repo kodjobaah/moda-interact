@@ -115,6 +115,47 @@ export async function loader({
   });
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
+  const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
+  let verification;
+  try {
+    verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
+  } catch {
+    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence);
+    if (retry) {
+      await enqueueBillingSubscriptionReconcileBestEffort({
+        shopId: shop.id,
+        subscriptionId: retry.subscriptionId,
+        expectedNextReconcileAt: retry.nextReconcileAt,
+      });
+    }
+    return redirect(billingOptionsRedirect("unverified", requestedPlanHandle));
+  }
+
+  const providerConfirmsSelection = verification.status === "ACTIVE_SUBSCRIPTION" && (
+    verification.subscription?.planHandle === requestedPlanHandle ||
+    verification.subscription?.pendingUpdate?.planHandle === requestedPlanHandle
+  );
+  if (!providerConfirmsSelection) {
+    const result = await billingService.recordHostedPlanChangeReturn({
+      shopId: shop.id,
+      requestedPlanHandle,
+      state: verification,
+      verificationFence,
+    });
+    if (
+      result.subscriptionId &&
+      result.nextReconcileAt &&
+      ["current", "pending", "no_active"].includes(result.result)
+    ) {
+      await enqueueBillingSubscriptionReconcileBestEffort({
+        shopId: shop.id,
+        subscriptionId: result.subscriptionId,
+        expectedNextReconcileAt: result.nextReconcileAt,
+      });
+    }
+    return redirect(billingOptionsRedirect(result.result, requestedPlanHandle));
+  }
+
   await db.shopSettings.updateMany({
     where: { shopId: shop.id, onboardingCompleted: false },
     data: { onboardingCompleted: true },
@@ -187,20 +228,18 @@ export async function loader({
     return redirect("/app");
   }
 
-  const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
-  let verification;
-  try {
-    verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
-  } catch {
-    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence);
-    if (retry) {
-      await enqueueBillingSubscriptionReconcileBestEffort({
-        shopId: shop.id,
-        subscriptionId: retry.subscriptionId,
-        expectedNextReconcileAt: retry.nextReconcileAt,
-      });
-    }
-    return redirect(billingOptionsRedirect("unverified", requestedPlanHandle));
+  const freshInitialProjection = (
+    verificationFence === null ||
+    (
+      verificationFence.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+      verificationFence.planId === null &&
+      verificationFence.observedShopifyPlanHandle === null
+    )
+  ) && verification.status === "ACTIVE_SUBSCRIPTION" &&
+    verification.subscription?.planHandle === requestedPlanHandle;
+  if (freshInitialProjection) {
+    await billingService.syncSubscription(shop.id);
+    return redirect("/app");
   }
 
   const result = await billingService.recordHostedPlanChangeReturn({

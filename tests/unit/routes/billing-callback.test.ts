@@ -294,14 +294,15 @@ describe("billing callback activation", () => {
     expect(mocks.updateOnboarding).toHaveBeenCalled();
   });
 
-  it("keeps onboarding complete when a selected handle is unmapped", async () => {
+  it("does not onboard an arbitrary handle without provider confirmation", async () => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
     mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: null });
 
     await runLoader("unknown");
 
-    expect(mocks.updateOnboarding).toHaveBeenCalledWith(expect.objectContaining({ data: { onboardingCompleted: true } }));
+    expect(mocks.updateOnboarding).not.toHaveBeenCalled();
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=mismatch&requested_plan_handle=unknown");
   });
 
@@ -408,11 +409,114 @@ describe("billing callback activation", () => {
       pendingEffectiveAt: new Date(),
     }));
 
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "free-a",
+        price: { amount: "0.00", currency: "GBP" },
+        billingPeriod: "EVERY_30_DAYS",
+        currentPeriodStart: "2026-09-01T00:00:00.000Z",
+        currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+        trialEndsAt: null,
+        cancelAtEndOfCycle: false,
+        pendingUpdate: null,
+        usageItems: [],
+      },
+    });
     await runLoader("free-a");
 
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("verifies a known current selection before onboarding and activation", async () => {
+    mocks.getFence.mockResolvedValue(null);
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "free", pendingUpdate: null },
+    });
+
+    await runLoader("free");
+
+    expect(mocks.updateOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.prepareFreeActivation.mock.invocationCallOrder[0],
+    );
+    expect(mocks.updateOnboarding).toHaveBeenCalled();
+    expect(mocks.recordReturn).not.toHaveBeenCalled();
+  });
+
+  it("does not onboard or prepare activation when provider verification fails", async () => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
+
+    await runLoader("growth");
+
+    expect(mocks.updateOnboarding).not.toHaveBeenCalled();
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.preparePaidActivation).not.toHaveBeenCalled();
+    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
+  });
+
+  it("projects a confirmed fresh unknown current selection as UNMAPPED", async () => {
+    mocks.getFence.mockResolvedValue(null);
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "unknown", pendingUpdate: null },
+    });
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.syncSubscription.mockResolvedValue({ status: "UNMAPPED", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+
+    await runLoader("unknown");
+
+    expect(mocks.updateOnboarding).toHaveBeenCalled();
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.recordReturn).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it.each([
+    ["inactive", "BILLING_PLAN_INACTIVE"],
+    ["invalid", "INVALID_MERCHANT_PRICING_PLAN"],
+  ])("projects a confirmed fresh %s current selection as SYNC_ERROR", async (planHandle, errorCode) => {
+    mocks.getFence.mockResolvedValue({
+      ...verificationFence,
+      status: "NO_CONTRACT",
+      planId: null,
+      observedShopifyPlanHandle: null,
+    });
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle, pendingUpdate: null },
+    });
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.syncSubscription.mockResolvedValue({ status: "SYNC_ERROR", lastSyncErrorCode: errorCode });
+
+    await runLoader(planHandle);
+
+    expect(mocks.updateOnboarding).toHaveBeenCalled();
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.recordReturn).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("keeps provider pending selections on the hosted return path", async () => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "starter", pendingUpdate: { planHandle: "growth" } },
+    });
+    mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date() });
+
+    await runLoader("growth");
+
+    expect(mocks.updateOnboarding).toHaveBeenCalled();
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
+    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
   });
 
   it("keeps missing plan_handle as a client error", async () => {
