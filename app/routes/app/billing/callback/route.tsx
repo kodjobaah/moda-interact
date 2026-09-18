@@ -18,6 +18,7 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
+import db from "@/db.server";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -113,6 +114,11 @@ export async function loader({
     domain: session.shop,
   });
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
+
+  await db.shopSettings.updateMany({
+    where: { shopId: shop.id, onboardingCompleted: false },
+    data: { onboardingCompleted: true },
+  });
 
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
     await billingService.preparePaidActivation(shop.id, requestedPlanHandle);

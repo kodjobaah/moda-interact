@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   scheduleInitialFreeReconciliationIfCurrent: vi.fn(),
   enqueueReconcile: vi.fn(),
   enqueueDiscountSync: vi.fn(),
+  updateOnboarding: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -44,6 +45,9 @@ vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", ()
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
+}));
+vi.mock("../../../app/db.server", () => ({
+  default: { shopSettings: { updateMany: mocks.updateOnboarding } },
 }));
 
 import { loader } from "../../../app/routes/app/billing/callback/route";
@@ -110,6 +114,7 @@ beforeEach(() => {
     session: { shop: "example.myshopify.com" },
   });
   mocks.resolveShop.mockResolvedValue(shop);
+  mocks.updateOnboarding.mockResolvedValue({ count: 1 });
   mocks.getFence.mockResolvedValue(verificationFence);
   mocks.getState.mockResolvedValue({
     status: "ACTIVE_SUBSCRIPTION",
@@ -149,6 +154,13 @@ describe("billing callback activation", () => {
   it("completes onboarding only after current Free verification", async () => {
     await runLoader("free");
 
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", onboardingCompleted: false },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.updateOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.prepareFreeActivation.mock.invocationCallOrder[0],
+    );
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
@@ -279,6 +291,18 @@ describe("billing callback activation", () => {
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    expect(mocks.updateOnboarding).toHaveBeenCalled();
+  });
+
+  it("keeps onboarding complete when a selected handle is unmapped", async () => {
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: null });
+
+    await runLoader("unknown");
+
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith(expect.objectContaining({ data: { onboardingCompleted: true } }));
+    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=mismatch&requested_plan_handle=unknown");
   });
 
   it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
@@ -393,6 +417,7 @@ describe("billing callback activation", () => {
 
   it("keeps missing plan_handle as a client error", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
+    expect(mocks.updateOnboarding).not.toHaveBeenCalled();
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 });

@@ -90,13 +90,13 @@ describe("merchant route access policy", () => {
       "SUPPORT",
       "SUPPORT",
       "HOME",
-      "BILLING_OPTIONS",
       "SUPPORT",
       "PLAN_SELECT",
       "HOME",
       "USAGE",
       "BILLING_OPTIONS",
       "BILLING_PURCHASE_HISTORY",
+      "FEATURES",
       "PROMOTIONS",
       "SUPPORT",
       "PLAN_SELECT",
@@ -142,7 +142,7 @@ describe("merchant route access policy", () => {
       { id: "home", href: "/app" },
       { id: "messages", href: "/app/merchant-support" },
     ]);
-    expect(getMerchantNavigation("ACTIVE")).toHaveLength(4);
+    expect(getMerchantNavigation("ACTIVE")).toHaveLength(5);
     expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([
       { id: "messages", href: "/app/merchant-support" },
     ]);
@@ -163,6 +163,7 @@ describe("merchant route access policy", () => {
         "/app/billing/options",
         "/app/merchant-support",
         "/app/promotions",
+        "/app/features",
       ],
     ],
     ["NO_CONTRACT", ["/app", "/app/billing/options", "/app/merchant-support"]],
@@ -185,6 +186,8 @@ describe("merchant route access policy", () => {
               ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
               : item.id === "promotions"
                 ? canAccessMerchantSurface(state, "PROMOTIONS")
+                  : item.id === "features"
+                    ? canAccessMerchantSurface(state, "FEATURES")
                 : canAccessMerchantSurface(state, "SUPPORT"),
         ),
       ).toBe(true);

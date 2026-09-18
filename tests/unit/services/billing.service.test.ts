@@ -62,12 +62,20 @@ function createDatabase({
   plan = null,
   pendingPlan = null,
   current = null,
+  catalogue = null,
+  racePlan = null,
 }: {
   plan?: BillingPlanFixture | null;
   pendingPlan?: BillingPlanFixture | null;
   current?: BillingPlanFixture | null;
+  catalogue?: BillingPlanFixture | null;
+  racePlan?: BillingPlanFixture | null;
 } = {}) {
-  const state: { current: BillingPlanFixture | null } = { current };
+  const state: {
+    current: BillingPlanFixture | null;
+    billingPlan: BillingPlanFixture | null;
+    materializedAt: Date | null;
+  } = { current, billingPlan: plan, materializedAt: null };
   const subscription = {
     findUnique: vi.fn().mockImplementation(async () => state.current),
     update: vi.fn(),
@@ -78,9 +86,25 @@ function createDatabase({
   };
   const billingPlan = {
     findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => {
-      if (where.shopifyPlanHandle === plan?.shopifyPlanHandle || (!plan?.shopifyPlanHandle && where.shopifyPlanHandle === "growth")) return plan;
+      if (where.shopifyPlanHandle === state.billingPlan?.shopifyPlanHandle || (!state.billingPlan?.shopifyPlanHandle && where.shopifyPlanHandle === "growth")) return state.billingPlan;
       if (where.shopifyPlanHandle === "starter") return pendingPlan;
       return null;
+    }),
+    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
+      if (racePlan) {
+        state.billingPlan = racePlan;
+        racePlan = null;
+        throw new Prisma.PrismaClientKnownRequestError("unique", { code: "P2002", clientVersion: "test" });
+      }
+      state.billingPlan = { id: "materialized-1", ...data };
+      return state.billingPlan;
+    }),
+  };
+  const merchantPricingPlan = {
+    findUnique: vi.fn().mockResolvedValue(catalogue),
+    updateMany: vi.fn().mockImplementation(async () => {
+      state.materializedAt = new Date();
+      return { count: 1 };
     }),
   };
   const billingPeriod = {
@@ -96,9 +120,9 @@ function createDatabase({
     billingPeriod,
     shopSettings,
     $queryRaw: vi.fn().mockResolvedValue([]),
-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, billingPeriod, shopSettings, $queryRaw: database.$queryRaw })),
+    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, merchantPricingPlan, billingPeriod, shopSettings, $queryRaw: database.$queryRaw })),
   };
-  return { database, state };
+  return { database: { ...database, merchantPricingPlan }, state };
 }
 
 function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
@@ -1427,6 +1451,74 @@ describe("BillingService subscription projection", () => {
     }));
   });
 
+  it("materializes an active catalogue plan before projecting the subscription", async () => {
+    const catalogue = {
+      shopifyPlanHandle: "growth",
+      displayName: "Growth",
+      isActive: true,
+      planKind: "FREE",
+      includedRecoveryCredits: 0,
+      shopifyRecoveryUsageEventHandle: null,
+      features: [{ feature: { id: "checkout-feature", key: "checkout_recovery" } }],
+    };
+    const { database, state } = createDatabase({ catalogue });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(database.billingPlan.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      shopifyPlanHandle: "growth",
+      name: "Growth",
+      kind: "FREE",
+      active: true,
+      features: { create: [{ feature: { connect: { id: "checkout-feature" } }, enabled: true }] },
+    }) });
+    expect(state.materializedAt).toBeInstanceOf(Date);
+    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1" });
+  });
+
+  it("fails closed for an invalid active catalogue plan", async () => {
+    const { database, state } = createDatabase({
+      catalogue: {
+        shopifyPlanHandle: "growth",
+        displayName: "Growth",
+        isActive: true,
+        planKind: "PAID_METERED",
+        includedRecoveryCredits: 10,
+        shopifyRecoveryUsageEventHandle: null,
+        features: [{ feature: { id: "checkout-feature", key: "checkout_recovery" } }],
+      },
+    });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.current).toMatchObject({ status: "SYNC_ERROR", planId: null, lastSyncErrorCode: "INVALID_MERCHANT_PRICING_PLAN" });
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+  });
+
+  it("retries a concurrent materialization race and reuses the winning BillingPlan", async () => {
+    const catalogue = {
+      shopifyPlanHandle: "growth",
+      displayName: "Growth",
+      isActive: true,
+      planKind: "FREE",
+      includedRecoveryCredits: 0,
+      shopifyRecoveryUsageEventHandle: null,
+      features: [{ feature: { id: "checkout-feature", key: "checkout_recovery" } }],
+    };
+    const winningPlan = { id: "winner-1", shopifyPlanHandle: "growth", name: "Growth", kind: "FREE", active: true, shopifyUsageEventHandle: null };
+    const { database, state } = createDatabase({ catalogue, racePlan: winningPlan });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(database.billingPlan.create).toHaveBeenCalledTimes(1);
+    expect(state.billingPlan).toBe(winningPlan);
+    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "winner-1" });
+    expect(state.materializedAt).toBeInstanceOf(Date);
+  });
+
   it("schedules the next pre-close reconciliation for a pack-enabled Free cycle", async () => {
     const { database, state } = createDatabase({
       plan: {
@@ -1511,7 +1603,7 @@ describe("BillingService subscription projection", () => {
     }));
   });
 
-  it("treats an inactive mapped plan as unmapped", async () => {
+  it("treats an inactive mapped plan as a sync error", async () => {
     const { database, state } = createDatabase({
       plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: false },
     });
@@ -1519,7 +1611,7 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({ status: "UNMAPPED", planId: null, lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+    expect(state.current).toMatchObject({ status: "SYNC_ERROR", planId: null, lastSyncErrorCode: "BILLING_PLAN_INACTIVE" });
   });
 
   it("persists an unknown current Shopify handle as unmapped", async () => {

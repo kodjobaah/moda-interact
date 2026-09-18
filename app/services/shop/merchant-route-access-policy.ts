@@ -16,6 +16,7 @@ export const MERCHANT_SURFACES = [
   "USAGE",
   "BILLING_OPTIONS",
   "BILLING_PURCHASE_HISTORY",
+  "FEATURES",
   "PROMOTIONS",
   "SUPPORT",
   "PLAN_SELECT",
@@ -44,7 +45,7 @@ export type MerchantRouteAccessInput = {
 };
 
 export type MerchantNavigationItem = {
-  id: "home" | "billing" | "messages" | "promotions";
+  id: "home" | "billing" | "messages" | "promotions" | "features";
   href: string;
 };
 
@@ -58,6 +59,7 @@ const surfaceMatrix: Record<MerchantExperienceState, readonly MerchantSurface[]>
     "USAGE",
     "BILLING_OPTIONS",
     "BILLING_PURCHASE_HISTORY",
+    "FEATURES",
     "PROMOTIONS",
     "SUPPORT",
     "PLAN_SELECT",
@@ -81,6 +83,7 @@ const navigationByState: Record<MerchantExperienceState, readonly MerchantNaviga
     { id: "billing", href: "/app/billing/options" },
     { id: "messages", href: "/app/merchant-support" },
     { id: "promotions", href: "/app/promotions" },
+    { id: "features", href: "/app/features" },
   ],
   NO_CONTRACT: [
     { id: "home", href: "/app" },
