@@ -178,6 +178,38 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     );
   });
 
+  it("marks zero-value purchases refundable only when Shopify proves a partner development store", async () => {
+    const current = providerSubscription();
+    const fixture = database([purchase("one")]);
+    fixture.rows.get("one").providerPurchaseAmount = "0";
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
+    const service = new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+      { getActiveSubscription: vi.fn().mockResolvedValue(current) } as any,
+    );
+
+    const production = await service.listPurchaseHistory({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      shopifyPartnerDevelopment: false,
+    });
+    expect(production.purchases[0]).toMatchObject({
+      refundEligible: false,
+      refundUnavailableReason: "ZERO_VALUE",
+    });
+
+    const development = await service.listPurchaseHistory({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      shopifyPartnerDevelopment: true,
+    });
+    expect(development.purchases[0]).toMatchObject({
+      refundEligible: true,
+      refundUnavailableReason: null,
+    });
+  });
+
   it("filters status before pagination with one shared shop predicate", async () => {
     const fixture = database([
       purchase("purchase-5", "shop-1", "COMPLETED"),
@@ -402,8 +434,8 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
   });
 
-  it.each([null, "0", "-1"])(
-    "rejects a non-positive provider amount before provider proof (%s)",
+  it.each([null, "-1"])(
+    "rejects missing or negative provider valuation before provider proof (%s)",
     async (providerPurchaseAmount) => {
       const fixture = database([purchase("one")]);
       fixture.rows.get("one").providerPurchaseAmount = providerPurchaseAmount;
@@ -442,20 +474,60 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     },
   );
 
-  it("does not refund a zero-cost purchase", async () => {
+  it("rejects a zero-value production purchase without provider proof", async () => {
     const fixture = database([purchase("one")]);
-    fixture.rows.get("one").providerPurchaseAmount = null;
+    fixture.rows.get("one").providerPurchaseAmount = "0";
+    const provider = { getActiveSubscription: vi.fn() };
     const result = await new RecoveryCreditPurchaseManagementService(
       fixture.database,
-      { getActiveSubscription: vi.fn() } as any,
+      provider as any,
     ).requestRefund({
       shopId: "shop-1",
       shopifyShopId: "gid://shopify/Shop/1",
+      shopifyPartnerDevelopment: false,
       purchaseId: "one",
       requestId: "request-1",
     });
-    expect(result.code).toBe("REFUND_NOT_AVAILABLE");
+    expect(result.code).toBe("ZERO_VALUE_NOT_REFUNDABLE");
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(fixture.rows.get("one").status).toBe("ACTIVE");
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+  });
+
+  it("allows a provider-confirmed zero-value refund on a verified partner development store", async () => {
+    const current = providerSubscription({
+      usageItems: [],
+      usageEventHandles: ["pack-meter"],
+    });
+    const fixture = database([purchase("one")]);
+    fixture.rows.get("one").providerPurchaseAmount = "0";
+    fixture.rows.get("one").providerSubscriptionIdSnapshot =
+      deriveShopifyProviderContextIdentity(current);
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(current),
+    };
+
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+      provider as any,
+    ).requestRefund({
+      shopId: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+      shopifyPartnerDevelopment: true,
+      purchaseId: "one",
+      requestId: "request-dev-zero",
+    });
+
+    expect(result).toMatchObject({ code: "REQUESTED", availableAmount: 2 });
+    expect(fixture.rows.get("one").status).toBe("WITHDRAWN");
+    expect(fixture.transaction.recoveryCreditRefund.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          purchaseProviderAmountSnapshot: "0",
+          shopifyPartnerDevelopmentSnapshot: true,
+        }),
+      }),
+    );
   });
 
   it("denies cross-shop mutation without revealing whether the purchase exists", async () => {
@@ -608,6 +680,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     await expect(
       service.requestRefund({
         shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
         purchaseId: "one",
         requestId: "request-b",
       }),

@@ -148,15 +148,7 @@ beforeEach(() => {
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
   mocks.updateShopSettings.mockResolvedValue({ count: 1 });
-=======
-  mocks.updateShopSettings.mockResolvedValue({ count: 0 });
->>>>>>> Stashed changes
-=======
-  mocks.updateShopSettings.mockResolvedValue({ count: 0 });
->>>>>>> Stashed changes
 });
 
 describe("billing callback activation", () => {

@@ -268,7 +268,9 @@ export default function RecoveryCreditPurchaseManager({
                   <p>
                     {purchase.refundEligible === false &&
                     purchase.availableAmount > 0
-                      ? i18n.t("billingPurchases.historicalNotRefundable")
+                      ? purchase.refundUnavailableReason === "ZERO_VALUE"
+                        ? i18n.t("billingPurchases.zeroValueNotRefundable")
+                        : i18n.t("billingPurchases.historicalNotRefundable")
                       : i18n.t("billingPurchases.noAvailableCredits")}
                   </p>
                 ) : null}
