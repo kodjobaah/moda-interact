@@ -200,8 +200,9 @@ function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
 }
 
 describe("BillingService subscription projection", () => {
-  it("records a paid first-selection intent without activating it", async () => {
+  it.each([false, true])("prepares a Paid activation regardless of onboarding state (%s)", async (onboardingCompleted) => {
     const { database, state } = createPaidActivationDatabase();
+    state.onboardingCompleted = onboardingCompleted;
     state.subscription.status = "NO_CONTRACT";
     Object.assign(state.subscription, {
       planId: null,
@@ -215,11 +216,12 @@ describe("BillingService subscription projection", () => {
 
     expect(result).toMatchObject({ mode: "INITIAL", plan: { kind: "PAID_METERED" } });
     expect(state.subscription).toMatchObject({ pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1" });
-    expect(state.onboardingCompleted).toBe(false);
+    expect(state.onboardingCompleted).toBe(onboardingCompleted);
   });
 
   it("creates the exact paid period and included counter in the verified sync transaction", async () => {
     const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase();
+    state.onboardingCompleted = true;
     Object.assign(state.subscription, {
       status: "NO_CONTRACT",
       planId: null,
@@ -616,12 +618,12 @@ describe("BillingService subscription projection", () => {
     await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeTruthy();
   });
 
-  it("rejects a shop without a Subscription when onboarding is already complete", async () => {
-    const { database } = createFreeActivationDatabase({ onboardingCompleted: true });
+  it.each([false, true])("prepares a fresh Free activation regardless of onboarding state (%s)", async (onboardingCompleted) => {
+    const { database } = createFreeActivationDatabase({ onboardingCompleted });
     const service = new BillingService({} as never, database as never);
 
-    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toBeNull();
-    expect(database.subscription.upsert).not.toHaveBeenCalled();
+    await expect(service.prepareFreeActivation("shop-1", "free")).resolves.toMatchObject({ mode: "INITIAL" });
+    expect(database.subscription.upsert).toHaveBeenCalledTimes(1);
   });
 
   it("does not overwrite an active different-plan subscription", async () => {
@@ -748,6 +750,10 @@ describe("BillingService subscription projection", () => {
       status: "ACTIVE",
       planId: "free-1",
       observedShopifyPlanHandle: "free",
+      pendingShopifyPlanHandle: null,
+      pendingPlanId: null,
+      pendingEffectiveAt: null,
+      nextReconcileAt: null,
       plan: { kind: "FREE", shopifyPlanHandle: "free", recoveryCreditPackEnabled: false },
     });
     const service = new BillingService({} as never, database as never);
@@ -774,6 +780,10 @@ describe("BillingService subscription projection", () => {
         status: "ACTIVE",
         planId: "free-1",
         observedShopifyPlanHandle: "free",
+        pendingShopifyPlanHandle: null,
+        pendingPlanId: null,
+        pendingEffectiveAt: null,
+        nextReconcileAt: null,
         billingPeriodId: "period-1",
         currentPeriodStart: periodStart,
         currentPeriodEnd: periodEnd,
@@ -970,6 +980,7 @@ describe("BillingService subscription projection", () => {
 
   it("completes an initial pack-enabled Free activation without a cycle and keeps top-up eligibility closed", async () => {
     const { database, state } = createFreeActivationDatabase({
+      onboardingCompleted: true,
       planOverrides: {
         recoveryCreditPackEnabled: true,
         shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
@@ -1558,6 +1569,8 @@ describe("BillingService subscription projection", () => {
     const { database, state } = createDatabase({
       current: {
         status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
         pendingShopifyPlanHandle: "free",
         pendingPlanId: "free-1",
         pendingEffectiveAt: new Date("2026-01-01T00:00:00.000Z"),
@@ -1591,6 +1604,8 @@ describe("BillingService subscription projection", () => {
       current: {
         id: "subscription-1",
         status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
         pendingShopifyPlanHandle: "free-b",
         pendingPlanId: "free-b-id",
         pendingEffectiveAt,

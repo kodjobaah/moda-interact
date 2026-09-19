@@ -265,7 +265,6 @@ function unresolvedPurchaseMessage(): string {
 }
 
 function matchesInitialFreeActivationToken(
-  settings: { onboardingCompleted: boolean } | null,
   subscription: {
     id: string;
     pendingPlanId: string | null;
@@ -275,8 +274,7 @@ function matchesInitialFreeActivationToken(
   } | null,
   expected: InitialFreeActivationToken,
 ): boolean {
-  return settings?.onboardingCompleted === false &&
-    subscription?.id === expected.subscriptionId &&
+  return subscription?.id === expected.subscriptionId &&
     subscription.pendingPlanId === expected.pendingPlanId &&
     subscription.pendingShopifyPlanHandle === expected.pendingShopifyPlanHandle &&
     subscription.pendingEffectiveAt?.getTime() === expected.pendingEffectiveAt.getTime() &&
@@ -500,19 +498,14 @@ export class BillingService {
           observedShopifyPlanHandle: true,
         },
       });
-      const settings = await transaction.shopSettings.findUnique({
-        where: { shopId },
-        select: { onboardingCompleted: true },
-      });
       const isVerifiedReplay = currentSubscription?.planId === plan.id &&
         currentSubscription.observedShopifyPlanHandle === planHandle &&
         (currentSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
           currentSubscription.status === SubscriptionProjectionStatus.TRIALING);
-      const isInitialActivation = settings?.onboardingCompleted !== true &&
-        (!currentSubscription ||
+      const isInitialActivation = !currentSubscription ||
         (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
           currentSubscription.planId === null &&
-          !currentSubscription.observedShopifyPlanHandle));
+          !currentSubscription.observedShopifyPlanHandle);
       if (!isInitialActivation && !isVerifiedReplay) return null;
 
       if (isVerifiedReplay) {
@@ -575,9 +568,10 @@ export class BillingService {
         where: { shopId },
         select: { status: true, planId: true, observedShopifyPlanHandle: true },
       });
-      const settings = await transaction.shopSettings.findUnique({ where: { shopId }, select: { onboardingCompleted: true } });
-      const isInitialActivation = settings?.onboardingCompleted !== true &&
-        (!currentSubscription || (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT && currentSubscription.planId === null && !currentSubscription.observedShopifyPlanHandle));
+      const isInitialActivation = !currentSubscription ||
+        (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+          currentSubscription.planId === null &&
+          !currentSubscription.observedShopifyPlanHandle);
       if (!isInitialActivation) return null;
 
       const subscription = await transaction.subscription.upsert({
@@ -623,10 +617,6 @@ export class BillingService {
   }): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     return this.database.$transaction(async (transaction) => {
       await lockInitialFreeActivationState(transaction, shopId);
-      const settings = await transaction.shopSettings.findUnique({
-        where: { shopId },
-        select: { onboardingCompleted: true },
-      });
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -637,7 +627,7 @@ export class BillingService {
           nextReconcileAt: true,
         },
       });
-      if (!matchesInitialFreeActivationToken(settings, subscription, expected)) {
+      if (!matchesInitialFreeActivationToken(subscription, expected)) {
         return null;
       }
       const updated = await transaction.subscription.update({
@@ -667,10 +657,6 @@ export class BillingService {
   ): Promise<CompletedFreeActivation | null> {
     return this.database.$transaction(async (transaction) => {
       await lockInitialFreeActivationState(transaction, shopId);
-      const settings = await transaction.shopSettings.findUnique({
-        where: { shopId },
-        select: { onboardingCompleted: true },
-      });
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         include: { plan: true },
@@ -685,18 +671,22 @@ export class BillingService {
       ) {
         return null;
       }
-      if (settings?.onboardingCompleted !== true && (
+      const hasPendingSelection =
+        subscription.pendingShopifyPlanHandle !== null ||
+        subscription.pendingPlanId !== null ||
+        subscription.pendingEffectiveAt !== null;
+
+      if (
+        hasPendingSelection &&
+        (
         subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
         subscription.pendingPlanId !== subscription.planId ||
         !subscription.pendingEffectiveAt
-      )) {
+        )
+      ) {
         return null;
       }
 
-      await transaction.shopSettings.update({
-        where: { shopId },
-        data: { onboardingCompleted: true },
-      });
       const completionNow = new Date();
       const completedNextReconcileAt = !subscription.plan.recoveryCreditPackEnabled
         ? null
@@ -1744,10 +1734,6 @@ async getSubscription(
     if (!providerSubscription) {
       const lifecycle = await this.database.$transaction(async (transaction) => {
         await lockInitialFreeActivationState(transaction, shopId);
-        const settings = await transaction.shopSettings.findUnique({
-          where: { shopId },
-          select: { onboardingCompleted: true },
-        });
         const current = await transaction.subscription.findUnique({
           where: { shopId },
           select: {
@@ -1762,19 +1748,26 @@ async getSubscription(
             pendingPlanId: true,
             pendingEffectiveAt: true,
             nextReconcileAt: true,
+            planId: true,
           },
         });
         if (
           expectedInitialSelection &&
-          !matchesInitialFreeActivationToken(settings, current, expectedInitialSelection)
+          !matchesInitialFreeActivationToken(current, expectedInitialSelection)
         ) {
           return null;
         }
         const now = new Date();
-        const preserveInitialIntent = settings?.onboardingCompleted !== true &&
-          current !== null &&
+        const preserveInitialIntent = Boolean(
+          current &&
+          current.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+          current.planId === null &&
+          !current.observedShopifyPlanHandle &&
           current.pendingShopifyPlanHandle &&
-          current.pendingPlanId;
+          current.pendingPlanId &&
+          current.pendingEffectiveAt &&
+          current.nextReconcileAt
+        );
 
         await transaction.subscription.upsert({
           where: { shopId },
@@ -1791,10 +1784,10 @@ async getSubscription(
             lastSyncedAt: now,
             lastSyncErrorCode: null,
             lastSyncErrorAt: null,
-            pendingShopifyPlanHandle: preserveInitialIntent ? current.pendingShopifyPlanHandle : null,
-            pendingPlanId: preserveInitialIntent ? current.pendingPlanId : null,
-            pendingEffectiveAt: preserveInitialIntent ? current.pendingEffectiveAt : null,
-            nextReconcileAt: preserveInitialIntent ? current.nextReconcileAt : null,
+            pendingShopifyPlanHandle: preserveInitialIntent ? current?.pendingShopifyPlanHandle ?? null : null,
+            pendingPlanId: preserveInitialIntent ? current?.pendingPlanId ?? null : null,
+            pendingEffectiveAt: preserveInitialIntent ? current?.pendingEffectiveAt ?? null : null,
+            nextReconcileAt: preserveInitialIntent ? current?.nextReconcileAt ?? null : null,
           },
           create: {
             shopId,
@@ -1877,19 +1870,14 @@ async getSubscription(
         },
       });
       const subscriptionId = existingSubscription?.id ?? randomUUID();
-      const settings = await transaction.shopSettings.findUnique({
-        where: { shopId },
-        select: { onboardingCompleted: true },
-      });
       if (
         expectedInitialSelection &&
-        !matchesInitialFreeActivationToken(settings, existingSubscription, expectedInitialSelection)
+        !matchesInitialFreeActivationToken(existingSubscription, expectedInitialSelection)
       ) {
         return null;
       }
       const initialPaidActivation = Boolean(
         expectedInitialSelection &&
-        settings?.onboardingCompleted === false &&
         existingSubscription?.planId === null &&
         !existingSubscription.observedShopifyPlanHandle &&
         expectedInitialSelection.planKind === BillingPlanKind.PAID_METERED &&
@@ -2075,7 +2063,6 @@ async getSubscription(
             nextReconcileAt,
           },
         });
-        await transaction.shopSettings.update({ where: { shopId }, data: { onboardingCompleted: true } });
         return committedSubscription;
       }
       const pendingPlan = providerSubscription.pendingPlanHandle
@@ -2084,9 +2071,16 @@ async getSubscription(
             select: { id: true, active: true },
           })
         : null;
-      const preserveInitialIntent = settings?.onboardingCompleted !== true &&
-        Boolean(existingSubscription?.pendingShopifyPlanHandle) &&
-        Boolean(existingSubscription?.pendingPlanId);
+      const preserveInitialIntent = Boolean(
+        existingSubscription &&
+        existingSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+        existingSubscription.planId === null &&
+        !existingSubscription.observedShopifyPlanHandle &&
+        existingSubscription.pendingShopifyPlanHandle &&
+        existingSubscription.pendingPlanId &&
+        existingSubscription.pendingEffectiveAt &&
+        existingSubscription.nextReconcileAt
+      );
       const initialPaidProjection = preserveInitialIntent &&
         existingSubscription?.planId === null &&
         plan?.kind === BillingPlanKind.PAID_METERED;
