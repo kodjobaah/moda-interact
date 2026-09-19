@@ -700,9 +700,10 @@ export class BillingService {
       return plan
         ? {
             shopifyPlanHandle: plan.shopifyPlanHandle,
-            usageEvents: plan.usageEvents.map((event: { position: number; eventHandle: string; creditsGrantedPerUnit: number }) => ({
+            usageEvents: plan.usageEvents.map((event: { position: number; eventHandle: string; adminLabel: string; creditsGrantedPerUnit: number }) => ({
               cataloguePosition: event.position,
               eventHandle: event.eventHandle,
+              adminLabel: event.adminLabel,
               creditsGrantedPerUnit: event.creditsGrantedPerUnit,
             })),
           }
@@ -1745,6 +1746,9 @@ async getSubscription(
             currentAmount: latestPurchase.currentAmount,
             reservedAmount: latestPurchase.reservedAmount,
             eventHandle: latestPurchase.shopifyEventHandleSnapshot,
+            label: recoveryCreditOffers.find(
+              (offer) => offer.eventHandle === latestPurchase.shopifyEventHandleSnapshot,
+            )?.label ?? latestPurchase.shopifyEventHandleSnapshot,
             createdAt: latestPurchase.createdAt.toISOString(),
             activatedAt: latestPurchase.activatedAt?.toISOString() ?? null,
             usageReportState: latestPurchase.usageEvent?.shopifyReportState ?? "UNKNOWN",

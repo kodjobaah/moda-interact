@@ -275,4 +275,39 @@ describe("app home loader", () => {
     expect(findBillingPeriods).not.toHaveBeenCalled();
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
+  it("scopes merchant usage to recovery conversations and billing-period lifecycle", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE", observedShopifyPlanHandle: "free" });
+    getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "AVAILABLE", observedShopifyPlanHandle: "free" });
+    findBillingPeriods.mockResolvedValue([
+      { id: "period-open", status: "OPEN", periodStart: new Date("2026-09-01T00:00:00.000Z"), periodEnd: new Date("2026-10-01T00:00:00.000Z"), usageEvents: [] },
+      { id: "period-closed", status: "CLOSED", periodStart: new Date("2026-08-01T00:00:00.000Z"), periodEnd: new Date("2026-09-01T00:00:00.000Z"), usageEvents: [] },
+    ]);
+
+    await loader({ request: new Request("https://example.test/app") });
+
+    expect(findBillingPeriods).toHaveBeenCalledWith(expect.objectContaining({
+      include: {
+        usageEvents: {
+          where: { metric: "RECOVERY_CONVERSATION" },
+          select: { metric: true, quantity: true },
+        },
+      },
+    }));
+
+    const usageWheres = findUsageEvents.mock.calls.map(([args]) => args.where);
+    expect(usageWheres).toContainEqual({ shopId: "shop-1", metric: "RECOVERY_CONVERSATION" });
+    expect(usageWheres).toContainEqual({
+      shopId: "shop-1",
+      metric: "RECOVERY_CONVERSATION",
+      billingPeriodId: { in: ["period-open"] },
+    });
+    expect(usageWheres).toContainEqual({
+      shopId: "shop-1",
+      metric: "RECOVERY_CONVERSATION",
+      billingPeriodId: { in: ["period-closed"] },
+    });
+    expect(usageWheres.some((where) => Object.hasOwn(where, "reportedAt"))).toBe(false);
+  });
+
 });

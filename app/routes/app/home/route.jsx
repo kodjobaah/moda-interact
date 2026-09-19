@@ -34,6 +34,8 @@ import {
 
 import db from "@/db.server";
 
+const MERCHANT_RECOVERY_USAGE_METRIC = "RECOVERY_CONVERSATION";
+
 
 export const loader = async ({ request }) => {
 const {
@@ -140,14 +142,39 @@ console.log("Resolved shop settings:", settings);
 
   const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
   console.log("Resolved recoveries:", recoveries);
-  const allUsageWhere = { shopId: shop.id };
-  
-  const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+  const allUsageWhere = {
+    shopId: shop.id,
+    metric: MERCHANT_RECOVERY_USAGE_METRIC,
+  };
+
+  const billingPeriods = await db.billingPeriod.findMany({
+    where: { shopId: shop.id },
+    include: {
+      usageEvents: {
+        where: { metric: MERCHANT_RECOVERY_USAGE_METRIC },
+        select: { metric: true, quantity: true },
+      },
+    },
+    orderBy: { periodStart: "desc" },
+  });
+  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId)
+    ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+  const currentBillingPeriodIds = billingPeriods
+    .filter((period) => period.status === "OPEN")
+    .map((period) => period.id);
+  const pastBillingPeriodIds = billingPeriods
+    .filter((period) => period.status === "CLOSED")
+    .map((period) => period.id);
   const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
   const [currentUsageEvents, paidUsageEvents] = await Promise.all([
-    db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: null }, orderBy: { occurredAt: "desc" } }),
-    db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
+    db.usageEvent.findMany({
+      where: { ...allUsageWhere, billingPeriodId: { in: currentBillingPeriodIds } },
+      orderBy: { occurredAt: "desc" },
+    }),
+    db.usageEvent.findMany({
+      where: { ...allUsageWhere, billingPeriodId: { in: pastBillingPeriodIds } },
+      orderBy: { occurredAt: "desc" },
+    }),
   ]);
   const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
   const recoveredRevenueByCurrency = recoveries.reduce((totals, recovery) => {

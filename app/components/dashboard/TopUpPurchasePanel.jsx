@@ -5,7 +5,7 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, unresolvedPurchases?: Array<any>, offers?: Array<any>, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
+/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, unresolvedPurchases?: Array<any>, offers?: Array<any>, freeLifetime?: { granted: number, remaining: number } | null, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
 
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
@@ -18,6 +18,9 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const unresolvedByEventHandle = new Map(
     unresolvedPurchases.map((entry) => [entry.eventHandle, entry]),
   );
+  const purchaseLabel = purchase
+    ? (purchase.label ?? offers.find((offer) => offer.eventHandle === purchase.eventHandle)?.label ?? purchase.eventHandle)
+    : null;
 
   return <section className="moda-billing-panel">
     <div className="moda-panel-heading-row">
@@ -27,10 +30,20 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
         <p>{i18n.t("billingCommerce.topup.description")}</p>
       </div>
     </div>
-    <div className="moda-credit-summary">
-      <div className="moda-credit-icon">+</div>
-      <div><strong>{topUpState.purchasedCreditsAvailable}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div>
-      <p>{i18n.t("billingCommerce.topup.nonExpiring")}</p>
+    <div className="moda-credit-balance-grid">
+      {topUpState.freeLifetime ? <div className="moda-credit-summary">
+        <div className="moda-credit-icon">∞</div>
+        <div>
+          <strong>{i18n.formatNumber(topUpState.freeLifetime.remaining)}</strong>
+          <span>{i18n.t("billingCommerce.lifetimeFree")}</span>
+          <small>{i18n.t("billing.lifetimeFreeAllowance", { remaining: topUpState.freeLifetime.remaining, allowance: topUpState.freeLifetime.granted })}</small>
+        </div>
+      </div> : null}
+      <div className="moda-credit-summary">
+        <div className="moda-credit-icon">+</div>
+        <div><strong>{i18n.formatNumber(topUpState.purchasedCreditsAvailable)}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div>
+        <p>{i18n.t("billingCommerce.topup.nonExpiring")}</p>
+      </div>
     </div>
     <div className="moda-info-banner">
       <div className="moda-info-banner-icon">↗</div>
@@ -46,6 +59,7 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       const reportState = unresolvedPurchase?.usageReportState;
       const offerPurchaseEligible = topUpState.purchaseEligible && !unresolvedPurchase;
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
+        <div className="moda-topup-pack-label">{offer.label}</div>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
         <form method="post" onSubmit={(event) => {
@@ -71,9 +85,16 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
         {unresolvedPurchase && reportState !== "RETRYABLE" && reportState !== "NEEDS_ATTENTION" ? <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p> : null}
       </article>;
     })}</div>}
-    {purchase && purchase.status !== "REQUESTED" && statuses.includes(purchase.status) ? <p>
-      {`${i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}: ${i18n.formatNumber(purchase.currentAmount)}`}
-    </p> : null}
+    {purchase && purchase.status !== "REQUESTED" && statuses.includes(purchase.status) ? <div className="moda-latest-purchase-summary">
+      <div>
+        <span>{i18n.t("billingPurchases.purchaseLabel")}</span>
+        <strong>{purchaseLabel}</strong>
+      </div>
+      <div>
+        <span>{i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}</span>
+        <strong>{i18n.formatNumber(purchase.currentAmount)} {i18n.t("billingPurchases.availableCredits")}</strong>
+      </div>
+    </div> : null}
   </section>;
 }
 
@@ -82,10 +103,11 @@ TopUpPurchasePanel.propTypes = {
   topUpState: PropTypes.shape({
     configured: PropTypes.bool.isRequired,
     purchaseEligible: PropTypes.bool.isRequired,
-    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
+    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, label: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
     offerVerificationState: PropTypes.string.isRequired,
+    freeLifetime: PropTypes.shape({ granted: PropTypes.number.isRequired, remaining: PropTypes.number.isRequired }),
     purchasedCreditsAvailable: PropTypes.number.isRequired,
-    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string, eventHandle: PropTypes.string }),
+    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string, eventHandle: PropTypes.string, label: PropTypes.string }),
     unresolvedPurchases: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, creditsGranted: PropTypes.number.isRequired, usageReportState: PropTypes.string.isRequired })),
   }).isRequired,
 };

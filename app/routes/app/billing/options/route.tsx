@@ -196,12 +196,17 @@ export default function BillingOptionsPage() {
     offers: providerMappedCurrentContract ? data.topUp.recoveryCreditOffers : [],
     offerVerificationState: data.topUp.recoveryCreditOfferVerificationState,
     paidIncludedCreditsAvailable: data.capacity?.paidIncluded?.remaining ?? null,
-    freeLifetimeCreditsAvailable: data.capacity?.freeLifetime?.remaining ?? null,
+    freeLifetime: data.capacity?.freeLifetime
+      ? {
+          granted: data.capacity.freeLifetime.granted,
+          remaining: data.capacity.freeLifetime.remaining,
+        }
+      : null,
     promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
     purchasedCreditsAvailable: data.capacity?.purchased.available ?? data.topUp.purchasedRecoveryCredits.available,
     latestPurchase: data.topUp.latestPurchase,
     unresolvedPurchases: data.topUp.unresolvedPurchases,
-  } : { configured: false, purchaseEligible: false, offers: [], offerVerificationState: "VERIFICATION_UNAVAILABLE", purchasedCreditsAvailable: 0, latestPurchase: null, unresolvedPurchases: [] };
+  } : { configured: false, purchaseEligible: false, offers: [], offerVerificationState: "VERIFICATION_UNAVAILABLE", freeLifetime: null, purchasedCreditsAvailable: 0, latestPurchase: null, unresolvedPurchases: [] };
   const current = providerSubscription
     ? { shopifyPlanHandle: providerSubscription.planHandle, mappedModaPlanName: mapping?.name ?? null, price: providerSubscription.price, interval: providerSubscription.billingPeriod, currentPeriodEnd: providerSubscription.currentPeriodEnd, cancelAtEndOfCycle: providerSubscription.cancelAtEndOfCycle }
     : data.verificationState === "VERIFICATION_UNAVAILABLE"

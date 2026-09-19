@@ -2,9 +2,10 @@
 /* eslint-disable react/prop-types */
 /* eslint-disable jsx-a11y/no-autofocus */
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useRevalidator, useSearchParams } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
+import "./BillingPurchaseHub.css";
 
 const FILTERS = ["ACTIVE", "WITHDRAWN", "COMPLETED", "REFUNDED", "ALL"];
 const statusKeys = {
@@ -14,6 +15,15 @@ const statusKeys = {
   COMPLETED: "completed",
   REFUNDED: "refunded",
 };
+
+
+function packLabel(eventHandle) {
+  if (typeof eventHandle !== "string" || !eventHandle.trim()) return "";
+  return eventHandle
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
 
 function eligible(purchase) {
   return (
@@ -44,6 +54,7 @@ export default function RecoveryCreditPurchaseManager({
   void searchParams;
   const [selected, setSelected] = useState([]);
   const [dialog, setDialog] = useState(null);
+  const submissionLock = useRef(false);
   const purchases = useMemo(() => page?.purchases ?? [], [page]);
   const visible = purchases;
   const eligibleVisible = useMemo(() => visible.filter(eligible), [visible]);
@@ -62,6 +73,7 @@ export default function RecoveryCreditPurchaseManager({
   }, [eligibleVisible, filter]);
 
   useEffect(() => {
+    if (fetcher.state === "idle") submissionLock.current = false;
     if (
       fetcher.state === "idle" &&
       fetcher.data &&
@@ -98,7 +110,8 @@ export default function RecoveryCreditPurchaseManager({
   };
 
   const requestRefund = () => {
-    if (selectedPurchases.length === 0) return;
+    if (selectedPurchases.length === 0 || submissionLock.current) return;
+    submissionLock.current = true;
     setDialog(null);
     const form = new FormData();
     form.set("intent", "request_refund");
@@ -122,8 +135,8 @@ export default function RecoveryCreditPurchaseManager({
   };
 
   return (
-    <section aria-labelledby="purchase-manager-title">
-      <div className="moda-panel-heading-row">
+    <section className="moda-billing-panel moda-purchase-history" aria-labelledby="purchase-manager-title">
+      <div className="moda-panel-heading-row moda-purchase-history-heading">
         <div>
           <div className="moda-eyebrow">
             {i18n.t("billingPurchases.eyebrow")}
@@ -134,13 +147,14 @@ export default function RecoveryCreditPurchaseManager({
           <p>{i18n.t("billingPurchases.description")}</p>
         </div>
       </div>
-      <div role="tablist" aria-label={i18n.t("billingPurchases.filtersLabel")}>
+      <div className="moda-purchase-filter-tabs" role="tablist" aria-label={i18n.t("billingPurchases.filtersLabel")}>
         {FILTERS.map((value) => (
           <button
             key={value}
             type="button"
             role="tab"
             aria-selected={filter === value}
+            className={filter === value ? "is-active" : ""}
             onClick={() => setFilter(value)}
           >
             {i18n.t(`billingPurchases.filter.${value}`)}
@@ -148,8 +162,8 @@ export default function RecoveryCreditPurchaseManager({
         ))}
       </div>
       {eligibleVisible.length > 0 ? (
-        <div>
-          <label>
+        <div className="moda-purchase-toolbar">
+          <label className="moda-purchase-select-all">
             <input
               type="checkbox"
               checked={eligibleVisible.every((purchase) =>
@@ -157,10 +171,11 @@ export default function RecoveryCreditPurchaseManager({
               )}
               onChange={toggleAll}
               disabled={isSubmitting}
-            />{" "}
-            {i18n.t("billingPurchases.selectAll")}
+            />
+            <span>{i18n.t("billingPurchases.selectAll")}</span>
           </label>
           <button
+            className="moda-action-button moda-action-button-primary"
             type="button"
             disabled={selectedPurchases.length === 0 || isSubmitting}
             onClick={() => setDialog({ type: "refund" })}
@@ -172,14 +187,15 @@ export default function RecoveryCreditPurchaseManager({
         </div>
       ) : null}
       {outcomes.length > 0 ? (
-        <div role="status" aria-live="polite">
+        <div className="moda-purchase-results" role="status" aria-live="polite">
           <h2>{i18n.t("billingPurchases.results")}</h2>
           {outcomes.map((outcome) => (
             <p key={outcome.purchaseId}>
               <strong>
-                {purchases.find(
-                  (purchase) => purchase.id === outcome.purchaseId,
-                )?.planName ?? i18n.t("billingPurchases.purchaseLabel")}
+                {(() => {
+                  const purchase = purchases.find((entry) => entry.id === outcome.purchaseId);
+                  return purchase ? packLabel(purchase.eventHandle) : i18n.t("billingPurchases.purchaseLabel");
+                })()}
               </strong>
               : {outcomeText(i18n, outcome)}
             </p>
@@ -187,9 +203,9 @@ export default function RecoveryCreditPurchaseManager({
         </div>
       ) : null}
       {visible.length === 0 ? (
-        <p>{i18n.t("billingPurchases.empty")}</p>
+        <div className="moda-empty-state">{i18n.t("billingPurchases.empty")}</div>
       ) : (
-        <div role="list">
+        <div className="moda-purchase-list" role="list">
           {visible.map((purchase) => {
             const isEligible = eligible(purchase);
             const refund = purchase.latestRefund;
@@ -200,28 +216,37 @@ export default function RecoveryCreditPurchaseManager({
               refund &&
               refund.status !== "REQUESTED";
             return (
-              <article key={purchase.id} role="listitem">
+              <article className={`moda-purchase-card ${selected.includes(purchase.id) ? "is-selected" : ""}`} key={purchase.id} role="listitem">
+                <div className="moda-purchase-card-header">
+                  <div>
+                    <div className="moda-purchase-card-title-row">
+                      <h2>{packLabel(purchase.eventHandle)}</h2>
+                      <span className={`moda-purchase-status moda-purchase-status-${purchase.status.toLowerCase()}`}>
+                        {i18n.t(
+                          `billingPurchases.status.${statusKeys[purchase.status]}`,
+                        )}
+                      </span>
+                    </div>
+                    <p className="moda-purchase-plan">{purchase.planName}</p>
+                  </div>
+                  {isEligible ? (
+                    <label className="moda-purchase-card-select">
+                      <input
+                        aria-label={i18n.t("billingPurchases.selectPurchase", {
+                          plan: packLabel(purchase.eventHandle),
+                        })}
+                        type="checkbox"
+                        checked={selected.includes(purchase.id)}
+                        onChange={() => toggle(purchase.id)}
+                        disabled={isSubmitting}
+                      />
+                    </label>
+                  ) : null}
+                </div>
                 {filter === "ALL" && purchase.status === "REQUESTED" ? (
-                  <span>{i18n.t("billingPurchases.awaitingConfirmation")}</span>
+                  <div className="moda-purchase-notice">{i18n.t("billingPurchases.awaitingConfirmation")}</div>
                 ) : null}
-                {isEligible ? (
-                  <input
-                    aria-label={i18n.t("billingPurchases.selectPurchase", {
-                      plan: purchase.planName,
-                    })}
-                    type="checkbox"
-                    checked={selected.includes(purchase.id)}
-                    onChange={() => toggle(purchase.id)}
-                    disabled={isSubmitting}
-                  />
-                ) : null}
-                <h2>{purchase.planName}</h2>
-                <p>
-                  {i18n.t(
-                    `billingPurchases.status.${statusKeys[purchase.status]}`,
-                  )}
-                </p>
-                <dl>
+                <dl className="moda-purchase-metrics">
                   <dt>{i18n.t("billingPurchases.purchaseDate")}</dt>
                   <dd>
                     {i18n.formatDate(
@@ -279,8 +304,24 @@ export default function RecoveryCreditPurchaseManager({
                     })}
                   </p>
                 ) : null}
+                {isEligible ? (
+                  <div className="moda-purchase-card-actions">
+                    <button
+                      className="moda-action-button moda-action-button-primary"
+                      type="button"
+                      disabled={isSubmitting}
+                      onClick={() => {
+                        setSelected([purchase.id]);
+                        setDialog({ type: "refund" });
+                      }}
+                    >
+                      {i18n.t("billingPurchases.requestRefund")}
+                    </button>
+                  </div>
+                ) : null}
                 {canReactivate ? (
                   <button
+                    className="moda-action-button moda-action-button-secondary"
                     type="button"
                     disabled={isSubmitting}
                     onClick={() => setDialog({ type: "reactivate", purchase })}
@@ -296,8 +337,9 @@ export default function RecoveryCreditPurchaseManager({
           })}
         </div>
       )}
-      <nav aria-label={i18n.t("billingPurchases.paginationLabel")}>
+      <nav className="moda-purchase-pagination" aria-label={i18n.t("billingPurchases.paginationLabel")}>
         <button
+          className="moda-action-button moda-action-button-secondary"
           type="button"
           disabled={(page?.page ?? 1) <= 1 || isSubmitting}
           onClick={() =>
@@ -316,6 +358,7 @@ export default function RecoveryCreditPurchaseManager({
           })}
         </span>
         <button
+          className="moda-action-button moda-action-button-secondary"
           type="button"
           disabled={
             (page?.page ?? 1) >=
@@ -330,13 +373,13 @@ export default function RecoveryCreditPurchaseManager({
         </button>
       </nav>
       {dialog?.type === "refund" ? (
-        <dialog open aria-modal="true" aria-labelledby="refund-confirm-title">
+        <dialog className="moda-purchase-dialog" open aria-modal="true" aria-labelledby="refund-confirm-title">
           <h2 id="refund-confirm-title">
             {i18n.t("billingPurchases.confirmRefundTitle")}
           </h2>
           <ul>
             {selectedPurchases.map((purchase) => (
-              <li key={purchase.id}>{purchase.planName}</li>
+              <li key={purchase.id}>{packLabel(purchase.eventHandle)}</li>
             ))}
           </ul>
           <p>{i18n.t("billingPurchases.confirmUnused")}</p>
@@ -344,21 +387,27 @@ export default function RecoveryCreditPurchaseManager({
           <p>{i18n.t("billingPurchases.confirmDifference")}</p>
           <p>{i18n.t("billingPurchases.confirmNoNewConversation")}</p>
           <p>{i18n.t("billingPurchases.confirmIndependent")}</p>
-          <button type="button" onClick={() => setDialog(null)}>
-            {i18n.t("billingPurchases.cancel")}
-          </button>
-          <button
-            autoFocus
-            type="button"
-            onClick={requestRefund}
-            disabled={isSubmitting}
-          >
-            {i18n.t("billingPurchases.confirm")}
-          </button>
+          <div className="moda-purchase-dialog-actions">
+            <button className="moda-action-button moda-action-button-secondary" type="button" onClick={() => setDialog(null)}>
+              {i18n.t("billingPurchases.cancel")}
+            </button>
+            <button
+              className="moda-action-button moda-action-button-primary"
+              autoFocus
+              type="button"
+              onClick={requestRefund}
+              disabled={isSubmitting || submissionLock.current}
+            >
+              {isSubmitting
+                ? i18n.t("billingPurchases.submitting")
+                : i18n.t("billingPurchases.confirm")}
+            </button>
+          </div>
         </dialog>
       ) : null}
       {dialog?.type === "reactivate" ? (
         <dialog
+          className="moda-purchase-dialog"
           open
           aria-modal="true"
           aria-labelledby="reactivate-confirm-title"
@@ -367,17 +416,20 @@ export default function RecoveryCreditPurchaseManager({
             {i18n.t("billingPurchases.confirmReactivateTitle")}
           </h2>
           <p>{i18n.t("billingPurchases.confirmReactivate")}</p>
-          <button type="button" onClick={() => setDialog(null)}>
-            {i18n.t("billingPurchases.cancel")}
-          </button>
-          <button
-            autoFocus
+          <div className="moda-purchase-dialog-actions">
+            <button className="moda-action-button moda-action-button-secondary" type="button" onClick={() => setDialog(null)}>
+              {i18n.t("billingPurchases.cancel")}
+            </button>
+            <button
+              className="moda-action-button moda-action-button-primary"
+              autoFocus
             type="button"
             onClick={() => reactivate(dialog.purchase.id)}
             disabled={isSubmitting}
           >
-            {i18n.t("billingPurchases.confirm")}
-          </button>
+              {i18n.t("billingPurchases.confirm")}
+            </button>
+          </div>
         </dialog>
       ) : null}
     </section>

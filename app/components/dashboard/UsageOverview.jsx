@@ -14,7 +14,7 @@ void React;
 
 const colors = scaleOrdinal(schemeTableau10);
 /** @type {Record<string, string>} */
-const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
+const metricKeys = { RECOVERY_CONVERSATION: "chart.metricCheckoutRecovery" };
 
 /** @param {{ title: string, events: Array<{ metric: string, quantity: number }>, i18n: any }} props */
 function UsagePie({ title, events, i18n }) {

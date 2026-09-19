@@ -11,6 +11,8 @@ import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
+const MERCHANT_RECOVERY_USAGE_METRIC = "RECOVERY_CONVERSATION";
+
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
@@ -28,10 +30,21 @@ export const loader = async ({ request }) => {
   const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "USAGE")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "USAGE"));
 
-  const usageWhere = { shopId: shop.id, reportedAt: usageView === "past" ? { not: null } : null };
-  const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
-  const selectedUsageWhere = selectedPeriod ? { shopId: shop.id, billingPeriodId: selectedPeriod.id } : usageWhere;
+  const billingPeriods = await db.billingPeriod.findMany({
+    where: { shopId: shop.id },
+    include: {
+      usageEvents: {
+        where: { metric: MERCHANT_RECOVERY_USAGE_METRIC },
+        select: { metric: true, quantity: true },
+      },
+    },
+    orderBy: { periodStart: "desc" },
+  });
+  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId)
+    ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+  const selectedUsageWhere = selectedPeriod
+    ? { shopId: shop.id, billingPeriodId: selectedPeriod.id, metric: MERCHANT_RECOVERY_USAGE_METRIC }
+    : null;
   const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { firstName: true, lastName: true, email: true } }, conversation: { include: { messages: { select: { id: true } } } } } });
   const recoveryBySourceId = new Map();
   for (const recovery of recoveries) {
@@ -44,11 +57,13 @@ export const loader = async ({ request }) => {
     }
   }
 
-  const [usageEvents, usageCount, usageAggregate] = await Promise.all([
-    db.usageEvent.findMany({ where: selectedUsageWhere, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
-    db.usageEvent.count({ where: selectedUsageWhere }),
-    db.usageEvent.aggregate({ where: selectedUsageWhere, _sum: { quantity: true } }),
-  ]);
+  const [usageEvents, usageCount, usageAggregate] = selectedUsageWhere
+    ? await Promise.all([
+        db.usageEvent.findMany({ where: selectedUsageWhere, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
+        db.usageEvent.count({ where: selectedUsageWhere }),
+        db.usageEvent.aggregate({ where: selectedUsageWhere, _sum: { quantity: true } }),
+      ])
+    : [[], 0, { _sum: { quantity: null } }];
 
   return {
     settings,

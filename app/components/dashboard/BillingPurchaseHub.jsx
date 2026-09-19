@@ -1,5 +1,6 @@
 import * as React from "react";
 import PropTypes from "prop-types";
+import { Link } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import TopUpPurchasePanel from "./TopUpPurchasePanel";
 import SubscriptionChangePanel from "./SubscriptionChangePanel";
@@ -40,7 +41,16 @@ export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriod
       {capacity.purchased ? <div><strong>{capacity.purchased.available}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div> : null}
     </> : <div><strong>{i18n.t("common.unavailable")}</strong><span>{i18n.t("billingCommerce.currentPlan")}</span></div>}</div><div className="moda-summary-graphic"><span></span><span></span><span></span><span></span><span></span></div></div></section>
     <div className="moda-view-switch"><button className={view==="topup"?"is-active":""} onClick={()=>setView("topup")}>{i18n.t("billingCommerce.actions.topup")}</button><button className={view==="plans"?"is-active":""} onClick={()=>setView("plans")}>{i18n.t("billingCommerce.actions.plan")}</button></div>
-    {purchaseHistoryAvailable ? <p><a href="/app/billing/recovery-credit-purchases">{i18n.t("billingPurchases.manageLink")}</a></p> : null}
+    {purchaseHistoryAvailable ? <section className="moda-purchase-management-card">
+      <div>
+        <div className="moda-eyebrow">{i18n.t("billingPurchases.eyebrow")}</div>
+        <strong>{i18n.t("billingPurchases.title")}</strong>
+        <p>{i18n.t("billingPurchases.description")}</p>
+      </div>
+      <Link className="moda-action-button moda-action-button-secondary" to="/app/billing/recovery-credit-purchases">
+        {i18n.t("billingPurchases.manageLink")}
+      </Link>
+    </section> : null}
     {view === "topup" ? (
       <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} />
     ) : (

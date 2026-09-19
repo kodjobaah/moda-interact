@@ -3,10 +3,7 @@ import { useSearchParams } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const metricKeys = {
-  checkout_recovery: "chart.metricCheckoutRecovery",
-  conversation: "chart.metricConversation",
-  agent_message: "chart.metricAgentMessage",
-  whatsapp_message: "chart.metricWhatsappMessage",
+  RECOVERY_CONVERSATION: "chart.metricCheckoutRecovery",
 };
 
 export default function UsageEvents({ usageEvents, usagePagination, usageView, billingPeriods, merchantUi }) {

@@ -64,6 +64,7 @@ export type PurchaseHistoryItem = {
   refundEligible: boolean | null;
   planName: string;
   planHandle: string;
+  eventHandle: string;
   originalProviderPurchase: {
     amount: string;
     currency: string;
@@ -192,6 +193,7 @@ function historyItem(
     refundEligible,
     planName: purchase.plan?.name ?? purchase.shopifyPlanHandleSnapshot,
     planHandle: purchase.shopifyPlanHandleSnapshot,
+    eventHandle: purchase.shopifyEventHandleSnapshot,
     originalProviderPurchase:
       purchase.providerPurchaseAmount == null ||
       !purchase.providerPurchaseCurrency
