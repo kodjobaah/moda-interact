@@ -73,6 +73,39 @@ type DurableBillingCycle = {
   billingPeriod?: { id: string; periodStart: Date; periodEnd: Date } | null;
 };
 
+type CurrentBillingPeriodPlan = Pick<
+  BillingPlan,
+  | "id"
+  | "name"
+  | "kind"
+  | "shopifyPlanHandle"
+  | "includedRecoveryConversationAllowance"
+>;
+
+type CurrentBillingPeriodProjectionConflictReason =
+  | "CLOSED_PERIOD"
+  | "SUBSCRIPTION_MISMATCH"
+  | "HANDLE_MISMATCH"
+  | "PLAN_MISMATCH"
+  | "PLAN_NAME_MISMATCH"
+  | "PLAN_KIND_MISMATCH"
+  | "INCLUDED_GRANT_MISMATCH"
+  | "FREE_INCLUDED_COUNTER_PRESENT"
+  | "INVALID_INCLUDED_ALLOWANCE"
+  | "PAID_COUNTER_MISMATCH";
+
+type CurrentBillingPeriodProjectionResult =
+  | {
+      kind: "READY";
+      billingPeriodId: string;
+      repaired: boolean;
+    }
+  | {
+      kind: "CONFLICT";
+      billingPeriodId: string | null;
+      reason: CurrentBillingPeriodProjectionConflictReason;
+    };
+
 function hasDurableBillingPeriod(subscription: DurableBillingCycle): boolean {
   return Boolean(
     subscription.billingPeriodId &&
@@ -95,6 +128,182 @@ function hasMatchingBillingCycle(
   if (!providerSubscription.currentPeriodStart || !providerSubscription.currentPeriodEnd) return false;
   return providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart!.getTime() &&
     providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd!.getTime();
+}
+
+async function ensureMappedCurrentBillingPeriodProjection(
+  transaction: Prisma.TransactionClient,
+  input: {
+    shopId: string;
+    subscriptionId: string;
+    periodStart: Date;
+    periodEnd: Date;
+    providerPlanHandle: string;
+    plan: CurrentBillingPeriodPlan;
+  },
+): Promise<CurrentBillingPeriodProjectionResult> {
+  const expectedGrant = input.plan.kind === BillingPlanKind.PAID_METERED
+    ? input.plan.includedRecoveryConversationAllowance
+    : null;
+
+  if (
+    input.plan.kind === BillingPlanKind.PAID_METERED &&
+    (
+      expectedGrant === null ||
+      !Number.isSafeInteger(expectedGrant) ||
+      expectedGrant < 0
+    )
+  ) {
+    return {
+      kind: "CONFLICT",
+      billingPeriodId: null,
+      reason: "INVALID_INCLUDED_ALLOWANCE",
+    };
+  }
+
+  const existingPeriod = await transaction.billingPeriod.findUnique({
+    where: {
+      shopId_periodStart_periodEnd: {
+        shopId: input.shopId,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+      },
+    },
+  });
+
+  if (!existingPeriod) {
+    const createdPeriod = await transaction.billingPeriod.create({
+      data: {
+        shopId: input.shopId,
+        subscriptionId: input.subscriptionId,
+        planId: input.plan.id,
+        shopifyPlanHandleSnapshot: input.providerPlanHandle,
+        planNameSnapshot: input.plan.name,
+        planKindSnapshot: input.plan.kind,
+        includedRecoveryCreditsGranted: expectedGrant,
+        periodStart: input.periodStart,
+        periodEnd: input.periodEnd,
+        status: BillingPeriodStatus.OPEN,
+      },
+    });
+
+    if (input.plan.kind === BillingPlanKind.PAID_METERED) {
+      await transaction.billingPeriodEntitlementCounter.create({
+        data: {
+          shopId: input.shopId,
+          billingPeriodId: createdPeriod.id,
+          counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+          grantedQuantity: expectedGrant as number,
+          committedQuantity: 0,
+          reservedQuantity: 0,
+          forfeitedQuantity: 0,
+        },
+      });
+    }
+
+    return {
+      kind: "READY",
+      billingPeriodId: createdPeriod.id,
+      repaired: false,
+    };
+  }
+
+  const conflictReason = existingPeriod.status !== BillingPeriodStatus.OPEN
+    ? "CLOSED_PERIOD"
+    : existingPeriod.subscriptionId !== input.subscriptionId
+      ? "SUBSCRIPTION_MISMATCH"
+      : existingPeriod.shopifyPlanHandleSnapshot !== null &&
+          existingPeriod.shopifyPlanHandleSnapshot !== input.providerPlanHandle
+        ? "HANDLE_MISMATCH"
+        : existingPeriod.planId !== null && existingPeriod.planId !== input.plan.id
+          ? "PLAN_MISMATCH"
+          : existingPeriod.planNameSnapshot !== null && existingPeriod.planNameSnapshot !== input.plan.name
+            ? "PLAN_NAME_MISMATCH"
+            : existingPeriod.planKindSnapshot !== null && existingPeriod.planKindSnapshot !== input.plan.kind
+              ? "PLAN_KIND_MISMATCH"
+              : existingPeriod.includedRecoveryCreditsGranted !== null &&
+                  existingPeriod.includedRecoveryCreditsGranted !== expectedGrant
+                ? "INCLUDED_GRANT_MISMATCH"
+                : null;
+
+  if (conflictReason) {
+    return {
+      kind: "CONFLICT",
+      billingPeriodId: existingPeriod.id,
+      reason: conflictReason,
+    };
+  }
+
+  const includedCounter = await transaction.billingPeriodEntitlementCounter.findUnique({
+    where: {
+      billingPeriodId_counter: {
+        billingPeriodId: existingPeriod.id,
+        counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+      },
+    },
+  });
+
+  if (input.plan.kind === BillingPlanKind.FREE && includedCounter) {
+    return {
+      kind: "CONFLICT",
+      billingPeriodId: existingPeriod.id,
+      reason: "FREE_INCLUDED_COUNTER_PRESENT",
+    };
+  }
+
+  if (input.plan.kind === BillingPlanKind.PAID_METERED && includedCounter && (
+    includedCounter.shopId !== input.shopId ||
+    includedCounter.grantedQuantity !== expectedGrant ||
+    !isSafeNonNegativeInteger(includedCounter.grantedQuantity) ||
+    !isSafeNonNegativeInteger(includedCounter.committedQuantity) ||
+    !isSafeNonNegativeInteger(includedCounter.reservedQuantity) ||
+    !isSafeNonNegativeInteger(includedCounter.forfeitedQuantity) ||
+    includedCounter.committedQuantity + includedCounter.reservedQuantity + includedCounter.forfeitedQuantity > expectedGrant
+  )) {
+    return {
+      kind: "CONFLICT",
+      billingPeriodId: existingPeriod.id,
+      reason: "PAID_COUNTER_MISMATCH",
+    };
+  }
+
+  const repaired = existingPeriod.planId === null ||
+    existingPeriod.shopifyPlanHandleSnapshot === null ||
+    existingPeriod.planNameSnapshot === null ||
+    existingPeriod.planKindSnapshot === null ||
+    existingPeriod.includedRecoveryCreditsGranted !== expectedGrant;
+  const repairedPeriod = await transaction.billingPeriod.update({
+    where: { id: existingPeriod.id },
+    data: {
+      planId: input.plan.id,
+      shopifyPlanHandleSnapshot: input.providerPlanHandle,
+      planNameSnapshot: input.plan.name,
+      planKindSnapshot: input.plan.kind,
+      includedRecoveryCreditsGranted: expectedGrant,
+      status: BillingPeriodStatus.OPEN,
+    },
+  });
+
+  let counterRepaired = false;
+  if (input.plan.kind === BillingPlanKind.PAID_METERED && !includedCounter) {
+    await transaction.billingPeriodEntitlementCounter.create({
+      data: {
+        shopId: input.shopId,
+        billingPeriodId: repairedPeriod.id,
+        counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+        grantedQuantity: expectedGrant as number,
+        committedQuantity: 0,
+        reservedQuantity: 0,
+        forfeitedQuantity: 0,
+      },
+    });
+    counterRepaired = true;
+  }
+
+  return {
+    kind: "READY",
+    billingPeriodId: repairedPeriod.id,
+    repaired: repaired || counterRepaired,
+  };
 }
 
 export function deriveBillingPeriodPhase(
@@ -1840,9 +2049,15 @@ async getSubscription(
     const planIsUsable = Boolean(plan?.active);
     const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
       || Boolean(plan.shopifyUsageEventHandle && providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle));
+    const paidAllowanceIsValid = plan?.kind !== BillingPlanKind.PAID_METERED
+      || (
+        plan.includedRecoveryConversationAllowance !== null &&
+        Number.isSafeInteger(plan.includedRecoveryConversationAllowance) &&
+        plan.includedRecoveryConversationAllowance >= 0
+      );
     const status = !planIsUsable
       ? SubscriptionProjectionStatus.UNMAPPED
-      : !paidMeterIsPresent
+      : !paidMeterIsPresent || !paidAllowanceIsValid
         ? SubscriptionProjectionStatus.SYNC_ERROR
         : providerSubscription.status === "TRIALING"
           ? SubscriptionProjectionStatus.TRIALING
@@ -1850,7 +2065,9 @@ async getSubscription(
     const syncErrorCode = status === SubscriptionProjectionStatus.UNMAPPED
       ? "UNMAPPED_PLAN_HANDLE"
       : status === SubscriptionProjectionStatus.SYNC_ERROR
-        ? "MISSING_USAGE_METER"
+        ? !paidMeterIsPresent
+          ? "MISSING_USAGE_METER"
+          : "INVALID_INCLUDED_ALLOWANCE"
         : null;
     const now = new Date();
 
@@ -1867,6 +2084,9 @@ async getSubscription(
           pendingPlanId: true,
           pendingEffectiveAt: true,
           nextReconcileAt: true,
+          billingPeriodId: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
         },
       });
       const subscriptionId = existingSubscription?.id ?? randomUUID();
@@ -2104,44 +2324,78 @@ async getSubscription(
         ? existingSubscription?.nextReconcileAt ?? null
         : nextReconcileAt;
       const billingPeriod = !initialPaidProjection && providerSubscription.currentPeriodStart && providerSubscription.currentPeriodEnd
-        ? await transaction.billingPeriod.upsert({
-            where: {
-              shopId_periodStart_periodEnd: {
-                shopId,
-                periodStart: providerSubscription.currentPeriodStart,
-                periodEnd: providerSubscription.currentPeriodEnd,
-              },
-            },
-            update: { status: BillingPeriodStatus.OPEN },
-            create: {
+        ? status !== SubscriptionProjectionStatus.UNMAPPED &&
+          status !== SubscriptionProjectionStatus.SYNC_ERROR &&
+          plan?.active === true &&
+          planIsUsable
+          ? await ensureMappedCurrentBillingPeriodProjection(transaction, {
               shopId,
               subscriptionId,
-              planId: planIsUsable ? plan?.id ?? null : null,
-              shopifyPlanHandleSnapshot: providerSubscription.planHandle,
-              planNameSnapshot: plan?.name ?? null,
-              planKindSnapshot: plan?.kind ?? null,
-              includedRecoveryCreditsGranted: null,
               periodStart: providerSubscription.currentPeriodStart,
               periodEnd: providerSubscription.currentPeriodEnd,
-              status: BillingPeriodStatus.OPEN,
-            },
-          })
+              providerPlanHandle: providerSubscription.planHandle,
+              plan,
+            })
+          : await transaction.billingPeriod.upsert({
+              where: {
+                shopId_periodStart_periodEnd: {
+                  shopId,
+                  periodStart: providerSubscription.currentPeriodStart,
+                  periodEnd: providerSubscription.currentPeriodEnd,
+                },
+              },
+              update: { status: BillingPeriodStatus.OPEN },
+              create: {
+                shopId,
+                subscriptionId,
+                planId: planIsUsable ? plan?.id ?? null : null,
+                shopifyPlanHandleSnapshot: providerSubscription.planHandle,
+                planNameSnapshot: plan?.name ?? null,
+                planKindSnapshot: plan?.kind ?? null,
+                includedRecoveryCreditsGranted: null,
+                periodStart: providerSubscription.currentPeriodStart,
+                periodEnd: providerSubscription.currentPeriodEnd,
+                status: BillingPeriodStatus.OPEN,
+              },
+            })
         : null;
+      const mappedProjection = billingPeriod && "kind" in billingPeriod
+        ? billingPeriod
+        : null;
+      const projectionConflict = mappedProjection?.kind === "CONFLICT";
+      const projectedStatus = projectionConflict
+        ? SubscriptionProjectionStatus.SYNC_ERROR
+        : status;
+      const projectedPlanId = projectionConflict
+        ? existingSubscription?.planId ?? null
+        : planIsUsable ? plan?.id ?? null : null;
+      const projectedBillingPeriodId = projectionConflict
+        ? existingSubscription?.billingPeriodId ?? null
+        : mappedProjection?.kind === "READY" ? mappedProjection.billingPeriodId : billingPeriod?.id ?? null;
+      const projectedPeriodStart = projectionConflict
+        ? existingSubscription?.currentPeriodStart ?? null
+        : providerSubscription.currentPeriodStart;
+      const projectedPeriodEnd = projectionConflict
+        ? existingSubscription?.currentPeriodEnd ?? null
+        : providerSubscription.currentPeriodEnd;
+      const projectedSyncErrorCode = projectionConflict
+        ? "BILLING_PERIOD_PLAN_CONFLICT"
+        : syncErrorCode;
       return transaction.subscription.upsert({
         where: { shopId },
         update: {
-          planId: planIsUsable ? plan?.id ?? null : null,
+          planId: projectedPlanId,
           observedShopifyPlanHandle: providerSubscription.planHandle,
-          status,
-          billingPeriodId: billingPeriod?.id ?? null,
-          currentPeriodStart: providerSubscription.currentPeriodStart,
-          currentPeriodEnd: providerSubscription.currentPeriodEnd,
+          status: projectedStatus,
+          billingPeriodId: projectedBillingPeriodId,
+          currentPeriodStart: projectedPeriodStart,
+          currentPeriodEnd: projectedPeriodEnd,
           trialEndsAt: providerSubscription.trialEndsAt,
           cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
           providerSubscriptionId: providerSubscription.providerSubscriptionId,
           lastSyncedAt: now,
-          lastSyncErrorCode: syncErrorCode,
-          lastSyncErrorAt: syncErrorCode ? now : null,
+          lastSyncErrorCode: projectedSyncErrorCode,
+          lastSyncErrorAt: projectedSyncErrorCode ? now : null,
           pendingShopifyPlanHandle: preservedPendingShopifyPlanHandle,
           pendingPlanId: preservedPendingPlanId,
           pendingEffectiveAt: preservedPendingEffectiveAt,
@@ -2150,18 +2404,18 @@ async getSubscription(
         create: {
           id: subscriptionId,
           shopId,
-          planId: planIsUsable ? plan?.id ?? null : null,
+          planId: projectedPlanId,
           observedShopifyPlanHandle: providerSubscription.planHandle,
-          status,
-          billingPeriodId: billingPeriod?.id ?? null,
-          currentPeriodStart: providerSubscription.currentPeriodStart,
-          currentPeriodEnd: providerSubscription.currentPeriodEnd,
+          status: projectedStatus,
+          billingPeriodId: projectedBillingPeriodId,
+          currentPeriodStart: projectedPeriodStart,
+          currentPeriodEnd: projectedPeriodEnd,
           trialEndsAt: providerSubscription.trialEndsAt,
           cancelAtPeriodEnd: providerSubscription.cancelAtPeriodEnd,
           providerSubscriptionId: providerSubscription.providerSubscriptionId,
           lastSyncedAt: now,
-          lastSyncErrorCode: syncErrorCode,
-          lastSyncErrorAt: syncErrorCode ? now : null,
+          lastSyncErrorCode: projectedSyncErrorCode,
+          lastSyncErrorAt: projectedSyncErrorCode ? now : null,
           pendingShopifyPlanHandle: preservedPendingShopifyPlanHandle,
           pendingPlanId: preservedPendingPlanId,
           pendingEffectiveAt: preservedPendingEffectiveAt,
