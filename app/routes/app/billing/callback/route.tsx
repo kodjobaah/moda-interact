@@ -9,6 +9,7 @@ import type {
   Subscription,
 } from "@prisma/client";
 import { authenticate } from "@/shopify.server";
+import db from "@/db.server";
 
 import {
   billingService,
@@ -25,6 +26,18 @@ function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
     params.set("requested_plan_handle", requestedPlanHandle);
   }
   return `/app/billing/options?${params.toString()}`;
+}
+
+async function persistOnboardingMilestone(shopId: string): Promise<void> {
+  await db.shopSettings.updateMany({
+    where: {
+      shopId,
+      onboardingCompleted: false,
+    },
+    data: {
+      onboardingCompleted: true,
+    },
+  });
 }
 
 type BillingCallbackSubscription = Pick<
@@ -101,18 +114,20 @@ export async function loader({
     session,
   } = await authenticate.admin(request);
 
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
+  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
+
+  await persistOnboardingMilestone(shop.id);
+
   const url = new URL(request.url);
   const requestedPlanHandle = url.searchParams.get("plan_handle");
 
   if (!requestedPlanHandle) {
     throw new Response("Missing plan_handle", { status: 400 });
   }
-
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
-  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
     await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
@@ -213,6 +228,10 @@ export async function loader({
       subscriptionId: result.subscriptionId,
       expectedNextReconcileAt: result.nextReconcileAt,
     });
+  }
+
+  if (result.result === "current" || result.result === "pending") {
+    return redirect("/app");
   }
 
   return redirect(billingOptionsRedirect(result.result, requestedPlanHandle));

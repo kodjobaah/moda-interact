@@ -16,10 +16,14 @@ const mocks = vi.hoisted(() => ({
   scheduleInitialFreeReconciliationIfCurrent: vi.fn(),
   enqueueReconcile: vi.fn(),
   enqueueDiscountSync: vi.fn(),
+  updateShopSettings: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
+}));
+vi.mock("../../../app/db.server", () => ({
+  default: { shopSettings: { updateMany: mocks.updateShopSettings } },
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
@@ -143,12 +147,19 @@ beforeEach(() => {
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
+  mocks.updateShopSettings.mockResolvedValue({ count: 1 });
 });
 
 describe("billing callback activation", () => {
-  it("completes onboarding only after current Free verification", async () => {
+  it("persists onboarding before initial Free billing work", async () => {
     await runLoader("free");
 
+    expect(mocks.updateShopSettings).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", onboardingCompleted: false },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.prepareFreeActivation);
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
@@ -198,6 +209,7 @@ describe("billing callback activation", () => {
 
     await runLoader("growth");
 
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
   });
@@ -223,6 +235,9 @@ describe("billing callback activation", () => {
 
     await runLoader("growth");
 
+    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.preparePaidActivation);
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
       expected: paidToken,
       partnerErrorAt: expect.any(Date),
@@ -391,8 +406,10 @@ describe("billing callback activation", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
-  it("keeps missing plan_handle as a client error", async () => {
+  it("persists onboarding before rejecting a missing plan_handle", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
+    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 });
@@ -405,6 +422,7 @@ describe("hosted billing callback", () => {
 
   it("requires plan_handle", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
+    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
     expect(mocks.getState).not.toHaveBeenCalled();
   });
 
@@ -417,7 +435,9 @@ describe("hosted billing callback", () => {
       requestedPlanHandle: handle,
       verificationFence,
     }));
-    const expectedRedirect = result === "mismatch"
+    const expectedRedirect = result === "current" || result === "pending"
+      ? "/app"
+      : result === "mismatch"
       ? `/app/billing/options?plan_change=mismatch&requested_plan_handle=${handle}`
       : `/app/billing/options?plan_change=${result}`;
     expect(mocks.redirect).toHaveBeenCalledWith(expectedRedirect);
@@ -458,6 +478,7 @@ describe("hosted billing callback", () => {
 
     await runLoader("growth");
 
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
   });
@@ -503,5 +524,16 @@ describe("hosted billing callback", () => {
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getState).toHaveBeenCalledTimes(1);
     expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", null);
+  });
+
+  it("keeps onboarding complete when the hosted callback is repeated", async () => {
+    mocks.updateShopSettings.mockResolvedValue({ count: 0 });
+    mocks.recordReturn.mockResolvedValue({ result: "current", subscriptionId: "subscription-1", nextReconcileAt: null });
+
+    await runLoader("growth");
+
+    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.getState).toHaveBeenCalledTimes(1);
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 });
