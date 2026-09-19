@@ -187,6 +187,29 @@ describe("BillingPurchaseHub", () => {
     expect(markup).toContain("1 Available now");
   });
 
+  it("shows a withdrawn latest purchase as held for refund, never available", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        latestPurchase: {
+          status: "WITHDRAWN",
+          currentAmount: 1,
+          reservedAmount: 0,
+          usageReportState: "PENDING",
+          eventHandle: "bronze-top-up-free",
+          label: "Bronze Top Up Free",
+        },
+      },
+    });
+
+    expect(markup).toContain("Bronze Top Up Free");
+    expect(markup).toContain("Withdrawn");
+    expect(markup).toContain(
+      "Refund pending. Current: 1; reserved: 0; held for refund: 1.",
+    );
+    expect(markup).not.toContain("1 Available now");
+  });
+
   it("submits top-up purchases through React Router instead of a document POST", async () => {
     const source = await readFile(new URL("../../app/components/dashboard/TopUpPurchasePanel.jsx", import.meta.url), "utf8");
     expect(source).toContain('import { useSubmit } from "react-router"');

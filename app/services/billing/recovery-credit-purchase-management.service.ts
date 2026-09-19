@@ -61,6 +61,7 @@ export type PurchaseHistoryItem = {
   currentAmount: number;
   reservedAmount: number;
   availableAmount: number;
+  heldForRefundAmount: number;
   refundEligible: boolean | null;
   refundUnavailableReason: "ZERO_VALUE" | "PROVIDER_CONTEXT" | null;
   planName: string;
@@ -182,6 +183,11 @@ function historyItem(
   refundEligible: boolean | null = null,
   refundUnavailableReason: PurchaseHistoryItem["refundUnavailableReason"] = null,
 ): PurchaseHistoryItem {
+  const unreservedAmount = Math.max(
+    purchase.currentAmount - purchase.reservedAmount,
+    0,
+  );
+
   return {
     id: purchase.id,
     status: purchase.status,
@@ -190,10 +196,14 @@ function historyItem(
     creditsGranted: purchase.creditsGranted,
     currentAmount: purchase.currentAmount,
     reservedAmount: purchase.reservedAmount,
-    availableAmount: Math.max(
-      purchase.currentAmount - purchase.reservedAmount,
-      0,
-    ),
+    availableAmount:
+      purchase.status === RecoveryCreditPurchaseStatus.ACTIVE
+        ? unreservedAmount
+        : 0,
+    heldForRefundAmount:
+      purchase.status === RecoveryCreditPurchaseStatus.WITHDRAWN
+        ? unreservedAmount
+        : 0,
     refundEligible,
     refundUnavailableReason,
     planName: purchase.plan?.name ?? purchase.shopifyPlanHandleSnapshot,

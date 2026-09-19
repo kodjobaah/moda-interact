@@ -171,6 +171,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(result.pageSize).toBe(50);
     expect(result.purchases).toHaveLength(1);
     expect(result.purchases[0].availableAmount).toBe(2);
+    expect(result.purchases[0].heldForRefundAmount).toBe(0);
     expect(
       fixture.database.recoveryCreditPurchase.findMany,
     ).toHaveBeenCalledWith(
@@ -279,6 +280,25 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       "WITHDRAWN",
       "REFUNDED",
     ]);
+
+    const active = result.purchases.find(({ status }) => status === "ACTIVE");
+    expect(active).toMatchObject({
+      currentAmount: 3,
+      reservedAmount: 1,
+      availableAmount: 2,
+      heldForRefundAmount: 0,
+    });
+
+    const withdrawn = result.purchases.find(
+      ({ status }) => status === "WITHDRAWN",
+    );
+    expect(withdrawn).toMatchObject({
+      currentAmount: 2,
+      reservedAmount: 1,
+      availableAmount: 0,
+      heldForRefundAmount: 1,
+    });
+
     expect(JSON.stringify(result)).not.toContain(
       "providerSubscriptionIdSnapshot",
     );

@@ -21,6 +21,10 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const purchaseLabel = purchase
     ? (purchase.label ?? offers.find((offer) => offer.eventHandle === purchase.eventHandle)?.label ?? purchase.eventHandle)
     : null;
+  const heldForRefundAmount =
+    purchase?.status === "WITHDRAWN"
+      ? Math.max(purchase.currentAmount - (purchase.reservedAmount ?? 0), 0)
+      : 0;
 
   return <section className="moda-billing-panel">
     <div className="moda-panel-heading-row">
@@ -92,7 +96,17 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       </div>
       <div>
         <span>{i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}</span>
-        <strong>{i18n.formatNumber(purchase.currentAmount)} {i18n.t("billingPurchases.availableCredits")}</strong>
+        {purchase.status === "WITHDRAWN" ? (
+          <strong>
+            {i18n.t("billingPurchases.refundSummary", {
+              current: i18n.formatNumber(purchase.currentAmount),
+              reserved: i18n.formatNumber(purchase.reservedAmount ?? 0),
+              available: i18n.formatNumber(heldForRefundAmount),
+            })}
+          </strong>
+        ) : (
+          <strong>{i18n.formatNumber(purchase.currentAmount)} {i18n.t("billingPurchases.availableCredits")}</strong>
+        )}
       </div>
     </div> : null}
   </section>;
@@ -107,7 +121,7 @@ TopUpPurchasePanel.propTypes = {
     offerVerificationState: PropTypes.string.isRequired,
     freeLifetime: PropTypes.shape({ granted: PropTypes.number.isRequired, remaining: PropTypes.number.isRequired }),
     purchasedCreditsAvailable: PropTypes.number.isRequired,
-    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string, eventHandle: PropTypes.string, label: PropTypes.string }),
+    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, reservedAmount: PropTypes.number, usageReportState: PropTypes.string, eventHandle: PropTypes.string, label: PropTypes.string }),
     unresolvedPurchases: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, creditsGranted: PropTypes.number.isRequired, usageReportState: PropTypes.string.isRequired })),
   }).isRequired,
 };

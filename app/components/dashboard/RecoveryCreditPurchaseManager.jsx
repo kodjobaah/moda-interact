@@ -302,7 +302,9 @@ export default function RecoveryCreditPurchaseManager({
                     {i18n.t("billingPurchases.refundSummary", {
                       current: i18n.formatNumber(purchase.currentAmount),
                       reserved: i18n.formatNumber(purchase.reservedAmount),
-                      available: i18n.formatNumber(purchase.availableAmount),
+                      available: i18n.formatNumber(
+                        purchase.heldForRefundAmount,
+                      ),
                     })}
                   </p>
                 ) : null}
