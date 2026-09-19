@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "正在等待 Shopify 确认。",
+  "billingSetup.pageTitle": "正在设置订阅",
+  "billingSetup.confirmedTitle": "您的 Shopify 订阅已确认",
+  "billingSetup.confirmedDescription": "Shopify 已确认您的套餐。我们正在完成 Moda Interact 帐户的设置。您无需再次选择套餐。",
+  "billingSetup.waitingDescription": "我们已记录您的套餐选择，正在等待 Shopify 确认有效订阅。此页面会自动更新。",
+  "billingSetup.finalizingStatus": "正在完成设置",
+  "billingSetup.automaticRefresh": "我们会继续自动检查。您可以离开此页面，稍后再返回。",
   "common.unavailable": "不可用",
   "navigation.breadcrumb": "面包屑导航",
   "pending.title": "待处理的挽回",

@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "กำลังรอการยืนยันจาก Shopify",
+  "billingSetup.pageTitle": "กำลังตั้งค่าการสมัครใช้งานของคุณ",
+  "billingSetup.confirmedTitle": "ยืนยันการสมัครใช้งาน Shopify ของคุณแล้ว",
+  "billingSetup.confirmedDescription": "Shopify ยืนยันแผนของคุณแล้ว เรากำลังดำเนินการตั้งค่าบัญชี Moda Interact ให้เสร็จสิ้น คุณไม่จำเป็นต้องเลือกแผนอีกครั้ง",
+  "billingSetup.waitingDescription": "เราได้บันทึกการเลือกแผนของคุณแล้ว และกำลังรอให้ Shopify ยืนยันการสมัครใช้งานที่เปิดใช้งานอยู่ หน้านี้จะอัปเดตโดยอัตโนมัติ",
+  "billingSetup.finalizingStatus": "กำลังดำเนินการตั้งค่าให้เสร็จสิ้น",
+  "billingSetup.automaticRefresh": "เราจะตรวจสอบให้โดยอัตโนมัติต่อไป คุณสามารถออกจากหน้านี้และกลับมาใหม่ภายหลังได้",
   "common.unavailable": "ไม่พร้อมใช้งาน",
   "navigation.breadcrumb": "เส้นทางนำทาง",
   "pending.title": "การกู้คืนที่รอดำเนินการ",

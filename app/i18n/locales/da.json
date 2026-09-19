@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Venter på bekræftelse fra Shopify.",
+  "billingSetup.pageTitle": "Opsætning af dit abonnement",
+  "billingSetup.confirmedTitle": "Dit Shopify-abonnement er bekræftet",
+  "billingSetup.confirmedDescription": "Shopify har bekræftet din plan. Vi færdiggør opsætningen af din Moda Interact-konto. Du behøver ikke vælge en plan igen.",
+  "billingSetup.waitingDescription": "Vi har registreret dit planvalg og venter på, at Shopify bekræfter det aktive abonnement. Denne side opdateres automatisk.",
+  "billingSetup.finalizingStatus": "Færdiggør opsætningen",
+  "billingSetup.automaticRefresh": "Vi fortsætter med at kontrollere automatisk. Du kan forlade siden og vende tilbage senere.",
   "common.unavailable": "Ikke tilgængelig",
   "navigation.breadcrumb": "Brødkrummenavigation",
   "pending.title": "Afventende gendannelser",

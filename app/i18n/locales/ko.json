@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Shopify 확인을 기다리는 중입니다.",
+  "billingSetup.pageTitle": "구독 설정 중",
+  "billingSetup.confirmedTitle": "Shopify 구독이 확인되었습니다",
+  "billingSetup.confirmedDescription": "Shopify에서 요금제를 확인했습니다. Moda Interact 계정 설정을 마무리하고 있습니다. 요금제를 다시 선택할 필요가 없습니다.",
+  "billingSetup.waitingDescription": "요금제 선택을 기록했으며 Shopify가 활성 구독을 확인하기를 기다리고 있습니다. 이 페이지는 자동으로 업데이트됩니다.",
+  "billingSetup.finalizingStatus": "설정 마무리 중",
+  "billingSetup.automaticRefresh": "자동으로 계속 확인합니다. 이 페이지를 나갔다가 나중에 다시 돌아와도 됩니다.",
   "common.unavailable": "사용할 수 없음",
   "navigation.breadcrumb": "이동 경로",
   "pending.title": "대기 중인 복구",

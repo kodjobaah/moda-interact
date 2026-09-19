@@ -35,6 +35,7 @@ export default [
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
+  route("app/billing/status", "./routes/app/billing/status/route.ts"),
   route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),
 
   route("webhooks", "./routes/webhooks/root/route.jsx"),

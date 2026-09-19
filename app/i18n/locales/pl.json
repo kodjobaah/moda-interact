@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Oczekiwanie na potwierdzenie od Shopify.",
+  "billingSetup.pageTitle": "Konfigurowanie subskrypcji",
+  "billingSetup.confirmedTitle": "Twoja subskrypcja Shopify została potwierdzona",
+  "billingSetup.confirmedDescription": "Shopify potwierdził wybrany plan. Kończymy konfigurację konta Moda Interact. Nie musisz ponownie wybierać planu.",
+  "billingSetup.waitingDescription": "Zapisaliśmy wybrany plan i czekamy, aż Shopify potwierdzi aktywną subskrypcję. Ta strona aktualizuje się automatycznie.",
+  "billingSetup.finalizingStatus": "Kończenie konfiguracji",
+  "billingSetup.automaticRefresh": "Będziemy nadal sprawdzać automatycznie. Możesz opuścić tę stronę i wrócić później.",
   "common.unavailable": "Niedostępne",
   "navigation.breadcrumb": "Nawigacja okruszkowa",
   "pending.title": "Oczekujące odzyskiwania",

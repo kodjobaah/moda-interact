@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Odotetaan vahvistusta Shopifylta.",
+  "billingSetup.pageTitle": "Tilauksen määritys",
+  "billingSetup.confirmedTitle": "Shopify-tilauksesi on vahvistettu",
+  "billingSetup.confirmedDescription": "Shopify on vahvistanut sopimuksesi. Viimeistelemme Moda Interact -tilisi määrityksen. Sinun ei tarvitse valita sopimusta uudelleen.",
+  "billingSetup.waitingDescription": "Olemme tallentaneet sopimusvalintasi ja odotamme Shopifyn vahvistavan aktiivisen tilauksen. Tämä sivu päivittyy automaattisesti.",
+  "billingSetup.finalizingStatus": "Määritystä viimeistellään",
+  "billingSetup.automaticRefresh": "Jatkamme tarkistamista automaattisesti. Voit poistua tältä sivulta ja palata myöhemmin.",
   "common.unavailable": "Ei saatavilla",
   "navigation.breadcrumb": "Murupolku",
   "pending.title": "Odottavat palautukset",

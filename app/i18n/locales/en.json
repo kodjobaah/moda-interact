@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Waiting for confirmation from Shopify.",
+  "billingSetup.pageTitle": "Setting up your subscription",
+  "billingSetup.confirmedTitle": "Your Shopify subscription is confirmed",
+  "billingSetup.confirmedDescription": "Shopify has confirmed your plan. We're finishing the setup of your Moda Interact account. You don't need to choose a plan again.",
+  "billingSetup.waitingDescription": "We've recorded your plan selection and are waiting for Shopify to confirm the active subscription. This page updates automatically.",
+  "billingSetup.finalizingStatus": "Completing setup",
+  "billingSetup.automaticRefresh": "We'll keep checking automatically. You can leave this page and come back later.",
   "common.unavailable": "Unavailable",
   "navigation.breadcrumb": "Breadcrumb",
   "pending.title": "Pending recoveries",

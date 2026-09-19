@@ -19,6 +19,7 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
+import type { MerchantShopifySubscriptionState } from "@/services/billing/billing.types";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -54,6 +55,7 @@ type BillingCallbackSubscription = Pick<
   | "currentPeriodStart"
   | "currentPeriodEnd"
   | "lastSyncErrorCode"
+  | "providerSubscriptionId"
 > & {
   plan: Pick<BillingPlan, "kind" | "shopifyPlanHandle"> | null;
 };
@@ -83,6 +85,29 @@ export function isVerifiedBillingCallback(
   );
 
   return currentPlanMatches && !pendingSelectionConflicts;
+}
+
+
+export function isManagedPricingSelectionObserved(
+  state: MerchantShopifySubscriptionState,
+  requestedPlanHandle: string,
+): boolean {
+  if (state.status !== "ACTIVE_SUBSCRIPTION") return false;
+  return state.subscription.planHandle === requestedPlanHandle ||
+    state.subscription.pendingUpdate?.planHandle === requestedPlanHandle;
+}
+
+async function persistOnboardingMilestone(shopId: string): Promise<boolean> {
+  const updated = await db.shopSettings.updateMany({
+    where: {
+      shopId,
+      onboardingCompleted: false,
+    },
+    data: {
+      onboardingCompleted: true,
+    },
+  });
+  return updated.count > 0;
 }
 
 function isVerifiedPaidActivation(
@@ -141,6 +166,16 @@ export async function loader({
       partnerVerificationSucceeded = true;
     } catch {
       partnerErrorAt = new Date();
+    }
+
+    if (
+      partnerVerificationSucceeded &&
+      syncedSubscription?.providerSubscriptionId &&
+      syncedSubscription.observedShopifyPlanHandle === requestedPlanHandle
+    ) {
+      // This is a Shopify-side milestone, not a Moda mapping milestone. Persist it
+      // independently before any later activation-completion transaction.
+      await persistOnboardingMilestone(shop.id);
     }
 
     const subscription = activation.plan.kind === "PAID_METERED"
@@ -211,6 +246,13 @@ export async function loader({
     }
     return redirect(billingOptionsRedirect("unverified", requestedPlanHandle));
   }
+
+  const onboardingCompletedNow = isManagedPricingSelectionObserved(
+    verification,
+    requestedPlanHandle,
+  )
+    ? await persistOnboardingMilestone(shop.id)
+    : false;
 
   const result = await billingService.recordHostedPlanChangeReturn({
     shopId: shop.id,

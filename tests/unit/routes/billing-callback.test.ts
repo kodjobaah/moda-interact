@@ -93,6 +93,7 @@ function subscription(overrides: Record<string, unknown> = {}) {
     pendingPlanId: null,
     pendingEffectiveAt: null,
     nextReconcileAt: null,
+    providerSubscriptionId: "gid://shopify/AppSubscription/1",
     ...overrides,
   };
 }
@@ -147,7 +148,11 @@ beforeEach(() => {
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
+<<<<<<< Updated upstream
   mocks.updateShopSettings.mockResolvedValue({ count: 1 });
+=======
+  mocks.updateShopSettings.mockResolvedValue({ count: 0 });
+>>>>>>> Stashed changes
 });
 
 describe("billing callback activation", () => {
@@ -162,10 +167,39 @@ describe("billing callback activation", () => {
     expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
+    expect(mocks.updateShopSettings).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", onboardingCompleted: false },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.completeFreeActivation);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
+  });
+
+  it("persists onboarding when Shopify is observed even if Moda projection is unmapped", async () => {
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "UNMAPPED",
+      planId: null,
+      plan: null,
+      observedShopifyPlanHandle: "free",
+      lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE",
+    }));
+    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
+      status: "UNMAPPED",
+      planId: null,
+      plan: null,
+      observedShopifyPlanHandle: "free",
+      lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE",
+    }));
+
+    await runLoader("free");
+
+    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it("records and completes a first paid activation only after matching verification", async () => {
@@ -441,6 +475,39 @@ describe("hosted billing callback", () => {
       ? `/app/billing/options?plan_change=mismatch&requested_plan_handle=${handle}`
       : `/app/billing/options?plan_change=${result}`;
     expect(mocks.redirect).toHaveBeenCalledWith(expectedRedirect);
+  });
+
+  it("persists the managed-pricing milestone before hosted projection and returns first onboarding to app", async () => {
+    mocks.updateShopSettings.mockResolvedValue({ count: 1 });
+    mocks.recordReturn.mockResolvedValue({
+      result: "current",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: new Date("2026-10-01T00:00:00.000Z"),
+    });
+
+    await runLoader("growth");
+
+    expect(mocks.updateShopSettings).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", onboardingCompleted: false },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.recordReturn);
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("does not persist onboarding from a mismatched provider selection", async () => {
+    mocks.recordReturn.mockResolvedValue({
+      result: "mismatch",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: null,
+    });
+
+    await runLoader("other");
+
+    expect(mocks.updateShopSettings).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=mismatch&requested_plan_handle=other",
+    );
   });
 
   it("schedules reconciliation for verified current or pending state", async () => {

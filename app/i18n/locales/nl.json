@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Wachten op bevestiging van Shopify.",
+  "billingSetup.pageTitle": "Je abonnement instellen",
+  "billingSetup.confirmedTitle": "Je Shopify-abonnement is bevestigd",
+  "billingSetup.confirmedDescription": "Shopify heeft je abonnement bevestigd. We ronden de installatie van je Moda Interact-account af. Je hoeft niet opnieuw een abonnement te kiezen.",
+  "billingSetup.waitingDescription": "We hebben je abonnementskeuze vastgelegd en wachten tot Shopify het actieve abonnement bevestigt. Deze pagina wordt automatisch bijgewerkt.",
+  "billingSetup.finalizingStatus": "Installatie afronden",
+  "billingSetup.automaticRefresh": "We blijven automatisch controleren. Je kunt deze pagina verlaten en later terugkomen.",
   "common.unavailable": "Niet beschikbaar",
   "navigation.breadcrumb": "Broodkruimelnavigatie",
   "pending.title": "Openstaande herstelacties",

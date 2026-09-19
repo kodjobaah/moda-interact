@@ -94,9 +94,52 @@ describe("app home loader", () => {
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
 
+  it("shows subscription setup instead of plan selection once durable Shopify evidence exists", async () => {
+    readActiveMerchantPricingCatalogue.mockResolvedValue([{
+      shopifyPlanHandle: "free",
+      displayName: "Free",
+    }]);
+    getSubscriptionProjection.mockResolvedValue({
+      status: "UNMAPPED",
+      observedShopifyPlanHandle: "free",
+      pendingShopifyPlanHandle: null,
+      providerSubscriptionId: "gid://shopify/AppSubscription/1",
+      currentPeriodStart: new Date("2026-09-18T21:20:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-18T21:20:00.000Z"),
+      lastSyncedAt: new Date("2026-09-18T21:45:40.710Z"),
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      settings: { onboardingCompleted: false },
+      merchantExperienceState: "ONBOARDING",
+      billingSetup: {
+        phase: "FINALIZING_SUBSCRIPTION",
+        planHandle: "free",
+        planName: "Free",
+        currentPeriodStart: "2026-09-18T21:20:00.000Z",
+        currentPeriodEnd: "2026-10-18T21:20:00.000Z",
+      },
+      subscription: null,
+    });
+    expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+    expect(findRecoveries).not.toHaveBeenCalled();
+    expect(findBillingPeriods).not.toHaveBeenCalled();
+    expect(findUsageEvents).not.toHaveBeenCalled();
+  });
+
   it("keeps a completed shop without an active plan on the merchant surface", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
-    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      plan: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: null,
+    });
     readActiveMerchantPricingCatalogue.mockResolvedValue([{ shopifyPlanHandle: "database-plan" }]);
 
     const result = await loader({
@@ -105,6 +148,7 @@ describe("app home loader", () => {
 
     expect(result).toMatchObject({
       settings: { onboardingCompleted: true },
+      merchantExperienceState: "NO_CONTRACT",
       subscription: { status: "NO_CONTRACT" },
       pricingCatalogue: [{ shopifyPlanHandle: "database-plan" }],
       capacity: { availability: "CONTRACT_REQUIRED" },
@@ -145,7 +189,6 @@ describe("app home loader", () => {
 
   it("keeps historical dashboard data readable without reading pending recoveries for denied states", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
-    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
     getSubscriptionProjection.mockResolvedValue({ status: "NO_CONTRACT" });
     getMerchantRecoveryCapacityState.mockResolvedValue({
       availability: "CONTRACT_FROZEN",
@@ -169,6 +212,44 @@ describe("app home loader", () => {
       },
     });
     expect(readPendingRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("keeps billing-attention history readable while exposing setup state", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    readActiveMerchantPricingCatalogue.mockResolvedValue([{
+      shopifyPlanHandle: "free",
+      displayName: "Free",
+    }]);
+    getSubscriptionProjection.mockResolvedValue({
+      status: "UNMAPPED",
+      observedShopifyPlanHandle: "free",
+      providerSubscriptionId: "gid://shopify/AppSubscription/1",
+      currentPeriodStart: new Date("2026-09-18T21:20:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-18T21:20:00.000Z"),
+      lastSyncedAt: new Date("2026-09-18T21:45:40.710Z"),
+    });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "CONFIGURATION_UNAVAILABLE",
+      observedShopifyPlanHandle: "free",
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      merchantExperienceState: "BILLING_ATTENTION",
+      billingSetup: {
+        phase: "FINALIZING_SUBSCRIPTION",
+        planName: "Free",
+      },
+      capacity: { availability: "CONFIGURATION_UNAVAILABLE" },
+      pendingRecoveries: { available: false, items: [] },
+    });
+    expect(readPendingRecoveries).not.toHaveBeenCalled();
+    expect(findRecoveries).toHaveBeenCalled();
+    expect(findBillingPeriods).toHaveBeenCalled();
+    expect(findUsageEvents).toHaveBeenCalled();
   });
 
   it("redirects pending reinstall before reading product data", async () => {

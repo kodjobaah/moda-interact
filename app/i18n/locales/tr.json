@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Shopify onayı bekleniyor.",
+  "billingSetup.pageTitle": "Aboneliğiniz ayarlanıyor",
+  "billingSetup.confirmedTitle": "Shopify aboneliğiniz onaylandı",
+  "billingSetup.confirmedDescription": "Shopify planınızı onayladı. Moda Interact hesabınızın kurulumunu tamamlıyoruz. Yeniden plan seçmeniz gerekmez.",
+  "billingSetup.waitingDescription": "Plan seçiminizi kaydettik ve Shopify’ın etkin aboneliği onaylamasını bekliyoruz. Bu sayfa otomatik olarak güncellenir.",
+  "billingSetup.finalizingStatus": "Kurulum tamamlanıyor",
+  "billingSetup.automaticRefresh": "Otomatik olarak kontrol etmeye devam edeceğiz. Bu sayfadan ayrılıp daha sonra geri dönebilirsiniz.",
   "common.unavailable": "Kullanılamıyor",
   "navigation.breadcrumb": "İçerik haritası",
   "pending.title": "Bekleyen kurtarmalar",

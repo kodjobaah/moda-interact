@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Shopify からの確認を待っています。",
+  "billingSetup.pageTitle": "サブスクリプションを設定しています",
+  "billingSetup.confirmedTitle": "Shopify のサブスクリプションが確認されました",
+  "billingSetup.confirmedDescription": "Shopify でプランが確認されました。Moda Interact アカウントの設定を完了しています。プランを再度選択する必要はありません。",
+  "billingSetup.waitingDescription": "プランの選択を記録しました。Shopify が有効なサブスクリプションを確認するのを待っています。このページは自動的に更新されます。",
+  "billingSetup.finalizingStatus": "設定を完了しています",
+  "billingSetup.automaticRefresh": "自動的に確認を続けます。このページを離れて後で戻ることもできます。",
   "common.unavailable": "利用できません",
   "navigation.breadcrumb": "パンくずリスト",
   "pending.title": "保留中のリカバリー",

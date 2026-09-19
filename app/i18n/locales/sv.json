@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Väntar på bekräftelse från Shopify.",
+  "billingSetup.pageTitle": "Konfigurerar din prenumeration",
+  "billingSetup.confirmedTitle": "Din Shopify-prenumeration är bekräftad",
+  "billingSetup.confirmedDescription": "Shopify har bekräftat din plan. Vi slutför konfigurationen av ditt Moda Interact-konto. Du behöver inte välja en plan igen.",
+  "billingSetup.waitingDescription": "Vi har registrerat ditt planval och väntar på att Shopify ska bekräfta den aktiva prenumerationen. Den här sidan uppdateras automatiskt.",
+  "billingSetup.finalizingStatus": "Slutför konfigurationen",
+  "billingSetup.automaticRefresh": "Vi fortsätter att kontrollera automatiskt. Du kan lämna sidan och komma tillbaka senare.",
   "common.unavailable": "Inte tillgänglig",
   "navigation.breadcrumb": "Brödsmulenavigering",
   "pending.title": "Väntande återställningar",

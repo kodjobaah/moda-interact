@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Čekáme na potvrzení od Shopify.",
+  "billingSetup.pageTitle": "Nastavení předplatného",
+  "billingSetup.confirmedTitle": "Vaše předplatné Shopify je potvrzeno",
+  "billingSetup.confirmedDescription": "Shopify potvrdilo váš plán. Dokončujeme nastavení vašeho účtu Moda Interact. Plán nemusíte vybírat znovu.",
+  "billingSetup.waitingDescription": "Uložili jsme váš výběr plánu a čekáme, až Shopify potvrdí aktivní předplatné. Tato stránka se aktualizuje automaticky.",
+  "billingSetup.finalizingStatus": "Dokončování nastavení",
+  "billingSetup.automaticRefresh": "Budeme pokračovat v automatické kontrole. Tuto stránku můžete opustit a vrátit se později.",
   "common.unavailable": "Není k dispozici",
   "navigation.breadcrumb": "Drobečková navigace",
   "pending.title": "Čekající obnovení",

@@ -10,6 +10,7 @@ import { authenticate } from "@/shopify.server";
 import Dashboard from "@/components/dashboard/Dashboard";
 import Onboarding from "@/components/onboarding/Onboarding";
 import UsageOverview from "@/components/dashboard/UsageOverview";
+import BillingSetupStatus from "@/components/billing-setup/BillingSetupStatus";
 
 import {
   shopService,
@@ -22,6 +23,10 @@ import {
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
+import {
+  buildMerchantBillingSetupState,
+  shouldShowMerchantBillingSetup,
+} from "@/services/billing/merchant-billing-setup-state";
 import {
   canAccessMerchantSurface,
   resolveMerchantExperienceState,
@@ -67,29 +72,49 @@ const {
 console.log("Resolved shop settings:", settings);
   const merchantUi = merchantUiContext(settings, session);
   const onboardingState = resolveMerchantExperienceState({ shop, settings });
-  const pricingCatalogue = await readActiveMerchantPricingCatalogue({ locale: merchantUi.locale });
-/*
-   * Let the merchant complete onboarding first.
-   */
-  if (!settings || !settings.onboardingCompleted) {
-    return { settings, merchantUi, merchantExperienceState: onboardingState, pricingCatalogue, subscription: null };
-  }
-
-  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
 
   /*
-   * Read local billing state.
-   *
-   * We don't need to call Shopify here.
+   * The home route only polls Moda's local projection. Shopify reconciliation
+   * remains a background/provider responsibility. Reading the projection before
+   * the onboarding early-return lets us distinguish a genuinely fresh install
+   * from a merchant who has already selected a Shopify managed-pricing option.
    */
-  const [subscription, subscriptionProjection] = await Promise.all([
-    billingService.getSubscription(shop.id),
+  const [pricingCatalogue, subscriptionProjection] = await Promise.all([
+    readActiveMerchantPricingCatalogue({ locale: merchantUi.locale }),
     billingService.getSubscriptionProjection(shop.id),
   ]);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const billingSetup = shouldShowMerchantBillingSetup(
+    settings?.onboardingCompleted,
+    subscriptionProjection,
+  )
+    ? buildMerchantBillingSetupState(subscriptionProjection, pricingCatalogue)
+    : null;
 
-  console.log("Resolved subscription:", subscription);
-  const subscriptionState = subscription ?? {
+  /*
+   * A fresh install still sees onboarding. Once durable local subscription
+   * evidence exists, never send the merchant back to plan selection while the
+   * Shopify subscription is being confirmed/reconciled.
+   */
+  if (!settings || !settings.onboardingCompleted) {
+    return {
+      settings,
+      merchantUi,
+      merchantExperienceState: onboardingState,
+      pricingCatalogue,
+      subscription: null,
+      billingSetup,
+    };
+  }
+
+  const merchantExperienceState = resolveMerchantExperienceState({
+    shop,
+    settings,
+    subscription: subscriptionProjection,
+  });
+  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
+
+  console.log("Resolved subscription:", subscriptionProjection);
+  const subscriptionState = subscriptionProjection ?? {
     status: capacity.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
     plan: null,
     observedShopifyPlanHandle: capacity.observedShopifyPlanHandle,
@@ -151,6 +176,7 @@ console.log("Resolved shop settings:", settings);
     merchantUi,
     merchantExperienceState,
     pricingCatalogue,
+    billingSetup,
 
     subscription: subscriptionState ? {
       status: subscriptionState.status,
@@ -208,18 +234,21 @@ export default function Index() {
     usageView,
     usagePagination,
     capacity,
+    billingSetup,
   } = useLoaderData();
   const [searchParams] = useSearchParams();
 
   if (merchantExperienceState === "ONBOARDING" || !settings?.onboardingCompleted) {
-    return <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
+    return billingSetup
+      ? <BillingSetupStatus merchantUi={merchantUi} setup={billingSetup} standalone />
+      : <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} billingSetup={billingSetup} />;
   }
 
-  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
+  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} billingSetup={billingSetup} />;
 }
 
 

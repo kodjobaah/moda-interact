@@ -1,5 +1,11 @@
 {
   "billingCommerce.plans.awaitingShopifyConfirmation": "Warten auf Bestätigung von Shopify.",
+  "billingSetup.pageTitle": "Dein Abonnement wird eingerichtet",
+  "billingSetup.confirmedTitle": "Dein Shopify-Abonnement wurde bestätigt",
+  "billingSetup.confirmedDescription": "Shopify hat deinen Tarif bestätigt. Wir schließen die Einrichtung deines Moda-Interact-Kontos ab. Du musst keinen Tarif erneut auswählen.",
+  "billingSetup.waitingDescription": "Wir haben deine Tarifauswahl gespeichert und warten darauf, dass Shopify das aktive Abonnement bestätigt. Diese Seite wird automatisch aktualisiert.",
+  "billingSetup.finalizingStatus": "Einrichtung wird abgeschlossen",
+  "billingSetup.automaticRefresh": "Wir prüfen automatisch weiter. Du kannst diese Seite verlassen und später zurückkehren.",
   "common.unavailable": "Nicht verfügbar",
   "navigation.breadcrumb": "Brotkrümelnavigation",
   "pending.title": "Ausstehende Wiederherstellungen",
