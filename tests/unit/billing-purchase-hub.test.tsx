@@ -1,5 +1,12 @@
+import { readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+
+vi.mock("react-router", async () => {
+  const actual = await vi.importActual<typeof import("react-router")>("react-router");
+  return { ...actual, useSubmit: () => vi.fn() };
+});
+
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
 
 const merchantUi = { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" };
@@ -43,9 +50,14 @@ describe("BillingPurchaseHub", () => {
     expect(markup).toContain("Lifetime Free recoveries: 7 of 10 remaining");
   });
 
-  it("renders Shopify verification failure distinctly from an unmapped plan", () => {
-    const markup = render({ verificationState: "VERIFICATION_UNAVAILABLE", current: null });
+  it("preserves the durable current plan while Shopify verification is temporarily unavailable", () => {
+    const markup = render({
+      verificationState: "VERIFICATION_UNAVAILABLE",
+      current: { shopifyPlanHandle: "free", mappedModaPlanName: "Free", price: null, interval: null, cancelAtEndOfCycle: false },
+      managePlansAvailable: false,
+    });
     expect(markup).toContain("verify your current Shopify billing details");
+    expect(markup).toContain(">Free<");
     expect(markup).not.toContain("Your subscription could not be safely mapped");
   });
 
@@ -103,8 +115,20 @@ describe("BillingPurchaseHub", () => {
       },
     });
     expect(markup).toContain("10");
+    expect(markup).toContain('class="moda-topup-grid"');
+    expect(markup).toContain('class="moda-action-button moda-action-button-primary moda-topup-buy-button"');
+    expect(markup).toContain('aria-label="Buy 10 recovery conversations"');
     expect(markup).toContain(">Buy</button>");
     expect(markup).toContain('name="eventHandle" value="recovery-small"');
+  });
+
+
+  it("submits top-up purchases through React Router instead of a document POST", async () => {
+    const source = await readFile(new URL("../../app/components/dashboard/TopUpPurchasePanel.jsx", import.meta.url), "utf8");
+    expect(source).toContain('import { useSubmit } from "react-router"');
+    expect(source).toContain("event.preventDefault()");
+    expect(source).toContain('submit(formData, { method: "post" })');
+    expect(source).toContain('formData.set("purchaseId", crypto.randomUUID())');
   });
 
   it("renders multiple resolved offers in catalogue order with selected handles", () => {

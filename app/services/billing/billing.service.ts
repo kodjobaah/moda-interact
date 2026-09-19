@@ -35,6 +35,7 @@ import type {
   MerchantShopifyLifecycleState,
   MerchantRecoveryCapacityState,
   MerchantShopifySubscriptionState,
+  ProviderUsageItem,
 } from "./billing.types";
 
 import {
@@ -667,6 +668,29 @@ export class BillingService {
       enqueueTranslationBestEffort,
   ) {}
 
+  private async readRecoveryCreditTopUpConfiguration(planHandle: string | null | undefined) {
+    if (!planHandle || !this.database.merchantPricingPlan?.findUnique) {
+      return { enabled: false, creditsPerPack: null as number | null };
+    }
+    const plan = await this.database.merchantPricingPlan.findUnique({
+      where: { shopifyPlanHandle: planHandle },
+      select: {
+        usageEvents: {
+          orderBy: { position: "asc" },
+          select: { creditsGrantedPerUnit: true },
+        },
+      },
+    });
+    const usageEvents = plan?.usageEvents ?? [];
+    const credits = [...new Set(usageEvents
+      .map((event: { creditsGrantedPerUnit: number }) => event.creditsGrantedPerUnit)
+      .filter((value: number) => Number.isSafeInteger(value) && value > 0))];
+    return {
+      enabled: usageEvents.length > 0,
+      creditsPerPack: credits.length === 1 ? credits[0] : null,
+    };
+  }
+
   private async readMerchantPricingPlan(planHandle: string) {
     if (this.database.merchantPricingPlan?.findUnique) {
       const plan = await this.database.merchantPricingPlan.findUnique({
@@ -864,6 +888,7 @@ export class BillingService {
     shopId: string,
     requestedPlanHandle: string,
   ): Promise<CompletedFreeActivation | null> {
+    const topUpConfiguration = await this.readRecoveryCreditTopUpConfiguration(requestedPlanHandle);
     return this.database.$transaction(async (transaction) => {
       await lockInitialFreeActivationState(transaction, shopId);
       const subscription = await transaction.subscription.findUnique({
@@ -897,7 +922,7 @@ export class BillingService {
       }
 
       const completionNow = new Date();
-      const completedNextReconcileAt = !subscription.plan.recoveryCreditPackEnabled
+      const completedNextReconcileAt = !topUpConfiguration.enabled
         ? null
         : subscription.currentPeriodEnd
           ? new Date(Math.max(
@@ -1358,6 +1383,10 @@ async getSubscription(
         }
       : null;
 
+    const topUpConfiguration = await this.readRecoveryCreditTopUpConfiguration(
+      subscription?.plan?.shopifyPlanHandle ?? subscription?.observedShopifyPlanHandle,
+    );
+
     const base = {
       reconciledPlanMapping,
       observedShopifyPlanHandle: subscription?.observedShopifyPlanHandle ?? null,
@@ -1365,10 +1394,7 @@ async getSubscription(
       paidIncluded,
       promotional,
       purchased,
-      topUpConfiguration: {
-        enabled: Boolean(subscription?.plan?.recoveryCreditPackEnabled),
-        creditsPerPack: subscription?.plan?.recoveryCreditsPerPack ?? null,
-      },
+      topUpConfiguration,
     };
     if (!subscription || subscription.status === SubscriptionProjectionStatus.NO_CONTRACT) {
       return { ...base, availability: "CONTRACT_REQUIRED", capacitySource: null, canStartRecovery: false };
@@ -1469,7 +1495,10 @@ async getSubscription(
     };
   }
 
-  async getMerchantBillingState(shopId: string) {
+  async getMerchantBillingState(
+    shopId: string,
+    verifiedCommercialState?: MerchantShopifySubscriptionState,
+  ) {
     const [shop, subscription, counter, usageTotal, purchasedCounter] = await Promise.all([
       this.database.shop.findUnique({ where: { id: shopId } }),
       this.database.subscription.findUnique({
@@ -1537,13 +1566,39 @@ async getSubscription(
       billingPeriodPhase !== null
     ) {
       try {
-        if (!this.provider.getSubscriptionLifecycleSnapshot) {
-          throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
+        let providerSubscription: {
+          planHandle: string;
+          status: "ACTIVE" | "TRIALING";
+          usageItems: ProviderUsageItem[];
+          currentPeriodStart: Date | null;
+          currentPeriodEnd: Date | null;
+        } | null = null;
+
+        if (verifiedCommercialState !== undefined) {
+          if (verifiedCommercialState.status === "ACTIVE_SUBSCRIPTION") {
+            const start = verifiedCommercialState.subscription.currentPeriodStart
+              ? new Date(verifiedCommercialState.subscription.currentPeriodStart)
+              : null;
+            const end = verifiedCommercialState.subscription.currentPeriodEnd
+              ? new Date(verifiedCommercialState.subscription.currentPeriodEnd)
+              : null;
+            providerSubscription = {
+              planHandle: verifiedCommercialState.subscription.planHandle,
+              status: verifiedCommercialState.subscription.trialEndsAt &&
+                new Date(verifiedCommercialState.subscription.trialEndsAt) > new Date()
+                ? "TRIALING"
+                : "ACTIVE",
+              usageItems: verifiedCommercialState.subscription.usageItems,
+              currentPeriodStart: start && !Number.isNaN(start.getTime()) ? start : null,
+              currentPeriodEnd: end && !Number.isNaN(end.getTime()) ? end : null,
+            };
+          }
+        } else {
+          providerSubscription = await this.provider.getActiveSubscription({
+            shopifyShopId: shop.shopifyShopId,
+          });
         }
-        const lifecycleSnapshot = await this.provider.getSubscriptionLifecycleSnapshot({
-          shopifyShopId: shop.shopifyShopId,
-        });
-        const providerSubscription = executableProviderSubscription(lifecycleSnapshot);
+
         if (providerSubscription) {
           const merchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
           const resolved = resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan });
@@ -2045,6 +2100,9 @@ async getSubscription(
             providerSubscription.planHandle,
         },
       });
+    const topUpConfiguration = await this.readRecoveryCreditTopUpConfiguration(
+      providerSubscription.planHandle,
+    );
 
     const planIsUsable = Boolean(plan?.active);
     const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
@@ -2315,7 +2373,7 @@ async getSubscription(
         : providerSubscription.pendingPlanHandle
           ? providerSubscription.currentPeriodEnd
           : null;
-      const nextReconcileAt = plan?.kind === BillingPlanKind.FREE && plan.recoveryCreditPackEnabled
+      const nextReconcileAt = plan?.kind === BillingPlanKind.FREE && topUpConfiguration.enabled
         ? providerSubscription.currentPeriodEnd
           ? new Date(Math.max(now.getTime(), providerSubscription.currentPeriodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS))
           : new Date(now.getTime() + INITIAL_BILLING_RETRY_DELAY_MS)

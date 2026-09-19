@@ -1,5 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
+import { useSubmit } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
@@ -8,6 +9,7 @@ const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
+  const submit = useSubmit();
   const purchase = topUpState.latestPurchase;
   const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
   const reportState = purchase?.usageReportState;
@@ -30,7 +32,7 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       <div className="moda-info-banner-icon">↗</div>
       <div><strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong><p>{i18n.t("billingCommerce.topup.billingNote")}</p></div>
     </div>
-    {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : offers.map((offer) => {
+    {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : <div className="moda-topup-grid">{offers.map((offer) => {
       const tier = offer.providerPrice?.tiers?.[0];
       const providerAmount = tier?.amountPerUnit ?? tier?.amount;
       const providerPrice = providerAmount && offer.providerPrice?.currency
@@ -40,17 +42,27 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
         <form method="post" onSubmit={(event) => {
-          event.currentTarget.purchaseId.value = crypto.randomUUID();
+          event.preventDefault();
+          const formData = new FormData(event.currentTarget);
+          formData.set("purchaseId", crypto.randomUUID());
+          submit(formData, { method: "post" });
         }}>
           <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
           <input type="hidden" name="purchaseId" value="" />
           <input type="hidden" name="eventHandle" value={offer.eventHandle} />
-          <button type="submit" disabled={!topUpState.purchaseEligible}>Buy</button>
+          <button
+            className="moda-action-button moda-action-button-primary moda-topup-buy-button"
+            type="submit"
+            disabled={!topUpState.purchaseEligible}
+            aria-label={`${i18n.t("billingCommerce.buy")} ${i18n.formatNumber(offer.creditsGranted)} ${i18n.t("billingCommerce.recoveryConversations")}`}
+          >
+            {i18n.t("billingCommerce.buy")}
+          </button>
         </form>
         {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
         {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
       </article>;
-    })}
+    })}</div>}
     {purchase && statuses.includes(purchase.status) ? <p>
       {purchase.status === "REQUESTED"
         ? reportState === "RETRYABLE"

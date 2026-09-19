@@ -119,8 +119,8 @@ describe("promotion service", () => {
     expect(count).toHaveBeenCalledWith({ where: { shopId: "shop-1" } });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { shopId: "shop-1" },
-      skip: 25,
-      take: 25,
+      skip: 6,
+      take: 6,
       select: expect.objectContaining({
         campaign: expect.objectContaining({ select: expect.objectContaining({
           id: true,
@@ -130,7 +130,7 @@ describe("promotion service", () => {
         }) }),
       }),
     }));
-    expect(history).toEqual(expect.objectContaining({ page: 2, pageSize: 25, totalEntries: 26, totalPages: 2 }));
+    expect(history).toEqual(expect.objectContaining({ page: 2, pageSize: 6, totalEntries: 26, totalPages: 5 }));
     expect(history.entries[0]).toMatchObject({ campaignId: "campaign-1", status: "REOPENED" });
     expect(history.entries[0]).not.toHaveProperty("events");
     expect(history.entries[0]).not.toHaveProperty("reopenedAt");

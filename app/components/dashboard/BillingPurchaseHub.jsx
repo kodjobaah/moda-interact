@@ -10,9 +10,13 @@ const { useState } = React;
 /** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, scheduledCancellation?: boolean, purchaseHistoryAvailable: boolean, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans" }} props */
 export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, scheduledCancellation = false, purchaseHistoryAvailable, managePlansHref, managePlansAvailable, initialView="topup" }) {
   const i18n=createMerchantI18n(merchantUi); const [view,setView]=useState(initialView);
-  const currentName = verificationState === "VERIFICATION_UNAVAILABLE"
-    ? i18n.t("common.unavailable")
-    : current?.mappedModaPlanName ?? current?.shopifyPlanHandle ?? (verificationState === "NO_ACTIVE_SUBSCRIPTION" ? i18n.t("billing.viewPlans") : i18n.t("billing.configurationUnavailable"));
+  const currentName = current?.mappedModaPlanName
+    ?? current?.shopifyPlanHandle
+    ?? (verificationState === "VERIFICATION_UNAVAILABLE"
+      ? i18n.t("common.unavailable")
+      : verificationState === "NO_ACTIVE_SUBSCRIPTION"
+        ? i18n.t("billing.viewPlans")
+        : i18n.t("billing.configurationUnavailable"));
   const stateCopy = lifecycleState === "FROZEN"
     ? i18n.t("billing.frozenDescription")
     : scheduledCancellation && !pending && current?.currentPeriodEnd

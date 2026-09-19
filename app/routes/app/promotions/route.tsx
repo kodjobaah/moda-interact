@@ -2,6 +2,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { Form, Link, useActionData, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
+import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
@@ -15,6 +16,7 @@ import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import db from "@/db.server";
 import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { billingService } from "@/services/billing/billing.service";
+import "./PromotionsRoute.css";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
@@ -24,13 +26,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
-  const pageValue = Number(new URL(request.url).searchParams.get("historyPage"));
+  const url = new URL(request.url);
+  const historyPageValue = Number(url.searchParams.get("historyPage"));
+  const offerPageValue = Number(url.searchParams.get("offerPage"));
   const merchantUi = merchantUiContext(settings, session);
   const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale;
+  const allOffers = await getEligiblePromotionOffers(shop.id, promotionLocale);
+  const offerPageSize = 6;
+  const offerTotalPages = Math.max(1, Math.ceil(allOffers.length / offerPageSize));
+  const requestedOfferPage = Number.isInteger(offerPageValue) && offerPageValue > 0 ? offerPageValue : 1;
+  const offerPage = Math.min(requestedOfferPage, offerTotalPages);
+
   return {
     merchantUi,
-    offers: await getEligiblePromotionOffers(shop.id, promotionLocale),
-    history: await getPromotionHistory(shop.id, promotionLocale, pageValue),
+    offers: allOffers.slice((offerPage - 1) * offerPageSize, offerPage * offerPageSize),
+    offersPagination: {
+      page: offerPage,
+      pageSize: offerPageSize,
+      totalEntries: allOffers.length,
+      totalPages: offerTotalPages,
+    },
+    history: await getPromotionHistory(shop.id, promotionLocale, historyPageValue),
   };
 }
 
@@ -64,55 +80,195 @@ type PromotionOffer = Awaited<ReturnType<typeof loader>>["offers"][number];
 type PromotionHistoryEntry = Awaited<ReturnType<typeof getPromotionHistory>>["entries"][number];
 
 export default function PromotionsRoute() {
-  const { merchantUi, offers, history } = useLoaderData<typeof loader>();
+  const { merchantUi, offers, offersPagination, history } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const i18n = createMerchantI18n(merchantUi);
+
   return (
-    <main style={{ maxWidth: 800, margin: "0 auto", padding: 24 }}>
-      <h1>{i18n.t("promotions.page.title")}</h1>
-      <p>{i18n.t("promotions.page.description")}</p>
-      {actionData?.ok === true ? <p role="status">{i18n.t("promotions.success")}</p> : null}
-      {actionData?.ok === false && actionData.messageKey ? <p role="alert">{i18n.t(actionData.messageKey)}</p> : null}
-      {offers.length === 0 ? <p>{i18n.t("promotions.empty")}</p> : null}
-      {offers.map((offer: PromotionOffer) => (
-        <article key={offer.id}>
-          <h3>{offer.merchantTitle}</h3>
-          <p>{offer.merchantDescription}</p>
-          <p>{i18n.t("promotions.credits", { quantity: offer.quantity })}</p>
-          <p>{i18n.t("promotions.expires")}: {i18n.formatDate(offer.expiresAt)}</p>
-          {offer.previouslyClaimed && !offer.exhausted ? <p>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</p> : null}
-          <p>{i18n.t(offer.exhausted ? "promotions.status.exhausted" : offer.currentlySelected ? "promotions.status.selected" : offer.previouslyClaimed ? "promotions.status.claimed" : "promotions.status.available")}</p>
-          <Form method="post">
-            <input type="hidden" name="campaignId" value={offer.id} />
-            <button type="submit">{offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}</button>
-          </Form>
-        </article>
-      ))}
-      <section aria-labelledby="promotion-history-heading">
-        <h2 id="promotion-history-heading">{i18n.t("promotions.history.title")}</h2>
-        {history.entries.length === 0 ? <p>{i18n.t("promotions.history.empty")}</p> : (
-          <>
-            {history.entries.map((entry: PromotionHistoryEntry) => (
-              <article key={entry.campaignId}>
-                <h3>{entry.campaignTitle ?? i18n.t("promotions.history.titleUnavailable")}</h3>
-                <p>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</p>
-                <p>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</p>
-                <p>{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</p>
-                <p>{i18n.t("promotions.history.selectedRange", { first: formatHistoryDate(entry.firstSelectedAt, i18n), last: formatHistoryDate(entry.lastSelectedAt, i18n) })}</p>
-                <p>{i18n.t("promotions.history.usedRange", { first: formatHistoryDate(entry.firstUsedAt, i18n), last: formatHistoryDate(entry.lastUsedAt, i18n) })}</p>
-                <p>{i18n.t("promotions.expires")}: {i18n.formatDate(entry.expiresAt)}</p>
-                <p>{i18n.t("promotions.history.currentlySelected", { value: entry.currentlySelected ? i18n.t("promotions.history.yes") : i18n.t("promotions.history.no") })}</p>
-                <p>{i18n.t("promotions.history.status", { status: historyStatusLabel(entry.status, i18n) })}</p>
-              </article>
-            ))}
-            <nav aria-label={i18n.t("promotions.history.title")}>
-              {history.page > 1 ? <Link to={`/app/promotions?historyPage=${history.page - 1}`}>{i18n.t("promotions.history.previous")}</Link> : null}
-              {history.page < history.totalPages ? <Link to={`/app/promotions?historyPage=${history.page + 1}`}>{i18n.t("promotions.history.next")}</Link> : null}
-            </nav>
-          </>
-        )}
-      </section>
-    </main>
+    <s-page heading={i18n.t("promotions.page.title")}>
+      <Breadcrumbs items={[]} current={i18n.t("promotions.page.title")} merchantUi={merchantUi} />
+      <div className="moda-promotions-page">
+        <section className="moda-promotions-hero">
+          <div className="moda-promotions-hero-copy">
+            <span className="moda-promotions-eyebrow">{i18n.t("promotions.nav")}</span>
+            <h1>{i18n.t("promotions.page.title")}</h1>
+            <p>{i18n.t("promotions.page.description")}</p>
+          </div>
+          <div className="moda-promotions-hero-art" aria-hidden="true">
+            <div className="moda-promotions-ticket moda-promotions-ticket-back" />
+            <div className="moda-promotions-ticket moda-promotions-ticket-front">
+              <span>+</span>
+              <strong>{offersPagination.totalEntries}</strong>
+            </div>
+          </div>
+        </section>
+
+        {actionData?.ok === true ? (
+          <div className="moda-promotions-notice moda-promotions-notice-success" role="status">
+            <span aria-hidden="true">✓</span>
+            <p>{i18n.t("promotions.success")}</p>
+          </div>
+        ) : null}
+        {actionData?.ok === false && actionData.messageKey ? (
+          <div className="moda-promotions-notice moda-promotions-notice-error" role="alert">
+            <span aria-hidden="true">!</span>
+            <p>{i18n.t(actionData.messageKey)}</p>
+          </div>
+        ) : null}
+
+        <section id="promotion-offers" className="moda-promotions-panel" aria-labelledby="promotion-offers-heading">
+          <div className="moda-promotions-panel-heading">
+            <div>
+              <span className="moda-promotions-kicker">{i18n.t("promotions.nav")}</span>
+              <h2 id="promotion-offers-heading">{i18n.t("promotions.page.title")}</h2>
+            </div>
+            <span className="moda-promotions-count" aria-label={`${offersPagination.totalEntries}`}>{offersPagination.totalEntries}</span>
+          </div>
+
+          {offers.length === 0 ? (
+            <div className="moda-promotions-empty">
+              <div className="moda-promotions-empty-icon" aria-hidden="true">
+                <span>+</span>
+              </div>
+              <div>
+                <h3>{i18n.t("promotions.empty")}</h3>
+                <p>{i18n.t("promotions.page.description")}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="moda-promotions-offer-grid">
+                {offers.map((offer: PromotionOffer) => (
+                <article className={`moda-promotion-card${offer.currentlySelected ? " is-selected" : ""}`} key={offer.id}>
+                  <div className="moda-promotion-card-top">
+                    <span className="moda-promotion-status">
+                      {i18n.t(offer.exhausted ? "promotions.status.exhausted" : offer.currentlySelected ? "promotions.status.selected" : offer.previouslyClaimed ? "promotions.status.claimed" : "promotions.status.available")}
+                    </span>
+                    <span className="moda-promotion-credit-badge">{i18n.t("promotions.credits", { quantity: offer.quantity })}</span>
+                  </div>
+                  <div className="moda-promotion-card-copy">
+                    <h3>{offer.merchantTitle}</h3>
+                    <p>{offer.merchantDescription}</p>
+                  </div>
+                  <div className="moda-promotion-card-meta">
+                    <span><strong>{i18n.t("promotions.expires")}</strong>{i18n.formatDate(offer.expiresAt)}</span>
+                    {offer.previouslyClaimed && !offer.exhausted ? <span><strong>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</strong></span> : null}
+                  </div>
+                  <Form method="post" className="moda-promotion-card-action">
+                    <input type="hidden" name="campaignId" value={offer.id} />
+                    <button className="moda-promotion-button" type="submit">
+                      {offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}
+                    </button>
+                  </Form>
+                </article>
+                ))}
+              </div>
+              {offersPagination.totalPages > 1 ? (
+                <PromotionPagination
+                currentPage={offersPagination.page}
+                totalPages={offersPagination.totalPages}
+                previousLabel={i18n.t("promotions.history.previous")}
+                nextLabel={i18n.t("promotions.history.next")}
+                previousHref={offersPagination.page > 1 ? promotionPageHref(offersPagination.page - 1, history.page, "promotion-offers") : null}
+                nextHref={offersPagination.page < offersPagination.totalPages ? promotionPageHref(offersPagination.page + 1, history.page, "promotion-offers") : null}
+                />
+              ) : null}
+            </>
+          )}
+        </section>
+
+        <section id="promotion-history" className="moda-promotions-panel" aria-labelledby="promotion-history-heading">
+          <div className="moda-promotions-panel-heading">
+            <div>
+              <span className="moda-promotions-kicker">{i18n.t("promotions.history.title")}</span>
+              <h2 id="promotion-history-heading">{i18n.t("promotions.history.title")}</h2>
+            </div>
+            <span className="moda-promotions-count" aria-label={`${history.totalEntries}`}>{history.totalEntries}</span>
+          </div>
+
+          {history.entries.length === 0 ? (
+            <div className="moda-promotions-empty moda-promotions-empty-history">
+              <div className="moda-promotions-empty-icon moda-promotions-empty-icon-history" aria-hidden="true">
+                <span>↺</span>
+              </div>
+              <div>
+                <h3>{i18n.t("promotions.history.empty")}</h3>
+                <p>{i18n.t("promotions.empty")}</p>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="moda-promotion-history-list">
+                {history.entries.map((entry: PromotionHistoryEntry) => (
+                  <article className="moda-promotion-history-card" key={entry.campaignId}>
+                    <div className="moda-promotion-history-title-row">
+                      <div>
+                        <span className="moda-promotion-status">{historyStatusLabel(entry.status, i18n)}</span>
+                        <h3>{entry.campaignTitle ?? i18n.t("promotions.history.titleUnavailable")}</h3>
+                      </div>
+                      <strong className="moda-promotion-history-remaining">{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</strong>
+                    </div>
+                    <div className="moda-promotion-history-stats">
+                      <span>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</span>
+                      <span>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</span>
+                      <span>{i18n.t("promotions.history.currentlySelected", { value: entry.currentlySelected ? i18n.t("promotions.history.yes") : i18n.t("promotions.history.no") })}</span>
+                    </div>
+                    <div className="moda-promotion-history-meta">
+                      <p>{i18n.t("promotions.history.selectedRange", { first: formatHistoryDate(entry.firstSelectedAt, i18n), last: formatHistoryDate(entry.lastSelectedAt, i18n) })}</p>
+                      <p>{i18n.t("promotions.history.usedRange", { first: formatHistoryDate(entry.firstUsedAt, i18n), last: formatHistoryDate(entry.lastUsedAt, i18n) })}</p>
+                      <p><strong>{i18n.t("promotions.expires")}:</strong> {i18n.formatDate(entry.expiresAt)}</p>
+                      <p>{i18n.t("promotions.history.status", { status: historyStatusLabel(entry.status, i18n) })}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+              {history.totalPages > 1 ? (
+                <PromotionPagination
+                  currentPage={history.page}
+                  totalPages={history.totalPages}
+                  previousLabel={i18n.t("promotions.history.previous")}
+                  nextLabel={i18n.t("promotions.history.next")}
+                  previousHref={history.page > 1 ? promotionPageHref(offersPagination.page, history.page - 1, "promotion-history") : null}
+                  nextHref={history.page < history.totalPages ? promotionPageHref(offersPagination.page, history.page + 1, "promotion-history") : null}
+                />
+              ) : null}
+            </>
+          )}
+        </section>
+      </div>
+    </s-page>
+  );
+}
+
+function promotionPageHref(offerPage: number, historyPage: number, section: "promotion-offers" | "promotion-history") {
+  const params = new URLSearchParams();
+  if (offerPage > 1) params.set("offerPage", String(offerPage));
+  if (historyPage > 1) params.set("historyPage", String(historyPage));
+  const query = params.toString();
+  return `/app/promotions${query ? `?${query}` : ""}#${section}`;
+}
+
+function PromotionPagination({
+  currentPage,
+  totalPages,
+  previousLabel,
+  nextLabel,
+  previousHref,
+  nextHref,
+}: {
+  currentPage: number;
+  totalPages: number;
+  previousLabel: string;
+  nextLabel: string;
+  previousHref: string | null;
+  nextHref: string | null;
+}) {
+  return (
+    <nav className="moda-promotions-pagination" aria-label={`${currentPage} / ${totalPages}`}>
+      {previousHref ? <Link to={previousHref}>{previousLabel}</Link> : <span />}
+      <span>{currentPage} / {totalPages}</span>
+      {nextHref ? <Link to={nextHref}>{nextLabel}</Link> : <span />}
+    </nav>
   );
 }
 

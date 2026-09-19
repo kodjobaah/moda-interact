@@ -97,18 +97,6 @@ export function isManagedPricingSelectionObserved(
     state.subscription.pendingUpdate?.planHandle === requestedPlanHandle;
 }
 
-async function persistOnboardingMilestone(shopId: string): Promise<boolean> {
-  const updated = await db.shopSettings.updateMany({
-    where: {
-      shopId,
-      onboardingCompleted: false,
-    },
-    data: {
-      onboardingCompleted: true,
-    },
-  });
-  return updated.count > 0;
-}
 
 function isVerifiedPaidActivation(
   subscription: BillingCallbackSubscription | null,

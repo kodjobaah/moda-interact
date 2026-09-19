@@ -48,7 +48,7 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
 
 function topUpProvider(subscription: ReturnType<typeof providerSubscription>) {
   return {
-    getActiveSubscription: vi.fn(),
+    getActiveSubscription: vi.fn().mockResolvedValue(subscription),
     getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
       activeSubscription: subscription,
       latestLifecycleEvent: null,
@@ -83,6 +83,13 @@ function createDatabase({
       return null;
     }),
   };
+  const merchantPricingPlan = {
+    findUnique: vi.fn().mockResolvedValue(plan
+      ? { usageEvents: Boolean(plan.recoveryCreditPackEnabled)
+          ? [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }]
+          : [] }
+      : null),
+  };
   const billingPeriod = {
     findUnique: vi.fn().mockResolvedValue(null),
     upsert: vi.fn().mockResolvedValue({ id: "period-1", periodStart, periodEnd }),
@@ -100,6 +107,7 @@ function createDatabase({
     shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
     subscription,
     billingPlan,
+    merchantPricingPlan,
     billingPeriod,
     shopSettings,
     $queryRaw: vi.fn().mockResolvedValue([]),
@@ -724,10 +732,18 @@ describe("BillingService subscription projection", () => {
     const billingPeriod = {
       upsert: vi.fn().mockResolvedValue({ id: "period-1" }),
     };
+    const merchantPricingPlan = {
+      findUnique: vi.fn().mockResolvedValue({
+        usageEvents: Boolean(freePlan.recoveryCreditPackEnabled)
+          ? [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: Number(planOverrides.recoveryCreditsPerPack ?? 100) }]
+          : [],
+      }),
+    };
     const database = {
       billingPlan: {
         findUnique: vi.fn().mockResolvedValue(freePlan),
       },
+      merchantPricingPlan,
       recoveryCreditPurchase: {
         findUnique: vi.fn().mockResolvedValue(null),
       },
@@ -2682,7 +2698,7 @@ describe("BillingService merchant billing state", () => {
         shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
       });
       fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
-      const provider = { getSubscriptionLifecycleSnapshot: vi.fn().mockRejectedValue(new Error("Shopify unavailable")) };
+      const provider = { getActiveSubscription: vi.fn().mockRejectedValue(new Error("Shopify unavailable")) };
 
       try {
         const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
@@ -2712,7 +2728,95 @@ describe("BillingService merchant billing state", () => {
       billingPeriodPhase: null,
       recoveryCreditPackPurchaseEligible: false,
     });
-    expect(provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+  });
+
+  it("reuses a verified commercial snapshot for top-up offers without another Partner API read", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const plan = {
+      id: "free-1",
+      kind: "FREE",
+      shopifyPlanHandle: "free",
+      shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
+      shopifyUsageEventHandle: null,
+      recoveryCreditPackEnabled: true,
+      recoveryCreditsPerPack: 100,
+      active: true,
+    };
+    const period = {
+      id: "period-1",
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      planId: plan.id,
+      shopifyPlanHandleSnapshot: "free",
+      planKindSnapshot: "FREE",
+      periodStart,
+      periodEnd,
+      status: "OPEN",
+      includedRecoveryCreditsGranted: null,
+      entitlementCounters: [],
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+      subscription: { findUnique: vi.fn().mockResolvedValue({
+        id: "subscription-1",
+        status: "ACTIVE",
+        billingPeriodId: "period-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        observedShopifyPlanHandle: "free",
+        plan,
+        billingPeriod: period,
+      }) },
+      merchantPricingPlan: {
+        findUnique: vi.fn().mockResolvedValue({
+          shopifyPlanHandle: "free",
+          usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+        }),
+      },
+      shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+    };
+    const provider = {
+      getActiveSubscription: vi.fn().mockRejectedValue(new Error("must not be called")),
+    };
+    const commercial = {
+      status: "ACTIVE_SUBSCRIPTION" as const,
+      subscription: {
+        planHandle: "free",
+        description: "Free",
+        price: { amount: "0.00", currency: "USD" },
+        billingPeriod: "EVERY_30_DAYS",
+        currentPeriodStart: periodStart.toISOString(),
+        currentPeriodEnd: periodEnd.toISOString(),
+        trialEndsAt: null,
+        cancelAtEndOfCycle: false,
+        pendingUpdate: null,
+        usageItems: [{
+          handle: "credit-pack-meter",
+          description: "Recovery credit pack",
+          price: { kind: "TIERED" as const, active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
+          usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
+        }],
+      },
+      modaMapping: { id: "free-1", name: "Free", kind: "FREE" as const },
+      mappingStatus: "MAPPED" as const,
+      pendingModaMapping: null,
+    };
+
+    try {
+      await expect(new BillingService(provider as never, database as never).getMerchantBillingState("shop-1", commercial))
+        .resolves.toMatchObject({
+          billingPeriodPhase: "ACTIVE",
+          recoveryCreditPackMeterVerified: true,
+          recoveryCreditPackPurchaseEligible: true,
+          recoveryCreditOffers: [{ eventHandle: "credit-pack-meter", creditsGranted: 100 }],
+        });
+      expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it.each(["Paid", "Free"] as const)(
@@ -2832,8 +2936,14 @@ function createRecoveryCapacityDatabase({
     plan,
     billingPeriod: currentPeriod,
   };
+  const merchantPricingPlan = {
+    findUnique: vi.fn().mockResolvedValue({
+      usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 50 }],
+    }),
+  };
   const database = {
     subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
+    merchantPricingPlan,
     shopEntitlementCounter: {
       findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
         where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS" ? purchasedCounter : lifetimeCounter),
@@ -2842,7 +2952,7 @@ function createRecoveryCapacityDatabase({
     usageEvent: { aggregate: vi.fn() },
     platformBillingPolicy: { findUnique: vi.fn() },
   };
-  return { database, subscription, plan, currentPeriod };
+  return { database, subscription, plan, currentPeriod, merchantPricingPlan };
 }
 
 describe("BillingService local recovery capacity", () => {
@@ -2865,6 +2975,16 @@ describe("BillingService local recovery capacity", () => {
     expect(result.purchased.available).toBe(10);
     expect(provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(database.usageEvent.aggregate).not.toHaveBeenCalled();
+  });
+
+  it("derives recovery-credit top-up configuration from MerchantPricingPlan usage events rather than legacy BillingPlan fields", async () => {
+    const { database, plan } = createRecoveryCapacityDatabase();
+    plan.recoveryCreditPackEnabled = false;
+    plan.recoveryCreditsPerPack = null;
+
+    const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
+
+    expect(result.topUpConfiguration).toEqual({ enabled: true, creditsPerPack: 50 });
   });
 
   it("returns configuration unavailable when the lifetime Free fallback is missing", async () => {
