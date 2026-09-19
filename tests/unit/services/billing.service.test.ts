@@ -2819,6 +2819,64 @@ describe("BillingService merchant billing state", () => {
     }
   });
 
+
+  it("keeps globally verified top-up purchasing eligible while exposing unresolved purchases per event handle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00.000Z"));
+    const plan = {
+      id: "free-1", kind: "FREE", shopifyPlanHandle: "free", active: true,
+      shopifyRecoveryCreditPackEventHandle: null, shopifyUsageEventHandle: null,
+      recoveryCreditPackEnabled: false, recoveryCreditsPerPack: null,
+    };
+    const period = {
+      id: "period-1", shopId: "shop-1", subscriptionId: "subscription-1", planId: plan.id,
+      shopifyPlanHandleSnapshot: "free", planKindSnapshot: "FREE", periodStart, periodEnd,
+      status: "OPEN", includedRecoveryCreditsGranted: null, entitlementCounters: [],
+    };
+    const database = {
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+      subscription: { findUnique: vi.fn().mockResolvedValue({
+        id: "subscription-1", status: "ACTIVE", billingPeriodId: "period-1",
+        currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, observedShopifyPlanHandle: "free", plan, billingPeriod: period,
+      }) },
+      merchantPricingPlan: { findUnique: vi.fn().mockResolvedValue({
+        shopifyPlanHandle: "free",
+        usageEvents: [
+          { position: 0, eventHandle: "bronze-top-up-free", creditsGrantedPerUnit: 1 },
+          { position: 1, eventHandle: "silver-top-up", creditsGrantedPerUnit: 2 },
+        ],
+      }) },
+      shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
+      usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
+      recoveryCreditPurchase: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: "purchase-1", status: "REQUESTED", creditsGranted: 1, currentAmount: 0, reservedAmount: 0,
+          shopifyEventHandleSnapshot: "bronze-top-up-free", createdAt: new Date("2026-09-01T00:01:00.000Z"), activatedAt: null,
+          usageEvent: { shopifyReportState: "REPORTED" },
+        }),
+        findMany: vi.fn().mockResolvedValue([{
+          id: "purchase-1", status: "REQUESTED", creditsGranted: 1,
+          shopifyEventHandleSnapshot: "bronze-top-up-free", createdAt: new Date("2026-09-01T00:01:00.000Z"),
+          usageEvent: { shopifyReportState: "REPORTED" },
+        }]),
+      },
+    };
+    const provider = topUpProvider(providerSubscription({
+      planHandle: "free", currentPeriodStart: periodStart, currentPeriodEnd: periodEnd,
+      usageEventHandles: ["bronze-top-up-free", "silver-top-up"],
+    }));
+
+    try {
+      await expect(new BillingService(provider, database as never).getMerchantBillingState("shop-1"))
+        .resolves.toMatchObject({
+          purchaseEligible: true,
+          unresolvedPurchases: [{ eventHandle: "bronze-top-up-free", usageReportState: "REPORTED" }],
+        });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each(["Paid", "Free"] as const)(
     "keeps pack purchase eligible for exact ACTIVE cycle: %s",
     async (kind) => {

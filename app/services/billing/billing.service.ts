@@ -1627,14 +1627,18 @@ async getSubscription(
       }
     }
 
-    const latestPurchase = await (this.database.recoveryCreditPurchase?.findFirst?.({
-      where: { shopId },
-      orderBy: { createdAt: "desc" },
-      include: { usageEvent: true },
-    }) ?? Promise.resolve(null));
-    if (latestPurchase?.status === "REQUESTED") {
-      recoveryCreditPackPurchaseEligible = false;
-    }
+    const [latestPurchase, unresolvedPurchases] = await Promise.all([
+      this.database.recoveryCreditPurchase?.findFirst?.({
+        where: { shopId },
+        orderBy: { createdAt: "desc" },
+        include: { usageEvent: true },
+      }) ?? Promise.resolve(null),
+      this.database.recoveryCreditPurchase?.findMany?.({
+        where: { shopId, status: "REQUESTED" },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        include: { usageEvent: true },
+      }) ?? Promise.resolve([]),
+    ]);
 
     const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
     const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
@@ -1740,11 +1744,19 @@ async getSubscription(
             creditsGranted: latestPurchase.creditsGranted,
             currentAmount: latestPurchase.currentAmount,
             reservedAmount: latestPurchase.reservedAmount,
+            eventHandle: latestPurchase.shopifyEventHandleSnapshot,
             createdAt: latestPurchase.createdAt.toISOString(),
             activatedAt: latestPurchase.activatedAt?.toISOString() ?? null,
             usageReportState: latestPurchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
           }
         : null,
+      unresolvedPurchases: unresolvedPurchases.map((purchase) => ({
+        id: purchase.id,
+        eventHandle: purchase.shopifyEventHandleSnapshot,
+        creditsGranted: purchase.creditsGranted,
+        createdAt: purchase.createdAt.toISOString(),
+        usageReportState: purchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
+      })),
       billingPeriodPhase,
     };
   }

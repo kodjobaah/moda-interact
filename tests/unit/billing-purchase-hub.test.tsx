@@ -17,6 +17,7 @@ const topUpState = {
   offerVerificationState: "VERIFIED",
   purchasedCreditsAvailable: 4,
   latestPurchase: null,
+  unresolvedPurchases: [],
 };
 
 function render(overrides: Record<string, unknown> = {}) {
@@ -122,6 +123,34 @@ describe("BillingPurchaseHub", () => {
     expect(markup).toContain('name="eventHandle" value="recovery-small"');
   });
 
+
+
+  it("disables only the offer with an unresolved purchase", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [
+          { eventHandle: "bronze-top-up-free", cataloguePosition: 0, creditsGranted: 1, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] }, providerUsage: null },
+          { eventHandle: "silver-top-up", cataloguePosition: 1, creditsGranted: 2, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] }, providerUsage: null },
+          { eventHandle: "gold-top-up", cataloguePosition: 2, creditsGranted: 3, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] }, providerUsage: null },
+        ],
+        unresolvedPurchases: [{
+          eventHandle: "bronze-top-up-free",
+          creditsGranted: 1,
+          usageReportState: "REPORTED",
+        }],
+      },
+    });
+
+    const bronzeButton = markup.match(/aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const silverButton = markup.match(/aria-label="Buy 2 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const goldButton = markup.match(/aria-label="Buy 3 recovery conversations"[^>]*>/)?.[0] ?? "";
+
+    expect(bronzeButton).toContain("disabled");
+    expect(silverButton).not.toContain("disabled");
+    expect(goldButton).not.toContain("disabled");
+    expect(markup).toContain("Recovery credit purchase is being confirmed by Shopify.");
+  });
 
   it("submits top-up purchases through React Router instead of a document POST", async () => {
     const source = await readFile(new URL("../../app/components/dashboard/TopUpPurchasePanel.jsx", import.meta.url), "utf8");

@@ -5,15 +5,19 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, offers?: Array<any>, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
+/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, unresolvedPurchases?: Array<any>, offers?: Array<any>, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
 
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
   const submit = useSubmit();
   const purchase = topUpState.latestPurchase;
-  const hasUnresolvedPurchase = purchase?.status === "REQUESTED";
-  const reportState = purchase?.usageReportState;
   const offers = Array.isArray(topUpState.offers) ? topUpState.offers : [];
+  const unresolvedPurchases = Array.isArray(topUpState.unresolvedPurchases)
+    ? topUpState.unresolvedPurchases
+    : [];
+  const unresolvedByEventHandle = new Map(
+    unresolvedPurchases.map((entry) => [entry.eventHandle, entry]),
+  );
 
   return <section className="moda-billing-panel">
     <div className="moda-panel-heading-row">
@@ -38,6 +42,9 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       const providerPrice = providerAmount && offer.providerPrice?.currency
         ? i18n.formatMoney(Number(providerAmount), offer.providerPrice.currency)
         : null;
+      const unresolvedPurchase = unresolvedByEventHandle.get(offer.eventHandle);
+      const reportState = unresolvedPurchase?.usageReportState;
+      const offerPurchaseEligible = topUpState.purchaseEligible && !unresolvedPurchase;
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
@@ -53,24 +60,19 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
           <button
             className="moda-action-button moda-action-button-primary moda-topup-buy-button"
             type="submit"
-            disabled={!topUpState.purchaseEligible}
+            disabled={!offerPurchaseEligible}
             aria-label={`${i18n.t("billingCommerce.buy")} ${i18n.formatNumber(offer.creditsGranted)} ${i18n.t("billingCommerce.recoveryConversations")}`}
           >
             {i18n.t("billingCommerce.buy")}
           </button>
         </form>
-        {hasUnresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
-        {hasUnresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
+        {unresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
+        {unresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
+        {unresolvedPurchase && reportState !== "RETRYABLE" && reportState !== "NEEDS_ATTENTION" ? <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p> : null}
       </article>;
     })}</div>}
-    {purchase && statuses.includes(purchase.status) ? <p>
-      {purchase.status === "REQUESTED"
-        ? reportState === "RETRYABLE"
-          ? i18n.t("billingCommerce.topup.reportingRetry")
-          : reportState === "NEEDS_ATTENTION"
-            ? i18n.t("billingCommerce.topup.reportingNeedsAttention")
-            : i18n.t("billing.recoveryCreditPurchasePending")
-        : `${i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}: ${i18n.formatNumber(purchase.currentAmount)}`}
+    {purchase && purchase.status !== "REQUESTED" && statuses.includes(purchase.status) ? <p>
+      {`${i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}: ${i18n.formatNumber(purchase.currentAmount)}`}
     </p> : null}
   </section>;
 }
@@ -83,6 +85,7 @@ TopUpPurchasePanel.propTypes = {
     offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
     offerVerificationState: PropTypes.string.isRequired,
     purchasedCreditsAvailable: PropTypes.number.isRequired,
-    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string }),
+    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, usageReportState: PropTypes.string, eventHandle: PropTypes.string }),
+    unresolvedPurchases: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, creditsGranted: PropTypes.number.isRequired, usageReportState: PropTypes.string.isRequired })),
   }).isRequired,
 };
