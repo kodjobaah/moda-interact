@@ -77,3 +77,10 @@ New York and Kolkata, asserting that legacy parsing shifts the timestamp while
 the corrected parser and bound wire value preserve it exactly. The opt-in suite
 also asserts exact persisted timestamps in the first message window. Run the
 full suite under the non-UTC zone shown above; its plan assertions are unchanged.
+
+
+Attempt 3 loads the database-owned seed through an app-owned helper which removes
+only its exact leading `\set ON_ERROR_STOP on` client directive. All remaining
+SQL is sent unchanged, unknown psql directives fail closed, and pg errors propagate
+without continuing setup. The database fixture is not modified. Cheap tests read
+the actual fixture, verify byte-preserving SQL delivery and check error propagation.

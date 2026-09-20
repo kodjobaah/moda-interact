@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { loadRecoveryDetailSeed } from "../helpers/recovery-detail-seed.mjs";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
@@ -146,5 +148,30 @@ describe("PostgreSQL rehearsal UTC adapter", () => {
     expect(result.wire).toBe("2026-09-01T00:02:05.123Z");
     expect(result.bound).toEqual(["2026-09-01T00:02:05.123Z", "id", 51, null]);
     expect(result.boolean).toBe(true);
+  });
+});
+
+
+describe("database-owned psql recovery fixture loading", () => {
+  const source = readFileSync(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8");
+  it("passes the actual fixture's complete SQL unchanged without its client directive", async () => {
+    const query = vi.fn().mockResolvedValue({});
+    await loadRecoveryDetailSeed({ query }, source);
+    expect(source.split("\n")[0]).toBe("\\set ON_ERROR_STOP on");
+    expect(query).toHaveBeenCalledExactlyOnceWith(source.slice(source.indexOf("\n") + 1));
+    expect(query.mock.calls[0][0]).not.toMatch(/^[\t ]*\\/m);
+    expect(query.mock.calls[0][0]).toContain('CREATE TABLE public.arch019_indexes_before');
+  });
+  it("propagates PostgreSQL errors instead of proceeding with a partial seed", async () => {
+    const error = new Error("seed SQL failed");
+    const query = vi.fn().mockRejectedValue(error);
+    await expect(loadRecoveryDetailSeed({ query }, source)).rejects.toBe(error);
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+  it("fails closed if a future fixture introduces an unsupported psql directive", async () => {
+    const query = vi.fn();
+    await expect(loadRecoveryDetailSeed({ query }, source + "\n\\include other.sql\n")).rejects.toThrow("Unsupported psql directive");
+    await expect(loadRecoveryDetailSeed({ query }, "SELECT 1;")).rejects.toThrow("Expected recovery seed");
+    expect(query).not.toHaveBeenCalled();
   });
 });
