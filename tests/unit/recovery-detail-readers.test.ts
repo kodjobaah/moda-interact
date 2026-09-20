@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 vi.mock("../../app/db.server", () => ({ default: {} }));
@@ -116,5 +117,34 @@ describe("related recovery pages",()=>{
     expect(page?.items).toHaveLength(5);expect(query).toHaveBeenCalledTimes(3);
     const sql=query.mock.calls[1][0];expect(sql.text).toContain('LIMIT 6');expect(sql.text).toContain('"id" <>');expect(sql.values).toEqual([input.shopId,owned.customerId,owned.id]);
     expect(page?.nextCursor).toBeTruthy();expect(page?.previousCursor).toBeNull();
+  });
+});
+
+
+describe("PostgreSQL rehearsal UTC adapter", () => {
+  it.each(["Europe/London", "America/New_York", "Asia/Kolkata"])("preserves persisted timestamp and bound Date in %s", (tz) => {
+    // Separate processes guarantee host-zone behavior and avoid changing the test runner.
+    const helper = new URL("../helpers/recovery-detail-pg-utc.mjs", import.meta.url).href;
+    const output = execFileSync(process.execPath, ["--input-type=module", "-e", `
+      import { recoveryDetailPgTypes, recoveryDetailPgValues } from ${JSON.stringify(helper)};
+      import pg from "pg";
+      import utils from "pg/lib/utils.js";
+      const source = "2026-09-01 00:02:05.123";
+      const parsed = recoveryDetailPgTypes.getTypeParser(1114)(source);
+      const bound = recoveryDetailPgValues([new Date("2026-09-01T00:02:05.123Z"), "id", 51, null]);
+      console.log(JSON.stringify({
+        hostOffset: new Date("2026-09-01T00:00:00Z").getTimezoneOffset(),
+        legacy: pg.types.getTypeParser(1114)(source).toISOString(),
+        parsed: parsed.toISOString(), wire: utils.prepareValue(bound[0]), bound,
+        boolean: recoveryDetailPgTypes.getTypeParser(16)("t"),
+      }));
+    `], { env: { ...process.env, TZ: tz }, encoding: "utf8" });
+    const result = JSON.parse(output);
+    expect(result.hostOffset).not.toBe(0);
+    expect(result.legacy).not.toBe("2026-09-01T00:02:05.123Z");
+    expect(result.parsed).toBe("2026-09-01T00:02:05.123Z");
+    expect(result.wire).toBe("2026-09-01T00:02:05.123Z");
+    expect(result.bound).toEqual(["2026-09-01T00:02:05.123Z", "id", 51, null]);
+    expect(result.boolean).toBe(true);
   });
 });

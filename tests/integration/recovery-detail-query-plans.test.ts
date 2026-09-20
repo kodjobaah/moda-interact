@@ -2,6 +2,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Client } from "pg";
 import { Prisma } from "@prisma/client";
+import { recoveryDetailPgTypes, recoveryDetailPgValues } from "../helpers/recovery-detail-pg-utc.mjs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../app/db.server", () => ({ default: {} }));
 import { readRecoveryMessages, readRecoveryDetail, readRelatedRecoveries, recoveryMessagePageSql, type RecoveryDetailDatabase } from "../../app/services/recoveries/recovery-detail.server";
@@ -16,7 +17,7 @@ const own = { shopId: "arch019-shop-1", recoveryId: "arch019-r-1-00001" };
 describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
   beforeAll(async () => {
     postgres = await new PostgreSqlContainer("postgres:15-alpine").start();
-    client = new Client({ connectionString: postgres.getConnectionUri() });
+    client = new Client({ connectionString: postgres.getConnectionUri(), types: recoveryDetailPgTypes });
     await client.connect();
     const migrations = new URL("../../database/prisma/migrations/", import.meta.url);
     for (const name of (await readdir(migrations)).sort()) {
@@ -24,7 +25,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     }
     await client.query(await readFile(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8"));
     await client.query('ANALYZE "whatsapp"."Conversation"');
-    db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { return (await client!.query(query.text, query.values)).rows as T; } };
+    db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
     console.log("POSTGRES_VERSION", (await client.query("SELECT version()")).rows);
   }, 180_000);
   afterAll(async () => { try { await client?.end(); } finally { await postgres?.stop(); } }, 60_000);
@@ -34,6 +35,8 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     expect(await readRecoveryMessages({...own,recoveryId:"missing"},db)).toBeNull();
     const first=(await readRecoveryMessages(own,db))!;
     expect(first.items).toHaveLength(50);expect(first.previousCursor).toBeNull();
+    expect(first.items[0].createdAt).toBe("2026-09-01T00:00:00.000Z");
+    expect(first.items[49].createdAt).toBe("2026-09-01T00:00:12.000Z");
     const second=(await readRecoveryMessages({...own,cursor:first.nextCursor},db))!;
     const back=(await readRecoveryMessages({...own,cursor:second.previousCursor},db))!;
     expect(back.items).toEqual(first.items);
@@ -46,7 +49,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
 
   it.each(["first","next","previous","latest"] as const)("%s message plan bounds traversal to 51 rows without sort/join",async direction=>{
     const query=recoveryMessagePageSql("arch019-conv-1-00001",{direction,boundary:direction==="next"||direction==="previous" ? {id:"arch019-m-1-00001-0500",at:"2026-09-01T00:02:05.000Z"}:null});
-    const result=await client!.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.text}`,query.values);
+    const result=await client!.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.text}`,recoveryDetailPgValues(query.values));
     const plan=result.rows[0]["QUERY PLAN"][0];console.log("RECOVERY_MESSAGE_PLAN",direction,JSON.stringify(plan));
     const nodes: Record<string,unknown>[]=[];
     function visit(node: Record<string,unknown>) {nodes.push(node);for(const child of (node.Plans??[]) as Record<string,unknown>[])visit(child);}

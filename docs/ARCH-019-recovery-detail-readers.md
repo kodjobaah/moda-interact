@@ -48,7 +48,7 @@ Required repository check: `npm run typecheck`.
 Developer-owned actual-plan rehearsal (Docker required):
 
 ```sh
-MODA_RECOVERY_DETAIL_POSTGRES=1 npm test -- tests/integration/recovery-detail-query-plans.test.ts --no-cache
+TZ=Europe/London MODA_RECOVERY_DETAIL_POSTGRES=1 npm test -- tests/integration/recovery-detail-query-plans.test.ts --no-cache
 ```
 
 The opt-in suite creates its own PostgreSQL 15 container, applies the committed
@@ -66,3 +66,14 @@ It does not replace the required full typecheck. At task baseline c4fd514, full
 `npm run typecheck` stops on pre-existing syntax errors at lines 201/219/220 of
 `tests/unit/merchant-route-access-policy.test.ts`; these differ from the older
 TYPECHECK-001 baseline of 48 type errors. The task does not edit that file.
+
+
+Attempt 2 fixes the test-only pg adapter: a client-local OID 1114 parser interprets
+persisted timestamps as UTC, and both reader and EXPLAIN Date bindings are sent
+as UTC ISO strings so pg cannot shift them to host-local wall-clock time. This
+matches the production Prisma timestamp convention. Global pg parsers and
+production readers are unchanged. Cheap subprocess regressions cover London,
+New York and Kolkata, asserting that legacy parsing shifts the timestamp while
+the corrected parser and bound wire value preserve it exactly. The opt-in suite
+also asserts exact persisted timestamps in the first message window. Run the
+full suite under the non-UTC zone shown above; its plan assertions are unchanged.
