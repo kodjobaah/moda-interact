@@ -8,7 +8,10 @@ import {
   normalizeRecoveryQuery,
   encodeRecoveryCursor,
 } from "../../app/services/recoveries/recovery-query.server";
-import { recoveryListUrl } from "../../app/routes/app/recoveries/recovery-list-state";
+import {
+  recoveryListUrl,
+  recoveryScrollKey,
+} from "../../app/routes/app/recoveries/recovery-list-state";
 import RecoveryList from "../../app/routes/app/recoveries/RecoveryList";
 
 const mocks = vi.hoisted(() => ({
@@ -280,3 +283,103 @@ describe("recovery list presentation and navigation", () => {
 });
 
 afterEach(() => vi.useRealTimers());
+
+describe("validated list scroll identity", () => {
+  const key = (
+    data: Awaited<ReturnType<typeof loadRecoveryList>>,
+    entry = "entry",
+  ) =>
+    recoveryScrollKey({ pathname: "/app/recoveries", key: entry }, [
+      { pathname: "/app", data: { unrelated: true } },
+      { pathname: "/app/recoveries", data },
+    ]);
+
+  it.each([
+    "",
+    "q=&status=all&to=2026-09-20&pageSize=25&from=2026-08-22",
+    "from=2026-08-22&to=2026-09-20&status=all&q=&pageSize=25",
+  ])(
+    "restores equivalent omitted/reordered/default URLs: %s",
+    async (input) => {
+      const original = await loadRecoveryList(request(input));
+      const backUrl = recoveryListUrl(original.filters, original.embed);
+      const returned = await loadRecoveryList(request(backUrl.split("?")[1]));
+      expect(key(original, "original-entry")).toBe(key(returned, "back-entry"));
+      expect(key(original)).toBe(backUrl);
+    },
+  );
+
+  it("keeps normalized search, cursor pages and owned shops distinct", async () => {
+    const query = normalizeRecoveryQuery(new URLSearchParams("q=Ada"), {
+      timeZone: "Europe/London",
+    });
+    const cursor = encodeRecoveryCursor(query, "owned-shop", {
+      direction: "next",
+      detectedAt: row.detectedAt,
+      id: row.id,
+    });
+    const first = await loadRecoveryList(request("q=Ada"));
+    const next = await loadRecoveryList(
+      request(`cursor=${cursor}&q=%20Ada%20`),
+    );
+    const back = await loadRecoveryList(
+      request(recoveryListUrl(next.filters, next.embed).split("?")[1]),
+    );
+    expect(key(next)).toBe(key(back));
+    expect(key(next)).not.toBe(key(first));
+    expect(key(next)).not.toBe(
+      key({ ...next, embed: { shop: "another.myshopify.com" } }),
+    );
+    expect(key(first)).not.toBe(
+      key(await loadRecoveryList(request("q=Grace"))),
+    );
+  });
+
+  it("uses router entry identity without validated list data and on detail routes", async () => {
+    const invalid = await loadRecoveryList(
+      request("cursor=forged&returnTo=https://evil.test"),
+    );
+    expect(key(invalid, "invalid-entry")).toBe("invalid-entry");
+    expect(
+      recoveryScrollKey({ pathname: "/app/recoveries", key: "loading" }, []),
+    ).toBe("loading");
+    expect(
+      recoveryScrollKey(
+        { pathname: "/app/recoveries/id", key: "direct-detail" },
+        [],
+      ),
+    ).toBe("direct-detail");
+    const source = readFileSync("app/root.jsx", "utf8");
+    expect(source).toContain("getKey={recoveryScrollKey}");
+  });
+});
+
+it("restores Back before destination loader data becomes available", async () => {
+  const list = await loadRecoveryList(request());
+  const savedKey = recoveryScrollKey(
+    { pathname: "/app/recoveries", key: "original" },
+    [{ pathname: "/app/recoveries", data: list }],
+  );
+  // Matches name the destination, but React Router still holds the previous detail loader data.
+  const restored = recoveryScrollKey(
+    {
+      pathname: "/app/recoveries",
+      key: "back",
+      state: {
+        recoveryListScrollKey: recoveryListUrl(list.filters, list.embed),
+      },
+    },
+    [{ pathname: "/app/recoveries", data: undefined }],
+  );
+  expect(restored).toBe(savedKey);
+  expect(
+    recoveryScrollKey(
+      {
+        pathname: "/app/recoveries",
+        key: "safe",
+        state: { recoveryListScrollKey: "https://evil.test" },
+      },
+      [],
+    ),
+  ).toBe("safe");
+});

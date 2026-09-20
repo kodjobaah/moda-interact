@@ -16,6 +16,7 @@ import type {
   Related,
 } from "../../../app/routes/app/recovery-detail/state";
 import type { RecoveryListData } from "../../../app/routes/app/recoveries/recovery-list-state";
+import { recoveryScrollKey } from "../../../app/routes/app/recoveries/recovery-list-state";
 const merchantUi = {
   locale: new URLSearchParams(location.search).get("locale") ?? "en-GB",
   timeZone: "Europe/London",
@@ -89,18 +90,16 @@ function relatedPage(id: string, q = new URLSearchParams()): Related {
   const items = rows.filter((r) => r.id !== id);
   const start = Number(q.get("cursor") ?? 0);
   return {
-    items: items
-      .slice(start, start + 5)
-      .map((r) => ({
-        id: r.id,
-        status: r.status,
-        detectedAt: r.detectedAt,
-        value: {
-          amount: r.totalPrice,
-          currency: r.currency,
-          incomplete: false,
-        },
-      })),
+    items: items.slice(start, start + 5).map((r) => ({
+      id: r.id,
+      status: r.status,
+      detectedAt: r.detectedAt,
+      value: {
+        amount: r.totalPrice,
+        currency: r.currency,
+        incomplete: false,
+      },
+    })),
     previousCursor: start ? "0" : null,
     nextCursor: start + 5 < items.length ? "5" : null,
   };
@@ -129,11 +128,7 @@ const router = createBrowserRouter([
     element: (
       <>
         <Outlet />
-        <ScrollRestoration
-          getKey={(l) =>
-            l.pathname === "/app/recoveries" ? l.pathname + l.search : l.key
-          }
-        />
+        <ScrollRestoration getKey={recoveryScrollKey} />
       </>
     ),
     children: [

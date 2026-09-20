@@ -155,6 +155,7 @@ export default function RecoveryDetail({
       <Link
         className="recovery-detail__back"
         to={recoveryListUrl(filters, embed)}
+        state={{ recoveryListScrollKey: recoveryListUrl(filters, embed) }}
       >
         {t("recoveryDetail.back")}
       </Link>

@@ -21,3 +21,11 @@ Observed in Chromium on 2026-09-20:
 - Native Checkout context disclosure toggled using Enter. Viewport overrides were reset and temporary tabs closed after validation.
 
 Viewport screenshots: `evidence/1024.png`, `320.png`, `390.png`, `error.png`. The German screenshot captures the transcript after reload scroll restoration. All imagery contains synthetic fixture data only.
+
+## Attempt 2 — equivalent URL scroll regression
+
+The fixture now uses the production `recoveryScrollKey` callback. It saves the loader-normalized list identity. Detail Back carries that same validated identity in router navigation state, because React Router looks up destination scroll before destination loader data is available. Navigation state is used only to select a saved scroll position, never as a URL or authorization input.
+
+Actual Chromium rerun: omitted defaults (`/app/recoveries`), reordered explicit filters, canonical filters, and a reordered synthetic cursor page each traversed list → basket 5 → related basket 2 → Back. Every scenario restored **575px → 575px**. The cursor case retained its original cursor. Results are in `evidence/attempt2-scroll.json`; `attempt2-restored.png` shows the resulting scrolled list. The fixture cursor is synthetic; valid production cursor binding is separately tested in the unit suite. Direct `/app/recoveries/basket-1` and reload both retained a local default Back link.
+
+The initial data-only key attempt failed the actual browser replay because React Router uses previous loader data during the restoration lookup. The submitted correction covers that timing with a regression test. Attempt 1 screenshots and observations above remain historical evidence; its raw-search scroll identity was defective for omitted/reordered defaults, as documented in architect review.
