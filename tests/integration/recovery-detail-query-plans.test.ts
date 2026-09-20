@@ -27,7 +27,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     await loadRecoveryDetailSeed(client, await readFile(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8"));
     await client.query('ANALYZE "whatsapp"."Conversation"');
     db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
-    console.log("POSTGRES_VERSION", (await client.query("SELECT version()")).rows);
+    process.stdout.write(`POSTGRES_VERSION ${JSON.stringify((await client.query("SELECT version()")).rows)}\n`);
   }, 180_000);
   afterAll(async () => { try { await client?.end(); } finally { await postgres?.stop(); } }, 60_000);
 
@@ -51,7 +51,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
   it.each(["first","next","previous","latest"] as const)("%s message plan bounds traversal to 51 rows without sort/join",async direction=>{
     const query=recoveryMessagePageSql("arch019-conv-1-00001",{direction,boundary:direction==="next"||direction==="previous" ? {id:"arch019-m-1-00001-0500",at:"2026-09-01T00:02:05.000Z"}:null});
     const result=await client!.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${query.text}`,recoveryDetailPgValues(query.values));
-    const plan=result.rows[0]["QUERY PLAN"][0];console.log("RECOVERY_MESSAGE_PLAN",direction,JSON.stringify(plan));
+    const plan=result.rows[0]["QUERY PLAN"][0];process.stdout.write(`RECOVERY_MESSAGE_PLAN ${direction} ${JSON.stringify(plan)}\n`);
     const nodes: Record<string,unknown>[]=[];
     function visit(node: Record<string,unknown>) {nodes.push(node);for(const child of (node.Plans??[]) as Record<string,unknown>[])visit(child);}
     visit(plan.Plan);
