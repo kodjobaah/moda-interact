@@ -1,5 +1,8 @@
 import {
-  useSearchParams,
+  redirect,
+  useNavigation,
+  useRevalidator,
+  useRouteError,
   useLoaderData,
 } from "react-router";
 
@@ -7,19 +10,16 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "@/shopify.server";
 
-import Dashboard from "@/components/dashboard/Dashboard";
+import LegacyBillingUnavailable from "@/components/dashboard/LegacyBillingUnavailable";
+import RecoveryOverview from "@/components/dashboard/RecoveryOverview";
+import { loadOverviewPerformance, overviewEmbed } from "./overview.server";
 import Onboarding from "@/components/onboarding/Onboarding";
-import UsageOverview from "@/components/dashboard/UsageOverview";
 import BillingSetupStatus from "@/components/billing-setup/BillingSetupStatus";
 
-import {
-  shopService,
-} from "@/services/shop/shop.service";
+import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
-import {
-  billingService,
-} from "@/services/billing/billing.service";
+import { billingService } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
@@ -34,44 +34,40 @@ import {
 
 import db from "@/db.server";
 
-const MERCHANT_RECOVERY_USAGE_METRIC = "RECOVERY_CONVERSATION";
-
-
+/** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
-const {
-  admin,
-  session,
-} = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
-  const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
-  const requestedBillId = url.searchParams.get("billId");
-  const pendingPage = Number.parseInt(url.searchParams.get("pendingPage") ?? "1", 10);
+  const embed = overviewEmbed(url, session.shop);
+  const pendingPage = Number.parseInt(
+    url.searchParams.get("pendingPage") ?? "1",
+    10,
+  );
 
   /*
    * Resolve Shopify's shop into our
    * internal tenant.
    */
-  const shop =
-    await shopService.resolveShopifyShop({
-      admin,
-      domain: session.shop,
-    });
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
 
-  assertActiveShop(shop, { route: "/app", redirectTo: "/app/merchant-support" });
+  assertActiveShop(shop, {
+    route: "/app",
+    redirectTo: "/app/merchant-support",
+  });
 
-  console.log("Resolved shop:", shop);
   /*
    * ShopSettings is now related using shopId,
    * rather than the Shopify domain string.
    */
-  const settings =
-    await db.shopSettings.findUnique({
-      where: {
-        shopId: shop.id,
-      },
-    });
+  const settings = await db.shopSettings.findUnique({
+    where: {
+      shopId: shop.id,
+    },
+  });
 
-console.log("Resolved shop settings:", settings);
   const merchantUi = merchantUiContext(settings, session);
   const onboardingState = resolveMerchantExperienceState({ shop, settings });
 
@@ -113,13 +109,51 @@ console.log("Resolved shop settings:", settings);
     settings,
     subscription: subscriptionProjection,
   });
-  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
+  if (
+    url.searchParams.get("view") === "detail" &&
+    canAccessMerchantSurface(merchantExperienceState, "USAGE")
+  ) {
+    const params = new URLSearchParams(embed);
+    params.set(
+      "bill",
+      url.searchParams.get("bill") === "past" ? "past" : "current",
+    );
+    const billIds = url.searchParams.getAll("billId");
+    if (billIds.length) {
+      const billId = billIds[0];
+      const period =
+        billIds.length === 1 && /^[A-Za-z0-9_-]{1,128}$/.test(billId)
+          ? await db.billingPeriod.findFirst({
+              where: { id: billId, shopId: shop.id },
+              select: { id: true },
+            })
+          : null;
+      // An explicit selection must never turn into Usage's default period.
+      // Missing, foreign and malformed IDs share one safe outcome; echo none of them.
+      if (!period)
+        return {
+          settings,
+          merchantUi,
+          merchantExperienceState,
+          billingSetup,
+          subscription: null,
+          legacyBillingUnavailable: true,
+          embed,
+        };
+      params.set("billId", period.id);
+    }
+    throw redirect(`/app/usage?${params}`);
+  }
+  const [capacity, performance] = await Promise.all([
+    billingService.getMerchantRecoveryCapacityState(shop.id).catch(() => null),
+    loadOverviewPerformance(shop.id, url, merchantUi, embed),
+  ]);
 
-  console.log("Resolved subscription:", subscriptionProjection);
   const subscriptionState = subscriptionProjection ?? {
-    status: capacity.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
+    status:
+      capacity?.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
     plan: null,
-    observedShopifyPlanHandle: capacity.observedShopifyPlanHandle,
+    observedShopifyPlanHandle: capacity?.observedShopifyPlanHandle,
   };
 
   const pendingRecoveries = canAccessMerchantSurface(
@@ -140,64 +174,6 @@ console.log("Resolved shop settings:", settings);
         items: [],
       };
 
-  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
-  console.log("Resolved recoveries:", recoveries);
-  const allUsageWhere = {
-    shopId: shop.id,
-    metric: MERCHANT_RECOVERY_USAGE_METRIC,
-  };
-
-  const billingPeriods = await db.billingPeriod.findMany({
-    where: { shopId: shop.id },
-    include: {
-      usageEvents: {
-        where: { metric: MERCHANT_RECOVERY_USAGE_METRIC },
-        select: { metric: true, quantity: true },
-      },
-    },
-    orderBy: { periodStart: "desc" },
-  });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId)
-    ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
-  const currentBillingPeriodIds = billingPeriods
-    .filter((period) => period.status === "OPEN")
-    .map((period) => period.id);
-  const pastBillingPeriodIds = billingPeriods
-    .filter((period) => period.status === "CLOSED")
-    .map((period) => period.id);
-  const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
-  const [currentUsageEvents, paidUsageEvents] = await Promise.all([
-    db.usageEvent.findMany({
-      where: { ...allUsageWhere, billingPeriodId: { in: currentBillingPeriodIds } },
-      orderBy: { occurredAt: "desc" },
-    }),
-    db.usageEvent.findMany({
-      where: { ...allUsageWhere, billingPeriodId: { in: pastBillingPeriodIds } },
-      orderBy: { occurredAt: "desc" },
-    }),
-  ]);
-  const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
-  const recoveredRevenueByCurrency = recoveries.reduce((totals, recovery) => {
-    if (recovery.status !== "COMPLETED" || !recovery.currency) return totals;
-    totals[recovery.currency] = (totals[recovery.currency] ?? 0) + Number(recovery.totalPrice ?? 0);
-    return totals;
-  }, {});
-  const messagesSent = recoveries.reduce((total, recovery) => total + (recovery.conversation?.messages.length ?? 0), 0);
-  const recoveryBySourceId = new Map();
-  for (const recovery of recoveries) {
-    const conversation = recovery.conversation;
-    const customerName = [recovery.customer?.firstName, recovery.customer?.lastName].filter(Boolean).join(" ") || recovery.customer?.email || "Guest";
-    recoveryBySourceId.set(recovery.id, { recoveryId: recovery.id, customerName });
-    if (conversation) {
-      recoveryBySourceId.set(conversation.id, { recoveryId: recovery.id, customerName });
-      for (const message of conversation.messages) {
-        recoveryBySourceId.set(message.id, { recoveryId: recovery.id, customerName });
-      }
-    }
-  }
-
-  console.log(recoveryBySourceId);
-
   return {
     settings,
     merchantUi,
@@ -205,80 +181,83 @@ console.log("Resolved shop settings:", settings);
     pricingCatalogue,
     billingSetup,
 
-    subscription: subscriptionState ? {
-      status: subscriptionState.status,
+    subscription: subscriptionState
+      ? {
+          status: subscriptionState.status,
 
-      planHandle:
-        subscriptionState.observedShopifyPlanHandle,
+          planHandle: subscriptionState.observedShopifyPlanHandle,
 
-      planName:
-        subscriptionState.plan?.name ??
-        subscriptionState.observedShopifyPlanHandle,
-      cancelAtEndOfCycle: subscriptionProjection?.cancelAtPeriodEnd ?? false,
-      currentPeriodEnd: subscriptionProjection?.currentPeriodEnd?.toISOString() ?? null,
-      pendingPlan: subscriptionProjection?.pendingPlan ? {
-        name: subscriptionProjection.pendingPlan.name,
-        effectiveAt: subscriptionProjection.pendingEffectiveAt?.toISOString() ?? null,
-      } : null,
-    } : null,
-      capacity,
+          planName:
+            subscriptionState.plan?.name ??
+            subscriptionState.observedShopifyPlanHandle,
+          cancelAtEndOfCycle:
+            subscriptionProjection?.cancelAtPeriodEnd ?? false,
+          currentPeriodEnd:
+            subscriptionProjection?.currentPeriodEnd?.toISOString() ?? null,
+          pendingPlan: subscriptionProjection?.pendingPlan
+            ? {
+                name: subscriptionProjection.pendingPlan.name,
+                effectiveAt:
+                  subscriptionProjection.pendingEffectiveAt?.toISOString() ??
+                  null,
+              }
+            : null,
+        }
+      : null,
+    capacity,
 
-    stats: {
-      abandonedCheckouts: recoveries.length,
-      recoveredCheckouts: completedRecoveries.length,
-      recoveredRevenue: completedRecoveries.reduce((total, recovery) => total + Number(recovery.totalPrice ?? 0), 0),
-      recoveredRevenueByCurrency,
-      messagesSent,
-    },
-    recoveries: recoveries.map((recovery) => {
-      const conversation = recovery.conversation;
-      const messageIds = conversation?.messages.map((message) => message.id) ?? [];
-      const recoveryActions = recoveryUsageEvents.filter((event) => event.sourceId === recovery.id || event.sourceId === conversation?.id || messageIds.includes(event.sourceId));
-      return { id: recovery.id, status: recovery.status, totalPrice: Number(recovery.totalPrice ?? 0), currency: recovery.currency ?? null, detectedAt: recovery.detectedAt.toISOString(), customer: { id: recovery.customer?.id, firstName: recovery.customer?.firstName, lastName: recovery.customer?.lastName, email: recovery.customer?.email }, messageCount: conversation?.messages.length ?? 0, conversations: conversation ? [{ id: conversation.id, type: conversation.type, summary: conversation.summary }] : [], messages: conversation?.messages.map((message) => ({ id: message.id, direction: message.direction, senderType: message.senderType, status: message.status, content: message.content, createdAt: message.createdAt.toISOString() })) ?? [], billableActions: recoveryActions.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, occurredAt: event.occurredAt.toISOString() })) };
-    }),
-    billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
+    performance,
     pendingRecoveries,
-    pendingRecoveriesUpdatedAt: pendingRecoveries.available ? new Date().toISOString() : null,
-    usagePagination: { view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
-    usageSummary: { current: currentUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })), past: paidUsageEvents.map((event) => ({ metric: event.metric, quantity: Number(event.quantity) })) },
+    pendingRecoveriesUpdatedAt: pendingRecoveries.available
+      ? new Date().toISOString()
+      : null,
   };
 };
 
-
 export default function Index() {
-  const {
-    settings,
-    merchantUi,
-    merchantExperienceState,
-    pricingCatalogue,
-    subscription,
-    stats,
-    recoveries,
-    billingPeriods,
-    usageSummary,
-    pendingRecoveries,
-    pendingRecoveriesUpdatedAt,
-    usageView,
-    usagePagination,
-    capacity,
-    billingSetup,
-  } = useLoaderData();
-  const [searchParams] = useSearchParams();
-
-  if (merchantExperienceState === "ONBOARDING" || !settings?.onboardingCompleted) {
-    return billingSetup
-      ? <BillingSetupStatus merchantUi={merchantUi} setup={billingSetup} standalone />
-      : <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
+  const data = useLoaderData();
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
+  if (
+    data.merchantExperienceState === "ONBOARDING" ||
+    !data.settings?.onboardingCompleted
+  ) {
+    return data.billingSetup ? (
+      <BillingSetupStatus
+        merchantUi={data.merchantUi}
+        setup={data.billingSetup}
+        standalone
+      />
+    ) : (
+      <Onboarding
+        merchantUi={data.merchantUi}
+        pricingCatalogue={data.pricingCatalogue}
+      />
+    );
   }
-
-  if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} billingSetup={billingSetup} />;
+  if (data.legacyBillingUnavailable) {
+    return (
+      <LegacyBillingUnavailable
+        merchantUi={data.merchantUi}
+        embed={data.embed}
+      />
+    );
   }
-
-  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} billingSetup={billingSetup} />;
+  return (
+    <RecoveryOverview
+      {...data}
+      busy={navigation.state !== "idle" || revalidator.state !== "idle"}
+      onRefresh={() => revalidator.revalidate()}
+    />
+  );
 }
 
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
+}
 
-export const headers = (/** @type {import("react-router").HeadersArgs} */ headersArgs) => {
+export const headers = (
+  /** @type {import("react-router").HeadersArgs} */ headersArgs,
+) => {
   return boundary.headers(headersArgs);
 };
