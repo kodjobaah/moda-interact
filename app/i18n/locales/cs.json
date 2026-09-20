@@ -491,5 +491,20 @@
   "usageHistory.events": "Stránky využití",
   "usageHistory.empty": "Není dostupné žádné fakturační období.",
   "usageHistory.invalidCursor": "Stránka období je neplatná. Obnovte seznam a pokračujte.",
-  "usageHistory.error": "Historii využití nelze načíst. Zkuste to znovu."
+  "usageHistory.error": "Historii využití nelze načíst. Zkuste to znovu.",
+  "merchantFeatures.title": "Funkce konverzací",
+  "merchantFeatures.description": "Vyberte volitelné funkce svého tarifu. Přidané funkce platí pro nové konverzace; stávající si ponechají původní oprávnění.",
+  "merchantFeatures.empty": "Ve vašem aktuálním tarifu nejsou dostupné žádné vhodné funkce.",
+  "merchantFeatures.optional": "Volitelné",
+  "merchantFeatures.required": "Spravováno tarifem",
+  "merchantFeatures.effectiveOn": "Nyní zapnuto",
+  "merchantFeatures.effectiveOff": "Nyní vypnuto",
+  "merchantFeatures.saving": "Ukládání…",
+  "merchantFeatures.unknown": "Výsledek zatím není znám. Před další změnou ověřte původní uložení.",
+  "merchantFeatures.check": "Ověřit uložení",
+  "merchantFeatures.refresh": "Obnovit nastavení",
+  "merchantFeatures.conflict": "Nastavení se změnilo jinde. Před dalším pokusem je obnovte; vaše údaje byly zachovány.",
+  "merchantFeatures.denied": "Tuto funkci již nelze měnit.",
+  "merchantFeatures.discountHelp": "Pomoc se slevami se řídí volbou níže u bezplatných i placených tarifů. Následné zprávy se účtují zvlášť.",
+  "merchantFeatures.save": "Uložit funkce"
 }

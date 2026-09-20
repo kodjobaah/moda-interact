@@ -491,5 +491,20 @@
   "usageHistory.events": "使用記錄頁",
   "usageHistory.empty": "沒有可用的帳單週期。",
   "usageHistory.invalidCursor": "帳單週期頁面無效，請重設清單後繼續。",
-  "usageHistory.error": "無法載入使用歷史，請重試。"
+  "usageHistory.error": "無法載入使用歷史，請重試。",
+  "merchantFeatures.title": "對話功能",
+  "merchantFeatures.description": "選擇方案內的可選功能。新增功能僅適用於新對話，現有對話保留原有權限。",
+  "merchantFeatures.empty": "目前方案沒有可用功能。",
+  "merchantFeatures.optional": "可選",
+  "merchantFeatures.required": "由方案管理",
+  "merchantFeatures.effectiveOn": "目前已啟用",
+  "merchantFeatures.effectiveOff": "目前已停用",
+  "merchantFeatures.saving": "正在儲存…",
+  "merchantFeatures.unknown": "儲存結果尚未確定。請先檢查原始儲存，再進行其他變更。",
+  "merchantFeatures.check": "檢查儲存",
+  "merchantFeatures.refresh": "重新整理設定",
+  "merchantFeatures.conflict": "設定已在其他位置變更。請重新整理後重試，您的輸入已保留。",
+  "merchantFeatures.denied": "此功能已無法修改。",
+  "merchantFeatures.discountHelp": "免費和付費方案的折扣輔助皆遵循下方選擇。後續提醒另行收費。",
+  "merchantFeatures.save": "儲存功能"
 }

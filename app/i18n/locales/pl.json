@@ -491,5 +491,20 @@
   "usageHistory.events": "Strony użycia",
   "usageHistory.empty": "Brak dostępnego okresu rozliczeniowego.",
   "usageHistory.invalidCursor": "Strona okresów jest nieprawidłowa. Zresetuj listę, aby kontynuować.",
-  "usageHistory.error": "Nie można załadować historii użycia. Spróbuj ponownie."
+  "usageHistory.error": "Nie można załadować historii użycia. Spróbuj ponownie.",
+  "merchantFeatures.title": "Funkcje rozmowy",
+  "merchantFeatures.description": "Wybierz opcjonalne funkcje swojego planu. Dodatki dotyczą nowych rozmów; istniejące zachowują pierwotne uprawnienia.",
+  "merchantFeatures.empty": "Brak dostępnych funkcji w bieżącym planie.",
+  "merchantFeatures.optional": "Opcjonalna",
+  "merchantFeatures.required": "Zarządzana przez plan",
+  "merchantFeatures.effectiveOn": "Obecnie włączona",
+  "merchantFeatures.effectiveOff": "Obecnie wyłączona",
+  "merchantFeatures.saving": "Zapisywanie…",
+  "merchantFeatures.unknown": "Wynik nie jest jeszcze znany. Sprawdź pierwotny zapis przed kolejną zmianą.",
+  "merchantFeatures.check": "Sprawdź zapis",
+  "merchantFeatures.refresh": "Odśwież ustawienia",
+  "merchantFeatures.conflict": "Ustawienia zmieniono w innym miejscu. Odśwież przed ponowną próbą; wpisane dane zachowano.",
+  "merchantFeatures.denied": "Tej funkcji nie można już zmieniać.",
+  "merchantFeatures.discountHelp": "Pomoc z rabatami zależy od wyboru poniżej w planach bezpłatnych i płatnych. Kolejne wiadomości są rozliczane osobno.",
+  "merchantFeatures.save": "Zapisz funkcje"
 }

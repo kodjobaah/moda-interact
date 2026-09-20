@@ -491,5 +491,20 @@
   "usageHistory.events": "Páginas de uso",
   "usageHistory.empty": "Nenhum período de faturamento disponível.",
   "usageHistory.invalidCursor": "A página de períodos é inválida. Redefina a lista para continuar.",
-  "usageHistory.error": "Não foi possível carregar o histórico de uso. Tente novamente."
+  "usageHistory.error": "Não foi possível carregar o histórico de uso. Tente novamente.",
+  "merchantFeatures.title": "Recursos de conversa",
+  "merchantFeatures.description": "Escolha recursos opcionais incluídos no plano. Adições valem para novas conversas; as existentes mantêm as permissões originais.",
+  "merchantFeatures.empty": "Nenhum recurso disponível no seu plano atual.",
+  "merchantFeatures.optional": "Opcional",
+  "merchantFeatures.required": "Gerenciado pelo plano",
+  "merchantFeatures.effectiveOn": "Atualmente ativado",
+  "merchantFeatures.effectiveOff": "Atualmente desativado",
+  "merchantFeatures.saving": "Salvando…",
+  "merchantFeatures.unknown": "O resultado ainda é desconhecido. Verifique o salvamento original antes de outra alteração.",
+  "merchantFeatures.check": "Verificar salvamento",
+  "merchantFeatures.refresh": "Atualizar configurações",
+  "merchantFeatures.conflict": "As configurações mudaram em outro lugar. Atualize antes de tentar novamente; seus dados foram preservados.",
+  "merchantFeatures.denied": "Este recurso não pode mais ser alterado.",
+  "merchantFeatures.discountHelp": "A assistência com descontos segue a opção abaixo, nos planos gratuitos e pagos. Lembretes continuam cobrados separadamente.",
+  "merchantFeatures.save": "Salvar recursos"
 }

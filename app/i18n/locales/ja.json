@@ -491,5 +491,20 @@
   "usageHistory.events": "使用履歴のページ",
   "usageHistory.empty": "利用可能な請求期間がありません。",
   "usageHistory.invalidCursor": "請求期間のページが無効です。一覧をリセットしてください。",
-  "usageHistory.error": "使用履歴を読み込めませんでした。もう一度お試しください。"
+  "usageHistory.error": "使用履歴を読み込めませんでした。もう一度お試しください。",
+  "merchantFeatures.title": "会話機能",
+  "merchantFeatures.description": "プランに含まれるオプション機能を選択します。追加は新しい会話に適用され、既存の会話は元の権限を維持します。",
+  "merchantFeatures.empty": "現在のプランで利用できる機能はありません。",
+  "merchantFeatures.optional": "任意",
+  "merchantFeatures.required": "プランで管理",
+  "merchantFeatures.effectiveOn": "現在有効",
+  "merchantFeatures.effectiveOff": "現在無効",
+  "merchantFeatures.saving": "保存中…",
+  "merchantFeatures.unknown": "保存結果はまだ不明です。次の変更前に元の保存を確認してください。",
+  "merchantFeatures.check": "保存を確認",
+  "merchantFeatures.refresh": "設定を再読み込み",
+  "merchantFeatures.conflict": "設定が別の場所で変更されました。再試行前に再読み込みしてください。入力は保持されています。",
+  "merchantFeatures.denied": "この機能は変更できなくなりました。",
+  "merchantFeatures.discountHelp": "割引支援は無料・有料プランとも下の選択に従います。フォローアップは別途課金されます。",
+  "merchantFeatures.save": "機能を保存"
 }

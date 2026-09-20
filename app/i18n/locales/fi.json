@@ -491,5 +491,20 @@
   "usageHistory.events": "Käyttösivut",
   "usageHistory.empty": "Laskutusjaksoa ei ole saatavilla.",
   "usageHistory.invalidCursor": "Jaksosivu on virheellinen. Nollaa luettelo jatkaaksesi.",
-  "usageHistory.error": "Käyttöhistoriaa ei voitu ladata. Yritä uudelleen."
+  "usageHistory.error": "Käyttöhistoriaa ei voitu ladata. Yritä uudelleen.",
+  "merchantFeatures.title": "Keskustelutoiminnot",
+  "merchantFeatures.description": "Valitse tilaukseesi kuuluvia valinnaisia toimintoja. Lisäykset koskevat uusia keskusteluja; aiemmat säilyttävät alkuperäiset oikeutensa.",
+  "merchantFeatures.empty": "Nykyisessä tilauksessasi ei ole saatavilla sopivia toimintoja.",
+  "merchantFeatures.optional": "Valinnainen",
+  "merchantFeatures.required": "Tilauksesi hallinnoima",
+  "merchantFeatures.effectiveOn": "Käytössä nyt",
+  "merchantFeatures.effectiveOff": "Pois käytöstä nyt",
+  "merchantFeatures.saving": "Tallennetaan…",
+  "merchantFeatures.unknown": "Tulos ei ole vielä tiedossa. Tarkista alkuperäinen tallennus ennen uutta muutosta.",
+  "merchantFeatures.check": "Tarkista tallennus",
+  "merchantFeatures.refresh": "Päivitä asetukset",
+  "merchantFeatures.conflict": "Asetuksia muutettiin muualla. Päivitä ennen uutta yritystä; syöttämäsi tiedot on säilytetty.",
+  "merchantFeatures.denied": "Tätä toimintoa ei voi enää muuttaa.",
+  "merchantFeatures.discountHelp": "Alennusapu noudattaa alla olevaa valintaa sekä ilmaisissa että maksullisissa tilauksissa. Seurantaviestit veloitetaan erikseen.",
+  "merchantFeatures.save": "Tallenna toiminnot"
 }

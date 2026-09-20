@@ -491,5 +491,20 @@
   "usageHistory.events": "หน้าการใช้งาน",
   "usageHistory.empty": "ไม่มีรอบการเรียกเก็บเงินที่พร้อมใช้",
   "usageHistory.invalidCursor": "หน้ารอบการเรียกเก็บเงินไม่ถูกต้อง โปรดรีเซ็ตรายการเพื่อดำเนินการต่อ",
-  "usageHistory.error": "ไม่สามารถโหลดประวัติการใช้งานได้ โปรดลองอีกครั้ง"
+  "usageHistory.error": "ไม่สามารถโหลดประวัติการใช้งานได้ โปรดลองอีกครั้ง",
+  "merchantFeatures.title": "ฟีเจอร์การสนทนา",
+  "merchantFeatures.description": "เลือกฟีเจอร์เสริมที่รวมอยู่ในแผนของคุณ ฟีเจอร์ที่เพิ่มใช้กับการสนทนาใหม่ ส่วนการสนทนาเดิมยังคงสิทธิ์เดิม",
+  "merchantFeatures.empty": "ไม่มีฟีเจอร์ที่ใช้ได้ในแผนปัจจุบัน",
+  "merchantFeatures.optional": "ตัวเลือกเสริม",
+  "merchantFeatures.required": "จัดการโดยแผนของคุณ",
+  "merchantFeatures.effectiveOn": "เปิดใช้งานอยู่",
+  "merchantFeatures.effectiveOff": "ปิดใช้งานอยู่",
+  "merchantFeatures.saving": "กำลังบันทึก…",
+  "merchantFeatures.unknown": "ยังไม่ทราบผลการบันทึก โปรดตรวจสอบการบันทึกเดิมก่อนเปลี่ยนแปลงอีกครั้ง",
+  "merchantFeatures.check": "ตรวจสอบการบันทึก",
+  "merchantFeatures.refresh": "รีเฟรชการตั้งค่า",
+  "merchantFeatures.conflict": "การตั้งค่าถูกเปลี่ยนจากที่อื่น โปรดรีเฟรชก่อนลองใหม่ ข้อมูลที่กรอกยังคงอยู่",
+  "merchantFeatures.denied": "ไม่สามารถแก้ไขฟีเจอร์นี้ได้อีก",
+  "merchantFeatures.discountHelp": "การช่วยเหลือด้านส่วนลดเป็นไปตามตัวเลือกด้านล่างทั้งแผนฟรีและแผนชำระเงิน ข้อความติดตามคิดค่าใช้จ่ายแยกต่างหาก",
+  "merchantFeatures.save": "บันทึกฟีเจอร์"
 }

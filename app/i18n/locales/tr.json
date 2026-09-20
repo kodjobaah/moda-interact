@@ -491,5 +491,20 @@
   "usageHistory.events": "Kullanım sayfaları",
   "usageHistory.empty": "Kullanılabilir fatura dönemi yok.",
   "usageHistory.invalidCursor": "Fatura dönemi sayfası geçersiz. Devam etmek için listeyi sıfırlayın.",
-  "usageHistory.error": "Kullanım geçmişi yüklenemedi. Tekrar deneyin."
+  "usageHistory.error": "Kullanım geçmişi yüklenemedi. Tekrar deneyin.",
+  "merchantFeatures.title": "Sohbet özellikleri",
+  "merchantFeatures.description": "Planınızdaki isteğe bağlı özellikleri seçin. Eklemeler yeni sohbetlere uygulanır; mevcut sohbetler ilk izinlerini korur.",
+  "merchantFeatures.empty": "Mevcut planınızda uygun özellik yok.",
+  "merchantFeatures.optional": "İsteğe bağlı",
+  "merchantFeatures.required": "Planınız tarafından yönetilir",
+  "merchantFeatures.effectiveOn": "Şu anda etkin",
+  "merchantFeatures.effectiveOff": "Şu anda devre dışı",
+  "merchantFeatures.saving": "Kaydediliyor…",
+  "merchantFeatures.unknown": "Sonuç henüz bilinmiyor. Başka bir değişiklikten önce ilk kaydı kontrol edin.",
+  "merchantFeatures.check": "Kaydı kontrol et",
+  "merchantFeatures.refresh": "Ayarları yenile",
+  "merchantFeatures.conflict": "Ayarlar başka bir yerde değişti. Tekrar denemeden önce yenileyin; girdileriniz korundu.",
+  "merchantFeatures.denied": "Bu özellik artık değiştirilemez.",
+  "merchantFeatures.discountHelp": "İndirim yardımı ücretsiz ve ücretli planlarda aşağıdaki seçime bağlıdır. Takip mesajları ayrıca ücretlendirilir.",
+  "merchantFeatures.save": "Özellikleri kaydet"
 }
