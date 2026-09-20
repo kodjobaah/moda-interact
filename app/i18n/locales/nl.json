@@ -291,7 +291,7 @@
   "promotions.action.select": "Promotie selecteren",
   "promotions.action.reselect": "Promotie opnieuw selecteren",
   "promotions.success": "Promotie geselecteerd.",
-  "promotions.error.activeSelected": "Gebruik of verbruik je geselecteerde promotie voordat je een andere kiest.",
+  "promotions.error.activeSelected": "Je huidige promotie blijft geselecteerd totdat deze verloopt. Je kunt pas daarna een andere promotie kiezen.",
   "promotions.error.notEligible": "Deze promotie is niet langer beschikbaar voor je winkel.",
   "promotions.error.unavailable": "Promoties kunnen niet worden gewijzigd zolang je abonnement niet beschikbaar is.",
   "promotions.history.title": "Promotiegeschiedenis",

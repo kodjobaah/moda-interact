@@ -291,7 +291,7 @@
   "promotions.action.select": "Sélectionner la promotion",
   "promotions.action.reselect": "Sélectionner à nouveau",
   "promotions.success": "Promotion sélectionnée.",
-  "promotions.error.activeSelected": "Utilisez ou épuisez la promotion sélectionnée avant d’en choisir une autre.",
+  "promotions.error.activeSelected": "Votre promotion actuelle reste sélectionnée jusqu’à son expiration. Vous ne pourrez choisir une autre promotion qu’après son expiration.",
   "promotions.error.notEligible": "Cette promotion n’est plus disponible pour votre boutique.",
   "promotions.error.unavailable": "Les promotions ne peuvent pas être modifiées lorsque votre abonnement est indisponible.",
   "promotions.history.title": "Historique des promotions",

@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { Form, Link, useActionData, useLoaderData, useRouteError } from "react-router";
+import { Form, Link, useActionData, useLoaderData, useNavigation, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import { authenticate } from "@/shopify.server";
@@ -8,6 +9,7 @@ import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import {
   getEligiblePromotionOffers,
+  getCurrentPromotionSelectionState,
   getPromotionHistory,
   PromotionSelectionError,
   selectPromotionOffer,
@@ -31,7 +33,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const offerPageValue = Number(url.searchParams.get("offerPage"));
   const merchantUi = merchantUiContext(settings, session);
   const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale;
-  const allOffers = await getEligiblePromotionOffers(shop.id, promotionLocale);
+  const [allOffers, promotionSelection, history] = await Promise.all([
+    getEligiblePromotionOffers(shop.id, promotionLocale),
+    getCurrentPromotionSelectionState(shop.id, promotionLocale),
+    getPromotionHistory(shop.id, promotionLocale, historyPageValue),
+  ]);
   const offerPageSize = 6;
   const offerTotalPages = Math.max(1, Math.ceil(allOffers.length / offerPageSize));
   const requestedOfferPage = Number.isInteger(offerPageValue) && offerPageValue > 0 ? offerPageValue : 1;
@@ -46,7 +52,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       totalEntries: allOffers.length,
       totalPages: offerTotalPages,
     },
-    history: await getPromotionHistory(shop.id, promotionLocale, historyPageValue),
+    promotionSelection,
+    history,
   };
 }
 
@@ -80,9 +87,33 @@ type PromotionOffer = Awaited<ReturnType<typeof loader>>["offers"][number];
 type PromotionHistoryEntry = Awaited<ReturnType<typeof getPromotionHistory>>["entries"][number];
 
 export default function PromotionsRoute() {
-  const { merchantUi, offers, offersPagination, history } = useLoaderData<typeof loader>();
+  const { merchantUi, offers, offersPagination, promotionSelection, history } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const i18n = createMerchantI18n(merchantUi);
+  const navigation = useNavigation();
+  const submitLockRef = useRef(false);
+  const [submittingCampaignId, setSubmittingCampaignId] = useState<string | null>(null);
+  const selectionLocked = promotionSelection?.locked === true;
+
+  useEffect(() => {
+    if (navigation.state === "idle") {
+      submitLockRef.current = false;
+      setSubmittingCampaignId(null);
+    }
+  }, [navigation.state]);
+
+  const submissionInFlight = navigation.state !== "idle" || submittingCampaignId !== null;
+  const guardPromotionSubmit =
+    (campaignId: string) =>
+    (event: FormEvent<HTMLFormElement>) => {
+      if (selectionLocked || submitLockRef.current) {
+        event.preventDefault();
+        return;
+      }
+
+      submitLockRef.current = true;
+      setSubmittingCampaignId(campaignId);
+    };
 
   return (
     <s-page heading={i18n.t("promotions.page.title")}>
@@ -113,6 +144,19 @@ export default function PromotionsRoute() {
           <div className="moda-promotions-notice moda-promotions-notice-error" role="alert">
             <span aria-hidden="true">!</span>
             <p>{i18n.t(actionData.messageKey)}</p>
+          </div>
+        ) : null}
+
+        {promotionSelection?.locked === true ? (
+          <div className="moda-promotions-lock-notice" role="status">
+            <h3>
+              {i18n.t("promotions.status.selected")}
+              {promotionSelection.merchantTitle ? `: ${promotionSelection.merchantTitle}` : ""}
+            </h3>
+            <p>{i18n.t("promotions.error.activeSelected")}</p>
+            <p><strong>{i18n.t("promotions.expires")}</strong>: {i18n.formatDate(promotionSelection.expiresAt)}</p>
+            <p>{i18n.t("promotions.remaining", { quantity: promotionSelection.remainingQuantity })}</p>
+            {promotionSelection.exhausted ? <p>{i18n.t("promotions.status.exhausted")}</p> : null}
           </div>
         ) : null}
 
@@ -154,10 +198,17 @@ export default function PromotionsRoute() {
                     <span><strong>{i18n.t("promotions.expires")}</strong>{i18n.formatDate(offer.expiresAt)}</span>
                     {offer.previouslyClaimed && !offer.exhausted ? <span><strong>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</strong></span> : null}
                   </div>
-                  <Form method="post" className="moda-promotion-card-action">
+                  <Form method="post" className="moda-promotion-card-action" onSubmit={guardPromotionSubmit(offer.id)}>
                     <input type="hidden" name="campaignId" value={offer.id} />
-                    <button className="moda-promotion-button" type="submit">
-                      {offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}
+                    <button
+                      className="moda-promotion-button"
+                      type="submit"
+                      disabled={selectionLocked || submissionInFlight || offer.currentlySelected}
+                      aria-busy={submittingCampaignId === offer.id}
+                    >
+                      {offer.currentlySelected
+                        ? i18n.t("promotions.status.selected")
+                        : offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}
                     </button>
                   </Form>
                 </article>

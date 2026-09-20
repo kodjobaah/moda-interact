@@ -291,7 +291,7 @@
   "promotions.action.select": "Vybrat akci",
   "promotions.action.reselect": "Vybrat akci znovu",
   "promotions.success": "Akce byla vybrána.",
-  "promotions.error.activeSelected": "Než vyberete jinou akci, využijte nebo vyčerpejte aktuálně vybranou akci.",
+  "promotions.error.activeSelected": "Aktuální promo akce zůstává vybraná až do vypršení platnosti. Jinou promo akci můžete vybrat až poté.",
   "promotions.error.notEligible": "Tato akce již není pro váš obchod dostupná.",
   "promotions.error.unavailable": "Akce nelze měnit, když vaše předplatné není dostupné.",
   "promotions.history.title": "Historie akcí",

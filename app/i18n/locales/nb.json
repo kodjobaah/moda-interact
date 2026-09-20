@@ -291,7 +291,7 @@
   "promotions.action.select": "Velg kampanje",
   "promotions.action.reselect": "Velg kampanje på nytt",
   "promotions.success": "Kampanje valgt.",
-  "promotions.error.activeSelected": "Bruk eller tøm den valgte kampanjen før du velger en annen.",
+  "promotions.error.activeSelected": "Den gjeldende kampanjen forblir valgt til den utløper. Du kan først velge en annen kampanje etter at den har utløpt.",
   "promotions.error.notEligible": "Denne kampanjen er ikke lenger tilgjengelig for butikken din.",
   "promotions.error.unavailable": "Kampanjer kan ikke endres mens abonnementet ditt er utilgjengelig.",
   "promotions.history.title": "Kampanjehistorikk",

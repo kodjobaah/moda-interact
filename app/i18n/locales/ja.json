@@ -291,7 +291,7 @@
   "promotions.action.select": "プロモーションを選択",
   "promotions.action.reselect": "プロモーションを再選択",
   "promotions.success": "プロモーションを選択しました。",
-  "promotions.error.activeSelected": "別のプロモーションを選択する前に、現在のプロモーションを使用または使い切ってください。",
+  "promotions.error.activeSelected": "現在のプロモーションは有効期限が切れるまで選択されたままです。別のプロモーションを選択できるのは、有効期限が切れた後だけです。",
   "promotions.error.notEligible": "このプロモーションはストアで利用できなくなりました。",
   "promotions.error.unavailable": "サブスクリプションが利用できない間はプロモーションを変更できません。",
   "promotions.history.title": "プロモーション履歴",

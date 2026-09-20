@@ -127,6 +127,17 @@
 .moda-promotions-notice-error{border-color:#e9caca;background:#fff7f7;color:#7a2c2c}
 .moda-promotions-notice-error>span{background:#a73d3d;color:#fff}
 
+.moda-promotions-lock-notice{
+  padding:18px 20px;
+  border:1px solid var(--promo-f200);
+  border-left:5px solid var(--promo-f700);
+  border-radius:16px;
+  background:var(--promo-f100);
+  color:var(--promo-ink);
+}
+.moda-promotions-lock-notice h3{margin:0 0 8px;color:var(--promo-f900);font-size:19px}
+.moda-promotions-lock-notice p{margin:5px 0;color:var(--promo-muted);line-height:1.5}
+
 .moda-promotions-panel{
   padding:26px;
   border:1px solid var(--promo-line);
@@ -266,6 +277,8 @@
   transition:transform .16s ease,box-shadow .16s ease;
 }
 .moda-promotion-button:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(20,61,44,.17)}
+.moda-promotion-button:disabled{background:var(--promo-muted);color:#fff;cursor:not-allowed;opacity:.65}
+.moda-promotion-button:disabled:hover{transform:none;box-shadow:none}
 .moda-promotion-button:focus-visible{outline:3px solid rgba(63,125,97,.28);outline-offset:3px}
 
 .moda-promotion-history-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
