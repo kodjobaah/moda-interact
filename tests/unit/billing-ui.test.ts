@@ -215,11 +215,11 @@ describe("merchant billing UI", () => {
     expect(billingOptionsRouteSource).toContain(
       "getMerchantRecoveryCapacityState(shop.id)",
     );
-    expect(billingOptionsRouteSource).toContain(
+    expect(billingOptionsRouteSource).not.toContain(
       "getMerchantShopifyLifecycleState(shop.id)",
     );
     expect(billingOptionsRouteSource).toContain(
-      "getMerchantBillingState(shop.id)",
+      "getMerchantBillingState(shop.id, commercial)",
     );
     expect(billingOptionsRouteSource).toContain(
       'managePlansHref="/app/billing/select"',
@@ -231,16 +231,93 @@ describe("merchant billing UI", () => {
     expect(billingPurchaseHubSource).toContain("SubscriptionChangePanel");
   });
 
+
+  it("reuses one verified active-subscription snapshot for commercial presentation and top-up offers", async () => {
+    const commercial = {
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: {
+        planHandle: "free",
+        description: "Free",
+        price: { amount: "0.00", currency: "USD" },
+        billingPeriod: "EVERY_30_DAYS",
+        currentPeriodStart: "2026-09-19T11:32:08.000Z",
+        currentPeriodEnd: "2026-10-19T11:32:08.000Z",
+        trialEndsAt: null,
+        cancelAtEndOfCycle: false,
+        pendingUpdate: null,
+        usageItems: [],
+      },
+      modaMapping: { id: "free-1", name: "Free", kind: "FREE" },
+      mappingStatus: "MAPPED",
+      pendingModaMapping: null,
+    };
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "ACTIVE",
+      observedShopifyPlanHandle: "free",
+      plan: { id: "free-1", shopifyPlanHandle: "free", name: "Free", kind: "FREE", active: true },
+    });
+    getMerchantShopifySubscriptionState.mockResolvedValue(commercial);
+    getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "AVAILABLE" });
+    getMerchantBillingState.mockResolvedValue({
+      billingPeriodPhase: "ACTIVE",
+      recoveryCreditOffers: [],
+      recoveryCreditOfferVerificationState: "VERIFIED",
+      purchasedRecoveryCredits: { available: 0 },
+      latestPurchase: null,
+      purchaseEligible: false,
+    });
+
+    const data = await billingOptionsLoader({
+      request: new Request("https://example.test/app/billing/options?plan_change=unverified&requested_plan_handle=free"),
+    } as never);
+
+    expect(data.verificationState).toBe("ACTIVE_SUBSCRIPTION");
+    expect(data.requestedSelection).toBeNull();
+    expect(getMerchantBillingState).toHaveBeenCalledWith("shop-1", commercial);
+    expect(getMerchantShopifySubscriptionState).toHaveBeenCalledTimes(1);
+    expect(getMerchantShopifyLifecycleState).not.toHaveBeenCalled();
+  });
+
+  it("returns the durable mapped contract when live Shopify verification is unavailable", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "ACTIVE",
+      observedShopifyPlanHandle: "free",
+      currentPeriodStart: new Date("2026-09-19T12:32:08.000Z"),
+      currentPeriodEnd: new Date("2026-10-19T12:32:08.000Z"),
+      cancelAtPeriodEnd: false,
+      plan: { id: "free-1", shopifyPlanHandle: "free", name: "Free", kind: "FREE", active: true },
+    });
+    getMerchantShopifySubscriptionState.mockRejectedValue(new Error("Partner API unavailable"));
+    getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "AVAILABLE" });
+
+    const data = await billingOptionsLoader({
+      request: new Request("https://example.test/app/billing/options"),
+    } as never);
+
+    expect(data.verificationState).toBe("VERIFICATION_UNAVAILABLE");
+    expect(data.currentContract).toEqual({
+      shopifyPlanHandle: "free",
+      mappedModaPlanName: "Free",
+      mappedModaPlanKind: "FREE",
+      currentPeriodStart: "2026-09-19T12:32:08.000Z",
+      currentPeriodEnd: "2026-10-19T12:32:08.000Z",
+      cancelAtEndOfCycle: false,
+      price: null,
+      interval: null,
+    });
+    expect(data.commercial).toBeNull();
+    expect(getMerchantBillingState).not.toHaveBeenCalled();
+  });
+
   it("fails closed for a scheduled cancellation before creating a top-up", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getMerchantRecoveryCapacityState.mockResolvedValue({
       availability: "AVAILABLE",
       canStartRecovery: true,
     });
-    getMerchantShopifyLifecycleState.mockResolvedValue({
-      state: "ACTIVE",
-      subscription: null,
-      latestEvent: null,
-    });
+    getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });
     getMerchantShopifySubscriptionState.mockResolvedValue({
       status: "ACTIVE_SUBSCRIPTION",
       subscription: {
@@ -305,7 +382,7 @@ describe("merchant billing UI", () => {
     ["BILLING_ATTENTION", true, { onboardingCompleted: true }, "UNMAPPED"],
   ] as const)("derives purchase-history presentation for %s", async (_state, expected, settings, subscriptionStatus) => {
     findShopSettings.mockResolvedValue(settings);
-    getSubscription.mockResolvedValue({ status: subscriptionStatus });
+    getSubscriptionProjection.mockResolvedValue({ status: subscriptionStatus });
     const data = await billingOptionsLoader({
       request: new Request("https://example.test/app/billing/options"),
     } as never);

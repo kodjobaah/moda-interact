@@ -53,7 +53,7 @@ const surfaceMatrix: Record<MerchantExperienceState, readonly MerchantSurface[]>
   SIGNED_OUT: [],
   REINSTALLING: ["SUPPORT"],
   SUPPORT_ONLY: ["SUPPORT"],
-  ONBOARDING: ["HOME", "BILLING_OPTIONS", "SUPPORT", "PLAN_SELECT"],
+  ONBOARDING: ["HOME","SUPPORT", "PLAN_SELECT"],
   ACTIVE: [
     "HOME",
     "USAGE",
@@ -76,7 +76,6 @@ const navigationByState: Record<MerchantExperienceState, readonly MerchantNaviga
   SUPPORT_ONLY: [{ id: "messages", href: "/app/merchant-support" }],
   ONBOARDING: [
     { id: "home", href: "/app" },
-    { id: "billing", href: "/app/billing/options" },
     { id: "messages", href: "/app/merchant-support" },
   ],
   ACTIVE: [

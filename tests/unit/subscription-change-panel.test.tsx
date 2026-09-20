@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
+import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 import SubscriptionChangePanel from "../../app/components/dashboard/SubscriptionChangePanel";
 
@@ -20,15 +21,17 @@ const pending = {
 
 function render(overrides: Record<string, unknown> = {}) {
   return renderToStaticMarkup(
-    <SubscriptionChangePanel
-      merchantUi={merchantUi}
-      current={current}
-      pending={pending}
-      providerVerificationState="ACTIVE_SUBSCRIPTION"
-      managePlansHref="/app/billing/select"
-      managePlansAvailable
-      {...overrides}
-    />,
+    <MemoryRouter>
+      <SubscriptionChangePanel
+        merchantUi={merchantUi}
+        current={current}
+        pending={pending}
+        providerVerificationState="ACTIVE_SUBSCRIPTION"
+        managePlansHref="/app/billing/select"
+        managePlansAvailable
+        {...overrides}
+      />
+    </MemoryRouter>,
   );
 }
 
@@ -38,12 +41,20 @@ describe("SubscriptionChangePanel", () => {
     expect(markup).toContain("growth");
     expect(markup).toContain("75.00");
     expect(markup).toContain("£75.00");
-    expect(markup).toContain("EVERY_30_DAYS");
+    expect(markup).not.toContain("EVERY_30_DAYS");
+    expect(markup).toContain("per month");
+    expect(markup).toContain("Current plan");
     expect(markup).toContain("starter");
     expect(markup).toContain("35.00");
     expect(markup).toContain("2026");
     expect(markup).toContain("Growth");
     expect(markup).toContain("Starter");
+  });
+
+
+  it("does not repeat the mapped current plan name", () => {
+    const markup = render({ pending: null });
+    expect(markup.match(/Growth/g)).toHaveLength(1);
   });
 
   it("keeps cancellation distinct from a pending provider update", () => {
@@ -78,6 +89,7 @@ describe("SubscriptionChangePanel", () => {
   it("uses only the supplied hosted plan-management destination", () => {
     const markup = render();
     expect(markup).toContain('href="/app/billing/select"');
+    expect(markup).not.toContain('target="_top"');
     expect(markup).not.toContain("moda-interact-admin");
   });
 
@@ -92,6 +104,19 @@ describe("SubscriptionChangePanel", () => {
     const requestedCard = markup.slice(markup.indexOf("moda-provider-plan-awaiting-confirmation"));
     expect(requestedCard).not.toContain("£75.00");
     expect(requestedCard).not.toContain("EVERY_30_DAYS");
+  });
+
+  it("uses React Router navigation for the embedded transition route", async () => {
+    const markup = render({ pending: null });
+    expect(markup).toContain('href="/app/billing/select"');
+    expect(markup).not.toContain('target="_top"');
+    expect(markup).toContain("Change plan");
+    expect(markup).toContain("moda-plan-actions");
+
+    const source = await readFile(new URL("../../app/components/dashboard/SubscriptionChangePanel.jsx", import.meta.url), "utf8");
+    expect(source).toContain('import { Link } from "react-router"');
+    expect(source).toContain('<Link className="moda-action-button moda-action-button-primary" to={managePlansHref}>');
+    expect(source).not.toContain('<a className="moda-action-button moda-action-button-primary"');
   });
 
   it("contains no local catalogue, rank inference, or provider mutation", async () => {

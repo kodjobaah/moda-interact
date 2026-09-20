@@ -39,7 +39,7 @@ if (host === "localhost") {
 
 export default defineConfig({
   server: {
-    allowedHosts: [host,".trycloudflare.com"],
+    allowedHosts: [host, ".trycloudflare.com"],
     cors: {
       preflightContinue: true,
     },
@@ -54,6 +54,16 @@ export default defineConfig({
     alias: {
       "@": fileURLToPath(new URL("./app", import.meta.url)),
     },
+    dedupe: ["react", "react-dom", "react-router"],
+  },
+
+  optimizeDeps: {
+    include: [
+      "react",
+      "react-dom",
+      "react-router",
+      "@shopify/app-bridge-react",
+    ],
   },
 
   plugins: [reactRouter(), tsconfigPaths(), tailwindcss()],
@@ -62,7 +72,4 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
 
-  optimizeDeps: {
-    include: ["@shopify/app-bridge-react"],
-  },
 });

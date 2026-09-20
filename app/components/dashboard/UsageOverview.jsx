@@ -8,12 +8,13 @@ import PendingRecoveries from "./PendingRecoveries";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
 import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
+import BillingSetupStatus from "../billing-setup/BillingSetupStatus";
 
 void React;
 
 const colors = scaleOrdinal(schemeTableau10);
 /** @type {Record<string, string>} */
-const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
+const metricKeys = { RECOVERY_CONVERSATION: "chart.metricCheckoutRecovery" };
 
 /** @param {{ title: string, events: Array<{ metric: string, quantity: number }>, i18n: any }} props */
 function UsagePie({ title, events, i18n }) {
@@ -53,33 +54,40 @@ function UsagePie({ title, events, i18n }) {
  *   subscription: object,
  *   capacity: object,
  *   merchantExperienceState?: string,
- *   pricingCatalogue?: Array<any>
+ *   pricingCatalogue?: Array<any>,
+ *   billingSetup?: object | null
  * }} props
  */
-export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity, merchantExperienceState, pricingCatalogue }) {
+export default function UsageOverview({ usageSummary, billingPeriods, pendingRecoveries, pendingRecoveriesUpdatedAt, merchantUi, subscription, capacity, merchantExperienceState, pricingCatalogue, billingSetup }) {
   const i18n = createMerchantI18n(merchantUi);
   const navigate = useNavigate();
   const pastPeriods = billingPeriods.filter((period) => period.status === "CLOSED");
   return (
     <s-page heading={i18n.t("usage.title")}>
       <Breadcrumbs items={[]} current={i18n.t("usage.title")} merchantUi={merchantUi} />
-      <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
+      {billingSetup ? (
+        <BillingSetupStatus merchantUi={merchantUi} setup={billingSetup} />
+      ) : (
+        <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
+      )}
 
-      <s-section>
-               <div className="usage-overview-grid">
-        <s-heading>{i18n.t("billing.currentPlan")}</s-heading>
+      {!billingSetup ? (
+        <s-section>
+          <div className="usage-overview-grid">
+            <s-heading>{i18n.t("billing.currentPlan")}</s-heading>
 
-        {/* existing billing information */}
+            {/* existing billing information */}
 
-        {merchantExperienceState === "NO_CONTRACT" ? (
-          <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction />
-        ) : (
-          <s-button href="/app/billing/options" variant="primary">
-            {i18n.t("billingCommerce.actions.manageCapacity")}
-          </s-button>
-        )}
-      </div>
-      </s-section>
+            {merchantExperienceState === "NO_CONTRACT" ? (
+              <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction />
+            ) : (
+              <s-button href="/app/billing/options" variant="primary">
+                {i18n.t("billingCommerce.actions.manageCapacity")}
+              </s-button>
+            )}
+          </div>
+        </s-section>
+      ) : null}
       <s-section>
         <div className="usage-overview-grid">
           <div className="usage-overview-column">
@@ -104,4 +112,4 @@ export default function UsageOverview({ usageSummary, billingPeriods, pendingRec
 }
 
 UsagePie.propTypes = { title: PropTypes.string, events: PropTypes.arrayOf(PropTypes.object), i18n: PropTypes.shape({ t: PropTypes.func, formatNumber: PropTypes.func }) };
-UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object, merchantExperienceState: PropTypes.string, pricingCatalogue: PropTypes.arrayOf(PropTypes.object) };
+UsageOverview.propTypes = { usageSummary: PropTypes.object, billingPeriods: PropTypes.arrayOf(PropTypes.object), pendingRecoveries: PropTypes.object, pendingRecoveriesUpdatedAt: PropTypes.string, merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }), subscription: PropTypes.object, capacity: PropTypes.object, merchantExperienceState: PropTypes.string, pricingCatalogue: PropTypes.arrayOf(PropTypes.object), billingSetup: PropTypes.object };

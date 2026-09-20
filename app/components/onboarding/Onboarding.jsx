@@ -29,13 +29,19 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
           <div>
             <div className="mi-eyebrow mi-eyebrow-light">{t("onboarding.cta.eyebrow")}</div>
             <h2 id="mi-cta-title">{t("onboarding.cta.title")}</h2>
-            <p>{t("onboarding.cta.description")}</p>
+            <p>
+              <a className="mi-cta-link" href="/app/billing/select">
+                {t("onboarding.cta.description")}
+              </a>
+            </p>
             <div className="mi-shopify-note">
               <span className="mi-lock" aria-hidden="true">✓</span>
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
-          {cataloguePlans.length > 0 && <s-button href="/app/billing/select" variant="primary">{t("onboarding.choosePlan")}</s-button>}
+          <s-button href="/app/billing/select" variant="primary">
+            {t("onboarding.choosePlan")}
+          </s-button>
         </section>
 
         <section className="mi-hero" aria-labelledby="mi-onboarding-hero-title">
@@ -49,7 +55,9 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             </p>
 
             <div className="mi-hero-actions">
-              {cataloguePlans.length > 0 && <s-button href="/app/billing/select" variant="primary">{t("onboarding.choosePlan")}</s-button>}
+              <s-button href="/app/billing/select" variant="primary">
+                {t("onboarding.choosePlan")}
+              </s-button>
               <a className="mi-text-link" href="#how-it-works">
                 {t("onboarding.hero.howItWorks")}
               </a>

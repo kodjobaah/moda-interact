@@ -48,8 +48,10 @@ function purchase(id: string, status: string, availableAmount: number) {
     currentAmount: availableAmount,
     reservedAmount: availableAmount === 0 ? 1 : 0,
     availableAmount,
+    heldForRefundAmount: status === "WITHDRAWN" ? 1 : 0,
     planName: "Growth",
     planHandle: "growth",
+    eventHandle: id === "active" ? "bronze-top-up-growth" : `${id}-top-up-growth`,
     originalProviderPurchase: { amount: "12.50", currency: "USD" },
     latestRefund: status === "WITHDRAWN" ? { status: "REQUESTED" } : null,
     completedRefund:
@@ -95,7 +97,11 @@ describe("purchased credit history manager", () => {
 
     expect(markup).toContain("Awaiting Shopify confirmation");
     expect(markup).toContain("Active");
+    expect(markup).toContain("Bronze Top Up Growth");
+    expect(markup).toContain("Request refund for selected purchases");
+    expect(markup).toContain("moda-purchase-card-actions");
     expect(markup).toContain("Refund pending");
+    expect(markup).toContain("held for refund: 1");
     expect(markup).toContain("Completed");
     expect(markup).toContain("Refunded");
     expect(markup).toContain("No credits are available to refund");
@@ -108,6 +114,16 @@ describe("purchased credit history manager", () => {
     expect(markup).not.toContain("5.00");
     expect(markup).not.toContain("providerSubscriptionId");
     expect(markup).not.toContain("billingPeriodId");
+  });
+
+  it("renders the dedicated purchase-history presentation and guards duplicate refund submission", () => {
+    expect(managerSource).toContain('import "./BillingPurchaseHub.css"');
+    expect(managerSource).toContain('className="moda-billing-panel moda-purchase-history"');
+    expect(managerSource).toContain('className="moda-purchase-toolbar"');
+    expect(managerSource).toContain('className="moda-purchase-dialog"');
+    expect(managerSource).toContain("const submissionLock = useRef(false)");
+    expect(managerSource).toContain("if (selectedPurchases.length === 0 || submissionLock.current) return");
+    expect(managerSource).toContain("setSelected([purchase.id])");
   });
 
   it("keeps refund requests server-authoritative and bounded to unique purchase IDs", () => {

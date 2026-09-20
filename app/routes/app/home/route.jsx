@@ -10,6 +10,7 @@ import { authenticate } from "@/shopify.server";
 import Dashboard from "@/components/dashboard/Dashboard";
 import Onboarding from "@/components/onboarding/Onboarding";
 import UsageOverview from "@/components/dashboard/UsageOverview";
+import BillingSetupStatus from "@/components/billing-setup/BillingSetupStatus";
 
 import {
   shopService,
@@ -23,11 +24,17 @@ import { readPendingRecoveries } from "@/services/pending-recovery/pending-recov
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
 import {
+  buildMerchantBillingSetupState,
+  shouldShowMerchantBillingSetup,
+} from "@/services/billing/merchant-billing-setup-state";
+import {
   canAccessMerchantSurface,
   resolveMerchantExperienceState,
 } from "@/services/shop/merchant-route-access-policy";
 
 import db from "@/db.server";
+
+const MERCHANT_RECOVERY_USAGE_METRIC = "RECOVERY_CONVERSATION";
 
 
 export const loader = async ({ request }) => {
@@ -67,29 +74,49 @@ const {
 console.log("Resolved shop settings:", settings);
   const merchantUi = merchantUiContext(settings, session);
   const onboardingState = resolveMerchantExperienceState({ shop, settings });
-  const pricingCatalogue = await readActiveMerchantPricingCatalogue({ locale: merchantUi.locale });
-/*
-   * Let the merchant complete onboarding first.
-   */
-  if (!settings || !settings.onboardingCompleted) {
-    return { settings, merchantUi, merchantExperienceState: onboardingState, pricingCatalogue, subscription: null };
-  }
-
-  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
 
   /*
-   * Read local billing state.
-   *
-   * We don't need to call Shopify here.
+   * The home route only polls Moda's local projection. Shopify reconciliation
+   * remains a background/provider responsibility. Reading the projection before
+   * the onboarding early-return lets us distinguish a genuinely fresh install
+   * from a merchant who has already selected a Shopify managed-pricing option.
    */
-  const [subscription, subscriptionProjection] = await Promise.all([
-    billingService.getSubscription(shop.id),
+  const [pricingCatalogue, subscriptionProjection] = await Promise.all([
+    readActiveMerchantPricingCatalogue({ locale: merchantUi.locale }),
     billingService.getSubscriptionProjection(shop.id),
   ]);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const billingSetup = shouldShowMerchantBillingSetup(
+    settings?.onboardingCompleted,
+    subscriptionProjection,
+  )
+    ? buildMerchantBillingSetupState(subscriptionProjection, pricingCatalogue)
+    : null;
 
-  console.log("Resolved subscription:", subscription);
-  const subscriptionState = subscription ?? {
+  /*
+   * A fresh install still sees onboarding. Once durable local subscription
+   * evidence exists, never send the merchant back to plan selection while the
+   * Shopify subscription is being confirmed/reconciled.
+   */
+  if (!settings || !settings.onboardingCompleted) {
+    return {
+      settings,
+      merchantUi,
+      merchantExperienceState: onboardingState,
+      pricingCatalogue,
+      subscription: null,
+      billingSetup,
+    };
+  }
+
+  const merchantExperienceState = resolveMerchantExperienceState({
+    shop,
+    settings,
+    subscription: subscriptionProjection,
+  });
+  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
+
+  console.log("Resolved subscription:", subscriptionProjection);
+  const subscriptionState = subscriptionProjection ?? {
     status: capacity.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
     plan: null,
     observedShopifyPlanHandle: capacity.observedShopifyPlanHandle,
@@ -115,14 +142,39 @@ console.log("Resolved shop settings:", settings);
 
   const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { id: true, firstName: true, lastName: true, email: true } }, conversation: { include: { messages: true } } }, orderBy: { detectedAt: "desc" } });
   console.log("Resolved recoveries:", recoveries);
-  const allUsageWhere = { shopId: shop.id };
-  
-  const billingPeriods = await db.billingPeriod.findMany({ where: { shopId: shop.id }, include: { usageEvents: { select: { metric: true, quantity: true } } }, orderBy: { periodStart: "desc" } });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId) ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+  const allUsageWhere = {
+    shopId: shop.id,
+    metric: MERCHANT_RECOVERY_USAGE_METRIC,
+  };
+
+  const billingPeriods = await db.billingPeriod.findMany({
+    where: { shopId: shop.id },
+    include: {
+      usageEvents: {
+        where: { metric: MERCHANT_RECOVERY_USAGE_METRIC },
+        select: { metric: true, quantity: true },
+      },
+    },
+    orderBy: { periodStart: "desc" },
+  });
+  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId)
+    ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
+  const currentBillingPeriodIds = billingPeriods
+    .filter((period) => period.status === "OPEN")
+    .map((period) => period.id);
+  const pastBillingPeriodIds = billingPeriods
+    .filter((period) => period.status === "CLOSED")
+    .map((period) => period.id);
   const recoveryUsageEvents = await db.usageEvent.findMany({ where: allUsageWhere, orderBy: { occurredAt: "desc" } });
   const [currentUsageEvents, paidUsageEvents] = await Promise.all([
-    db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: null }, orderBy: { occurredAt: "desc" } }),
-    db.usageEvent.findMany({ where: { shopId: shop.id, reportedAt: { not: null } }, orderBy: { occurredAt: "desc" } }),
+    db.usageEvent.findMany({
+      where: { ...allUsageWhere, billingPeriodId: { in: currentBillingPeriodIds } },
+      orderBy: { occurredAt: "desc" },
+    }),
+    db.usageEvent.findMany({
+      where: { ...allUsageWhere, billingPeriodId: { in: pastBillingPeriodIds } },
+      orderBy: { occurredAt: "desc" },
+    }),
   ]);
   const completedRecoveries = recoveries.filter((recovery) => recovery.status === "COMPLETED");
   const recoveredRevenueByCurrency = recoveries.reduce((totals, recovery) => {
@@ -151,6 +203,7 @@ console.log("Resolved shop settings:", settings);
     merchantUi,
     merchantExperienceState,
     pricingCatalogue,
+    billingSetup,
 
     subscription: subscriptionState ? {
       status: subscriptionState.status,
@@ -208,18 +261,21 @@ export default function Index() {
     usageView,
     usagePagination,
     capacity,
+    billingSetup,
   } = useLoaderData();
   const [searchParams] = useSearchParams();
 
   if (merchantExperienceState === "ONBOARDING" || !settings?.onboardingCompleted) {
-    return <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
+    return billingSetup
+      ? <BillingSetupStatus merchantUi={merchantUi} setup={billingSetup} standalone />
+      : <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />;
   }
 
   if (searchParams.get("view") !== "detail") {
-    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} />;
+    return <UsageOverview usageSummary={usageSummary} billingPeriods={billingPeriods} pendingRecoveries={pendingRecoveries} pendingRecoveriesUpdatedAt={pendingRecoveriesUpdatedAt} merchantUi={merchantUi} subscription={subscription} capacity={capacity} merchantExperienceState={merchantExperienceState} pricingCatalogue={pricingCatalogue} billingSetup={billingSetup} />;
   }
 
-  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} />;
+  return <Dashboard stats={stats} recoveries={recoveries} usageView={usageView} usagePagination={usagePagination} merchantUi={merchantUi} subscription={subscription} capacity={capacity} billingSetup={billingSetup} />;
 }
 
 

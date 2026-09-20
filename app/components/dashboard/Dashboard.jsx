@@ -4,8 +4,9 @@ import { Link } from "react-router";
 import Breadcrumbs from "./Breadcrumbs";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import LifecycleRestrictionBanner from "./LifecycleRestrictionBanner";
+import BillingSetupStatus from "../billing-setup/BillingSetupStatus";
 
-export default function Dashboard({ stats, recoveries, usageView, usagePagination, merchantUi, subscription, capacity }) {
+export default function Dashboard({ stats, recoveries, usageView, usagePagination, merchantUi, subscription, capacity, billingSetup }) {
   const i18n = createMerchantI18n(merchantUi);
   const usageUrl = `/app/usage?bill=${usageView}${usagePagination.billId ? `&billId=${usagePagination.billId}` : ""}`;
   const periodLabel = usagePagination.periodStart && usagePagination.periodEnd
@@ -15,7 +16,7 @@ export default function Dashboard({ stats, recoveries, usageView, usagePaginatio
   return (
     <s-page heading="Moda Interact">
       <Breadcrumbs items={[{ label: i18n.t("usage.title"), href: "/app" }]} current={periodLabel} merchantUi={merchantUi} />
-      <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />
+      {billingSetup ? <BillingSetupStatus merchantUi={merchantUi} setup={billingSetup} /> : <LifecycleRestrictionBanner merchantUi={merchantUi} subscription={subscription} capacity={capacity} />}
       <Stats {...stats} recoveries={recoveries} merchantUi={merchantUi} />
       <Link className="usage-detail-link dashboard-usage-link" to={usageUrl}>{i18n.t("dashboard.viewAllUsage")}</Link>
     </s-page>
@@ -30,4 +31,5 @@ Dashboard.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
   subscription: PropTypes.object,
   capacity: PropTypes.object,
+  billingSetup: PropTypes.object,
 };

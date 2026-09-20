@@ -61,9 +61,12 @@ export type PurchaseHistoryItem = {
   currentAmount: number;
   reservedAmount: number;
   availableAmount: number;
+  heldForRefundAmount: number;
   refundEligible: boolean | null;
+  refundUnavailableReason: "ZERO_VALUE" | "PROVIDER_CONTEXT" | null;
   planName: string;
   planHandle: string;
+  eventHandle: string;
   originalProviderPurchase: {
     amount: string;
     currency: string;
@@ -92,6 +95,7 @@ export type PurchaseHistoryPage = {
 export type RefundOutcomeCode =
   | "REQUESTED"
   | "REFUND_NOT_AVAILABLE"
+  | "ZERO_VALUE_NOT_REFUNDABLE"
   | "NOT_ACTIVE"
   | "ALREADY_WITHDRAWN"
   | "ALREADY_REFUNDED"
@@ -122,6 +126,7 @@ export type ReactivationOutcome =
 type RefundRequest = {
   shopId: string;
   shopifyShopId: string;
+  shopifyPartnerDevelopment?: boolean;
   purchaseId: string;
   requestId: string;
   shopifyUserId?: string | null;
@@ -176,7 +181,13 @@ function refundSummary(
 function historyItem(
   purchase: PurchaseRow,
   refundEligible: boolean | null = null,
+  refundUnavailableReason: PurchaseHistoryItem["refundUnavailableReason"] = null,
 ): PurchaseHistoryItem {
+  const unreservedAmount = Math.max(
+    purchase.currentAmount - purchase.reservedAmount,
+    0,
+  );
+
   return {
     id: purchase.id,
     status: purchase.status,
@@ -185,13 +196,19 @@ function historyItem(
     creditsGranted: purchase.creditsGranted,
     currentAmount: purchase.currentAmount,
     reservedAmount: purchase.reservedAmount,
-    availableAmount: Math.max(
-      purchase.currentAmount - purchase.reservedAmount,
-      0,
-    ),
+    availableAmount:
+      purchase.status === RecoveryCreditPurchaseStatus.ACTIVE
+        ? unreservedAmount
+        : 0,
+    heldForRefundAmount:
+      purchase.status === RecoveryCreditPurchaseStatus.WITHDRAWN
+        ? unreservedAmount
+        : 0,
     refundEligible,
+    refundUnavailableReason,
     planName: purchase.plan?.name ?? purchase.shopifyPlanHandleSnapshot,
     planHandle: purchase.shopifyPlanHandleSnapshot,
+    eventHandle: purchase.shopifyEventHandleSnapshot,
     originalProviderPurchase:
       purchase.providerPurchaseAmount == null ||
       !purchase.providerPurchaseCurrency
@@ -271,6 +288,7 @@ export class RecoveryCreditPurchaseManagementService {
   async listPurchaseHistory(input: {
     shopId: string;
     shopifyShopId?: string;
+    shopifyPartnerDevelopment?: boolean;
     page?: number;
     pageSize?: number;
     status?: RecoveryCreditPurchaseStatus;
@@ -311,18 +329,37 @@ export class RecoveryCreditPurchaseManagementService {
       pageSize: size,
       total,
       purchases: await Promise.all(
-        purchases.map(async (purchase) =>
-          historyItem(
+        purchases.map(async (purchase) => {
+          if (
+            !input.shopifyShopId ||
+            purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE
+          ) {
+            return historyItem(purchase);
+          }
+
+          const providerAmount =
+            purchase.providerPurchaseAmount == null
+              ? null
+              : Number(purchase.providerPurchaseAmount);
+          const zeroValueDevelopmentPurchase =
+            providerAmount === 0 && input.shopifyPartnerDevelopment === true;
+          const monetaryPurchase =
+            providerAmount !== null &&
+            Number.isFinite(providerAmount) &&
+            providerAmount > 0;
+
+          if (!monetaryPurchase && !zeroValueDevelopmentPurchase) {
+            return historyItem(purchase, false, "ZERO_VALUE");
+          }
+
+          const currentProviderContext =
+            await this.isCurrentProviderContext(purchase, input.shopifyShopId);
+          return historyItem(
             purchase,
-            input.shopifyShopId &&
-              purchase.status === RecoveryCreditPurchaseStatus.ACTIVE
-              ? await this.isCurrentProviderContext(
-                  purchase,
-                  input.shopifyShopId,
-                )
-              : null,
-          ),
-        ),
+            currentProviderContext,
+            currentProviderContext ? null : "PROVIDER_CONTEXT",
+          );
+        }),
       ),
     };
   }
@@ -591,13 +628,29 @@ export class RecoveryCreditPurchaseManagementService {
                 reservedAmount: purchase.reservedAmount,
                 availableAmount,
               };
+            const providerPurchaseAmount =
+              purchase.providerPurchaseAmount == null
+                ? null
+                : Number(purchase.providerPurchaseAmount);
             if (
-              purchase.providerPurchaseAmount == null ||
-              Number(purchase.providerPurchaseAmount) <= 0
+              providerPurchaseAmount == null ||
+              !Number.isFinite(providerPurchaseAmount) ||
+              providerPurchaseAmount < 0
             )
               return {
                 purchaseId: input.purchaseId,
                 code: "REFUND_NOT_AVAILABLE",
+                currentAmount: purchase.currentAmount,
+                reservedAmount: purchase.reservedAmount,
+                availableAmount,
+              };
+            if (
+              providerPurchaseAmount === 0 &&
+              input.shopifyPartnerDevelopment !== true
+            )
+              return {
+                purchaseId: input.purchaseId,
+                code: "ZERO_VALUE_NOT_REFUNDABLE",
                 currentAmount: purchase.currentAmount,
                 reservedAmount: purchase.reservedAmount,
                 availableAmount,
@@ -640,6 +693,8 @@ export class RecoveryCreditPurchaseManagementService {
                   purchase.providerSubscriptionIdSnapshot,
                 planHandleSnapshot: purchase.shopifyPlanHandleSnapshot,
                 eventHandleSnapshot: purchase.shopifyEventHandleSnapshot,
+                shopifyPartnerDevelopmentSnapshot:
+                  input.shopifyPartnerDevelopment === true,
                 purchaseProviderAmountSnapshot: purchase.providerPurchaseAmount,
                 purchaseProviderCurrencySnapshot:
                   purchase.providerPurchaseCurrency,

@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("react-router", () => ({
   Link: (props) => <a {...props}>link</a>,
   useNavigate: () => vi.fn(),
+  useRevalidator: () => ({ state: "idle", revalidate: vi.fn() }),
 }));
 vi.mock("../../app/components/dashboard/Breadcrumbs", () => ({ default: () => null }));
 vi.mock("../../app/components/dashboard/PendingRecoveries", () => ({ default: () => null }));
@@ -60,6 +61,29 @@ describe("UsageOverview merchant pricing state", () => {
     const markup = renderState("NO_CONTRACT", []);
 
     expect(markup).toContain("Pricing is currently unavailable.");
+    expect(markup).not.toContain('href="/app/billing/select"');
+    expect(markup).not.toContain('href="/app/billing/options"');
+  });
+
+  it("suppresses plan-selection actions while billing setup is still reconciling", () => {
+    const markup = renderToStaticMarkup(
+      <UsageOverview
+        {...baseProps}
+        merchantExperienceState="BILLING_ATTENTION"
+        pricingCatalogue={pricingCatalogue}
+        billingSetup={{
+          phase: "FINALIZING_SUBSCRIPTION",
+          planHandle: "database-plan",
+          planName: "Database Plan",
+          currentPeriodStart: "2026-09-01T00:00:00.000Z",
+          currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+          lastSyncedAt: "2026-09-18T21:45:40.710Z",
+        }}
+      />,
+    );
+
+    expect(markup).toContain("Your Shopify subscription is confirmed");
+    expect(markup).toContain("Database Plan");
     expect(markup).not.toContain('href="/app/billing/select"');
     expect(markup).not.toContain('href="/app/billing/options"');
   });

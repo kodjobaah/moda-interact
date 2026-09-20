@@ -44,7 +44,7 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("entry.campaignTitle ?? i18n.t(\"promotions.history.titleUnavailable\")");
     expect(routeSource).toContain("const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale");
     expect(routeSource).toContain("getEligiblePromotionOffers(shop.id, promotionLocale)");
-    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, pageValue)");
+    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, historyPageValue)");
     expect(routeSource).not.toContain("offer.name");
     expect(routeSource).not.toContain("entry.campaignName");
     for (const internalField of ["platformAdminId", "targetPlanId", "targetShopId", "requestKey", "audit"]) {
@@ -52,9 +52,22 @@ describe("promotion merchant route", () => {
     }
   });
 
+  it("renders a structured merchant promotions experience for empty and populated states", () => {
+    expect(routeSource).toContain('import "./PromotionsRoute.css"');
+    expect(routeSource).toContain('className="moda-promotions-hero"');
+    expect(routeSource).toContain('className="moda-promotions-panel"');
+    expect(routeSource).toContain('className="moda-promotions-empty"');
+    expect(routeSource).toContain('className="moda-promotions-offer-grid"');
+    expect(routeSource).toContain('className="moda-promotion-button"');
+    expect(routeSource).toContain('className="moda-promotion-history-list"');
+  });
+
   it("renders tenant-safe history fields and bounded pagination without mutation controls", () => {
     expect(routeSource).toContain("getPromotionHistory");
+    expect(routeSource).toContain("offerPage");
     expect(routeSource).toContain("historyPage");
+    expect(routeSource).toContain("offersPagination");
+    expect(routeSource).toContain("promotionPageHref");
     expect(routeSource).toContain("entry.quantityGranted");
     expect(routeSource).toContain("entry.committedQuantity");
     expect(routeSource).toContain("entry.remainingQuantity");

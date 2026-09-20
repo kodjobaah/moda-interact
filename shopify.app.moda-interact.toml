@@ -16,15 +16,10 @@ api_version = "2026-07"
   uri = "/webhooks"
   topics = [
   "checkouts/create",
-  "carts/create",
-  "carts/update",
   "checkouts/update",
   "orders/create",
-  "discounts/create",
-  "discounts/update",
-  "discounts/delete",
-  "discounts/redeemcode_added",
-  "discounts/redeemcode_removed"
+  "carts/update",
+  "carts/create"
 ]
 
   [[webhooks.subscriptions]]
@@ -41,7 +36,7 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_locales,read_markets,read_orders,read_products,read_discounts"
+scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 

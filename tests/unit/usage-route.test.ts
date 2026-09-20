@@ -80,4 +80,37 @@ describe("usage route loader", () => {
     });
     expect(findUsageEvents).toHaveBeenCalled();
   });
+  it("shows recovery-conversation usage only for the selected billing period", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscription.mockResolvedValue({ status: "ACTIVE" });
+    findBillingPeriods.mockResolvedValue([
+      { id: "period-open", status: "OPEN", periodStart: new Date("2026-09-01T00:00:00.000Z"), periodEnd: new Date("2026-10-01T00:00:00.000Z"), usageEvents: [] },
+    ]);
+
+    await loader({ request: new Request("https://example.test/app/usage?bill=current") });
+
+    expect(findBillingPeriods).toHaveBeenCalledWith(expect.objectContaining({
+      include: {
+        usageEvents: {
+          where: { metric: "RECOVERY_CONVERSATION" },
+          select: { metric: true, quantity: true },
+        },
+      },
+    }));
+    expect(findUsageEvents).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        shopId: "shop-1",
+        billingPeriodId: "period-open",
+        metric: "RECOVERY_CONVERSATION",
+      },
+    }));
+    expect(countUsageEvents).toHaveBeenCalledWith({
+      where: {
+        shopId: "shop-1",
+        billingPeriodId: "period-open",
+        metric: "RECOVERY_CONVERSATION",
+      },
+    });
+  });
+
 });

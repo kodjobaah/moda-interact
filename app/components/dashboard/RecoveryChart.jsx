@@ -5,7 +5,7 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statusKeys = { COMPLETED: "chart.statusRecovered", ENGAGED: "chart.statusEngaged", MESSAGE_SENT: "chart.statusMessageSent", DETECTED: "chart.statusDetected", EXPIRED: "chart.statusExpired", CANCELLED: "chart.statusCancelled" };
 const colors = scaleOrdinal(schemeTableau10);
-const metricKeys = { checkout_recovery: "chart.metricCheckoutRecovery", conversation: "chart.metricConversation", agent_message: "chart.metricAgentMessage", whatsapp_message: "chart.metricWhatsappMessage" };
+const metricKeys = { RECOVERY_CONVERSATION: "chart.metricCheckoutRecovery" };
 const senderKeys = { CUSTOMER: "chart.senderCustomer", AGENT: "chart.senderAgent" };
 const messageStatusKeys = { SENT: "chart.statusSent", DELIVERED: "chart.statusDelivered", FAILED: "chart.statusFailed" };
 
