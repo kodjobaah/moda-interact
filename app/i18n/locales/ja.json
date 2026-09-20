@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "プロモーションの有効期限：不明",
   "overview.refunding": "返金処理中：{count, number}",
   "overview.pendingHint": "待機中の候補はまだリカバリーを開始していない場合があります。キューが空でもリカバリーの稼働状態は判断できません。",
-  "legacyBilling.unavailable": "指定された請求期間は利用できません。他の期間は選択されていません。"
+  "legacyBilling.unavailable": "指定された請求期間は利用できません。他の期間は選択されていません。",
+  "merchantNav.home": "ホーム",
+  "merchantNav.overview": "概要",
+  "merchantNav.billing": "請求",
+  "merchantNav.support": "サポート",
+  "usageHistory.title": "使用履歴",
+  "usageHistory.breadcrumb": "パンくずリスト",
+  "usageHistory.periods": "請求期間",
+  "usageHistory.events": "使用履歴のページ",
+  "usageHistory.empty": "利用可能な請求期間がありません。",
+  "usageHistory.invalidCursor": "請求期間のページが無効です。一覧をリセットしてください。",
+  "usageHistory.error": "使用履歴を読み込めませんでした。もう一度お試しください。"
 }

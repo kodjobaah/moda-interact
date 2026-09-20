@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Promosyon bitişi: bilinmiyor",
   "overview.refunding": "İade ediliyor: {count, number}",
   "overview.pendingHint": "Kuyruktaki adaylar henüz kurtarma başlatmamış olabilir. Boş kuyruk kurtarmanın çalışma durumunu göstermez.",
-  "legacyBilling.unavailable": "İstenen fatura dönemi kullanılamıyor. Başka bir dönem seçilmedi."
+  "legacyBilling.unavailable": "İstenen fatura dönemi kullanılamıyor. Başka bir dönem seçilmedi.",
+  "merchantNav.home": "Ana sayfa",
+  "merchantNav.overview": "Genel bakış",
+  "merchantNav.billing": "Faturalandırma",
+  "merchantNav.support": "Destek",
+  "usageHistory.title": "Kullanım geçmişi",
+  "usageHistory.breadcrumb": "Gezinti yolu",
+  "usageHistory.periods": "Fatura dönemleri",
+  "usageHistory.events": "Kullanım sayfaları",
+  "usageHistory.empty": "Kullanılabilir fatura dönemi yok.",
+  "usageHistory.invalidCursor": "Fatura dönemi sayfası geçersiz. Devam etmek için listeyi sıfırlayın.",
+  "usageHistory.error": "Kullanım geçmişi yüklenemedi. Tekrar deneyin."
 }

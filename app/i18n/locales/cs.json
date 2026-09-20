@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Konec akce: nedostupný",
   "overview.refunding": "Probíhá vrácení: {count, number}",
   "overview.pendingHint": "Kandidáti ve frontě nemuseli ještě zahájit obnovení. Prázdná fronta nevypovídá o stavu obnovení.",
-  "legacyBilling.unavailable": "Požadované fakturační období není dostupné. Nebylo vybráno jiné období."
+  "legacyBilling.unavailable": "Požadované fakturační období není dostupné. Nebylo vybráno jiné období.",
+  "merchantNav.home": "Domů",
+  "merchantNav.overview": "Přehled",
+  "merchantNav.billing": "Fakturace",
+  "merchantNav.support": "Podpora",
+  "usageHistory.title": "Historie využití",
+  "usageHistory.breadcrumb": "Navigační cesta",
+  "usageHistory.periods": "Fakturační období",
+  "usageHistory.events": "Stránky využití",
+  "usageHistory.empty": "Není dostupné žádné fakturační období.",
+  "usageHistory.invalidCursor": "Stránka období je neplatná. Obnovte seznam a pokračujte.",
+  "usageHistory.error": "Historii využití nelze načíst. Zkuste to znovu."
 }

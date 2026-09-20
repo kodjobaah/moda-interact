@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Vencimiento de promoción: no disponible",
   "overview.refunding": "En reembolso: {count, number}",
   "overview.pendingHint": "Los candidatos pendientes no necesariamente han iniciado una recuperación. Una cola vacía no indica el estado de funcionamiento de las recuperaciones.",
-  "legacyBilling.unavailable": "El período de facturación solicitado no está disponible. No se ha seleccionado otro período."
+  "legacyBilling.unavailable": "El período de facturación solicitado no está disponible. No se ha seleccionado otro período.",
+  "merchantNav.home": "Inicio",
+  "merchantNav.overview": "Resumen",
+  "merchantNav.billing": "Facturación",
+  "merchantNav.support": "Soporte",
+  "usageHistory.title": "Historial de uso",
+  "usageHistory.breadcrumb": "Ruta de navegación",
+  "usageHistory.periods": "Períodos de facturación",
+  "usageHistory.events": "Páginas de uso",
+  "usageHistory.empty": "No hay ningún período de facturación disponible.",
+  "usageHistory.invalidCursor": "La página de períodos no es válida. Restablece la lista para continuar.",
+  "usageHistory.error": "No se pudo cargar el historial de uso. Inténtalo de nuevo."
 }

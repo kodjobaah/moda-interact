@@ -1,3 +1,4 @@
+import { overviewEmbed } from "../../home/overview.server";
 import BillingPurchaseHub from "@/components/dashboard/BillingPurchaseHub";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import { billingService } from "@/services/billing/billing.service";
@@ -8,7 +9,11 @@ import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
-import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import {
+  canAccessMerchantSurface,
+  getMerchantDeniedRedirect,
+  resolveMerchantExperienceState,
+} from "@/services/shop/merchant-route-access-policy";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "@/services/otel/otel.runtime";
 import { SubscriptionProjectionStatus } from "@prisma/client";
@@ -19,17 +24,28 @@ const logger = createLogger({
 });
 
 function providerReadError(error: unknown): string {
-  return error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500);
+  return error instanceof Error
+    ? error.message.slice(0, 500)
+    : String(error).slice(0, 500);
 }
 
-function durableCurrentContract(subscription: Awaited<ReturnType<typeof billingService.getSubscriptionProjection>>) {
+function durableCurrentContract(
+  subscription: Awaited<
+    ReturnType<typeof billingService.getSubscriptionProjection>
+  >,
+) {
   if (!subscription?.plan) return null;
-  const shopifyPlanHandle = subscription.observedShopifyPlanHandle ?? subscription.plan.shopifyPlanHandle;
+  const shopifyPlanHandle =
+    subscription.observedShopifyPlanHandle ??
+    subscription.plan.shopifyPlanHandle;
   if (!shopifyPlanHandle) return null;
   return {
     shopifyPlanHandle,
     mappedModaPlanName: subscription.plan.name,
-    mappedModaPlanKind: subscription.plan.kind === "FREE" ? "FREE" as const : "PAID_METERED" as const,
+    mappedModaPlanKind:
+      subscription.plan.kind === "FREE"
+        ? ("FREE" as const)
+        : ("PAID_METERED" as const),
     currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null,
     currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
     cancelAtEndOfCycle: subscription.cancelAtPeriodEnd,
@@ -38,7 +54,11 @@ function durableCurrentContract(subscription: Awaited<ReturnType<typeof billingS
   };
 }
 
-function durableLifecycleState(subscription: Awaited<ReturnType<typeof billingService.getSubscriptionProjection>>) {
+function durableLifecycleState(
+  subscription: Awaited<
+    ReturnType<typeof billingService.getSubscriptionProjection>
+  >,
+) {
   switch (subscription?.status) {
     case SubscriptionProjectionStatus.ACTIVE:
     case SubscriptionProjectionStatus.TRIALING:
@@ -55,14 +75,44 @@ function durableLifecycleState(subscription: Awaited<ReturnType<typeof billingSe
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
-  assertActiveShop(shop, { route: "/app/billing/options", capability: "manage-billing", redirectTo: "/app/merchant-support" });
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
+  assertActiveShop(shop, {
+    route: "/app/billing/options",
+    capability: "manage-billing",
+    redirectTo: "/app/merchant-support",
+  });
+  const settings = await db.shopSettings.findUnique({
+    where: { shopId: shop.id },
+  });
   const subscription = await billingService.getSubscriptionProjection(shop.id);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const merchantExperienceState = resolveMerchantExperienceState({
+    shop,
+    settings,
+    subscription,
+  });
   const currentContract = durableCurrentContract(subscription);
-  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "BILLING_OPTIONS") } });
-  const purchaseHistoryAvailable = canAccessMerchantSurface(merchantExperienceState, "BILLING_PURCHASE_HISTORY");
+  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS"))
+    throw new Response(null, {
+      status: 302,
+      headers: {
+        Location: getMerchantDeniedRedirect(
+          merchantExperienceState,
+          "BILLING_OPTIONS",
+        ),
+      },
+    });
+  const usageHistoryAvailable = canAccessMerchantSurface(
+    merchantExperienceState,
+    "USAGE",
+  );
+  const usageHistoryHref = `/app/usage?${new URLSearchParams(overviewEmbed(url, session.shop))}`;
+  const purchaseHistoryAvailable = canAccessMerchantSurface(
+    merchantExperienceState,
+    "BILLING_PURCHASE_HISTORY",
+  );
   const merchantUi = merchantUiContext(settings, session);
 
   try {
@@ -75,8 +125,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       billingService.getMerchantShopifySubscriptionState(shop.id),
       billingService.getMerchantRecoveryCapacityState(shop.id),
     ]);
-    const commercial = commercialResult.status === "fulfilled" ? commercialResult.value : null;
-    const capacity = capacityResult.status === "fulfilled" ? capacityResult.value : null;
+    const commercial =
+      commercialResult.status === "fulfilled" ? commercialResult.value : null;
+    const capacity =
+      capacityResult.status === "fulfilled" ? capacityResult.value : null;
 
     if (commercialResult.status === "rejected") {
       logger.warn("billing.options.provider_verification_failed", {
@@ -91,7 +143,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     let topUp = null;
     if (commercial) {
       try {
-        topUp = await billingService.getMerchantBillingState(shop.id, commercial);
+        topUp = await billingService.getMerchantBillingState(
+          shop.id,
+          commercial,
+        );
       } catch (error) {
         logger.warn("billing.options.topup_read_failed", {
           shopId: shop.id,
@@ -101,23 +156,28 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     const lifecycleState = durableLifecycleState(subscription);
-    const verificationState = lifecycleState === "FROZEN"
-      ? "FROZEN"
-      : commercial?.status ?? "VERIFICATION_UNAVAILABLE";
-    const requestedPlanHandle = url.searchParams.get("requested_plan_handle")?.trim() ?? "";
+    const verificationState =
+      lifecycleState === "FROZEN"
+        ? "FROZEN"
+        : (commercial?.status ?? "VERIFICATION_UNAVAILABLE");
+    const requestedPlanHandle =
+      url.searchParams.get("requested_plan_handle")?.trim() ?? "";
     const planChange = url.searchParams.get("plan_change");
     const providerCurrentHandle = commercial?.subscription?.planHandle ?? null;
-    const providerPendingHandle = commercial?.subscription?.pendingUpdate?.planHandle ?? null;
-    const scheduledCancellation = commercial?.status === "ACTIVE_SUBSCRIPTION" &&
+    const providerPendingHandle =
+      commercial?.subscription?.pendingUpdate?.planHandle ?? null;
+    const scheduledCancellation =
+      commercial?.status === "ACTIVE_SUBSCRIPTION" &&
       commercial.subscription.cancelAtEndOfCycle &&
       !commercial.subscription.pendingUpdate;
-    const requestedSelection = requestedPlanHandle.length > 0
-      && requestedPlanHandle.length <= 128
-      && (planChange === "mismatch" || planChange === "unverified")
-      && requestedPlanHandle !== providerCurrentHandle
-      && requestedPlanHandle !== providerPendingHandle
-      ? { shopifyPlanHandle: requestedPlanHandle }
-      : null;
+    const requestedSelection =
+      requestedPlanHandle.length > 0 &&
+      requestedPlanHandle.length <= 128 &&
+      (planChange === "mismatch" || planChange === "unverified") &&
+      requestedPlanHandle !== providerCurrentHandle &&
+      requestedPlanHandle !== providerPendingHandle
+        ? { shopifyPlanHandle: requestedPlanHandle }
+        : null;
     return {
       merchantUi,
       commercial,
@@ -129,25 +189,67 @@ export async function loader({ request }: LoaderFunctionArgs) {
       verificationState,
       scheduledCancellation,
       requestedSelection,
+      usageHistoryAvailable,
+      usageHistoryHref,
       purchaseHistoryAvailable,
     };
   } catch {
-    const requestedPlanHandle = url.searchParams.get("requested_plan_handle")?.trim() ?? "";
+    const requestedPlanHandle =
+      url.searchParams.get("requested_plan_handle")?.trim() ?? "";
     const planChange = url.searchParams.get("plan_change");
-    return { merchantUi, commercial: null, currentContract, capacity: null, topUp: null, billingPeriodPhase: null, lifecycleState: "UNRESOLVED", verificationState: "VERIFICATION_UNAVAILABLE", scheduledCancellation: false, requestedSelection: requestedPlanHandle.length > 0 && requestedPlanHandle.length <= 128 && (planChange === "mismatch" || planChange === "unverified") ? { shopifyPlanHandle: requestedPlanHandle } : null, purchaseHistoryAvailable };
+    return {
+      merchantUi,
+      commercial: null,
+      currentContract,
+      capacity: null,
+      topUp: null,
+      billingPeriodPhase: null,
+      lifecycleState: "UNRESOLVED",
+      verificationState: "VERIFICATION_UNAVAILABLE",
+      scheduledCancellation: false,
+      requestedSelection:
+        requestedPlanHandle.length > 0 &&
+        requestedPlanHandle.length <= 128 &&
+        (planChange === "mismatch" || planChange === "unverified")
+          ? { shopifyPlanHandle: requestedPlanHandle }
+          : null,
+      purchaseHistoryAvailable,
+      usageHistoryAvailable,
+      usageHistoryHref,
+    };
   }
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
-  assertActiveShop(shop, { route: "/app/billing/options", capability: "purchase-recovery-credits", redirectTo: "/app/merchant-support" });
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
+  assertActiveShop(shop, {
+    route: "/app/billing/options",
+    capability: "purchase-recovery-credits",
+    redirectTo: "/app/merchant-support",
+  });
   const [settings, subscription] = await Promise.all([
     db.shopSettings.findUnique({ where: { shopId: shop.id } }),
     billingService.getSubscriptionProjection(shop.id),
   ]);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
-  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "BILLING_OPTIONS") } });
+  const merchantExperienceState = resolveMerchantExperienceState({
+    shop,
+    settings,
+    subscription,
+  });
+  if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS"))
+    throw new Response(null, {
+      status: 302,
+      headers: {
+        Location: getMerchantDeniedRedirect(
+          merchantExperienceState,
+          "BILLING_OPTIONS",
+        ),
+      },
+    });
   const [capacity, liveCommercial] = await Promise.all([
     billingService.getMerchantRecoveryCapacityState(shop.id),
     billingService.getMerchantShopifySubscriptionState(shop.id),
@@ -164,7 +266,9 @@ export async function action({ request }: ActionFunctionArgs) {
     liveCommercial.status !== "ACTIVE_SUBSCRIPTION" ||
     scheduledCancellation
   ) {
-    throw new Error("Recovery credit packs are unavailable while Shopify billing is restricted.");
+    throw new Error(
+      "Recovery credit packs are unavailable while Shopify billing is restricted.",
+    );
   }
   const formData = await request.formData();
   const purchase = await billingService.requestRecoveryCreditPack(
@@ -185,40 +289,114 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function BillingOptionsPage() {
   const data = useLoaderData<typeof loader>();
   const i18n = createMerchantI18n(data.merchantUi);
-  const providerSubscription = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.subscription : null;
-  const mapping = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.modaMapping : null;
-  const mappingStatus = data.commercial?.status === "ACTIVE_SUBSCRIPTION" ? data.commercial.mappingStatus : null;
-  const providerMappedCurrentContract = data.verificationState === "ACTIVE_SUBSCRIPTION"
-    && mappingStatus === "MAPPED";
-  const topUpState = data.topUp ? {
-    configured: providerMappedCurrentContract && data.topUp.recoveryCreditOffers.length > 0,
-    purchaseEligible: data.verificationState === "ACTIVE_SUBSCRIPTION" && mappingStatus === "MAPPED" && data.lifecycleState === "ACTIVE" && !data.scheduledCancellation && data.topUp.purchaseEligible,
-    offers: providerMappedCurrentContract ? data.topUp.recoveryCreditOffers : [],
-    offerVerificationState: data.topUp.recoveryCreditOfferVerificationState,
-    paidIncludedCreditsAvailable: data.capacity?.paidIncluded?.remaining ?? null,
-    freeLifetime: data.capacity?.freeLifetime
-      ? {
-          granted: data.capacity.freeLifetime.granted,
-          remaining: data.capacity.freeLifetime.remaining,
-        }
-      : null,
-    promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
-    purchasedCreditsAvailable: data.capacity?.purchased.available ?? data.topUp.purchasedRecoveryCredits.available,
-    latestPurchase: data.topUp.latestPurchase,
-    unresolvedPurchases: data.topUp.unresolvedPurchases,
-  } : { configured: false, purchaseEligible: false, offers: [], offerVerificationState: "VERIFICATION_UNAVAILABLE", freeLifetime: null, purchasedCreditsAvailable: 0, latestPurchase: null, unresolvedPurchases: [] };
+  const providerSubscription =
+    data.commercial?.status === "ACTIVE_SUBSCRIPTION"
+      ? data.commercial.subscription
+      : null;
+  const mapping =
+    data.commercial?.status === "ACTIVE_SUBSCRIPTION"
+      ? data.commercial.modaMapping
+      : null;
+  const mappingStatus =
+    data.commercial?.status === "ACTIVE_SUBSCRIPTION"
+      ? data.commercial.mappingStatus
+      : null;
+  const providerMappedCurrentContract =
+    data.verificationState === "ACTIVE_SUBSCRIPTION" &&
+    mappingStatus === "MAPPED";
+  const topUpState = data.topUp
+    ? {
+        configured:
+          providerMappedCurrentContract &&
+          data.topUp.recoveryCreditOffers.length > 0,
+        purchaseEligible:
+          data.verificationState === "ACTIVE_SUBSCRIPTION" &&
+          mappingStatus === "MAPPED" &&
+          data.lifecycleState === "ACTIVE" &&
+          !data.scheduledCancellation &&
+          data.topUp.purchaseEligible,
+        offers: providerMappedCurrentContract
+          ? data.topUp.recoveryCreditOffers
+          : [],
+        offerVerificationState: data.topUp.recoveryCreditOfferVerificationState,
+        paidIncludedCreditsAvailable:
+          data.capacity?.paidIncluded?.remaining ?? null,
+        freeLifetime: data.capacity?.freeLifetime
+          ? {
+              granted: data.capacity.freeLifetime.granted,
+              remaining: data.capacity.freeLifetime.remaining,
+            }
+          : null,
+        promotionalCreditsAvailable: data.capacity?.promotional.remaining ?? 0,
+        purchasedCreditsAvailable:
+          data.capacity?.purchased.available ??
+          data.topUp.purchasedRecoveryCredits.available,
+        latestPurchase: data.topUp.latestPurchase,
+        unresolvedPurchases: data.topUp.unresolvedPurchases,
+      }
+    : {
+        configured: false,
+        purchaseEligible: false,
+        offers: [],
+        offerVerificationState: "VERIFICATION_UNAVAILABLE",
+        freeLifetime: null,
+        purchasedCreditsAvailable: 0,
+        latestPurchase: null,
+        unresolvedPurchases: [],
+      };
   const current = providerSubscription
-    ? { shopifyPlanHandle: providerSubscription.planHandle, mappedModaPlanName: mapping?.name ?? null, price: providerSubscription.price, interval: providerSubscription.billingPeriod, currentPeriodEnd: providerSubscription.currentPeriodEnd, cancelAtEndOfCycle: providerSubscription.cancelAtEndOfCycle }
+    ? {
+        shopifyPlanHandle: providerSubscription.planHandle,
+        mappedModaPlanName: mapping?.name ?? null,
+        price: providerSubscription.price,
+        interval: providerSubscription.billingPeriod,
+        currentPeriodEnd: providerSubscription.currentPeriodEnd,
+        cancelAtEndOfCycle: providerSubscription.cancelAtEndOfCycle,
+      }
     : data.verificationState === "VERIFICATION_UNAVAILABLE"
       ? data.currentContract
       : null;
-  const pending = providerSubscription?.pendingUpdate ? { shopifyPlanHandle: providerSubscription.pendingUpdate.planHandle, price: providerSubscription.pendingUpdate.price, effectiveAt: providerSubscription.pendingUpdate.effectiveAt } : null;
+  const pending = providerSubscription?.pendingUpdate
+    ? {
+        shopifyPlanHandle: providerSubscription.pendingUpdate.planHandle,
+        price: providerSubscription.pendingUpdate.price,
+        effectiveAt: providerSubscription.pendingUpdate.effectiveAt,
+      }
+    : null;
   const initialView = data.requestedSelection ? "plans" : "topup";
 
   return (
     <s-page heading={i18n.t("billingCommerce.page.title")}>
-      <Breadcrumbs items={[]} current={i18n.t("billingCommerce.page.title")} merchantUi={data.merchantUi} />
-      <BillingPurchaseHub merchantUi={data.merchantUi} capacity={data.capacity} billingPeriodPhase={data.billingPeriodPhase} lifecycleState={data.lifecycleState} verificationState={data.verificationState} mappingStatus={mappingStatus} topUpState={topUpState} current={current} pending={pending} requestedSelection={data.requestedSelection} initialView={initialView} scheduledCancellation={data.scheduledCancellation} purchaseHistoryAvailable={data.purchaseHistoryAvailable} managePlansHref="/app/billing/select" managePlansAvailable={data.verificationState !== "VERIFICATION_UNAVAILABLE" && data.lifecycleState !== "FROZEN"} />
+      <Breadcrumbs
+        items={[]}
+        current={i18n.t("billingCommerce.page.title")}
+        merchantUi={data.merchantUi}
+      />
+      {data.usageHistoryAvailable && (
+        <s-link href={data.usageHistoryHref}>
+          {i18n.t("usageHistory.title")}
+        </s-link>
+      )}
+      <BillingPurchaseHub
+        merchantUi={data.merchantUi}
+        capacity={data.capacity}
+        billingPeriodPhase={data.billingPeriodPhase}
+        lifecycleState={data.lifecycleState}
+        verificationState={data.verificationState}
+        mappingStatus={mappingStatus}
+        topUpState={topUpState}
+        current={current}
+        pending={pending}
+        requestedSelection={data.requestedSelection}
+        initialView={initialView}
+        scheduledCancellation={data.scheduledCancellation}
+        purchaseHistoryAvailable={data.purchaseHistoryAvailable}
+        managePlansHref="/app/billing/select"
+        managePlansAvailable={
+          data.verificationState !== "VERIFICATION_UNAVAILABLE" &&
+          data.lifecycleState !== "FROZEN"
+        }
+      />
     </s-page>
   );
 }

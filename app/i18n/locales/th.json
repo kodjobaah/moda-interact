@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "วันหมดอายุโปรโมชัน: ไม่ทราบ",
   "overview.refunding": "กำลังคืนเงิน: {count, number}",
   "overview.pendingHint": "รายการในคิวอาจยังไม่ได้เริ่มการกู้คืน คิวที่ว่างไม่ได้บ่งบอกสถานะการทำงานของการกู้คืน",
-  "legacyBilling.unavailable": "ไม่สามารถใช้รอบการเรียกเก็บเงินที่ร้องขอได้ ยังไม่ได้เลือกรอบอื่น"
+  "legacyBilling.unavailable": "ไม่สามารถใช้รอบการเรียกเก็บเงินที่ร้องขอได้ ยังไม่ได้เลือกรอบอื่น",
+  "merchantNav.home": "หน้าหลัก",
+  "merchantNav.overview": "ภาพรวม",
+  "merchantNav.billing": "การเรียกเก็บเงิน",
+  "merchantNav.support": "การสนับสนุน",
+  "usageHistory.title": "ประวัติการใช้งาน",
+  "usageHistory.breadcrumb": "เส้นทางการนำทาง",
+  "usageHistory.periods": "รอบการเรียกเก็บเงิน",
+  "usageHistory.events": "หน้าการใช้งาน",
+  "usageHistory.empty": "ไม่มีรอบการเรียกเก็บเงินที่พร้อมใช้",
+  "usageHistory.invalidCursor": "หน้ารอบการเรียกเก็บเงินไม่ถูกต้อง โปรดรีเซ็ตรายการเพื่อดำเนินการต่อ",
+  "usageHistory.error": "ไม่สามารถโหลดประวัติการใช้งานได้ โปรดลองอีกครั้ง"
 }

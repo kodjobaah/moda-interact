@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "促销到期时间：未知",
   "overview.refunding": "退款处理中：{count, number}",
   "overview.pendingHint": "队列中的候选结账不一定已开始挽回。队列为空并不代表挽回运行正常。",
-  "legacyBilling.unavailable": "请求的账单周期不可用。未选择其他周期。"
+  "legacyBilling.unavailable": "请求的账单周期不可用。未选择其他周期。",
+  "merchantNav.home": "首页",
+  "merchantNav.overview": "概览",
+  "merchantNav.billing": "账单",
+  "merchantNav.support": "支持",
+  "usageHistory.title": "使用历史",
+  "usageHistory.breadcrumb": "导航路径",
+  "usageHistory.periods": "账单周期",
+  "usageHistory.events": "使用记录页",
+  "usageHistory.empty": "没有可用的账单周期。",
+  "usageHistory.invalidCursor": "账单周期页面无效，请重置列表后继续。",
+  "usageHistory.error": "无法加载使用历史，请重试。"
 }

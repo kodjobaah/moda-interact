@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Expiration de la promotion : indisponible",
   "overview.refunding": "Remboursement en cours : {count, number}",
   "overview.pendingHint": "Les candidats en attente n’ont pas forcément commencé une récupération. Une file vide ne renseigne pas sur le bon fonctionnement des récupérations.",
-  "legacyBilling.unavailable": "La période de facturation demandée est indisponible. Aucune autre période n’a été sélectionnée."
+  "legacyBilling.unavailable": "La période de facturation demandée est indisponible. Aucune autre période n’a été sélectionnée.",
+  "merchantNav.home": "Accueil",
+  "merchantNav.overview": "Vue d’ensemble",
+  "merchantNav.billing": "Facturation",
+  "merchantNav.support": "Assistance",
+  "usageHistory.title": "Historique d’utilisation",
+  "usageHistory.breadcrumb": "Fil d’Ariane",
+  "usageHistory.periods": "Périodes de facturation",
+  "usageHistory.events": "Pages d’utilisation",
+  "usageHistory.empty": "Aucune période de facturation disponible.",
+  "usageHistory.invalidCursor": "La page des périodes est invalide. Réinitialisez la liste pour continuer.",
+  "usageHistory.error": "Impossible de charger l’historique d’utilisation. Réessayez."
 }

@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Promotion expiry: unavailable",
   "overview.refunding": "Refunding: {count, number}",
   "overview.pendingHint": "Pending queue candidates have not necessarily started a recovery. An empty queue does not indicate recovery health.",
-  "legacyBilling.unavailable": "The requested billing period is unavailable. No other period has been selected."
+  "legacyBilling.unavailable": "The requested billing period is unavailable. No other period has been selected.",
+  "merchantNav.home": "Home",
+  "merchantNav.overview": "Overview",
+  "merchantNav.billing": "Billing",
+  "merchantNav.support": "Support",
+  "usageHistory.title": "Usage history",
+  "usageHistory.breadcrumb": "Breadcrumb",
+  "usageHistory.periods": "Billing periods",
+  "usageHistory.events": "Usage pages",
+  "usageHistory.empty": "No billing period is available.",
+  "usageHistory.invalidCursor": "The billing period page is invalid. Reset the period list to continue.",
+  "usageHistory.error": "Usage history could not be loaded. Please try again."
 }

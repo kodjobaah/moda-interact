@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Wygaśnięcie promocji: niedostępne",
   "overview.refunding": "W trakcie zwrotu: {count, number}",
   "overview.pendingHint": "Kandydaci w kolejce nie musieli jeszcze rozpocząć odzyskiwania. Pusta kolejka nie oznacza prawidłowego działania odzyskiwania.",
-  "legacyBilling.unavailable": "Żądany okres rozliczeniowy jest niedostępny. Nie wybrano innego okresu."
+  "legacyBilling.unavailable": "Żądany okres rozliczeniowy jest niedostępny. Nie wybrano innego okresu.",
+  "merchantNav.home": "Strona główna",
+  "merchantNav.overview": "Przegląd",
+  "merchantNav.billing": "Rozliczenia",
+  "merchantNav.support": "Pomoc",
+  "usageHistory.title": "Historia użycia",
+  "usageHistory.breadcrumb": "Ścieżka nawigacji",
+  "usageHistory.periods": "Okresy rozliczeniowe",
+  "usageHistory.events": "Strony użycia",
+  "usageHistory.empty": "Brak dostępnego okresu rozliczeniowego.",
+  "usageHistory.invalidCursor": "Strona okresów jest nieprawidłowa. Zresetuj listę, aby kontynuować.",
+  "usageHistory.error": "Nie można załadować historii użycia. Spróbuj ponownie."
 }
