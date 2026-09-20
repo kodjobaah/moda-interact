@@ -18,7 +18,13 @@ export default function App() {
       </head>
       <body>
         <Outlet />
-        <ScrollRestoration />
+        <ScrollRestoration
+          getKey={(location) =>
+            location.pathname === "/app/recoveries"
+              ? location.pathname + location.search
+              : location.key
+          }
+        />
         <Scripts />
       </body>
     </html>

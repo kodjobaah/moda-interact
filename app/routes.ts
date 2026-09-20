@@ -25,6 +25,7 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
+    route("recoveries/:recoveryId", "./routes/app/recovery-detail/route.tsx"),
     route("recoveries", "./routes/app/recoveries/route.tsx"),
     route("usage", "./routes/app/usage/route.jsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
@@ -34,6 +35,8 @@ export default [
     route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
   ]),
 
+  route("app/recoveries/:recoveryId/messages", "./routes/app/recovery-detail/messages.ts"),
+  route("app/recoveries/:recoveryId/related", "./routes/app/recovery-detail/related.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),

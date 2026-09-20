@@ -6,6 +6,7 @@ import {
   type RecoveryListData,
 } from "./recovery-list-state";
 import "./RecoveryList.css";
+import { recoveryDetailUrl } from "../recovery-detail/state";
 
 export default function RecoveryList({
   data,
@@ -216,9 +217,11 @@ export default function RecoveryList({
                   <li className="recovery-list__row" key={row.id}>
                     <div className="recovery-list__customer">
                       <h3 dir="auto">
-                        {row.customer?.displayName ||
-                          row.customer?.email ||
-                          t("chart.guest")}
+                        <Link to={recoveryDetailUrl(row.id, filters, embed)}>
+                          {row.customer?.displayName ||
+                            row.customer?.email ||
+                            t("chart.guest")}
+                        </Link>
                       </h3>
                       {row.customer?.displayName && row.customer.email ? (
                         <p dir="auto">{row.customer.email}</p>

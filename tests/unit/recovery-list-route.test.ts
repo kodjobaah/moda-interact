@@ -224,7 +224,8 @@ describe("recovery list presentation and navigation", () => {
     );
     expect(html).toContain("Ada Lovelace");
     expect(html).toContain("£100.25");
-    expect(html).not.toContain("opaque-private-id");
+    expect(html).toContain("/app/recoveries/opaque-private-id?");
+    expect(html).not.toContain(">opaque-private-id<");
     expect(html).not.toContain('method="post"');
     expect(html).toContain('type="search"');
     expect(html).toContain('for="recovery-search"');
@@ -236,7 +237,7 @@ describe("recovery list presentation and navigation", () => {
     expect(routes).toContain(
       'route("recoveries", "./routes/app/recoveries/route.tsx")',
     );
-    expect(routes).not.toContain("recoveries/:recoveryId");
+    expect(routes).toContain("recoveries/:recoveryId");
   });
   it("renders localized error, empty and busy states with accessible semantics", async () => {
     const data = await loadRecoveryList(request());
