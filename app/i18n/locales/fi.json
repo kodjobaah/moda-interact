@@ -271,7 +271,7 @@
   "promotions.action.select": "Valitse kampanja",
   "promotions.action.reselect": "Valitse kampanja uudelleen",
   "promotions.success": "Kampanja valittu.",
-  "promotions.error.activeSelected": "Käytä tai kuluta loppuun tällä hetkellä valittu kampanja ennen kuin valitset toisen.",
+  "promotions.error.activeSelected": "Nykyinen kampanjasi pysyy valittuna sen voimassaolon päättymiseen asti. Voit valita toisen kampanjan vasta sen jälkeen.",
   "promotions.error.notEligible": "Tämä kampanja ei ole enää saatavilla kaupallesi.",
   "promotions.error.unavailable": "Kampanjoita ei voi vaihtaa, kun tilauksesi ei ole käytettävissä.",
   "promotions.history.title": "Kampanjahistoria",

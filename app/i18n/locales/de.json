@@ -271,7 +271,7 @@
   "promotions.action.select": "Aktion auswählen",
   "promotions.action.reselect": "Aktion erneut auswählen",
   "promotions.success": "Aktion ausgewählt.",
-  "promotions.error.activeSelected": "Verwenden Sie die aktuell ausgewählte Aktion, bevor Sie eine andere auswählen.",
+  "promotions.error.activeSelected": "Ihre aktuelle Aktion bleibt bis zu ihrem Ablauf ausgewählt. Erst danach können Sie eine andere Aktion auswählen.",
   "promotions.error.notEligible": "Diese Aktion ist für Ihren Shop nicht mehr verfügbar.",
   "promotions.error.unavailable": "Aktionen können nicht geändert werden, wenn Ihr Abonnement nicht verfügbar ist.",
   "promotions.history.title": "Aktionsverlauf",

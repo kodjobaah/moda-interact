@@ -271,7 +271,7 @@
   "promotions.action.select": "Promosyon seç",
   "promotions.action.reselect": "Promosyonu yeniden seç",
   "promotions.success": "Promosyon seçildi.",
-  "promotions.error.activeSelected": "Başka bir promosyon seçmeden önce mevcut promosyonunuzu kullanın veya tüketin.",
+  "promotions.error.activeSelected": "Mevcut promosyonunuz süresi dolana kadar seçili kalır. Başka bir promosyonu ancak süresi dolduktan sonra seçebilirsiniz.",
   "promotions.error.notEligible": "Bu promosyon mağazanız için artık kullanılamıyor.",
   "promotions.error.unavailable": "Aboneliğiniz kullanılamaz durumdayken promosyonlar değiştirilemez.",
   "promotions.history.title": "Promosyon geçmişi",

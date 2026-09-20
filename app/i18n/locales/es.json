@@ -271,7 +271,7 @@
   "promotions.action.select": "Seleccionar promoción",
   "promotions.action.reselect": "Volver a seleccionar promoción",
   "promotions.success": "Promoción seleccionada.",
-  "promotions.error.activeSelected": "Usa o agota la promoción seleccionada antes de elegir otra.",
+  "promotions.error.activeSelected": "Tu promoción actual seguirá seleccionada hasta que caduque. Solo podrás elegir otra promoción después de que caduque.",
   "promotions.error.notEligible": "Esta promoción ya no está disponible para tu tienda.",
   "promotions.error.unavailable": "No se pueden cambiar las promociones mientras tu suscripción no esté disponible.",
   "promotions.history.title": "Historial de promociones",

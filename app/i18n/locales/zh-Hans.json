@@ -271,7 +271,7 @@
   "promotions.action.select": "选择促销",
   "promotions.action.reselect": "重新选择促销",
   "promotions.success": "已选择促销。",
-  "promotions.error.activeSelected": "请先使用或用尽当前选择的促销，再选择其他促销。",
+  "promotions.error.activeSelected": "当前促销将在到期前一直保持选中。只有在它到期后，您才能选择其他促销。",
   "promotions.error.notEligible": "此促销已不再适用于您的店铺。",
   "promotions.error.unavailable": "订阅不可用时无法更改促销。",
   "promotions.history.title": "促销历史",

@@ -271,7 +271,7 @@
   "promotions.action.select": "選擇促銷",
   "promotions.action.reselect": "重新選擇促銷",
   "promotions.success": "已選擇促銷。",
-  "promotions.error.activeSelected": "請先使用或用盡目前選擇的促銷，再選擇其他促銷。",
+  "promotions.error.activeSelected": "目前的促銷在到期前會一直保持已選取狀態。只有在它到期後，您才能選擇其他促銷。",
   "promotions.error.notEligible": "此促銷已不再適用於您的商店。",
   "promotions.error.unavailable": "訂閱無法使用時不能變更促銷。",
   "promotions.history.title": "促銷歷史",

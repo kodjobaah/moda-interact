@@ -19,6 +19,14 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("promotions.history.title");
     expect(routeSource).toContain("promotions.history.granted");
     expect(routeSource).toContain("promotions.status.reopened");
+    expect(routeSource).toContain("getCurrentPromotionSelectionState");
+    expect(routeSource).toContain("promotionSelection");
+    expect(routeSource).toContain("useNavigation");
+    expect(routeSource).toContain("useRef");
+    expect(routeSource).toContain("submitLockRef");
+    expect(routeSource).toContain("guardPromotionSubmit");
+    expect(routeSource).toContain("disabled={selectionLocked || submissionInFlight || offer.currentlySelected}");
+    expect(routeSource).toContain('className="moda-promotions-lock-notice"');
     for (const rawHistoryText of ["No selected promotion history.", "Granted: ", "Currently selected: ", ">Previous<", ">Next<"]) {
       expect(routeSource).not.toContain(rawHistoryText);
     }

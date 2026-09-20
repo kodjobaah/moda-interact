@@ -19,6 +19,18 @@ export type PromotionHistoryStatus =
   | "NO_LONGER_ELIGIBLE"
   | "REOPENED";
 
+export type CurrentPromotionSelectionState = {
+  campaignId: string;
+  merchantTitle: string | null;
+  expiresAt: Date;
+  remainingQuantity: number;
+  exhausted: boolean;
+  campaignStatus: string;
+  targetEligible: boolean;
+  spendable: boolean;
+  locked: boolean;
+};
+
 export class PromotionSelectionError extends Error {
   code: keyof typeof PROMOTION_SELECTION_ERROR_CODES;
 
@@ -142,7 +154,7 @@ export function projectPromotionHistoryRow(
     firstUsedAt: grant.firstUsedAt,
     lastUsedAt: grant.lastUsedAt,
     expiresAt: grant.campaign.expiresAt,
-    currentlySelected: grant.selection !== null,
+    currentlySelected: grant.selection !== null && grant.campaign.expiresAt > now,
     status: promotionHistoryStatus(grant, grant.campaign, shopId, planId, grant.reopenedAt, now),
   };
 }
@@ -242,6 +254,73 @@ export async function getEligiblePromotionOffers(
   return campaigns
     .filter((campaign: Parameters<typeof merchantOffer>[0]) => campaign.translations.length === 1)
     .map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
+}
+
+export async function getCurrentPromotionSelectionState(
+  shopId: string,
+  locale: string,
+  now = new Date(),
+  database: PromotionDatabase = prisma,
+): Promise<CurrentPromotionSelectionState | null> {
+  const context = await readContext(database, shopId);
+  if (!context) return null;
+
+  const selection = await database.merchantPromotionSelection.findUnique({
+    where: { shopId },
+    select: {
+      promotionalCreditGrant: {
+        select: {
+          quantity: true,
+          reservedQuantity: true,
+          committedQuantity: true,
+          exhaustedAt: true,
+          campaign: {
+            select: {
+              id: true,
+              status: true,
+              startsAt: true,
+              expiresAt: true,
+              scope: true,
+              targetPlanId: true,
+              targetShopId: true,
+              translations: { where: { locale }, select: { merchantTitle: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+  const grant = selection?.promotionalCreditGrant;
+  if (!grant) return null;
+
+  const remainingQuantity = Math.max(
+    0,
+    grant.quantity - grant.reservedQuantity - grant.committedQuantity,
+  );
+  const campaign = grant.campaign;
+  const targetEligible = isTargetEligible(
+    campaign,
+    shopId,
+    context.subscription?.planId ?? null,
+  );
+  const locked = campaign.expiresAt > now;
+
+  return {
+    campaignId: campaign.id,
+    merchantTitle: campaign.translations[0]?.merchantTitle ?? null,
+    expiresAt: campaign.expiresAt,
+    remainingQuantity,
+    exhausted: !isUsableGrant(grant),
+    campaignStatus: campaign.status,
+    targetEligible,
+    spendable:
+      campaign.status === "ACTIVE" &&
+      campaign.startsAt <= now &&
+      campaign.expiresAt > now &&
+      targetEligible &&
+      isUsableGrant(grant),
+    locked,
+  };
 }
 
 export async function getPromotionHistory(
@@ -354,12 +433,7 @@ export async function selectPromotionOffer(
       if (
         current
         && currentGrant
-        && currentGrant.campaignId !== campaignId
-        && isUsableGrant(currentGrant)
-        && currentGrant.campaign.status === "ACTIVE"
-        && currentGrant.campaign.startsAt <= now
         && currentGrant.campaign.expiresAt > now
-        && isTargetEligible(currentGrant.campaign, shopId, context.subscription?.planId ?? null)
       ) {
         throw new PromotionSelectionError("ACTIVE_PROMOTION_ALREADY_SELECTED");
       }

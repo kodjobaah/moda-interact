@@ -271,7 +271,7 @@
   "promotions.action.select": "เลือกโปรโมชัน",
   "promotions.action.reselect": "เลือกโปรโมชันอีกครั้ง",
   "promotions.success": "เลือกโปรโมชันแล้ว",
-  "promotions.error.activeSelected": "ใช้หรือใช้โปรโมชันที่เลือกอยู่ให้หมดก่อนเลือกโปรโมชันอื่น",
+  "promotions.error.activeSelected": "โปรโมชันปัจจุบันจะยังคงถูกเลือกไว้จนกว่าจะหมดอายุ คุณจะเลือกโปรโมชันอื่นได้หลังจากโปรโมชันนี้หมดอายุแล้วเท่านั้น",
   "promotions.error.notEligible": "โปรโมชันนี้ไม่พร้อมใช้งานสำหรับร้านค้าของคุณแล้ว",
   "promotions.error.unavailable": "ไม่สามารถเปลี่ยนโปรโมชันได้ขณะที่การสมัครใช้งานของคุณไม่พร้อมใช้งาน",
   "promotions.history.title": "ประวัติโปรโมชัน",
