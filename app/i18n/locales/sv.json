@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Kampanjens slutdatum: saknas",
   "overview.refunding": "Under återbetalning: {count, number}",
   "overview.pendingHint": "Kandidater i kön har inte nödvändigtvis startat en återställning. En tom kö visar inte återställningens driftstatus.",
-  "legacyBilling.unavailable": "Den begärda faktureringsperioden är inte tillgänglig. Ingen annan period har valts."
+  "legacyBilling.unavailable": "Den begärda faktureringsperioden är inte tillgänglig. Ingen annan period har valts.",
+  "merchantNav.home": "Hem",
+  "merchantNav.overview": "Översikt",
+  "merchantNav.billing": "Fakturering",
+  "merchantNav.support": "Support",
+  "usageHistory.title": "Användningshistorik",
+  "usageHistory.breadcrumb": "Navigeringssökväg",
+  "usageHistory.periods": "Faktureringsperioder",
+  "usageHistory.events": "Användningssidor",
+  "usageHistory.empty": "Ingen faktureringsperiod tillgänglig.",
+  "usageHistory.invalidCursor": "Periodsidan är ogiltig. Återställ listan för att fortsätta.",
+  "usageHistory.error": "Användningshistoriken kunde inte laddas. Försök igen."
 }

@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Kampanjeutløp: utilgjengelig",
   "overview.refunding": "Under refusjon: {count, number}",
   "overview.pendingHint": "Kandidater i køen har ikke nødvendigvis startet en gjenoppretting. En tom kø viser ikke gjenopprettingens driftstilstand.",
-  "legacyBilling.unavailable": "Den forespurte faktureringsperioden er ikke tilgjengelig. Ingen annen periode er valgt."
+  "legacyBilling.unavailable": "Den forespurte faktureringsperioden er ikke tilgjengelig. Ingen annen periode er valgt.",
+  "merchantNav.home": "Hjem",
+  "merchantNav.overview": "Oversikt",
+  "merchantNav.billing": "Fakturering",
+  "merchantNav.support": "Brukerstøtte",
+  "usageHistory.title": "Brukshistorikk",
+  "usageHistory.breadcrumb": "Navigasjonssti",
+  "usageHistory.periods": "Faktureringsperioder",
+  "usageHistory.events": "Brukssider",
+  "usageHistory.empty": "Ingen faktureringsperiode tilgjengelig.",
+  "usageHistory.invalidCursor": "Periodesiden er ugyldig. Tilbakestill listen for å fortsette.",
+  "usageHistory.error": "Brukshistorikken kunne ikke lastes. Prøv igjen."
 }

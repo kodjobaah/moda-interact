@@ -1,98 +1,85 @@
-import { redirect, useLoaderData } from "react-router";
+import {
+  redirect,
+  useLoaderData,
+  useNavigation,
+  useRevalidator,
+  useRouteError,
+} from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
-
-import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import UsageEvents from "@/components/dashboard/UsageEvents";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { billingService } from "@/services/billing/billing.service";
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
-import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
-import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
+import { merchantUiContext } from "@/utils/merchant-i18n";
+import {
+  canAccessMerchantSurface,
+  getMerchantDeniedRedirect,
+  resolveMerchantExperienceState,
+} from "@/services/shop/merchant-route-access-policy";
+import {
+  readUsageHistory,
+  UsageCursorError,
+} from "@/services/usage/history.server";
+import { overviewEmbed } from "../home/overview.server";
 
-const MERCHANT_RECOVERY_USAGE_METRIC = "RECOVERY_CONVERSATION";
-
+/** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
-  const requestedPageSize = Number(url.searchParams.get("pageSize"));
-  const pageSize = [10, 25, 50, 100].includes(requestedPageSize) ? requestedPageSize : 10;
-  const requestedPage = Number(url.searchParams.get("page"));
-  const page = Number.isInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
-  const usageView = url.searchParams.get("bill") === "past" ? "past" : "current";
-  const requestedBillId = url.searchParams.get("billId");
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
-  assertActiveShop(shop, { route: "/app/usage", redirectTo: "/app/merchant-support" });
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
-
-  const subscription = await billingService.getSubscription(shop.id);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
-  if (!canAccessMerchantSurface(merchantExperienceState, "USAGE")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "USAGE"));
-
-  const billingPeriods = await db.billingPeriod.findMany({
-    where: { shopId: shop.id },
-    include: {
-      usageEvents: {
-        where: { metric: MERCHANT_RECOVERY_USAGE_METRIC },
-        select: { metric: true, quantity: true },
-      },
-    },
-    orderBy: { periodStart: "desc" },
+  const embed = overviewEmbed(url, session.shop);
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
   });
-  const selectedPeriod = billingPeriods.find((period) => period.id === requestedBillId)
-    ?? billingPeriods.find((period) => usageView === "past" ? period.status === "CLOSED" : period.status === "OPEN");
-  const selectedUsageWhere = selectedPeriod
-    ? { shopId: shop.id, billingPeriodId: selectedPeriod.id, metric: MERCHANT_RECOVERY_USAGE_METRIC }
-    : null;
-  const recoveries = await db.checkoutRecovery.findMany({ where: { shopId: shop.id }, include: { customer: { select: { firstName: true, lastName: true, email: true } }, conversation: { include: { messages: { select: { id: true } } } } } });
-  const recoveryBySourceId = new Map();
-  for (const recovery of recoveries) {
-    const conversation = recovery.conversation;
-    const customerName = [recovery.customer?.firstName, recovery.customer?.lastName].filter(Boolean).join(" ") || recovery.customer?.email || "Guest";
-    recoveryBySourceId.set(recovery.id, { recoveryId: recovery.id, customerName });
-    if (conversation) {
-      recoveryBySourceId.set(conversation.id, { recoveryId: recovery.id, customerName });
-      for (const message of conversation.messages) recoveryBySourceId.set(message.id, { recoveryId: recovery.id, customerName });
-    }
-  }
-
-  const [usageEvents, usageCount, usageAggregate] = selectedUsageWhere
-    ? await Promise.all([
-        db.usageEvent.findMany({ where: selectedUsageWhere, orderBy: [{ occurredAt: "desc" }, { id: "desc" }], skip: (page - 1) * pageSize, take: pageSize }),
-        db.usageEvent.count({ where: selectedUsageWhere }),
-        db.usageEvent.aggregate({ where: selectedUsageWhere, _sum: { quantity: true } }),
-      ])
-    : [[], 0, { _sum: { quantity: null } }];
-
-  return {
+  assertActiveShop(shop, {
+    route: "/app/usage",
+    redirectTo: "/app/merchant-support",
+  });
+  const settings = await db.shopSettings.findUnique({
+    where: { shopId: shop.id },
+  });
+  const subscription = await billingService.getSubscription(shop.id);
+  const state = resolveMerchantExperienceState({
+    shop,
     settings,
-    merchantUi: merchantUiContext(settings, session),
-    usageEvents: usageEvents.map((event) => ({ id: event.id, metric: event.metric, quantity: Number(event.quantity), idempotencyKey: event.idempotencyKey, sourceType: event.sourceType, sourceId: event.sourceId, sourceRecovery: event.sourceId ? recoveryBySourceId.get(event.sourceId) ?? null : null, occurredAt: event.occurredAt.toISOString() })),
-    usagePagination: { page, pageSize, total: usageCount, totalQuantity: Number(usageAggregate._sum.quantity ?? 0), view: usageView, billId: selectedPeriod?.id ?? null, periodStart: selectedPeriod?.periodStart.toISOString() ?? null, periodEnd: selectedPeriod?.periodEnd.toISOString() ?? null },
-    billingPeriods: billingPeriods.map((period) => ({ id: period.id, periodStart: period.periodStart.toISOString(), periodEnd: period.periodEnd.toISOString(), status: period.status, totalQuantity: period.usageEvents.reduce((total, event) => total + Number(event.quantity), 0), eventCount: period.usageEvents.length })),
-    usageView,
-  };
+    subscription,
+  });
+  if (!canAccessMerchantSurface(state, "USAGE"))
+    throw redirect(
+      `${getMerchantDeniedRedirect(state, "USAGE")}?${new URLSearchParams(embed)}`,
+    );
+  const merchantUi = merchantUiContext(settings, session);
+  try {
+    return {
+      merchantUi,
+      embed,
+      history: await readUsageHistory(shop.id, url.searchParams),
+    };
+  } catch (error) {
+    return {
+      merchantUi,
+      embed,
+      history: null,
+      error: error instanceof UsageCursorError ? "cursor" : "read",
+    };
+  }
 };
-
 export default function UsagePage() {
-  const { settings, merchantUi, usageEvents, usagePagination, usageView, billingPeriods } = useLoaderData();
-  const dashboardUrl = `/app?view=detail&bill=${usageView}${usagePagination.billId ? `&billId=${usagePagination.billId}` : ""}`;
-
-  if (!settings) return null;
-
-  const i18n = createMerchantI18n(merchantUi);
-  const periodLabel = usagePagination.periodStart && usagePagination.periodEnd
-    ? `${i18n.formatDate(usagePagination.periodStart)} - ${i18n.formatDate(usagePagination.periodEnd)}`
-    : i18n.t("dashboard.billingPeriod");
-
+  const data = useLoaderData();
+  const navigation = useNavigation();
+  const revalidator = useRevalidator();
   return (
-    
-    <s-page heading={i18n.t("usage.billable")}>
-      <Breadcrumbs items={[{ label: i18n.t("usage.title"), href: "/app" }, { label: periodLabel, href: dashboardUrl }]} current={i18n.t("usage.billable")} merchantUi={merchantUi} />
-      <UsageEvents usageEvents={usageEvents} usagePagination={usagePagination} usageView={usageView} billingPeriods={billingPeriods} merchantUi={merchantUi} />
-    </s-page>
+    <UsageEvents
+      {...data}
+      busy={navigation.state !== "idle" || revalidator.state !== "idle"}
+      onRefresh={() => revalidator.revalidate()}
+    />
   );
 }
-
-export const headers = (headersArgs) => boundary.headers(headersArgs);
+export function ErrorBoundary() {
+  return boundary.error(useRouteError());
+}
+/** @param {import("react-router").HeadersArgs} args */
+export const headers = (args) => boundary.headers(args);

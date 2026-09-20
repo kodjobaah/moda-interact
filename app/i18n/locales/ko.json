@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "프로모션 만료: 확인 불가",
   "overview.refunding": "환불 처리 중: {count, number}",
   "overview.pendingHint": "대기 중인 후보는 아직 복구를 시작하지 않았을 수 있습니다. 빈 대기열은 복구 작동 상태를 나타내지 않습니다.",
-  "legacyBilling.unavailable": "요청한 청구 기간을 사용할 수 없습니다. 다른 기간은 선택되지 않았습니다."
+  "legacyBilling.unavailable": "요청한 청구 기간을 사용할 수 없습니다. 다른 기간은 선택되지 않았습니다.",
+  "merchantNav.home": "홈",
+  "merchantNav.overview": "개요",
+  "merchantNav.billing": "청구",
+  "merchantNav.support": "지원",
+  "usageHistory.title": "사용 내역",
+  "usageHistory.breadcrumb": "탐색 경로",
+  "usageHistory.periods": "청구 기간",
+  "usageHistory.events": "사용 내역 페이지",
+  "usageHistory.empty": "사용 가능한 청구 기간이 없습니다.",
+  "usageHistory.invalidCursor": "청구 기간 페이지가 잘못되었습니다. 목록을 초기화하세요.",
+  "usageHistory.error": "사용 내역을 불러올 수 없습니다. 다시 시도하세요."
 }

@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Vervaldatum promotie: niet beschikbaar",
   "overview.refunding": "In terugbetaling: {count, number}",
   "overview.pendingHint": "Kandidaten in de wachtrij hebben niet per se een herstelactie gestart. Een lege wachtrij geeft de werking van herstel niet aan.",
-  "legacyBilling.unavailable": "De gevraagde factureringsperiode is niet beschikbaar. Er is geen andere periode geselecteerd."
+  "legacyBilling.unavailable": "De gevraagde factureringsperiode is niet beschikbaar. Er is geen andere periode geselecteerd.",
+  "merchantNav.home": "Startpagina",
+  "merchantNav.overview": "Overzicht",
+  "merchantNav.billing": "Facturering",
+  "merchantNav.support": "Ondersteuning",
+  "usageHistory.title": "Gebruiksgeschiedenis",
+  "usageHistory.breadcrumb": "Navigatiepad",
+  "usageHistory.periods": "Factureringsperioden",
+  "usageHistory.events": "Gebruikspagina’s",
+  "usageHistory.empty": "Geen factureringsperiode beschikbaar.",
+  "usageHistory.invalidCursor": "De periodenpagina is ongeldig. Stel de lijst opnieuw in.",
+  "usageHistory.error": "De gebruiksgeschiedenis kon niet worden geladen. Probeer opnieuw."
 }

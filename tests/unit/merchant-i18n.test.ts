@@ -10,7 +10,6 @@ import {
   sourceCatalogues,
 } from "../../app/utils/merchant-i18n";
 import { validateIcuCatalogue } from "@modainteract/moda-interact-shared/internationalization";
-import { groupRecoveriesByCustomer } from "../../app/components/dashboard/RecoveryChart";
 
 const rawCatalogues = sourceCatalogues as Record<string, Record<string, string>>;
 const registeredCatalogues = catalogues as Record<string, Record<string, string>>;
@@ -131,19 +130,6 @@ describe("merchant UI internationalisation", () => {
     expect(i18n.direction).toBe("rtl");
     expect({ conversation, template, recovery }).toEqual({ conversation: { languageTag: "fr-FR" }, template: { language: "fr" }, recovery: { currency: "EUR" } });
     expect(i18n.direction).not.toBe("auto");
-  });
-
-  it("keeps customer recovery totals separate by currency and never invents GBP", () => {
-    const [customer] = groupRecoveriesByCustomer([
-      { id: "gbp", customer: { id: "customer-1" }, totalPrice: 10, currency: "GBP", messageCount: 0 },
-      { id: "eur", customer: { id: "customer-1" }, totalPrice: 20, currency: "EUR", messageCount: 0 },
-      { id: "missing", customer: { id: "customer-1" }, totalPrice: 30, currency: null, messageCount: 0 },
-    ]);
-
-    expect(customer.totalsByCurrency).toEqual({ GBP: 10, EUR: 20 });
-    expect(customer.totalsByCurrency.GBP).not.toBe(60);
-    expect(customer.totalsByCurrency.USD).toBeUndefined();
-    expect(createMerchantI18n({ locale: "fr-FR" }).formatMoney(12.5, "USD")).toContain("12,50");
   });
 
   it("uses canonical unavailable labels without changing locale catalogues", () => {

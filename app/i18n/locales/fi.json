@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Kampanjan päättyminen: ei saatavilla",
   "overview.refunding": "Hyvitettävänä: {count, number}",
   "overview.pendingHint": "Jonossa olevat ehdokkaat eivät välttämättä ole aloittaneet palautusta. Tyhjä jono ei kerro palautusten toimintatilasta.",
-  "legacyBilling.unavailable": "Pyydetty laskutusjakso ei ole saatavilla. Mitään muuta jaksoa ei ole valittu."
+  "legacyBilling.unavailable": "Pyydetty laskutusjakso ei ole saatavilla. Mitään muuta jaksoa ei ole valittu.",
+  "merchantNav.home": "Etusivu",
+  "merchantNav.overview": "Yleiskuva",
+  "merchantNav.billing": "Laskutus",
+  "merchantNav.support": "Tuki",
+  "usageHistory.title": "Käyttöhistoria",
+  "usageHistory.breadcrumb": "Navigointipolku",
+  "usageHistory.periods": "Laskutusjaksot",
+  "usageHistory.events": "Käyttösivut",
+  "usageHistory.empty": "Laskutusjaksoa ei ole saatavilla.",
+  "usageHistory.invalidCursor": "Jaksosivu on virheellinen. Nollaa luettelo jatkaaksesi.",
+  "usageHistory.error": "Käyttöhistoriaa ei voitu ladata. Yritä uudelleen."
 }

@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Validade da promoção: indisponível",
   "overview.refunding": "Em reembolso: {count, number}",
   "overview.pendingHint": "Os candidatos na fila não necessariamente iniciaram uma recuperação. Uma fila vazia não indica o funcionamento das recuperações.",
-  "legacyBilling.unavailable": "O período de faturamento solicitado está indisponível. Nenhum outro período foi selecionado."
+  "legacyBilling.unavailable": "O período de faturamento solicitado está indisponível. Nenhum outro período foi selecionado.",
+  "merchantNav.home": "Início",
+  "merchantNav.overview": "Visão geral",
+  "merchantNav.billing": "Faturamento",
+  "merchantNav.support": "Suporte",
+  "usageHistory.title": "Histórico de uso",
+  "usageHistory.breadcrumb": "Caminho de navegação",
+  "usageHistory.periods": "Períodos de faturamento",
+  "usageHistory.events": "Páginas de uso",
+  "usageHistory.empty": "Nenhum período de faturamento disponível.",
+  "usageHistory.invalidCursor": "A página de períodos é inválida. Redefina a lista para continuar.",
+  "usageHistory.error": "Não foi possível carregar o histórico de uso. Tente novamente."
 }

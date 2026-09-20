@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "促銷到期時間：未知",
   "overview.refunding": "退款處理中：{count, number}",
   "overview.pendingHint": "佇列中的候選結帳不一定已開始挽回。佇列為空並不代表挽回運作正常。",
-  "legacyBilling.unavailable": "要求的帳單週期無法使用。未選擇其他週期。"
+  "legacyBilling.unavailable": "要求的帳單週期無法使用。未選擇其他週期。",
+  "merchantNav.home": "首頁",
+  "merchantNav.overview": "概覽",
+  "merchantNav.billing": "帳單",
+  "merchantNav.support": "支援",
+  "usageHistory.title": "使用歷史",
+  "usageHistory.breadcrumb": "導覽路徑",
+  "usageHistory.periods": "帳單週期",
+  "usageHistory.events": "使用記錄頁",
+  "usageHistory.empty": "沒有可用的帳單週期。",
+  "usageHistory.invalidCursor": "帳單週期頁面無效，請重設清單後繼續。",
+  "usageHistory.error": "無法載入使用歷史，請重試。"
 }

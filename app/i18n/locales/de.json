@@ -480,5 +480,16 @@
   "overview.expiryUnavailable": "Aktionsablauf: nicht verfügbar",
   "overview.refunding": "In Erstattung: {count, number}",
   "overview.pendingHint": "Wartende Kandidaten haben möglicherweise noch keine Wiederherstellung gestartet. Eine leere Warteschlange zeigt nicht den Zustand der Wiederherstellung an.",
-  "legacyBilling.unavailable": "Der angeforderte Abrechnungszeitraum ist nicht verfügbar. Es wurde kein anderer Zeitraum ausgewählt."
+  "legacyBilling.unavailable": "Der angeforderte Abrechnungszeitraum ist nicht verfügbar. Es wurde kein anderer Zeitraum ausgewählt.",
+  "merchantNav.home": "Startseite",
+  "merchantNav.overview": "Übersicht",
+  "merchantNav.billing": "Abrechnung",
+  "merchantNav.support": "Support",
+  "usageHistory.title": "Nutzungsverlauf",
+  "usageHistory.breadcrumb": "Navigationspfad",
+  "usageHistory.periods": "Abrechnungszeiträume",
+  "usageHistory.events": "Nutzungsseiten",
+  "usageHistory.empty": "Kein Abrechnungszeitraum verfügbar.",
+  "usageHistory.invalidCursor": "Die Zeitraumseite ist ungültig. Setzen Sie die Liste zurück.",
+  "usageHistory.error": "Der Nutzungsverlauf konnte nicht geladen werden. Versuchen Sie es erneut."
 }
