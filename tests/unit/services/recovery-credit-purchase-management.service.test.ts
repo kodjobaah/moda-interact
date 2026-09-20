@@ -122,10 +122,10 @@ function database(purchases: any[]) {
           async ({ where }: any) =>
             [...rows.values()].filter((row) => matches(row, where)).length,
         ),
-        findMany: vi.fn(async ({ where, take }: any) =>
+        findMany: vi.fn(async ({ where, skip = 0, take }: any) =>
           [...rows.values()]
             .filter((row) => matches(row, where))
-            .slice(0, take),
+            .slice(skip, skip + take),
         ),
         findFirst: vi.fn(async ({ where }: any) => {
           const row = rows.get(where.id);
@@ -259,6 +259,36 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       fixture.database.recoveryCreditPurchase.findMany,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { shopId: "shop-1" } }),
+    );
+  });
+
+  it("clamps an out-of-range requested page to the last filtered page", async () => {
+    const fixture = database([
+      purchase("purchase-5"),
+      purchase("purchase-4"),
+      purchase("purchase-3"),
+      purchase("purchase-2"),
+      purchase("purchase-1"),
+    ]);
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+    ).listPurchaseHistory({
+      shopId: "shop-1",
+      page: 999,
+      pageSize: 2,
+      status: RecoveryCreditPurchaseStatus.ACTIVE,
+    });
+
+    expect(result).toMatchObject({ total: 5, page: 3, pageSize: 2 });
+    expect(result.purchases.map(({ id }) => id)).toEqual(["purchase-1"]);
+    expect(
+      fixture.database.recoveryCreditPurchase.findMany,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { shopId: "shop-1", status: RecoveryCreditPurchaseStatus.ACTIVE },
+        skip: 4,
+        take: 2,
+      }),
     );
   });
 

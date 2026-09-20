@@ -1,6 +1,7 @@
 import React from "react";
 import PropTypes from "prop-types";
 import { useSubmit } from "react-router";
+import { useNavigation } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
@@ -10,6 +11,27 @@ const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);
   const submit = useSubmit();
+  const navigation = useNavigation();
+  const purchaseSubmissionLockRef = React.useRef(false);
+  const navigationObservedBusyRef = React.useRef(false);
+  const [submittingEventHandle, setSubmittingEventHandle] = React.useState(null);
+  const purchaseSubmissionInFlight = submittingEventHandle !== null;
+
+  React.useEffect(() => {
+    if (!purchaseSubmissionLockRef.current) return;
+
+    if (navigation.state !== "idle") {
+      navigationObservedBusyRef.current = true;
+      return;
+    }
+
+    if (!navigationObservedBusyRef.current) return;
+
+    purchaseSubmissionLockRef.current = false;
+    navigationObservedBusyRef.current = false;
+    setSubmittingEventHandle(null);
+  }, [navigation.state]);
+
   const purchase = topUpState.latestPurchase;
   const offers = Array.isArray(topUpState.offers) ? topUpState.offers : [];
   const unresolvedPurchases = Array.isArray(topUpState.unresolvedPurchases)
@@ -68,9 +90,24 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
         {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
         <form method="post" onSubmit={(event) => {
           event.preventDefault();
+
+          if (!offerPurchaseEligible || purchaseSubmissionLockRef.current) return;
+
+          purchaseSubmissionLockRef.current = true;
+          navigationObservedBusyRef.current = false;
+          setSubmittingEventHandle(offer.eventHandle);
+
           const formData = new FormData(event.currentTarget);
           formData.set("purchaseId", crypto.randomUUID());
-          submit(formData, { method: "post" });
+
+          try {
+            submit(formData, { method: "post" });
+          } catch (error) {
+            purchaseSubmissionLockRef.current = false;
+            navigationObservedBusyRef.current = false;
+            setSubmittingEventHandle(null);
+            throw error;
+          }
         }}>
           <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
           <input type="hidden" name="purchaseId" value="" />
@@ -78,10 +115,12 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
           <button
             className="moda-action-button moda-action-button-primary moda-topup-buy-button"
             type="submit"
-            disabled={!offerPurchaseEligible}
+            disabled={!offerPurchaseEligible || purchaseSubmissionInFlight}
             aria-label={`${i18n.t("billingCommerce.buy")} ${i18n.formatNumber(offer.creditsGranted)} ${i18n.t("billingCommerce.recoveryConversations")}`}
           >
-            {i18n.t("billingCommerce.buy")}
+            {submittingEventHandle === offer.eventHandle
+              ? i18n.t("billingPurchases.submitting")
+              : i18n.t("billingCommerce.buy")}
           </button>
         </form>
         {unresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}

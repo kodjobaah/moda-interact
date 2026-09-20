@@ -60,6 +60,18 @@ const PURCHASE_HISTORY_FILTERS = [
   "ALL",
 ] as const;
 
+const PURCHASE_HISTORY_PAGE_SIZES = [5, 10, 20] as const;
+const DEFAULT_PURCHASE_HISTORY_PAGE_SIZE = 5;
+
+function resolvePurchaseHistoryPageSize(value: string | null): number {
+  const parsed = Number(value);
+  return PURCHASE_HISTORY_PAGE_SIZES.includes(
+    parsed as (typeof PURCHASE_HISTORY_PAGE_SIZES)[number],
+  )
+    ? parsed
+    : DEFAULT_PURCHASE_HISTORY_PAGE_SIZE;
+}
+
 type PurchaseHistoryFilter = (typeof PURCHASE_HISTORY_FILTERS)[number];
 
 const FILTER_TO_STATUS: Record<
@@ -130,7 +142,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       shopifyShopId: shop.shopifyShopId ?? "",
       shopifyPartnerDevelopment,
       page: Number(url.searchParams.get("page") ?? "1"),
-      pageSize: Number(url.searchParams.get("pageSize") ?? "20"),
+      pageSize: resolvePurchaseHistoryPageSize(url.searchParams.get("pageSize")),
       status: FILTER_TO_STATUS[filter],
     }),
   };

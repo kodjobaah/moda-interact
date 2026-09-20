@@ -293,17 +293,16 @@ export class RecoveryCreditPurchaseManagementService {
     pageSize?: number;
     status?: RecoveryCreditPurchaseStatus;
   }): Promise<PurchaseHistoryPage> {
-    const page = pageNumber(input.page);
+    const requestedPage = pageNumber(input.page);
     const size = pageSize(input.pageSize);
     const where: Prisma.RecoveryCreditPurchaseWhereInput = {
       shopId: input.shopId,
       ...(input.status ? { status: input.status } : {}),
     };
-    const [total, purchases] = await Promise.all([
-      this.database.recoveryCreditPurchase.count({ where }),
+    const findPurchases = (pageToRead: number) =>
       this.database.recoveryCreditPurchase.findMany({
         where,
-        skip: (page - 1) * size,
+        skip: (pageToRead - 1) * size,
         take: size,
         orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         include: {
@@ -322,8 +321,15 @@ export class RecoveryCreditPurchaseManagementService {
             },
           },
         },
-      }),
+      });
+    const [total, requestedPurchases] = await Promise.all([
+      this.database.recoveryCreditPurchase.count({ where }),
+      findPurchases(requestedPage),
     ]);
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const page = Math.min(requestedPage, totalPages);
+    const purchases =
+      page === requestedPage ? requestedPurchases : await findPurchases(page);
     return {
       page,
       pageSize: size,

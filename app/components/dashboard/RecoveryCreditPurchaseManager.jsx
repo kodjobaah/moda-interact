@@ -8,6 +8,7 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 import "./BillingPurchaseHub.css";
 
 const FILTERS = ["ACTIVE", "WITHDRAWN", "COMPLETED", "REFUNDED", "ALL"];
+const PAGE_SIZES = [5, 10, 20];
 const statusKeys = {
   REQUESTED: "requested",
   ACTIVE: "active",
@@ -51,7 +52,6 @@ export default function RecoveryCreditPurchaseManager({
   const fetcher = useFetcher();
   const revalidator = useRevalidator();
   const [searchParams, setSearchParams] = useSearchParams();
-  void searchParams;
   const [selected, setSelected] = useState([]);
   const [dialog, setDialog] = useState(null);
   const submissionLock = useRef(false);
@@ -63,6 +63,21 @@ export default function RecoveryCreditPurchaseManager({
   );
   const isSubmitting = fetcher.state !== "idle";
   const outcomes = Array.isArray(fetcher.data) ? fetcher.data : [];
+  const currentPage = page?.page ?? 1;
+  const currentPageSize = page?.pageSize ?? 5;
+  const totalPurchases = page?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalPurchases / currentPageSize));
+  const firstItem =
+    totalPurchases === 0 ? 0 : (currentPage - 1) * currentPageSize + 1;
+  const lastItem = Math.min(currentPage * currentPageSize, totalPurchases);
+
+  const updatePagination = (nextPage, nextPageSize = currentPageSize) => {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("filter", filter);
+    nextParams.set("page", String(nextPage));
+    nextParams.set("pageSize", String(nextPageSize));
+    setSearchParams(nextParams, { preventScrollReset: true });
+  };
 
   useEffect(() => {
     setSelected((ids) =>
@@ -85,11 +100,16 @@ export default function RecoveryCreditPurchaseManager({
 
   const setFilter = (nextFilter) => {
     setSelected([]);
-    setSearchParams((current) => {
-      current.set("filter", nextFilter);
-      current.set("page", "1");
-      return current;
-    });
+    setSearchParams(
+      (current) => {
+        const nextParams = new URLSearchParams(current);
+        nextParams.set("filter", nextFilter);
+        nextParams.set("page", "1");
+        nextParams.set("pageSize", String(currentPageSize));
+        return nextParams;
+      },
+      { preventScrollReset: true },
+    );
   };
 
   const toggle = (purchaseId) => {
@@ -341,41 +361,60 @@ export default function RecoveryCreditPurchaseManager({
           })}
         </div>
       )}
-      <nav className="moda-purchase-pagination" aria-label={i18n.t("billingPurchases.paginationLabel")}>
-        <button
-          className="moda-action-button moda-action-button-secondary"
-          type="button"
-          disabled={(page?.page ?? 1) <= 1 || isSubmitting}
-          onClick={() =>
-            setSearchParams({ filter, page: String((page?.page ?? 1) - 1) })
-          }
+      <div className="moda-purchase-pagination-shell">
+        <label className="moda-purchase-page-size">
+          <select
+            aria-label={i18n.t("billingPurchases.paginationLabel")}
+            value={currentPageSize}
+            disabled={isSubmitting}
+            onChange={(event) =>
+              updatePagination(1, Number(event.target.value))
+            }
+          >
+            {PAGE_SIZES.map((size) => (
+              <option key={size} value={size}>
+                {i18n.t("usage.perPage", {
+                  size: i18n.formatNumber(size),
+                })}
+              </option>
+            ))}
+          </select>
+        </label>
+        <nav
+          className="moda-purchase-pagination"
+          aria-label={i18n.t("billingPurchases.paginationLabel")}
         >
-          {i18n.t("billingPurchases.previous")}
-        </button>
-        <span>
-          {i18n.t("billingPurchases.page", {
-            page: page?.page ?? 1,
-            totalPages: Math.max(
-              1,
-              Math.ceil((page?.total ?? 0) / (page?.pageSize ?? 20)),
-            ),
-          })}
-        </span>
-        <button
-          className="moda-action-button moda-action-button-secondary"
-          type="button"
-          disabled={
-            (page?.page ?? 1) >=
-              Math.ceil((page?.total ?? 0) / (page?.pageSize ?? 20)) ||
-            isSubmitting
-          }
-          onClick={() =>
-            setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })
-          }
-        >
-          {i18n.t("billingPurchases.next")}
-        </button>
-      </nav>
+          <span className="moda-purchase-range">
+            {i18n.t("usage.range", {
+              first: i18n.formatNumber(firstItem),
+              last: i18n.formatNumber(lastItem),
+              total: i18n.formatNumber(totalPurchases),
+            })}
+          </span>
+          <button
+            className="moda-action-button moda-action-button-secondary"
+            type="button"
+            disabled={currentPage <= 1 || isSubmitting}
+            onClick={() => updatePagination(currentPage - 1)}
+          >
+            {i18n.t("billingPurchases.previous")}
+          </button>
+          <span>
+            {i18n.t("billingPurchases.page", {
+              page: currentPage,
+              totalPages,
+            })}
+          </span>
+          <button
+            className="moda-action-button moda-action-button-secondary"
+            type="button"
+            disabled={currentPage >= totalPages || isSubmitting}
+            onClick={() => updatePagination(currentPage + 1)}
+          >
+            {i18n.t("billingPurchases.next")}
+          </button>
+        </nav>
+      </div>
       {dialog?.type === "refund" ? (
         <dialog className="moda-purchase-dialog" open aria-modal="true" aria-labelledby="refund-confirm-title">
           <h2 id="refund-confirm-title">

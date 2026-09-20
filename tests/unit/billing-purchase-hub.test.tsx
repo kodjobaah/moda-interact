@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("react-router", async () => {
   const actual = await vi.importActual<typeof import("react-router")>("react-router");
-  return { ...actual, useSubmit: () => vi.fn() };
+  return { ...actual, useSubmit: () => vi.fn(), useNavigation: () => ({ state: "idle" }) };
 });
 
 import BillingPurchaseHub from "../../app/components/dashboard/BillingPurchaseHub";
@@ -216,6 +216,9 @@ describe("BillingPurchaseHub", () => {
     expect(source).toContain("event.preventDefault()");
     expect(source).toContain('submit(formData, { method: "post" })');
     expect(source).toContain('formData.set("purchaseId", crypto.randomUUID())');
+    expect(source).toContain("purchaseSubmissionLockRef.current");
+    expect(source).toContain("if (!offerPurchaseEligible || purchaseSubmissionLockRef.current) return");
+    expect(source).toContain("disabled={!offerPurchaseEligible || purchaseSubmissionInFlight}");
   });
 
   it("renders multiple resolved offers in catalogue order with selected handles", () => {

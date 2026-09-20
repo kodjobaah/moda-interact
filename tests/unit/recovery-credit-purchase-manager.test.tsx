@@ -67,14 +67,14 @@ function purchase(id: string, status: string, availableAmount: number) {
   };
 }
 
-function render() {
+function render(pageOverrides = {}) {
   return renderToStaticMarkup(
     <RecoveryCreditPurchaseManager
       merchantUi={merchantUi}
       filter={filter}
       page={{
         page: 1,
-        pageSize: 20,
+        pageSize: 5,
         total: 5,
         purchases: [
           purchase("requested", "REQUESTED", 0),
@@ -85,6 +85,7 @@ function render() {
           purchase("completed", "COMPLETED", 0),
           purchase("refunded", "REFUNDED", 0),
         ],
+        ...pageOverrides,
       }}
     />,
   );
@@ -157,15 +158,24 @@ describe("purchased credit history manager", () => {
     );
   });
 
-  it("keeps server-provided rows visible and preserves the canonical filter during pagination", () => {
+  it("keeps server-provided rows visible and preserves page size and filters during pagination", () => {
     filter = "ALL";
-    const markup = render();
+    const markup = render({ page: 2, pageSize: 5, total: 12 });
     expect(markup).toContain("Awaiting Shopify confirmation");
+    expect(markup).toContain("5 per page");
+    expect(markup).toContain("6-10 of 12");
+    expect(markup).toContain("Page 2 of 3");
     expect(managerSource).toContain(
-      "setSearchParams({ filter, page: String((page?.page ?? 1) - 1) })",
+      "const nextParams = new URLSearchParams(searchParams)",
+    );
+    expect(managerSource).toContain('nextParams.set("pageSize", String(nextPageSize))');
+    expect(managerSource).toContain(
+      "setSearchParams(nextParams, { preventScrollReset: true })",
     );
     expect(managerSource).toContain(
-      "setSearchParams({ filter, page: String((page?.page ?? 1) + 1) })",
+      "updatePagination(1, Number(event.target.value))",
     );
+    expect(routeSource).toContain("PURCHASE_HISTORY_PAGE_SIZES = [5, 10, 20]");
+    expect(routeSource).toContain("DEFAULT_PURCHASE_HISTORY_PAGE_SIZE = 5");
   });
 });
