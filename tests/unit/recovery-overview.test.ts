@@ -1,4 +1,5 @@
 import React from "react";
+import LegacyBillingUnavailable from "../../app/components/dashboard/LegacyBillingUnavailable";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, it, expect } from "vitest";
@@ -135,4 +136,29 @@ describe("recovery overview", () => {
         );
     }
   });
+});
+
+it("renders unavailable billing selection without any implicit usage redirect/link", () => {
+  const props = {
+    merchantUi: overviewFixture().merchantUi,
+    embed: overviewFixture().performance.embed,
+  };
+  const markup = renderToStaticMarkup(
+    React.createElement(RouterProvider, {
+      router: createMemoryRouter(
+        [
+          {
+            path: "/app",
+            element: React.createElement(LegacyBillingUnavailable, props),
+          },
+        ],
+        { initialEntries: ["/app"] },
+      ),
+    }),
+  );
+  expect(markup).toContain(
+    "The requested billing period is unavailable. No other period has been selected.",
+  );
+  expect(markup).not.toContain("/app/usage");
+  expect(markup).toContain("shop=fixture.myshopify.com");
 });

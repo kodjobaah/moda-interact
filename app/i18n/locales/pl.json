@@ -479,5 +479,6 @@
   "overview.periodEnd": "Koniec okresu: {date}",
   "overview.expiryUnavailable": "Wygaśnięcie promocji: niedostępne",
   "overview.refunding": "W trakcie zwrotu: {count, number}",
-  "overview.pendingHint": "Kandydaci w kolejce nie musieli jeszcze rozpocząć odzyskiwania. Pusta kolejka nie oznacza prawidłowego działania odzyskiwania."
+  "overview.pendingHint": "Kandydaci w kolejce nie musieli jeszcze rozpocząć odzyskiwania. Pusta kolejka nie oznacza prawidłowego działania odzyskiwania.",
+  "legacyBilling.unavailable": "Żądany okres rozliczeniowy jest niedostępny. Nie wybrano innego okresu."
 }

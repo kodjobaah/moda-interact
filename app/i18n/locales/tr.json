@@ -479,5 +479,6 @@
   "overview.periodEnd": "Dönem sonu: {date}",
   "overview.expiryUnavailable": "Promosyon bitişi: bilinmiyor",
   "overview.refunding": "İade ediliyor: {count, number}",
-  "overview.pendingHint": "Kuyruktaki adaylar henüz kurtarma başlatmamış olabilir. Boş kuyruk kurtarmanın çalışma durumunu göstermez."
+  "overview.pendingHint": "Kuyruktaki adaylar henüz kurtarma başlatmamış olabilir. Boş kuyruk kurtarmanın çalışma durumunu göstermez.",
+  "legacyBilling.unavailable": "İstenen fatura dönemi kullanılamıyor. Başka bir dönem seçilmedi."
 }

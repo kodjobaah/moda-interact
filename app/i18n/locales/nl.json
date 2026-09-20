@@ -479,5 +479,6 @@
   "overview.periodEnd": "Periode eindigt: {date}",
   "overview.expiryUnavailable": "Vervaldatum promotie: niet beschikbaar",
   "overview.refunding": "In terugbetaling: {count, number}",
-  "overview.pendingHint": "Kandidaten in de wachtrij hebben niet per se een herstelactie gestart. Een lege wachtrij geeft de werking van herstel niet aan."
+  "overview.pendingHint": "Kandidaten in de wachtrij hebben niet per se een herstelactie gestart. Een lege wachtrij geeft de werking van herstel niet aan.",
+  "legacyBilling.unavailable": "De gevraagde factureringsperiode is niet beschikbaar. Er is geen andere periode geselecteerd."
 }

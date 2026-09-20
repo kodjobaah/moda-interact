@@ -479,5 +479,6 @@
   "overview.periodEnd": "Fine periodo: {date}",
   "overview.expiryUnavailable": "Scadenza promozione: non disponibile",
   "overview.refunding": "In rimborso: {count, number}",
-  "overview.pendingHint": "I candidati in coda non hanno necessariamente avviato un recupero. Una coda vuota non indica lo stato dei recuperi."
+  "overview.pendingHint": "I candidati in coda non hanno necessariamente avviato un recupero. Una coda vuota non indica lo stato dei recuperi.",
+  "legacyBilling.unavailable": "Il periodo di fatturazione richiesto non è disponibile. Non è stato selezionato un altro periodo."
 }

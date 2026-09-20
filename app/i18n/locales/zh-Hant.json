@@ -479,5 +479,6 @@
   "overview.periodEnd": "週期結束：{date}",
   "overview.expiryUnavailable": "促銷到期時間：未知",
   "overview.refunding": "退款處理中：{count, number}",
-  "overview.pendingHint": "佇列中的候選結帳不一定已開始挽回。佇列為空並不代表挽回運作正常。"
+  "overview.pendingHint": "佇列中的候選結帳不一定已開始挽回。佇列為空並不代表挽回運作正常。",
+  "legacyBilling.unavailable": "要求的帳單週期無法使用。未選擇其他週期。"
 }

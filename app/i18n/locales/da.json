@@ -479,5 +479,6 @@
   "overview.periodEnd": "Perioden slutter: {date}",
   "overview.expiryUnavailable": "Kampagneudløb: utilgængeligt",
   "overview.refunding": "Under tilbagebetaling: {count, number}",
-  "overview.pendingHint": "Kandidater i køen har ikke nødvendigvis startet en gendannelse. En tom kø viser ikke gendannelsens driftstilstand."
+  "overview.pendingHint": "Kandidater i køen har ikke nødvendigvis startet en gendannelse. En tom kø viser ikke gendannelsens driftstilstand.",
+  "legacyBilling.unavailable": "Den ønskede faktureringsperiode er ikke tilgængelig. Ingen anden periode er valgt."
 }

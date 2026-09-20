@@ -479,5 +479,6 @@
   "overview.periodEnd": "Konec období: {date}",
   "overview.expiryUnavailable": "Konec akce: nedostupný",
   "overview.refunding": "Probíhá vrácení: {count, number}",
-  "overview.pendingHint": "Kandidáti ve frontě nemuseli ještě zahájit obnovení. Prázdná fronta nevypovídá o stavu obnovení."
+  "overview.pendingHint": "Kandidáti ve frontě nemuseli ještě zahájit obnovení. Prázdná fronta nevypovídá o stavu obnovení.",
+  "legacyBilling.unavailable": "Požadované fakturační období není dostupné. Nebylo vybráno jiné období."
 }

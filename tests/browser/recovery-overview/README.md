@@ -25,3 +25,9 @@ Open `http://127.0.0.1:4179/app?fixture=ACTIVE`. The scenario toolbar controls s
 - Screenshots inspected: [desktop](evidence/desktop-1024.png), [320px mobile](evidence/mobile-320.png), [RTL](evidence/rtl-390.png), [French](evidence/french-390.png).
 
 The current billing capacity DTO exposes paid-period end but no promotional expiry timestamp. The overview preserves the known paid period end and explicitly labels promotional expiry unavailable; it does not infer an expiry or sum balances from distinct sources.
+
+## Attempt 2 — explicit unavailable billing period
+
+A direct missing-period bookmark (`/app?view=detail&bill=past&billId=missing-period`) now displays the production `LegacyBillingUnavailable` component. Browser replay verified the requested URL stays in place, the page explicitly states that no other period was selected, and its only link returns to Overview with trusted embed context. At 390px viewport width the document is 390px wide without overflow. The Overview link and subsequent valid legacy-period link work. [Unavailable-period screenshot](evidence/unavailable-period-390.png).
+
+The synthetic fixture checks presentation/navigation, while the production loader tests cover absent ID (default allowed), owned ID, missing/deleted/foreign ID, malformed/empty/repeated ID (unavailable without substitution), tenant constraints, onboarding precedence, and no performance/capacity/pending reads on the compatibility path. Expanded required suites: 56 tests passed. Typecheck remains 131 baseline diagnostics; lint remains 20 errors and two warnings, with no rework-owned diagnostics.

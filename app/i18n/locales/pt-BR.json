@@ -479,5 +479,6 @@
   "overview.periodEnd": "Fim do período: {date}",
   "overview.expiryUnavailable": "Validade da promoção: indisponível",
   "overview.refunding": "Em reembolso: {count, number}",
-  "overview.pendingHint": "Os candidatos na fila não necessariamente iniciaram uma recuperação. Uma fila vazia não indica o funcionamento das recuperações."
+  "overview.pendingHint": "Os candidatos na fila não necessariamente iniciaram uma recuperação. Uma fila vazia não indica o funcionamento das recuperações.",
+  "legacyBilling.unavailable": "O período de faturamento solicitado está indisponível. Nenhum outro período foi selecionado."
 }

@@ -11,6 +11,7 @@ import {
 import RecoveryOverview, {
   type OverviewProps,
 } from "../../../app/components/dashboard/RecoveryOverview";
+import LegacyBillingUnavailable from "../../../app/components/dashboard/LegacyBillingUnavailable";
 import Onboarding from "../../../app/components/onboarding/Onboarding";
 import { overviewFixture } from "../../fixtures/recovery-overview";
 import RecoveryList from "../../../app/routes/app/recoveries/RecoveryList";
@@ -124,9 +125,18 @@ function dataFor(request: Request): OverviewProps {
   return data;
 }
 function Screen() {
-  const data = useLoaderData() as OverviewProps;
+  const data = useLoaderData() as OverviewProps & {
+    legacyBillingUnavailable?: boolean;
+  };
   const navigation = useNavigation();
   const revalidator = useRevalidator();
+  if (data.legacyBillingUnavailable)
+    return (
+      <LegacyBillingUnavailable
+        merchantUi={data.merchantUi}
+        embed={data.performance.embed}
+      />
+    );
   return (
     <>
       <nav className="fixture-controls" aria-label="Fixture scenarios">
@@ -137,6 +147,9 @@ function Screen() {
         ))}
         <Link to="/app?view=detail&bill=past&billId=fixture-period">
           Legacy billing
+        </Link>
+        <Link to="/app?view=detail&bill=past&billId=missing-period">
+          Unavailable legacy billing
         </Link>
       </nav>
       {scenario === "ONBOARDING" ? (
@@ -181,10 +194,14 @@ createRoot(document.getElementById("root")!).render(
           if (
             url.searchParams.get("view") === "detail" &&
             scenario !== "ONBOARDING"
-          )
+          ) {
+            const ids = url.searchParams.getAll("billId");
+            if (ids.length && (ids.length !== 1 || ids[0] !== "fixture-period"))
+              return { ...data, legacyBillingUnavailable: true };
             return redirect(
               `/app/usage?bill=${url.searchParams.get("bill") === "past" ? "past" : "current"}&billId=fixture-period&shop=fixture.myshopify.com`,
             );
+          }
           return data;
         },
         Component: Screen,

@@ -479,5 +479,6 @@
   "overview.periodEnd": "Fin de période : {date}",
   "overview.expiryUnavailable": "Expiration de la promotion : indisponible",
   "overview.refunding": "Remboursement en cours : {count, number}",
-  "overview.pendingHint": "Les candidats en attente n’ont pas forcément commencé une récupération. Une file vide ne renseigne pas sur le bon fonctionnement des récupérations."
+  "overview.pendingHint": "Les candidats en attente n’ont pas forcément commencé une récupération. Une file vide ne renseigne pas sur le bon fonctionnement des récupérations.",
+  "legacyBilling.unavailable": "La période de facturation demandée est indisponible. Aucune autre période n’a été sélectionnée."
 }

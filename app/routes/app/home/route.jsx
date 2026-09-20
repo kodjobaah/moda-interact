@@ -10,6 +10,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 
 import { authenticate } from "@/shopify.server";
 
+import LegacyBillingUnavailable from "@/components/dashboard/LegacyBillingUnavailable";
 import RecoveryOverview from "@/components/dashboard/RecoveryOverview";
 import { loadOverviewPerformance, overviewEmbed } from "./overview.server";
 import Onboarding from "@/components/onboarding/Onboarding";
@@ -117,13 +118,29 @@ export const loader = async ({ request }) => {
       "bill",
       url.searchParams.get("bill") === "past" ? "past" : "current",
     );
-    const billId = url.searchParams.get("billId");
-    if (billId && /^[A-Za-z0-9_-]{1,128}$/.test(billId)) {
-      const period = await db.billingPeriod.findFirst({
-        where: { id: billId, shopId: shop.id },
-        select: { id: true },
-      });
-      if (period) params.set("billId", period.id);
+    const billIds = url.searchParams.getAll("billId");
+    if (billIds.length) {
+      const billId = billIds[0];
+      const period =
+        billIds.length === 1 && /^[A-Za-z0-9_-]{1,128}$/.test(billId)
+          ? await db.billingPeriod.findFirst({
+              where: { id: billId, shopId: shop.id },
+              select: { id: true },
+            })
+          : null;
+      // An explicit selection must never turn into Usage's default period.
+      // Missing, foreign and malformed IDs share one safe outcome; echo none of them.
+      if (!period)
+        return {
+          settings,
+          merchantUi,
+          merchantExperienceState,
+          billingSetup,
+          subscription: null,
+          legacyBillingUnavailable: true,
+          embed,
+        };
+      params.set("billId", period.id);
     }
     throw redirect(`/app/usage?${params}`);
   }
@@ -215,6 +232,14 @@ export default function Index() {
       <Onboarding
         merchantUi={data.merchantUi}
         pricingCatalogue={data.pricingCatalogue}
+      />
+    );
+  }
+  if (data.legacyBillingUnavailable) {
+    return (
+      <LegacyBillingUnavailable
+        merchantUi={data.merchantUi}
+        embed={data.embed}
       />
     );
   }

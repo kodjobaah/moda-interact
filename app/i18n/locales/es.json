@@ -479,5 +479,6 @@
   "overview.periodEnd": "Fin del período: {date}",
   "overview.expiryUnavailable": "Vencimiento de promoción: no disponible",
   "overview.refunding": "En reembolso: {count, number}",
-  "overview.pendingHint": "Los candidatos pendientes no necesariamente han iniciado una recuperación. Una cola vacía no indica el estado de funcionamiento de las recuperaciones."
+  "overview.pendingHint": "Los candidatos pendientes no necesariamente han iniciado una recuperación. Una cola vacía no indica el estado de funcionamiento de las recuperaciones.",
+  "legacyBilling.unavailable": "El período de facturación solicitado no está disponible. No se ha seleccionado otro período."
 }

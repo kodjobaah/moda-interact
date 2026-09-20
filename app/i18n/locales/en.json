@@ -479,5 +479,6 @@
   "overview.periodEnd": "Period ends: {date}",
   "overview.expiryUnavailable": "Promotion expiry: unavailable",
   "overview.refunding": "Refunding: {count, number}",
-  "overview.pendingHint": "Pending queue candidates have not necessarily started a recovery. An empty queue does not indicate recovery health."
+  "overview.pendingHint": "Pending queue candidates have not necessarily started a recovery. An empty queue does not indicate recovery health.",
+  "legacyBilling.unavailable": "The requested billing period is unavailable. No other period has been selected."
 }

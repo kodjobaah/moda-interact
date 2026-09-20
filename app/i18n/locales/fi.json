@@ -479,5 +479,6 @@
   "overview.periodEnd": "Jakso päättyy: {date}",
   "overview.expiryUnavailable": "Kampanjan päättyminen: ei saatavilla",
   "overview.refunding": "Hyvitettävänä: {count, number}",
-  "overview.pendingHint": "Jonossa olevat ehdokkaat eivät välttämättä ole aloittaneet palautusta. Tyhjä jono ei kerro palautusten toimintatilasta."
+  "overview.pendingHint": "Jonossa olevat ehdokkaat eivät välttämättä ole aloittaneet palautusta. Tyhjä jono ei kerro palautusten toimintatilasta.",
+  "legacyBilling.unavailable": "Pyydetty laskutusjakso ei ole saatavilla. Mitään muuta jaksoa ei ole valittu."
 }

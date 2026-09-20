@@ -479,5 +479,6 @@
   "overview.periodEnd": "Perioden slutter: {date}",
   "overview.expiryUnavailable": "Kampanjeutløp: utilgjengelig",
   "overview.refunding": "Under refusjon: {count, number}",
-  "overview.pendingHint": "Kandidater i køen har ikke nødvendigvis startet en gjenoppretting. En tom kø viser ikke gjenopprettingens driftstilstand."
+  "overview.pendingHint": "Kandidater i køen har ikke nødvendigvis startet en gjenoppretting. En tom kø viser ikke gjenopprettingens driftstilstand.",
+  "legacyBilling.unavailable": "Den forespurte faktureringsperioden er ikke tilgjengelig. Ingen annen periode er valgt."
 }

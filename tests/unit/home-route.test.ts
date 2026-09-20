@@ -106,7 +106,9 @@ describe("app home loader", () => {
 
   it("keeps detail requests on the onboarding surface", async () => {
     const result = await loader({
-      request: new Request("https://example.test/app?view=detail"),
+      request: new Request(
+        "https://example.test/app?view=detail&billId=missing-period",
+      ),
     });
 
     expect(result).toMatchObject({
@@ -372,25 +374,77 @@ describe("app home loader", () => {
       expect(readPendingRecoveries).not.toHaveBeenCalled();
     },
   );
-  it.each(["other-tenant", "https://evil.test", "x".repeat(129)])(
-    "drops unauthorized or malformed legacy bill ID %s",
+  it.each([
+    "missing-period",
+    "deleted-period",
+    "other-tenant",
+    "https://evil.test",
+    "x".repeat(129),
+    "",
+  ])(
+    "shows an explicit unavailable state for requested bill ID %s without substituting a default",
     async (billId) => {
+      findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+      getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });
+      const result = await loader({
+        request: new Request(
+          `https://example.test/app?view=detail&bill=past&billId=${encodeURIComponent(billId)}&shop=attacker&host=aG9zdA==&embedded=1`,
+        ),
+      });
+      expect(result).toMatchObject({
+        legacyBillingUnavailable: true,
+        embed: {
+          shop: "merchant.myshopify.com",
+          host: "aG9zdA==",
+          embedded: "1",
+        },
+      });
+      expect(result).not.toHaveProperty("performance");
+      expect(result).not.toHaveProperty("billId");
+      expect(readRecoveryOverview).not.toHaveBeenCalled();
+      expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
+      expect(readPendingRecoveries).not.toHaveBeenCalled();
+      expect(findBillingPeriods).not.toHaveBeenCalled();
+      expect(findUsageEvents).not.toHaveBeenCalled();
+      if (/^[A-Za-z0-9_-]{1,128}$/.test(billId))
+        expect(findBillingPeriod).toHaveBeenCalledWith({
+          where: { id: billId, shopId: "shop-1" },
+          select: { id: true },
+        });
+      else expect(findBillingPeriod).not.toHaveBeenCalled();
+    },
+  );
+  it.each(["current", "past"])(
+    "allows a default only when no bill ID was requested (%s)",
+    async (bill) => {
       findShopSettings.mockResolvedValue({ onboardingCompleted: true });
       getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });
       await expect(
         loader({
           request: new Request(
-            `https://example.test/app?view=detail&bill=bad&billId=${encodeURIComponent(billId)}`,
+            `https://example.test/app?view=detail&bill=${bill}`,
           ),
         }),
       ).rejects.toSatisfy((response: Response) => {
         expect(response.headers.get("Location")).toBe(
-          "/app/usage?shop=merchant.myshopify.com&bill=current",
+          `/app/usage?shop=merchant.myshopify.com&bill=${bill}`,
         );
         return true;
       });
+      expect(findBillingPeriod).not.toHaveBeenCalled();
+      expect(readRecoveryOverview).not.toHaveBeenCalled();
     },
   );
+  it("rejects ambiguous repeated period IDs without lookup", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    const result = await loader({
+      request: new Request(
+        "https://example.test/app?view=detail&billId=owned-period&billId=other-period",
+      ),
+    });
+    expect(result.legacyBillingUnavailable).toBe(true);
+    expect(findBillingPeriod).not.toHaveBeenCalled();
+  });
   it("keeps history visible when capacity fails", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });

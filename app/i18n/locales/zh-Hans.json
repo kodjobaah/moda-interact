@@ -479,5 +479,6 @@
   "overview.periodEnd": "周期结束：{date}",
   "overview.expiryUnavailable": "促销到期时间：未知",
   "overview.refunding": "退款处理中：{count, number}",
-  "overview.pendingHint": "队列中的候选结账不一定已开始挽回。队列为空并不代表挽回运行正常。"
+  "overview.pendingHint": "队列中的候选结账不一定已开始挽回。队列为空并不代表挽回运行正常。",
+  "legacyBilling.unavailable": "请求的账单周期不可用。未选择其他周期。"
 }

@@ -479,5 +479,6 @@
   "overview.periodEnd": "Perioden slutar: {date}",
   "overview.expiryUnavailable": "Kampanjens slutdatum: saknas",
   "overview.refunding": "Under återbetalning: {count, number}",
-  "overview.pendingHint": "Kandidater i kön har inte nödvändigtvis startat en återställning. En tom kö visar inte återställningens driftstatus."
+  "overview.pendingHint": "Kandidater i kön har inte nödvändigtvis startat en återställning. En tom kö visar inte återställningens driftstatus.",
+  "legacyBilling.unavailable": "Den begärda faktureringsperioden är inte tillgänglig. Ingen annan period har valts."
 }
