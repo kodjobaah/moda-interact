@@ -58,6 +58,8 @@ export default function App() {
               ? i18n.t("billingCommerce.page.title")
               : item.id === "promotions"
                 ? i18n.t("promotions.nav")
+                : item.id === "recoverySettings"
+                  ? i18n.t("recoverySettings.nav")
                 : `Messages${unreadMessages > 0 ? ` (${unreadMessages})` : ""}`;
           return <s-link key={item.id} href={item.href}>{label}</s-link>;
         })}
