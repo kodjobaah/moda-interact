@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "checkJs": false },
+  "include": [
+    "../app/services/recoveries/detail-cursor.server.ts",
+    "../app/services/recoveries/detail-message.ts",
+    "../app/services/recoveries/recovery-detail.server.ts",
+    "unit/recovery-detail-readers.test.ts",
+    "integration/recovery-detail-query-plans.test.ts"
+  ],
+  "exclude": ["../node_modules", "../database"]
+}
