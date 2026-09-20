@@ -25,6 +25,7 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
+    route("recoveries", "./routes/app/recoveries/route.tsx"),
     route("usage", "./routes/app/usage/route.jsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
     route("recovery-settings", "./routes/app/recovery-settings/route.tsx"),
