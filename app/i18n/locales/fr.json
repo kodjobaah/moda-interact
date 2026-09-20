@@ -491,5 +491,20 @@
   "usageHistory.events": "Pages d’utilisation",
   "usageHistory.empty": "Aucune période de facturation disponible.",
   "usageHistory.invalidCursor": "La page des périodes est invalide. Réinitialisez la liste pour continuer.",
-  "usageHistory.error": "Impossible de charger l’historique d’utilisation. Réessayez."
+  "usageHistory.error": "Impossible de charger l’historique d’utilisation. Réessayez.",
+  "merchantFeatures.title": "Fonctionnalités de conversation",
+  "merchantFeatures.description": "Choisissez les options incluses dans votre forfait. Les ajouts concernent les nouvelles conversations ; les conversations existantes conservent leurs autorisations.",
+  "merchantFeatures.empty": "Aucune fonctionnalité admissible dans votre forfait actuel.",
+  "merchantFeatures.optional": "Facultatif",
+  "merchantFeatures.required": "Géré par votre forfait",
+  "merchantFeatures.effectiveOn": "Actuellement activé",
+  "merchantFeatures.effectiveOff": "Actuellement désactivé",
+  "merchantFeatures.saving": "Enregistrement…",
+  "merchantFeatures.unknown": "Le résultat est encore inconnu. Vérifiez cet enregistrement avant toute autre modification.",
+  "merchantFeatures.check": "Vérifier l’enregistrement",
+  "merchantFeatures.refresh": "Actualiser les paramètres",
+  "merchantFeatures.conflict": "Les paramètres ont changé ailleurs. Actualisez avant de réessayer ; votre saisie est conservée.",
+  "merchantFeatures.denied": "Cette fonctionnalité ne peut plus être modifiée.",
+  "merchantFeatures.discountHelp": "L’aide aux remises suit le choix ci-dessous, pour les forfaits gratuits et payants. Les relances restent facturées séparément.",
+  "merchantFeatures.save": "Enregistrer les fonctionnalités"
 }

@@ -12,6 +12,7 @@ const keys = [
   "recoverySettings.followUp.creditWarning", "recoverySettings.followUp.delay", "recoverySettings.followUp.enable",
   "recoverySettings.followUp.title", "recoverySettings.invalid", "recoverySettings.offer.AI_BEST_APPLICABLE",
   "recoverySettings.offer.FIXED", "recoverySettings.offer.NONE", "recoverySettings.offer.catalogueUnavailable",
+  "recoverySettings.offer.availableDiscounts", "recoverySettings.offer.catalogueEmpty", "recoverySettings.offer.catalogueError", "recoverySettings.offer.catalogueSyncRequired", "recoverySettings.offer.catalogueSyncing",
   "recoverySettings.offer.notSelectable", "recoverySettings.offer.title", "recoverySettings.save", "recoverySettings.saved",
   "recoverySettings.start.label", "recoverySettings.start.title", "recoverySettings.title", "recoverySettings.nav",
 ].sort();
@@ -26,7 +27,7 @@ describe("Recovery Settings translation contract", () => {
   });
 
   it("uses the supplied date/fact and effective identity keys", () => {
-    const route = fs.readFileSync(path.resolve(root, "app/routes/app/recovery-settings/route.tsx"), "utf8");
+    const route = fs.readFileSync(path.resolve(root, "app/routes/app/recovery-settings/RecoverySettingsView.tsx"), "utf8");
     expect(route).toContain("recoverySettings.discount.startsAt");
     expect(route).toContain("recoverySettings.discount.endsAt");
     expect(route).not.toContain("recoverySettings.discount.starts\"");

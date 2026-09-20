@@ -491,5 +491,20 @@
   "usageHistory.events": "Pagine utilizzo",
   "usageHistory.empty": "Nessun periodo di fatturazione disponibile.",
   "usageHistory.invalidCursor": "La pagina dei periodi non è valida. Reimposta l’elenco per continuare.",
-  "usageHistory.error": "Impossibile caricare la cronologia utilizzo. Riprova."
+  "usageHistory.error": "Impossibile caricare la cronologia utilizzo. Riprova.",
+  "merchantFeatures.title": "Funzioni di conversazione",
+  "merchantFeatures.description": "Scegli le funzioni opzionali incluse nel piano. Le aggiunte valgono per le nuove conversazioni; quelle esistenti mantengono le autorizzazioni originali.",
+  "merchantFeatures.empty": "Nessuna funzione disponibile per il piano attuale.",
+  "merchantFeatures.optional": "Facoltativo",
+  "merchantFeatures.required": "Gestito dal piano",
+  "merchantFeatures.effectiveOn": "Attualmente attivo",
+  "merchantFeatures.effectiveOff": "Attualmente disattivo",
+  "merchantFeatures.saving": "Salvataggio…",
+  "merchantFeatures.unknown": "L’esito è ancora sconosciuto. Verifica il salvataggio originale prima di altre modifiche.",
+  "merchantFeatures.check": "Verifica salvataggio",
+  "merchantFeatures.refresh": "Aggiorna impostazioni",
+  "merchantFeatures.conflict": "Le impostazioni sono cambiate altrove. Aggiorna prima di riprovare; i dati inseriti sono conservati.",
+  "merchantFeatures.denied": "Questa funzione non è più modificabile.",
+  "merchantFeatures.discountHelp": "L’assistenza sugli sconti segue la scelta sottostante, per piani gratuiti e a pagamento. I solleciti restano addebitati separatamente.",
+  "merchantFeatures.save": "Salva funzioni"
 }

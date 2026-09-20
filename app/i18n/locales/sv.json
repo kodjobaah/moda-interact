@@ -491,5 +491,20 @@
   "usageHistory.events": "Användningssidor",
   "usageHistory.empty": "Ingen faktureringsperiod tillgänglig.",
   "usageHistory.invalidCursor": "Periodsidan är ogiltig. Återställ listan för att fortsätta.",
-  "usageHistory.error": "Användningshistoriken kunde inte laddas. Försök igen."
+  "usageHistory.error": "Användningshistoriken kunde inte laddas. Försök igen.",
+  "merchantFeatures.title": "Samtalsfunktioner",
+  "merchantFeatures.description": "Välj valfria funktioner i din plan. Tillägg gäller nya samtal; befintliga samtal behåller sina ursprungliga behörigheter.",
+  "merchantFeatures.empty": "Inga tillgängliga funktioner i din nuvarande plan.",
+  "merchantFeatures.optional": "Valfri",
+  "merchantFeatures.required": "Hanteras av din plan",
+  "merchantFeatures.effectiveOn": "Aktiverad nu",
+  "merchantFeatures.effectiveOff": "Inaktiverad nu",
+  "merchantFeatures.saving": "Sparar…",
+  "merchantFeatures.unknown": "Resultatet är ännu okänt. Kontrollera den ursprungliga sparningen före nästa ändring.",
+  "merchantFeatures.check": "Kontrollera sparning",
+  "merchantFeatures.refresh": "Uppdatera inställningar",
+  "merchantFeatures.conflict": "Inställningarna har ändrats någon annanstans. Uppdatera innan du försöker igen; dina uppgifter finns kvar.",
+  "merchantFeatures.denied": "Den här funktionen kan inte längre ändras.",
+  "merchantFeatures.discountHelp": "Rabatthjälpen följer valet nedan i både gratis och betalda planer. Uppföljningar debiteras separat.",
+  "merchantFeatures.save": "Spara funktioner"
 }

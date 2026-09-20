@@ -491,5 +491,20 @@
   "usageHistory.events": "Usage pages",
   "usageHistory.empty": "No billing period is available.",
   "usageHistory.invalidCursor": "The billing period page is invalid. Reset the period list to continue.",
-  "usageHistory.error": "Usage history could not be loaded. Please try again."
+  "usageHistory.error": "Usage history could not be loaded. Please try again.",
+  "merchantFeatures.title": "Conversation features",
+  "merchantFeatures.description": "Choose optional features included in your plan. Additions apply to new conversations; existing conversations keep their original permissions.",
+  "merchantFeatures.empty": "No eligible features are available on your current plan.",
+  "merchantFeatures.optional": "Optional",
+  "merchantFeatures.required": "Managed by your plan",
+  "merchantFeatures.effectiveOn": "Currently enabled",
+  "merchantFeatures.effectiveOff": "Currently disabled",
+  "merchantFeatures.saving": "Saving…",
+  "merchantFeatures.unknown": "The save outcome is not yet known. Check the original save before making another change.",
+  "merchantFeatures.check": "Check save",
+  "merchantFeatures.refresh": "Refresh settings",
+  "merchantFeatures.conflict": "Settings changed elsewhere. Refresh before retrying; your input has been preserved.",
+  "merchantFeatures.denied": "This feature is no longer eligible for changes.",
+  "merchantFeatures.discountHelp": "Discount assistance follows the offer choice below, for both Free and Paid plans. Follow-ups remain separately chargeable.",
+  "merchantFeatures.save": "Save features"
 }

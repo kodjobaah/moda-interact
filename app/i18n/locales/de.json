@@ -491,5 +491,20 @@
   "usageHistory.events": "Nutzungsseiten",
   "usageHistory.empty": "Kein Abrechnungszeitraum verfügbar.",
   "usageHistory.invalidCursor": "Die Zeitraumseite ist ungültig. Setzen Sie die Liste zurück.",
-  "usageHistory.error": "Der Nutzungsverlauf konnte nicht geladen werden. Versuchen Sie es erneut."
+  "usageHistory.error": "Der Nutzungsverlauf konnte nicht geladen werden. Versuchen Sie es erneut.",
+  "merchantFeatures.title": "Gesprächsfunktionen",
+  "merchantFeatures.description": "Wählen Sie optionale Funktionen Ihres Tarifs. Ergänzungen gelten für neue Gespräche; bestehende behalten ihre ursprünglichen Berechtigungen.",
+  "merchantFeatures.empty": "Für Ihren aktuellen Tarif sind keine passenden Funktionen verfügbar.",
+  "merchantFeatures.optional": "Optional",
+  "merchantFeatures.required": "Durch Ihren Tarif verwaltet",
+  "merchantFeatures.effectiveOn": "Derzeit aktiviert",
+  "merchantFeatures.effectiveOff": "Derzeit deaktiviert",
+  "merchantFeatures.saving": "Wird gespeichert…",
+  "merchantFeatures.unknown": "Das Ergebnis ist noch unbekannt. Prüfen Sie den ursprünglichen Speichervorgang vor weiteren Änderungen.",
+  "merchantFeatures.check": "Speichern prüfen",
+  "merchantFeatures.refresh": "Einstellungen aktualisieren",
+  "merchantFeatures.conflict": "Die Einstellungen wurden anderweitig geändert. Vor einem neuen Versuch aktualisieren; Ihre Eingabe bleibt erhalten.",
+  "merchantFeatures.denied": "Diese Funktion kann nicht mehr geändert werden.",
+  "merchantFeatures.discountHelp": "Die Rabattunterstützung folgt der Auswahl unten, bei kostenlosen und kostenpflichtigen Tarifen. Folgenachrichten werden separat berechnet.",
+  "merchantFeatures.save": "Funktionen speichern"
 }

@@ -491,5 +491,20 @@
   "usageHistory.events": "Brukssider",
   "usageHistory.empty": "Ingen faktureringsperiode tilgjengelig.",
   "usageHistory.invalidCursor": "Periodesiden er ugyldig. Tilbakestill listen for å fortsette.",
-  "usageHistory.error": "Brukshistorikken kunne ikke lastes. Prøv igjen."
+  "usageHistory.error": "Brukshistorikken kunne ikke lastes. Prøv igjen.",
+  "merchantFeatures.title": "Samtalefunksjoner",
+  "merchantFeatures.description": "Velg valgfrie funksjoner i abonnementet. Tillegg gjelder nye samtaler; eksisterende samtaler beholder sine opprinnelige tillatelser.",
+  "merchantFeatures.empty": "Ingen tilgjengelige funksjoner i ditt nåværende abonnement.",
+  "merchantFeatures.optional": "Valgfri",
+  "merchantFeatures.required": "Styrt av abonnementet",
+  "merchantFeatures.effectiveOn": "Aktivert nå",
+  "merchantFeatures.effectiveOff": "Deaktivert nå",
+  "merchantFeatures.saving": "Lagrer…",
+  "merchantFeatures.unknown": "Resultatet er ennå ukjent. Kontroller den opprinnelige lagringen før en ny endring.",
+  "merchantFeatures.check": "Kontroller lagring",
+  "merchantFeatures.refresh": "Oppdater innstillinger",
+  "merchantFeatures.conflict": "Innstillingene er endret et annet sted. Oppdater før du prøver igjen; inndataene er bevart.",
+  "merchantFeatures.denied": "Denne funksjonen kan ikke lenger endres.",
+  "merchantFeatures.discountHelp": "Rabatthjelp følger valget nedenfor i både gratis og betalte abonnementer. Oppfølginger belastes separat.",
+  "merchantFeatures.save": "Lagre funksjoner"
 }

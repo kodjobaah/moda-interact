@@ -37,6 +37,7 @@ export default [
 
   route("app/recoveries/:recoveryId/messages", "./routes/app/recovery-detail/messages.ts"),
   route("app/recoveries/:recoveryId/related", "./routes/app/recovery-detail/related.ts"),
+  route("app/settings-save", "./routes/app/settings-save/route.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
