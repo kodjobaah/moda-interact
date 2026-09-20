@@ -14,7 +14,23 @@ import { loadRecoveryPolicySnapshot, RecoveryPolicyValidationError, saveMerchant
 import "./RecoverySettingsRoute.css";
 
 type DiscountRow = Awaited<ReturnType<typeof loader>>["discounts"][number];
+type DiscountCatalogueStatus = Awaited<ReturnType<typeof loader>>["catalogueStatus"];
 type RecoveryOfferMode = "NONE" | "FIXED" | "AI_BEST_APPLICABLE";
+
+function discountCatalogueMessageKey(status: DiscountCatalogueStatus) {
+  switch (status) {
+    case "CURRENT":
+      return "recoverySettings.offer.catalogueEmpty";
+    case "SYNC_REQUIRED":
+      return "recoverySettings.offer.catalogueSyncRequired";
+    case "SYNCING":
+      return "recoverySettings.offer.catalogueSyncing";
+    case "ERROR":
+      return "recoverySettings.offer.catalogueError";
+    default:
+      return "recoverySettings.offer.catalogueUnavailable";
+  }
+}
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
@@ -161,10 +177,9 @@ export default function RecoverySettingsRoute() {
             {selectedOfferMode === "FIXED" ? (
               <div className="moda-recovery-fixed-discounts">
                 <div className="moda-recovery-subsection-heading">
-                  <h3>{i18n.t("recoverySettings.offer.FIXED")}</h3>
-                  {data.merchantFixedDiscount ? <p>{data.merchantFixedDiscount.title ?? data.merchantFixedDiscount.id}</p> : null}
+                  <h3>{i18n.t("recoverySettings.offer.availableDiscounts")}</h3>
                 </div>
-                {data.catalogueStatus === "CURRENT" ? (
+                {data.catalogueStatus === "CURRENT" && data.discounts.length > 0 ? (
                   <div className="moda-recovery-discount-grid">
                     {data.discounts.map((discount: DiscountRow) => (
                       <label
@@ -198,7 +213,7 @@ export default function RecoverySettingsRoute() {
                 ) : (
                   <div className="moda-recovery-inline-message">
                     <span aria-hidden="true">i</span>
-                    <p>{i18n.t("recoverySettings.offer.catalogueUnavailable")}</p>
+                    <p>{i18n.t(discountCatalogueMessageKey(data.catalogueStatus))}</p>
                   </div>
                 )}
               </div>

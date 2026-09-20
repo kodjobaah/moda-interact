@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   markUnavailable: vi.fn(),
   buildJob: vi.fn(),
   publish: vi.fn(),
+  webhookReceived: vi.fn(),
+  webhookAuthFailure: vi.fn(),
+  webhookRouteFailure: vi.fn(),
+  webhookRouteOutcome: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -32,6 +36,12 @@ vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", ()
 vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => ({
   publishShopifyDiscountSyncJob: mocks.publish,
 }));
+vi.mock("../../../app/services/webhooks/shopify-webhook-observability.server", () => ({
+  recordShopifyWebhookReceived: mocks.webhookReceived,
+  recordShopifyWebhookAuthenticationFailure: mocks.webhookAuthFailure,
+  recordShopifyWebhookRouteFailure: mocks.webhookRouteFailure,
+  recordShopifyWebhookRouteOutcome: mocks.webhookRouteOutcome,
+}));
 
 import { action } from "../../../app/routes/webhooks/app/scopes-update/route";
 
@@ -44,7 +54,7 @@ const shopRecord = {
 };
 
 function request() {
-  return new Request("https://example.test/webhooks/app/scopes-update");
+  return new Request("https://example.test/webhooks/app/scopes_update");
 }
 
 beforeEach(() => {
@@ -100,6 +110,19 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
     );
     expect(transactionResolved).toBe(true);
     expect(mocks.publish).toHaveBeenCalledTimes(1);
+    expect(mocks.webhookReceived).toHaveBeenCalledWith({
+      request: expect.any(Request),
+      route: "/webhooks/app/scopes_update",
+    });
+    expect(mocks.webhookRouteOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/webhooks/app/scopes_update",
+        topic: "APP_SCOPES_UPDATE",
+        shopDomain: shopRecord.domain,
+        shopId: shopRecord.id,
+        outcome: "PROCESSED_APP_SCOPES_UPDATE_SYNC_REQUESTED",
+      }),
+    );
   });
 
   it("marks scope removal unavailable without publishing", async () => {

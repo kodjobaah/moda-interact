@@ -1,26 +1,61 @@
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
+import {
+  recordShopifyWebhookAuthenticationFailure,
+  recordShopifyWebhookReceived,
+  recordShopifyWebhookRouteFailure,
+  recordShopifyWebhookRouteOutcome,
+} from "@/services/webhooks/shopify-webhook-observability.server";
+
+const WEBHOOK_ROUTE = "/webhooks/customers/data_request";
 
 // @ts-ignore
 export const action = async ({ request }) => {
-  const { shop, topic, payload } = await authenticate.webhook(request);
+  const startedAt = Date.now();
+  recordShopifyWebhookReceived({ request, route: WEBHOOK_ROUTE });
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+  let authenticated;
+  try {
+    authenticated = await authenticate.webhook(request);
+  } catch (error) {
+    recordShopifyWebhookAuthenticationFailure({
+      request,
+      route: WEBHOOK_ROUTE,
+      error,
+      ackMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
 
-  // No automated export pipeline yet: durably record the request so it can be
-  // fulfilled manually within Shopify's required response window.
-  const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+  const { shop, topic, eventId } = authenticated;
 
-  console.log("customers/data_request received", {
-    shop,
-    shopId: shopRecord?.id ?? null,
-    shopifyShopId: payload.shop_id,
-    dataRequestId: payload.data_request?.id,
-    customerId: payload.customer?.id,
-    customerEmail: payload.customer?.email,
-    customerPhone: payload.customer?.phone,
-    ordersRequested: payload.orders_requested,
-  });
+  try {
+    // No automated export pipeline yet. Resolve the shop so the operational
+    // acknowledgement can be correlated without emitting customer payload/PII.
+    const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
 
-  return new Response();
+    recordShopifyWebhookRouteOutcome({
+      request,
+      route: WEBHOOK_ROUTE,
+      topic: topic ?? "CUSTOMERS_DATA_REQUEST",
+      eventId: eventId ?? null,
+      shopDomain: shop,
+      shopId: shopRecord?.id ?? null,
+      outcome: "PROCESSED_CUSTOMERS_DATA_REQUEST",
+      ackMs: Date.now() - startedAt,
+    });
+
+    return new Response();
+  } catch (error) {
+    recordShopifyWebhookRouteFailure({
+      request,
+      route: WEBHOOK_ROUTE,
+      topic: topic ?? "CUSTOMERS_DATA_REQUEST",
+      eventId: eventId ?? null,
+      shopDomain: shop,
+      error,
+      ackMs: Date.now() - startedAt,
+    });
+    throw error;
+  }
 };
