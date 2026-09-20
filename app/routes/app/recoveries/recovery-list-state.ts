@@ -46,3 +46,31 @@ export function recoveryListUrl(
   if (cursor) search.set("cursor", cursor);
   return `/app/recoveries?${search}`;
 }
+
+/** Share the loader-validated identity with detail's Back link, not the raw URL.
+ * Equivalent default/ordered URLs must save and restore the same list position.
+ * Invalid/loading routes and all other pages keep React Router's entry identity.
+ */
+export function recoveryScrollKey(
+  location: { pathname: string; key: string; state?: unknown },
+  matches: readonly { pathname: string; data: unknown }[],
+): string {
+  if (location.pathname !== "/app/recoveries") return location.key;
+  const match = matches.find((item) => item.pathname === "/app/recoveries");
+  const list = match?.data as RecoveryListData | undefined;
+  if (list?.filters && list.embed) {
+    return list.state === "invalid"
+      ? location.key
+      : recoveryListUrl(list.filters, list.embed);
+  }
+  // React Router looks up the destination position using the previous loaderData.
+  // Back carries this UI-only key, generated from the detail loader's validated
+  // filters. It is never used as a navigation target or authorization input.
+  const state = location.state as { recoveryListScrollKey?: unknown } | null;
+  const savedKey = state?.recoveryListScrollKey;
+  return typeof savedKey === "string" &&
+    savedKey.startsWith("/app/recoveries?") &&
+    savedKey.length <= 8192
+    ? savedKey
+    : location.key;
+}
