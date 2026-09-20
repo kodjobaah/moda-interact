@@ -373,9 +373,11 @@ export default function BillingOptionsPage() {
         merchantUi={data.merchantUi}
       />
       {data.usageHistoryAvailable && (
-        <s-link href={data.usageHistoryHref}>
-          {i18n.t("usageHistory.title")}
-        </s-link>
+        <div className="billing-options__history-action">
+          <s-button href={data.usageHistoryHref} variant="secondary">
+            {i18n.t("usageHistory.title")}
+          </s-button>
+        </div>
       )}
       <BillingPurchaseHub
         merchantUi={data.merchantUi}

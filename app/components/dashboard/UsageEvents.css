@@ -8,6 +8,13 @@
   color: #20262b;
   overflow-wrap: anywhere;
 }
+.usage-history .dashboard-breadcrumbs {
+  justify-content: flex-start;
+  margin: 0 0 12px;
+}
+.usage-history .dashboard-breadcrumbs a {
+  color: #286b50;
+}
 .usage-history header,
 .usage-history nav {
   display: flex;
@@ -17,10 +24,39 @@
 }
 .usage-history header {
   justify-content: space-between;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #dce2e5;
+}
+.usage-history header h1 {
+  margin: 0;
+  color: #173d32;
+  font-size: clamp(28px, 3vw, 38px);
+  letter-spacing: -0.035em;
 }
 .usage-history a {
   color: #075e52;
   text-underline-offset: 3px;
+}
+.usage-history__tabs {
+  width: fit-content;
+  margin-top: 14px;
+  padding: 4px;
+  gap: 4px !important;
+  border: 1px solid #dce2e5;
+  border-radius: 999px;
+  background: #f6faf7;
+}
+.usage-history__tabs a {
+  padding: 8px 14px;
+  border-radius: 999px;
+  color: #617067;
+  font-weight: 700;
+  text-decoration: none;
+}
+.usage-history__tabs a.is-active {
+  background: #fff;
+  color: #173d32;
+  box-shadow: 0 4px 14px rgba(20, 61, 44, 0.09);
 }
 .usage-history section,
 .usage-history__periods {
@@ -59,7 +95,7 @@
 .usage-history table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 650px;
+  min-width: 560px;
 }
 .usage-history th,
 .usage-history td {
@@ -75,6 +111,13 @@
   border-radius: 8px;
 }
 @media (max-width: 600px) {
+  .usage-history__tabs {
+    width: 100%;
+  }
+  .usage-history__tabs a {
+    flex: 1;
+    text-align: center;
+  }
   .usage-history {
     padding: 12px;
   }

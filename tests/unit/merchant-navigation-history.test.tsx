@@ -48,6 +48,8 @@ describe("merchant navigation and history links", () => {
   it("links billing breadcrumb and owned recovery directly, with safe unresolved fallback", () => {
     const html = renderUsage().replaceAll("&amp;", "&");
     expect(html).toContain("/app/billing/options?shop=fixture.myshopify.com");
+    expect(html).toContain("Billing & recovery capacity");
+    expect(html).toContain('class="dashboard-breadcrumbs"');
     expect(html).toContain(
       "/app/recoveries/owned-recovery?shop=fixture.myshopify.com",
     );
@@ -55,7 +57,9 @@ describe("merchant navigation and history links", () => {
     expect(html).not.toContain(">owned-recovery<");
     expect(html).not.toContain("view=detail");
     expect(html).toContain("Usage history");
-    expect(html).toContain("accounting-event-2");
+    expect(html).toContain('aria-current="page"');
+    expect(html).not.toContain("Idempotency key");
+    expect(html).not.toContain("accounting-event-2");
   });
   it("keeps unavailable periods explicit and allows deliberate period selection", () => {
     const data = usageFixture();

@@ -26,6 +26,8 @@ describe("canonical merchant billing UI", () => {
 
   it("uses the canonical billing heading and preserves callback returns", () => {
     expect(optionsSource).toContain('heading={i18n.t("billingCommerce.page.title")}');
+    expect(optionsSource).toContain('<s-button href={data.usageHistoryHref} variant="secondary">');
+    expect(optionsSource).not.toContain('<s-link href={data.usageHistoryHref}>');
     expect(callbackSource).toContain("/app/billing/options");
     expect(selectSource).toContain('target: "_top"');
   });

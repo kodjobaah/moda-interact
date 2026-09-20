@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
+import Breadcrumbs from "./Breadcrumbs";
 import type { readUsageHistory } from "../../services/usage/history.server";
 import type { EmbedContext } from "../../routes/app/recoveries/recovery-list-state";
 import "./UsageEvents.css";
@@ -40,13 +41,16 @@ export default function UsageEvents({
   const paging = history?.usagePagination;
   return (
     <main className="usage-history" dir={i18n.direction} aria-busy={busy}>
-      <nav aria-label={t("usageHistory.breadcrumb")}>
-        <Link to={`/app/billing/options?${new URLSearchParams(embed)}`}>
-          {t("merchantNav.billing")}
-        </Link>
-        <span aria-hidden="true"> / </span>
-        <span aria-current="page">{t("usageHistory.title")}</span>
-      </nav>
+      <Breadcrumbs
+        items={[
+          {
+            label: t("billingCommerce.page.title"),
+            href: `/app/billing/options?${new URLSearchParams(embed)}`,
+          },
+        ]}
+        current={t("usageHistory.title")}
+        merchantUi={merchantUi}
+      />
       <header>
         <h1>{t("usageHistory.title")}</h1>
         <button onClick={onRefresh} disabled={busy}>
@@ -57,8 +61,20 @@ export default function UsageEvents({
         className="usage-history__tabs"
         aria-label={t("dashboard.billingPeriod")}
       >
-        <Link to={href({ bill: "current" }, true)}>{t("usage.current")}</Link>
-        <Link to={href({ bill: "past" }, true)}>{t("usage.past")}</Link>
+        <Link
+          className={history?.usageView === "current" ? "is-active" : undefined}
+          aria-current={history?.usageView === "current" ? "page" : undefined}
+          to={href({ bill: "current" }, true)}
+        >
+          {t("usage.current")}
+        </Link>
+        <Link
+          className={history?.usageView === "past" ? "is-active" : undefined}
+          aria-current={history?.usageView === "past" ? "page" : undefined}
+          to={href({ bill: "past" }, true)}
+        >
+          {t("usage.past")}
+        </Link>
       </nav>
       {busy ? (
         <div role="status">
@@ -164,7 +180,6 @@ export default function UsageEvents({
                         "recovery",
                         "customer",
                         "quantity",
-                        "idempotencyKey",
                         "recordedAt",
                       ].map((key) => (
                         <th scope="col" key={key}>
@@ -206,9 +221,6 @@ export default function UsageEvents({
                             : t("usage.unlinked")}
                         </td>
                         <td>{i18n.formatNumber(event.quantity)}</td>
-                        <td>
-                          <code>{event.idempotencyKey}</code>
-                        </td>
                         <td>
                           {i18n.formatDateTime(event.occurredAt, {
                             year: "numeric",
