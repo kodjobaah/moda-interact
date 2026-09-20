@@ -73,57 +73,65 @@ describe("merchant route access policy", () => {
     (state) => {
       expect(
         MERCHANT_SURFACES.every(
-          (surface) => typeof canAccessMerchantSurface(state, surface),
+          (surface) =>
+            typeof canAccessMerchantSurface(state, surface) === "boolean",
         ),
       ).toBe(true);
     },
   );
 
-  it("matches the exact lifecycle matrix", () => {
-    expect(
-      MERCHANT_EXPERIENCE_STATES.flatMap((state) =>
+  it("matches the exact lifecycle matrix without restoring onboarding billing", () => {
+    const expected = {
+      SIGNED_OUT: [],
+      REINSTALLING: ["SUPPORT"],
+      SUPPORT_ONLY: ["SUPPORT"],
+      ONBOARDING: ["HOME", "SUPPORT", "PLAN_SELECT"],
+      ACTIVE: [
+        "HOME",
+        "USAGE",
+        "BILLING_OPTIONS",
+        "BILLING_PURCHASE_HISTORY",
+        "PROMOTIONS",
+        "RECOVERY_SETTINGS",
+        "RECOVERY_HISTORY",
+        "SUPPORT",
+        "PLAN_SELECT",
+        "PENDING_RECOVERIES",
+      ],
+      NO_CONTRACT: [
+        "HOME",
+        "USAGE",
+        "BILLING_OPTIONS",
+        "BILLING_PURCHASE_HISTORY",
+        "RECOVERY_HISTORY",
+        "SUPPORT",
+        "PLAN_SELECT",
+      ],
+      FROZEN: [
+        "HOME",
+        "USAGE",
+        "BILLING_OPTIONS",
+        "BILLING_PURCHASE_HISTORY",
+        "RECOVERY_HISTORY",
+        "SUPPORT",
+      ],
+      BILLING_ATTENTION: [
+        "HOME",
+        "USAGE",
+        "BILLING_OPTIONS",
+        "BILLING_PURCHASE_HISTORY",
+        "RECOVERY_HISTORY",
+        "SUPPORT",
+        "PLAN_SELECT",
+      ],
+    };
+    for (const state of MERCHANT_EXPERIENCE_STATES) {
+      expect(
         MERCHANT_SURFACES.filter((surface) =>
           canAccessMerchantSurface(state, surface),
         ),
-      ),
-    ).toEqual([
-      "SUPPORT",
-      "SUPPORT",
-      "HOME",
-      "BILLING_OPTIONS",
-      "SUPPORT",
-      "PLAN_SELECT",
-      "HOME",
-      "USAGE",
-      "BILLING_OPTIONS",
-      "BILLING_PURCHASE_HISTORY",
-      "PROMOTIONS",
-      "SUPPORT",
-      "PLAN_SELECT",
-      "PENDING_RECOVERIES",
-      "HOME",
-      "USAGE",
-      "BILLING_OPTIONS",
-      "BILLING_PURCHASE_HISTORY",
-      "SUPPORT",
-      "PLAN_SELECT",
-      "HOME",
-      "USAGE",
-      "BILLING_OPTIONS",
-      "BILLING_PURCHASE_HISTORY",
-      "SUPPORT",
-      "HOME",
-      "USAGE",
-      "BILLING_OPTIONS",
-      "BILLING_PURCHASE_HISTORY",
-      "SUPPORT",
-      "HOME", "BILLING_OPTIONS", "SUPPORT", "PLAN_SELECT",
-      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "PROMOTIONS", "RECOVERY_SETTINGS", "SUPPORT", "PLAN_SELECT", "PENDING_RECOVERIES",
-      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT", "PLAN_SELECT",
-      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT",
-      "HOME", "USAGE", "BILLING_OPTIONS", "BILLING_PURCHASE_HISTORY", "SUPPORT", "PLAN_SELECT",
-      "PLAN_SELECT",
-    ]);
+      ).toEqual(expected[state]);
+    }
   });
 
   it.each([
@@ -148,8 +156,12 @@ describe("merchant route access policy", () => {
       { id: "messages", href: "/app/merchant-support" },
     ]);
     expect(getMerchantNavigation("ACTIVE")).toHaveLength(5);
-    expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
-    expect(getMerchantNavigation("REINSTALLING")).toEqual([{ id: "messages", href: "/app/merchant-support" }]);
+    expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([
+      { id: "messages", href: "/app/merchant-support" },
+    ]);
+    expect(getMerchantNavigation("REINSTALLING")).toEqual([
+      { id: "messages", href: "/app/merchant-support" },
+    ]);
     expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([
       { id: "messages", href: "/app/merchant-support" },
     ]);
@@ -162,26 +174,6 @@ describe("merchant route access policy", () => {
     ["SIGNED_OUT", []],
     ["REINSTALLING", ["/app/merchant-support"]],
     ["SUPPORT_ONLY", ["/app/merchant-support"]],
-    ["ONBOARDING", ["/app", "/app/billing/options", "/app/merchant-support"]],
-    ["ACTIVE", ["/app", "/app/billing/options", "/app/merchant-support", "/app/promotions", "/app/recovery-settings"]],
-    ["NO_CONTRACT", ["/app", "/app/billing/options", "/app/merchant-support"]],
-    ["FROZEN", ["/app", "/app/billing/options", "/app/merchant-support"]],
-    ["BILLING_ATTENTION", ["/app", "/app/billing/options", "/app/merchant-support"]],
-  ] as const)("returns the complete ordered navigation for %s", (state, hrefs) => {
-    expect(getMerchantNavigation(state).map((item) => item.href)).toEqual(hrefs);
-    expect(getMerchantNavigation(state).every((item) => (
-      item.id === "home"
-        ? canAccessMerchantSurface(state, "HOME")
-        : item.id === "billing"
-          ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
-          : item.id === "promotions"
-            ? canAccessMerchantSurface(state, "PROMOTIONS")
-            : item.id === "recoverySettings"
-              ? canAccessMerchantSurface(state, "RECOVERY_SETTINGS")
-            : canAccessMerchantSurface(state, "SUPPORT")
-    ))).toBe(true);
-  });
-});
     ["ONBOARDING", ["/app", "/app/merchant-support"]],
     [
       "ACTIVE",
@@ -190,6 +182,7 @@ describe("merchant route access policy", () => {
         "/app/billing/options",
         "/app/merchant-support",
         "/app/promotions",
+        "/app/recovery-settings",
       ],
     ],
     ["NO_CONTRACT", ["/app", "/app/billing/options", "/app/merchant-support"]],
@@ -212,7 +205,9 @@ describe("merchant route access policy", () => {
               ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
               : item.id === "promotions"
                 ? canAccessMerchantSurface(state, "PROMOTIONS")
-                : canAccessMerchantSurface(state, "SUPPORT"),
+                : item.id === "recoverySettings"
+                  ? canAccessMerchantSurface(state, "RECOVERY_SETTINGS")
+                  : canAccessMerchantSurface(state, "SUPPORT"),
         ),
       ).toBe(true);
     },
