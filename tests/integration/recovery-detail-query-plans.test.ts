@@ -1,3 +1,4 @@
+import { loadRecoveryDetailSeed } from "../helpers/recovery-detail-seed.mjs";
 import { readFile, readdir } from "node:fs/promises";
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
 import { Client } from "pg";
@@ -23,7 +24,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     for (const name of (await readdir(migrations)).sort()) {
       if (/^\d/.test(name)) await client.query(await readFile(new URL(`${name}/migration.sql`, migrations), "utf8"));
     }
-    await client.query(await readFile(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8"));
+    await loadRecoveryDetailSeed(client, await readFile(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8"));
     await client.query('ANALYZE "whatsapp"."Conversation"');
     db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
     console.log("POSTGRES_VERSION", (await client.query("SELECT version()")).rows);
