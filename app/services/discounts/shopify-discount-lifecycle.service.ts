@@ -122,7 +122,7 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
 ): Promise<void> {
   const requestedAt = new Date();
   try {
-    const syncRequest = await db.$transaction(async (transaction) => {
+    const syncRequest = await db.$transaction(async (transaction: Prisma.TransactionClient) => {
       const shop = await transaction.shop.findUnique({
         where: { id: shopId },
         select: { id: true },

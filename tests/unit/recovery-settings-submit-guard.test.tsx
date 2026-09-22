@@ -90,7 +90,9 @@ it.each(["features", "recovery"] as const)(
     );
     expect(button.disabled).toBe(false);
     expect(host.querySelector('[role="status"]')?.textContent).toBe(
-      "recoverySettings.saved",
+      intent === "features"
+        ? "merchantFeatures.saved"
+        : "recoverySettings.saved",
     );
   },
 );
@@ -132,4 +134,45 @@ it("feature switch double activation saves an explicit desired value once withou
   expect(JSON.parse(String(body.get("preferences")))).toEqual([
     { featureId: "feature", enabled: true },
   ]);
+});
+
+it("renders plan-managed features as static enabled capabilities without a switch", async () => {
+  vi.stubGlobal("fetch", vi.fn());
+  await act(async () =>
+    root.render(
+      <FeaturePreferences
+        snapshot={{
+          revision: "old",
+          features: [
+            {
+              id: "core",
+              key: "core_feature",
+              name: "Core feature",
+              description: "Always available.",
+              enabled: false,
+              effective: true,
+              editable: false,
+            },
+            {
+              id: "optional",
+              key: "optional_feature",
+              name: "Optional feature",
+              description: null,
+              enabled: true,
+              effective: true,
+              editable: true,
+            },
+          ],
+        }}
+        t={(k) => k}
+      />,
+    ),
+  );
+
+  expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+  expect(host.textContent).toContain("Core feature");
+  expect(host.textContent).toContain("merchantFeatures.required");
+  expect(host.textContent).not.toContain("core_feature");
+  expect(host.textContent).not.toContain("optional_feature");
+  expect(host.querySelector(".moda-recovery-core-feature")).not.toBeNull();
 });

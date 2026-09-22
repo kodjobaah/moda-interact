@@ -6,7 +6,7 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 const statuses = ["REQUESTED", "ACTIVE", "COMPLETED", "WITHDRAWN", "REFUNDED"];
 
-/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, unresolvedPurchases?: Array<any>, offers?: Array<any>, freeLifetime?: { granted: number, remaining: number } | null, purchasedCreditsAvailable: number, offerVerificationState: string } }} props */
+/** @param {{ merchantUi?: any, topUpState: { latestPurchase?: any, unresolvedPurchases?: Array<any>, offers?: Array<any>, freeLifetime?: { granted: number, remaining: number } | null, purchasedCreditsAvailable: number, purchaseEligible: boolean, offerVerificationState: string } }} props */
 
 export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const i18n = createMerchantI18n(merchantUi);

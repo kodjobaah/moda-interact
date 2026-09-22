@@ -1,7 +1,9 @@
 import { useState } from "react";
 import SettingsForm from "./SettingsForm";
 import type { loadFeaturePreferences } from "@/services/feature-preferences/feature-preferences.server";
+
 type Snapshot = Awaited<ReturnType<typeof loadFeaturePreferences>>;
+
 export default function FeaturePreferences({
   snapshot,
   t,
@@ -12,13 +14,16 @@ export default function FeaturePreferences({
   const [values, setValues] = useState(
     Object.fromEntries(snapshot.features.map((f) => [f.id, f.enabled])),
   );
+
   return (
     <section
-      className="moda-recovery-panel"
+      className="moda-recovery-panel moda-recovery-feature-panel"
       aria-labelledby="merchant-features-title"
     >
-      <h2 id="merchant-features-title">{t("merchantFeatures.title")}</h2>
-      <p>{t("merchantFeatures.description")}</p>
+      <div className="moda-recovery-section-heading">
+        <h2 id="merchant-features-title">{t("merchantFeatures.title")}</h2>
+        <p>{t("merchantFeatures.description")}</p>
+      </div>
       {!snapshot.features.length ? (
         <p role={snapshot.denied ? "alert" : "status"}>
           {t(
@@ -32,6 +37,7 @@ export default function FeaturePreferences({
           revision={snapshot.revision}
           intent="features"
           t={t}
+          showSubmit={false}
           prepare={(form, body) =>
             body.set(
               "preferences",
@@ -48,53 +54,73 @@ export default function FeaturePreferences({
             )
           }
         >
-          {snapshot.features.map((feature) => (
-            <label
-              className={`moda-recovery-toggle-card${(feature.editable ? values[feature.id] : feature.effective) ? " is-selected" : ""}${!feature.editable ? " is-disabled" : ""}`}
-              key={feature.id}
-            >
-              <input
-                type="checkbox"
-                data-feature-id={feature.editable ? feature.id : undefined}
-                checked={
-                  feature.editable
-                    ? (values[feature.id] ?? feature.enabled)
-                    : feature.effective
-                }
-                disabled={!feature.editable}
-                onChange={(event) => {
-                  const checked = event.currentTarget.checked;
-                  setValues((previous) => ({
-                    ...previous,
-                    [feature.id]: checked,
-                  }));
-                  event.currentTarget.form?.requestSubmit();
-                }}
-              />
-              <span className="moda-recovery-toggle" aria-hidden="true">
-                <span />
-              </span>
-              <span>
-                <strong>{feature.name}</strong>
-                <br />
-                <small>{feature.key}</small>
-                {feature.description ? <p>{feature.description}</p> : null}
-                <small>
-                  {t(
-                    feature.editable
-                      ? "merchantFeatures.optional"
-                      : "merchantFeatures.required",
-                  )}{" "}
-                  ·{" "}
-                  {t(
-                    feature.effective
-                      ? "merchantFeatures.effectiveOn"
-                      : "merchantFeatures.effectiveOff",
-                  )}
-                </small>
-              </span>
-            </label>
-          ))}
+          <div className="moda-recovery-feature-grid">
+            {snapshot.features.map((feature) => {
+              const enabled = feature.editable
+                ? (values[feature.id] ?? feature.enabled)
+                : feature.effective;
+
+              if (!feature.editable) {
+                return (
+                  <div
+                    className="moda-recovery-toggle-card moda-recovery-core-feature is-selected"
+                    key={feature.id}
+                  >
+                    <span
+                      className="moda-recovery-core-feature-icon"
+                      aria-hidden="true"
+                    >
+                      ✓
+                    </span>
+                    <span className="moda-recovery-feature-copy">
+                      <strong>{feature.name}</strong>
+                      {feature.description ? <p>{feature.description}</p> : null}
+                      <small>
+                        {t("merchantFeatures.required")} ·{" "}
+                        {t("merchantFeatures.effectiveOn")}
+                      </small>
+                    </span>
+                  </div>
+                );
+              }
+
+              return (
+                <label
+                  className={`moda-recovery-toggle-card${enabled ? " is-selected" : ""}`}
+                  key={feature.id}
+                >
+                  <input
+                    type="checkbox"
+                    data-feature-id={feature.id}
+                    checked={enabled}
+                    onChange={(event) => {
+                      const checked = event.currentTarget.checked;
+                      setValues((previous) => ({
+                        ...previous,
+                        [feature.id]: checked,
+                      }));
+                      event.currentTarget.form?.requestSubmit();
+                    }}
+                  />
+                  <span className="moda-recovery-toggle" aria-hidden="true">
+                    <span />
+                  </span>
+                  <span className="moda-recovery-feature-copy">
+                    <strong>{feature.name}</strong>
+                    {feature.description ? <p>{feature.description}</p> : null}
+                    <small>
+                      {t("merchantFeatures.optional")} ·{" "}
+                      {t(
+                        enabled
+                          ? "merchantFeatures.effectiveOn"
+                          : "merchantFeatures.effectiveOff",
+                      )}
+                    </small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </SettingsForm>
       )}
     </section>

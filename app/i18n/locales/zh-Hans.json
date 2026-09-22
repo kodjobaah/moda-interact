@@ -260,7 +260,7 @@
   "promotions.nav": "促销",
   "recoverySettings.nav": "恢复设置",
   "recoverySettings.title": "恢复设置",
-  "recoverySettings.saved": "恢复设置已保存。",
+  "recoverySettings.saved": "恢复行为已保存。",
   "recoverySettings.invalid": "请检查恢复设置后重试。",
   "recoverySettings.adminOverride": "平台管理目前控制有效的恢复策略。此覆盖结束后，您的设置才会生效。",
   "recoverySettings.effective": "有效值：{value} 分钟",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "客户未回复时发送一次跟进消息",
   "recoverySettings.followUp.delay": "经过（分钟）",
   "recoverySettings.followUp.creditWarning": "如果客户回复，继续恢复对话不会使用额外恢复积分。如果 Moda 发送计划中的跟进消息，该跟进是新的主动恢复尝试，会使用额外恢复积分。时间从上次发送主动恢复消息开始计算。",
-  "recoverySettings.save": "保存恢复设置",
+  "recoverySettings.save": "保存恢复行为",
   "promotions.page.title": "促销优惠",
   "promotions.page.description": "选择可用的促销，为您的店铺添加促销恢复积分。",
   "promotions.empty": "当前没有可用的促销优惠。",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "账单周期页面无效，请重置列表后继续。",
   "usageHistory.error": "无法加载使用历史，请重试。",
   "merchantFeatures.title": "会话功能",
-  "merchantFeatures.description": "选择套餐内的可选功能。新增功能仅适用于新会话，现有会话保留原有权限。",
+  "merchantFeatures.description": "核心对话功能始终启用。您可以开启或关闭可选功能；更改仅适用于新的对话。",
   "merchantFeatures.empty": "当前套餐没有可用功能。",
   "merchantFeatures.optional": "可选",
-  "merchantFeatures.required": "由套餐管理",
+  "merchantFeatures.required": "始终启用",
   "merchantFeatures.effectiveOn": "当前已启用",
   "merchantFeatures.effectiveOff": "当前已停用",
   "merchantFeatures.saving": "正在保存…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "设置已在其他位置更改。请刷新后重试，您的输入已保留。",
   "merchantFeatures.denied": "此功能已无法修改。",
   "merchantFeatures.discountHelp": "免费和付费套餐的折扣辅助均遵循下方选择。后续提醒单独收费。",
-  "merchantFeatures.save": "保存功能"
+  "merchantFeatures.save": "保存功能",
+  "merchantFeatures.saved": "已自动保存。"
 }

@@ -260,7 +260,7 @@
   "promotions.nav": "Promocje",
   "recoverySettings.nav": "Ustawienia odzyskiwania",
   "recoverySettings.title": "Ustawienia odzyskiwania",
-  "recoverySettings.saved": "Ustawienia zapisano.",
+  "recoverySettings.saved": "Zachowanie odzyskiwania zapisano.",
   "recoverySettings.invalid": "Sprawdź ustawienia i spróbuj ponownie.",
   "recoverySettings.adminOverride": "Administracja platformy kontroluje obecnie obowiązującą politykę odzyskiwania. Twoje wartości zaczną obowiązywać po zakończeniu tego nadpisania.",
   "recoverySettings.effective": "Obowiązująca wartość: {value} minut",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Wyślij jedno ponowienie, gdy klient nie odpowie",
   "recoverySettings.followUp.delay": "Po (minutach)",
   "recoverySettings.followUp.creditWarning": "Odpowiedź klienta nie zużywa kolejnego kredytu odzyskiwania. Zaplanowane ponowienie to nowa proaktywna próba i zużywa kolejny kredyt. Czas liczony jest od ostatniej wysłanej wiadomości proaktywnej.",
-  "recoverySettings.save": "Zapisz ustawienia odzyskiwania",
+  "recoverySettings.save": "Zapisz zachowanie odzyskiwania",
   "promotions.page.title": "Oferty promocyjne",
   "promotions.page.description": "Wybierz dostępną promocję, aby dodać promocyjne kredyty odzyskiwania do sklepu.",
   "promotions.empty": "Obecnie nie ma dostępnych ofert promocyjnych.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Strona okresów jest nieprawidłowa. Zresetuj listę, aby kontynuować.",
   "usageHistory.error": "Nie można załadować historii użycia. Spróbuj ponownie.",
   "merchantFeatures.title": "Funkcje rozmowy",
-  "merchantFeatures.description": "Wybierz opcjonalne funkcje swojego planu. Dodatki dotyczą nowych rozmów; istniejące zachowują pierwotne uprawnienia.",
+  "merchantFeatures.description": "Podstawowe funkcje rozmów są zawsze włączone. Funkcje opcjonalne możesz włączać i wyłączać; zmiany dotyczą tylko nowych rozmów.",
   "merchantFeatures.empty": "Brak dostępnych funkcji w bieżącym planie.",
   "merchantFeatures.optional": "Opcjonalna",
-  "merchantFeatures.required": "Zarządzana przez plan",
+  "merchantFeatures.required": "Zawsze włączone",
   "merchantFeatures.effectiveOn": "Obecnie włączona",
   "merchantFeatures.effectiveOff": "Obecnie wyłączona",
   "merchantFeatures.saving": "Zapisywanie…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Ustawienia zmieniono w innym miejscu. Odśwież przed ponowną próbą; wpisane dane zachowano.",
   "merchantFeatures.denied": "Tej funkcji nie można już zmieniać.",
   "merchantFeatures.discountHelp": "Pomoc z rabatami zależy od wyboru poniżej w planach bezpłatnych i płatnych. Kolejne wiadomości są rozliczane osobno.",
-  "merchantFeatures.save": "Zapisz funkcje"
+  "merchantFeatures.save": "Zapisz funkcje",
+  "merchantFeatures.saved": "Zapisano automatycznie."
 }

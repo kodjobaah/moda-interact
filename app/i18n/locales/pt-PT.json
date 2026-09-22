@@ -260,7 +260,7 @@
   "promotions.nav": "Promoções",
   "recoverySettings.nav": "Definições de recuperação",
   "recoverySettings.title": "Definições de recuperação",
-  "recoverySettings.saved": "Definições de recuperação guardadas.",
+  "recoverySettings.saved": "Comportamento de recuperação guardado.",
   "recoverySettings.invalid": "Reveja as definições e tente novamente.",
   "recoverySettings.adminOverride": "A administração da plataforma controla atualmente a política efetiva de recuperação. Os seus valores aplicar-se-ão quando esta substituição terminar.",
   "recoverySettings.effective": "Valor efetivo: {value} minutos",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Enviar um seguimento quando o cliente não responder",
   "recoverySettings.followUp.delay": "Após (minutos)",
   "recoverySettings.followUp.creditWarning": "Se o cliente responder, continuar a conversa não usa outro crédito de recuperação. Um seguimento agendado é uma nova tentativa proativa e usa outro crédito. O tempo é medido desde a última mensagem proativa enviada.",
-  "recoverySettings.save": "Guardar definições de recuperação",
+  "recoverySettings.save": "Guardar comportamento de recuperação",
   "promotions.page.title": "Ofertas promocionais",
   "promotions.page.description": "Selecione uma promoção disponível para adicionar créditos promocionais de recuperação à sua loja.",
   "promotions.empty": "Não existem ofertas promocionais disponíveis neste momento.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "A página de períodos é inválida. Reponha a lista para continuar.",
   "usageHistory.error": "Não foi possível carregar o histórico de utilização. Tente novamente.",
   "merchantFeatures.title": "Funcionalidades de conversa",
-  "merchantFeatures.description": "Escolha funcionalidades opcionais incluídas no plano. As adições aplicam-se a novas conversas; as existentes mantêm as permissões originais.",
+  "merchantFeatures.description": "As funcionalidades principais de conversação estão sempre ativas. Pode ativar ou desativar funcionalidades opcionais; as alterações aplicam-se apenas a novas conversas.",
   "merchantFeatures.empty": "Nenhuma funcionalidade disponível no seu plano atual.",
   "merchantFeatures.optional": "Opcional",
-  "merchantFeatures.required": "Gerido pelo plano",
+  "merchantFeatures.required": "Sempre ativo",
   "merchantFeatures.effectiveOn": "Atualmente ativado",
   "merchantFeatures.effectiveOff": "Atualmente desativado",
   "merchantFeatures.saving": "A guardar…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "As definições foram alteradas noutro local. Atualize antes de tentar novamente; os dados foram preservados.",
   "merchantFeatures.denied": "Esta funcionalidade já não pode ser alterada.",
   "merchantFeatures.discountHelp": "A assistência com descontos segue a opção abaixo, nos planos gratuitos e pagos. Os lembretes continuam a ser cobrados separadamente.",
-  "merchantFeatures.save": "Guardar funcionalidades"
+  "merchantFeatures.save": "Guardar funcionalidades",
+  "merchantFeatures.saved": "Guardado automaticamente."
 }

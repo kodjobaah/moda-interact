@@ -19,6 +19,7 @@ import { getMerchantSystemMessageAction } from "@/services/merchant-support/syst
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { billingService } from "@/services/billing/billing.service";
 
+/** @param {{ request: Request }} args */
 export async function loader({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
@@ -35,6 +36,7 @@ export async function loader({ request }) {
   return Response.json({ ...support, merchantUi: merchantUiContext(settings, session), merchantExperienceState });
 }
 
+/** @param {{ request: Request }} args */
 export async function action({ request }) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
@@ -59,7 +61,7 @@ export async function action({ request }) {
     return Response.json(await composeMerchantMessage({
       shopId: shop.id,
       body: String(formData.get("body") ?? ""),
-      shopifyUserId: session.userId ?? null,
+      shopifyUserId: session.onlineAccessInfo?.associated_user?.id?.toString() ?? null,
     }));
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "Unable to send message." }, { status: 400 });
@@ -75,12 +77,12 @@ export default function MerchantSupport() {
   const [validationError, setValidationError] = useState("");
   const messages = support.items ?? [];
   const graphemeCount = useMemo(() => countGraphemes(body), [body]);
-  const unreadMessages = messages.filter((message) => (
+  const unreadMessages = messages.filter((/** @type {any} */ message) => (
     ["ADMINISTRATIVE", "SYSTEM"].includes(message.kind)
     && message.state === "AVAILABLE"
     && !message.readAt
   ));
-  const unreadMessageIds = unreadMessages.map((message) => message.id).join(",");
+  const unreadMessageIds = unreadMessages.map((/** @type {any} */ message) => message.id).join(",");
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +94,7 @@ export default function MerchantSupport() {
     return () => { cancelled = true; };
   }, [unreadMessageIds, revalidate]);
 
+  /** @param {import("react").FormEvent<HTMLFormElement>} event */
   function submitMessage(event) {
     event.preventDefault();
     try {
@@ -109,7 +112,7 @@ export default function MerchantSupport() {
     <s-page heading={i18n.t("dashboard.messagesSent")}>
       <s-section heading="Support thread">
         {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
-          {messages.map((message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
+          {messages.map((/** @type {any} */ message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
         </ol>}
         {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
           {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
@@ -132,6 +135,7 @@ export default function MerchantSupport() {
 
 export const countGraphemes = countUnicodeGraphemes;
 
+/** @param {{ messageIds: string[], revalidate: () => void, fetchImpl?: typeof fetch, isCancelled?: () => boolean }} args */
 export async function markUnreadMessages({
   messageIds,
   revalidate,
@@ -168,6 +172,7 @@ export async function markUnreadMessages({
   return markedCount > 0;
 }
 
+/** @param {{ message: any, i18n: any, merchantExperienceState: string }} props */
 function MessageCard({ message, i18n, merchantExperienceState }) {
   const isMerchant = message.kind === "MERCHANT";
   const label = isMerchant ? "You" : message.kind === "SYSTEM" ? "System" : "Moda Support";
@@ -175,7 +180,10 @@ function MessageCard({ message, i18n, merchantExperienceState }) {
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
   const systemAction = message.kind === "SYSTEM"
-    ? getMerchantSystemMessageAction(message.systemCode, merchantExperienceState)
+        ? getMerchantSystemMessageAction(
+          message.systemCode,
+          /** @type {import("@/services/shop/merchant-route-access-policy").MerchantExperienceState} */ (merchantExperienceState),
+        )
     : null;
 
   return (

@@ -17,12 +17,14 @@ export default function SettingsForm({
   intent,
   t,
   prepare,
+  showSubmit = true,
 }: {
   children: ReactNode;
   revision: string;
   intent: "features" | "recovery";
   t: (key: string) => string;
   prepare?: (form: HTMLFormElement, body: FormData) => void;
+  showSubmit?: boolean;
 }) {
   const revalidator = useRevalidator();
   const formRef = useRef<HTMLFormElement>(null);
@@ -62,6 +64,35 @@ export default function SettingsForm({
     return () => active.dispose();
   }, []);
   const pending = state.phase === "saving" || state.phase === "unknown";
+  const statusMessage =
+    state.phase === "idle"
+      ? ""
+      : t(
+          state.phase === "error"
+            ? state.error === "CONFLICT"
+              ? "merchantFeatures.conflict"
+              : state.error === "DENIED"
+                ? "merchantFeatures.denied"
+                : "recoverySettings.invalid"
+            : state.phase === "saved"
+              ? intent === "features"
+                ? "merchantFeatures.saved"
+                : "recoverySettings.saved"
+              : state.phase === "unknown"
+                ? "merchantFeatures.unknown"
+                : "merchantFeatures.saving",
+        );
+
+  const status = (
+    <p
+      className="moda-recovery-save-status"
+      role={state.phase === "error" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      {statusMessage}
+    </p>
+  );
+
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -88,43 +119,33 @@ export default function SettingsForm({
           margin: 0,
           minWidth: 0,
           display: "grid",
-          gap: "1rem",
+          gap: intent === "recovery" ? 0 : "1rem",
         }}
       >
         {children}
-        <div className="moda-recovery-form-actions">
-          <button
-            className="moda-recovery-save-button"
-            type="submit"
-            disabled={pending}
-          >
-            {t(
-              pending
-                ? "merchantFeatures.saving"
-                : intent === "features"
-                  ? "merchantFeatures.save"
-                  : "recoverySettings.save",
-            )}
-          </button>
-        </div>
       </fieldset>
-      <p role={state.phase === "error" ? "alert" : "status"} aria-live="polite">
-        {state.phase === "idle"
-          ? ""
-          : t(
-              state.phase === "error"
-                ? state.error === "CONFLICT"
-                  ? "merchantFeatures.conflict"
-                  : state.error === "DENIED"
-                    ? "merchantFeatures.denied"
-                    : "recoverySettings.invalid"
-                : state.phase === "saved"
-                  ? "recoverySettings.saved"
-                  : state.phase === "unknown"
-                    ? "merchantFeatures.unknown"
-                    : "merchantFeatures.saving",
-            )}
-      </p>
+      {showSubmit ? (
+        <div className="moda-recovery-form-footer">
+          {status}
+          <div className="moda-recovery-form-actions">
+            <button
+              className="moda-recovery-save-button"
+              type="submit"
+              disabled={pending}
+            >
+              {t(
+                pending
+                  ? "merchantFeatures.saving"
+                  : intent === "features"
+                    ? "merchantFeatures.save"
+                    : "recoverySettings.save",
+              )}
+            </button>
+          </div>
+        </div>
+      ) : (
+        status
+      )}
       {state.phase === "unknown" ? (
         <button type="button" onClick={() => controller.current!.reconcile()}>
           {t("merchantFeatures.check")}

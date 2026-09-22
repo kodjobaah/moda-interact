@@ -9,6 +9,10 @@ const layoutSource = await readFile(
   new URL("../../../app/routes/app/route.jsx", import.meta.url),
   "utf8",
 );
+const navigationSource = await readFile(
+  new URL("../../../app/components/dashboard/MerchantNavigation.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("promotion merchant route", () => {
   it("uses promotion-specific localized copy and state", () => {
@@ -42,8 +46,9 @@ describe("promotion merchant route", () => {
   });
 
   it("localizes the app navigation label", () => {
-    expect(layoutSource).toContain('i18n.t("promotions.nav")');
-    expect(layoutSource).not.toContain('>Promotions</s-link>');
+    expect(navigationSource).toContain('promotions: "promotions.nav"');
+    expect(navigationSource).toContain("i18n.t(keys[item.id])");
+    expect(layoutSource).not.toContain(">Promotions</s-link>");
   });
 
   it("renders authored campaign text without internal metadata", () => {

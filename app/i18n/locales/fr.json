@@ -260,7 +260,7 @@
   "promotions.nav": "Promotions",
   "recoverySettings.nav": "Paramètres de récupération",
   "recoverySettings.title": "Paramètres de récupération",
-  "recoverySettings.saved": "Paramètres de récupération enregistrés.",
+  "recoverySettings.saved": "Comportement de récupération enregistré.",
   "recoverySettings.invalid": "Vérifiez les paramètres et réessayez.",
   "recoverySettings.adminOverride": "L’administration de la plateforme contrôle actuellement la politique de récupération effective. Vos valeurs s’appliqueront à la fin de cette substitution.",
   "recoverySettings.effective": "Valeur effective : {value} minutes",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Envoyer une relance si le client n’a pas répondu",
   "recoverySettings.followUp.delay": "Après (minutes)",
   "recoverySettings.followUp.creditWarning": "Si le client répond, poursuivre la conversation n’utilise pas un autre crédit de récupération. Une relance programmée est une nouvelle tentative proactive et utilise un autre crédit. Le délai est mesuré depuis le dernier message proactif envoyé.",
-  "recoverySettings.save": "Enregistrer les paramètres de récupération",
+  "recoverySettings.save": "Enregistrer le comportement de récupération",
   "promotions.page.title": "Offres promotionnelles",
   "promotions.page.description": "Sélectionnez une promotion disponible pour ajouter des crédits de récupération promotionnels à votre boutique.",
   "promotions.empty": "Aucune offre promotionnelle n’est actuellement disponible.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "La page des périodes est invalide. Réinitialisez la liste pour continuer.",
   "usageHistory.error": "Impossible de charger l’historique d’utilisation. Réessayez.",
   "merchantFeatures.title": "Fonctionnalités de conversation",
-  "merchantFeatures.description": "Choisissez les options incluses dans votre forfait. Les ajouts concernent les nouvelles conversations ; les conversations existantes conservent leurs autorisations.",
+  "merchantFeatures.description": "Les fonctions principales de conversation sont toujours activées. Vous pouvez activer ou désactiver les fonctions facultatives ; les modifications s’appliquent uniquement aux nouvelles conversations.",
   "merchantFeatures.empty": "Aucune fonctionnalité admissible dans votre forfait actuel.",
   "merchantFeatures.optional": "Facultatif",
-  "merchantFeatures.required": "Géré par votre forfait",
+  "merchantFeatures.required": "Toujours activé",
   "merchantFeatures.effectiveOn": "Actuellement activé",
   "merchantFeatures.effectiveOff": "Actuellement désactivé",
   "merchantFeatures.saving": "Enregistrement…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Les paramètres ont changé ailleurs. Actualisez avant de réessayer ; votre saisie est conservée.",
   "merchantFeatures.denied": "Cette fonctionnalité ne peut plus être modifiée.",
   "merchantFeatures.discountHelp": "L’aide aux remises suit le choix ci-dessous, pour les forfaits gratuits et payants. Les relances restent facturées séparément.",
-  "merchantFeatures.save": "Enregistrer les fonctionnalités"
+  "merchantFeatures.save": "Enregistrer les fonctionnalités",
+  "merchantFeatures.saved": "Enregistré automatiquement."
 }

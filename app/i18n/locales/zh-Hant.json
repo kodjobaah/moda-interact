@@ -260,7 +260,7 @@
   "promotions.nav": "促銷",
   "recoverySettings.nav": "恢復設定",
   "recoverySettings.title": "恢復設定",
-  "recoverySettings.saved": "恢復設定已儲存。",
+  "recoverySettings.saved": "恢復行為已儲存。",
   "recoverySettings.invalid": "請檢查恢復設定後再試一次。",
   "recoverySettings.adminOverride": "平台管理目前控制有效的恢復政策。此覆寫結束後，您的設定才會生效。",
   "recoverySettings.effective": "有效值：{value} 分鐘",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "客戶未回覆時傳送一次跟進訊息",
   "recoverySettings.followUp.delay": "經過（分鐘）",
   "recoverySettings.followUp.creditWarning": "如果客戶回覆，繼續恢復對話不會使用額外恢復點數。如果 Moda 傳送排程跟進訊息，該跟進是新的主動恢復嘗試，會使用額外恢復點數。時間從上次傳送主動恢復訊息開始計算。",
-  "recoverySettings.save": "儲存恢復設定",
+  "recoverySettings.save": "儲存恢復行為",
   "promotions.page.title": "促銷優惠",
   "promotions.page.description": "選擇可用的促銷，為您的商店新增促銷恢復點數。",
   "promotions.empty": "目前沒有可用的促銷優惠。",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "帳單週期頁面無效，請重設清單後繼續。",
   "usageHistory.error": "無法載入使用歷史，請重試。",
   "merchantFeatures.title": "對話功能",
-  "merchantFeatures.description": "選擇方案內的可選功能。新增功能僅適用於新對話，現有對話保留原有權限。",
+  "merchantFeatures.description": "核心對話功能一律啟用。您可以開啟或關閉選用功能；變更只會套用至新的對話。",
   "merchantFeatures.empty": "目前方案沒有可用功能。",
   "merchantFeatures.optional": "可選",
-  "merchantFeatures.required": "由方案管理",
+  "merchantFeatures.required": "始終啟用",
   "merchantFeatures.effectiveOn": "目前已啟用",
   "merchantFeatures.effectiveOff": "目前已停用",
   "merchantFeatures.saving": "正在儲存…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "設定已在其他位置變更。請重新整理後重試，您的輸入已保留。",
   "merchantFeatures.denied": "此功能已無法修改。",
   "merchantFeatures.discountHelp": "免費和付費方案的折扣輔助皆遵循下方選擇。後續提醒另行收費。",
-  "merchantFeatures.save": "儲存功能"
+  "merchantFeatures.save": "儲存功能",
+  "merchantFeatures.saved": "已自動儲存。"
 }

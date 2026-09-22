@@ -260,7 +260,7 @@
   "promotions.nav": "Kampanjer",
   "recoverySettings.nav": "Återställningsinställningar",
   "recoverySettings.title": "Återställningsinställningar",
-  "recoverySettings.saved": "Återställningsinställningarna har sparats.",
+  "recoverySettings.saved": "Återställningsbeteendet har sparats.",
   "recoverySettings.invalid": "Kontrollera inställningarna och försök igen.",
   "recoverySettings.adminOverride": "Plattformsadministrationen styr för närvarande den effektiva återställningspolicyn. Dina värden gäller när åsidosättningen upphör.",
   "recoverySettings.effective": "Effektivt värde: {value} minuter",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Skicka en uppföljning när kunden inte har svarat",
   "recoverySettings.followUp.delay": "Efter (minuter)",
   "recoverySettings.followUp.creditWarning": "Ett kundsvar använder inte en extra återställningskredit. En schemalagd uppföljning är ett nytt proaktivt försök och använder en extra kredit. Tiden mäts från det senast skickade proaktiva meddelandet.",
-  "recoverySettings.save": "Spara återställningsinställningar",
+  "recoverySettings.save": "Spara återställningsbeteende",
   "promotions.page.title": "Kampanjerbjudanden",
   "promotions.page.description": "Välj en tillgänglig kampanj för att lägga till kampanjkrediter för återvinning i din butik.",
   "promotions.empty": "Inga kampanjerbjudanden är tillgängliga just nu.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Periodsidan är ogiltig. Återställ listan för att fortsätta.",
   "usageHistory.error": "Användningshistoriken kunde inte laddas. Försök igen.",
   "merchantFeatures.title": "Samtalsfunktioner",
-  "merchantFeatures.description": "Välj valfria funktioner i din plan. Tillägg gäller nya samtal; befintliga samtal behåller sina ursprungliga behörigheter.",
+  "merchantFeatures.description": "Grundläggande konversationsfunktioner är alltid aktiverade. Du kan slå på eller av valfria funktioner; ändringar gäller endast nya konversationer.",
   "merchantFeatures.empty": "Inga tillgängliga funktioner i din nuvarande plan.",
   "merchantFeatures.optional": "Valfri",
-  "merchantFeatures.required": "Hanteras av din plan",
+  "merchantFeatures.required": "Alltid aktiverad",
   "merchantFeatures.effectiveOn": "Aktiverad nu",
   "merchantFeatures.effectiveOff": "Inaktiverad nu",
   "merchantFeatures.saving": "Sparar…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Inställningarna har ändrats någon annanstans. Uppdatera innan du försöker igen; dina uppgifter finns kvar.",
   "merchantFeatures.denied": "Den här funktionen kan inte längre ändras.",
   "merchantFeatures.discountHelp": "Rabatthjälpen följer valet nedan i både gratis och betalda planer. Uppföljningar debiteras separat.",
-  "merchantFeatures.save": "Spara funktioner"
+  "merchantFeatures.save": "Spara funktioner",
+  "merchantFeatures.saved": "Sparat automatiskt."
 }

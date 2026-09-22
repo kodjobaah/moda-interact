@@ -94,9 +94,6 @@ async function createCommonFixtures(): Promise<void> {
       active: true,
       shopifyUsageEventHandle: "promotion-meter",
       includedRecoveryConversationAllowance: 100,
-      defaultOutboundSoftLimit: 10,
-      defaultOutboundHardLimit: 20,
-      terminalMessageReservedSlots: 1,
     },
   });
   await database.shop.create({

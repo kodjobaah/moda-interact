@@ -260,7 +260,7 @@
   "promotions.nav": "Promoties",
   "recoverySettings.nav": "Herstelinstellingen",
   "recoverySettings.title": "Herstelinstellingen",
-  "recoverySettings.saved": "Herstelinstellingen opgeslagen.",
+  "recoverySettings.saved": "Herstelgedrag opgeslagen.",
   "recoverySettings.invalid": "Controleer de instellingen en probeer het opnieuw.",
   "recoverySettings.adminOverride": "Platformbeheer beheert momenteel het effectieve herstelbeleid. Je waarden gelden zodra deze overschrijving eindigt.",
   "recoverySettings.effective": "Effectieve waarde: {value} minuten",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Eén opvolging sturen als de klant niet heeft gereageerd",
   "recoverySettings.followUp.delay": "Na (minuten)",
   "recoverySettings.followUp.creditWarning": "Een antwoord van de klant gebruikt geen extra hersteltegoed. Een geplande opvolging is een nieuwe proactieve poging en gebruikt extra hersteltegoed. De tijd wordt gemeten vanaf het laatst verzonden proactieve bericht.",
-  "recoverySettings.save": "Herstelinstellingen opslaan",
+  "recoverySettings.save": "Herstelgedrag opslaan",
   "promotions.page.title": "Promotieaanbiedingen",
   "promotions.page.description": "Selecteer een beschikbare promotie om promotionele herstelcredits aan je winkel toe te voegen.",
   "promotions.empty": "Er zijn momenteel geen promotieaanbiedingen beschikbaar.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "De periodenpagina is ongeldig. Stel de lijst opnieuw in.",
   "usageHistory.error": "De gebruiksgeschiedenis kon niet worden geladen. Probeer opnieuw.",
   "merchantFeatures.title": "Gespreksfuncties",
-  "merchantFeatures.description": "Kies optionele functies binnen uw abonnement. Toevoegingen gelden voor nieuwe gesprekken; bestaande gesprekken behouden hun oorspronkelijke rechten.",
+  "merchantFeatures.description": "Kernfuncties voor gesprekken zijn altijd ingeschakeld. Je kunt optionele functies in- of uitschakelen; wijzigingen gelden alleen voor nieuwe gesprekken.",
   "merchantFeatures.empty": "Geen geschikte functies beschikbaar in uw huidige abonnement.",
   "merchantFeatures.optional": "Optioneel",
-  "merchantFeatures.required": "Beheerd door uw abonnement",
+  "merchantFeatures.required": "Altijd ingeschakeld",
   "merchantFeatures.effectiveOn": "Momenteel ingeschakeld",
   "merchantFeatures.effectiveOff": "Momenteel uitgeschakeld",
   "merchantFeatures.saving": "Opslaan…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "De instellingen zijn elders gewijzigd. Vernieuw voordat u opnieuw probeert; uw invoer is bewaard.",
   "merchantFeatures.denied": "Deze functie kan niet meer worden gewijzigd.",
   "merchantFeatures.discountHelp": "Kortingshulp volgt de onderstaande keuze voor gratis en betaalde abonnementen. Vervolgberichten worden apart berekend.",
-  "merchantFeatures.save": "Functies opslaan"
+  "merchantFeatures.save": "Functies opslaan",
+  "merchantFeatures.saved": "Automatisch opgeslagen."
 }

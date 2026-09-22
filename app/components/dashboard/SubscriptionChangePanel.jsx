@@ -5,6 +5,7 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 /** @typedef {{ shopifyPlanHandle: string, mappedModaPlanName?: string|null, price?: { amount: string, currency?: string|null }|null, interval?: string|null, effectiveAt?: string|null, currentPeriodEnd?: string|null }} ProviderPlanData */
 
+/** @param {any} i18n @param {any} interval */
 function providerPeriodLabel(i18n, interval) {
   if (!interval) return null;
   return interval === "EVERY_30_DAYS" ? i18n.t("billingCommerce.perMonth") : interval;
@@ -56,7 +57,7 @@ ProviderPlan.propTypes = {
   pending: PropTypes.bool,
 };
 
-/** @param {{ merchantUi: any, current: ProviderPlanData & { cancelAtEndOfCycle: boolean }|null, pending: ProviderPlanData|null, requestedSelection?: { shopifyPlanHandle: string }|null, providerVerificationState: string, managePlansHref?: string|null, managePlansAvailable: boolean }} props */
+/** @param {{ merchantUi: any, current: any, pending: any, requestedSelection?: any, providerVerificationState: string, managePlansHref?: string|null, managePlansAvailable: boolean }} props */
 export default function SubscriptionChangePanel({ merchantUi, current, pending, requestedSelection, providerVerificationState, managePlansHref, managePlansAvailable }) {
   const i18n = createMerchantI18n(merchantUi);
   const hasCurrent = Boolean(current);

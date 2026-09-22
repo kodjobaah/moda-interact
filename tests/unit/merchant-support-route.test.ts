@@ -101,7 +101,7 @@ describe("merchant support resource route", () => {
     expect(composeMerchantMessage).toHaveBeenCalledWith({
       shopId: "internal-shop-1",
       body: "Hello support",
-      shopifyUserId: "user-1",
+      shopifyUserId: null,
     });
     expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty("kind");
     expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty("state");

@@ -171,6 +171,10 @@ export async function ingestShopifyWebhook(
       return new Response(null, { status: 200 });
     }
 
+    if (!plan) {
+      return new Response(null, { status: 200 });
+    }
+
     if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
@@ -264,6 +268,10 @@ export async function ingestShopifyWebhook(
         event: ShopifyCheckoutUpdatedEventV2Schema.parse(event),
       });
     } else if (!publication) {
+      if (plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED) {
+        return new Response(null, { status: 200 });
+      }
+
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({

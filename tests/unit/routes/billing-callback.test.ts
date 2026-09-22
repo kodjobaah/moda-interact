@@ -159,7 +159,7 @@ describe("billing callback activation", () => {
       where: { shopId: "shop-1", onboardingCompleted: false },
       data: { onboardingCompleted: true },
     });
-    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.prepareFreeActivation);
+    expect(mocks.prepareFreeActivation).toHaveBeenCalledBefore(mocks.updateShopSettings);
     expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
@@ -266,7 +266,7 @@ describe("billing callback activation", () => {
     await runLoader("growth");
 
     expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
-    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.preparePaidActivation);
+    expect(mocks.preparePaidActivation).toHaveBeenCalledBefore(mocks.updateShopSettings);
     expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.syncSubscription);
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
       expected: paidToken,
@@ -436,9 +436,9 @@ describe("billing callback activation", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
-  it("persists onboarding before rejecting a missing plan_handle", async () => {
+  it("does not persist onboarding before rejecting a missing plan_handle", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
-    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.updateShopSettings).not.toHaveBeenCalled();
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
@@ -452,7 +452,7 @@ describe("hosted billing callback", () => {
 
   it("requires plan_handle", async () => {
     await expect(runLoader()).rejects.toMatchObject({ status: 400 });
-    expect(mocks.updateShopSettings).toHaveBeenCalledTimes(1);
+    expect(mocks.updateShopSettings).not.toHaveBeenCalled();
     expect(mocks.getState).not.toHaveBeenCalled();
   });
 
@@ -541,7 +541,6 @@ describe("hosted billing callback", () => {
 
     await runLoader("growth");
 
-    expect(mocks.updateShopSettings).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence);
   });

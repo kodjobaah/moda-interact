@@ -260,7 +260,7 @@
   "promotions.nav": "Kampanjat",
   "recoverySettings.nav": "Palautusasetukset",
   "recoverySettings.title": "Palautusasetukset",
-  "recoverySettings.saved": "Palautusasetukset tallennettu.",
+  "recoverySettings.saved": "Palautuksen toiminta tallennettu.",
   "recoverySettings.invalid": "Tarkista asetukset ja yritä uudelleen.",
   "recoverySettings.adminOverride": "Alustan hallinta ohjaa tällä hetkellä tehokasta palautuskäytäntöä. Arvosi tulevat voimaan ohituksen päätyttyä.",
   "recoverySettings.effective": "Tehokas arvo: {value} minuuttia",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Lähetä yksi seuranta, jos asiakas ei ole vastannut",
   "recoverySettings.followUp.delay": "(Minuutin) kuluttua",
   "recoverySettings.followUp.creditWarning": "Asiakkaan vastaus ei käytä uutta palautuskrediittiä. Ajastettu seuranta on uusi ennakoiva yritys ja käyttää uuden krediitin. Aika mitataan viimeksi lähetetystä ennakoivasta viestistä.",
-  "recoverySettings.save": "Tallenna palautusasetukset",
+  "recoverySettings.save": "Tallenna palautuksen toiminta",
   "promotions.page.title": "Kampanjatarjoukset",
   "promotions.page.description": "Valitse saatavilla oleva kampanja lisätäksesi kauppaasi kampanjan palautuskrediittejä.",
   "promotions.empty": "Kampanjatarjouksia ei ole tällä hetkellä saatavilla.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Jaksosivu on virheellinen. Nollaa luettelo jatkaaksesi.",
   "usageHistory.error": "Käyttöhistoriaa ei voitu ladata. Yritä uudelleen.",
   "merchantFeatures.title": "Keskustelutoiminnot",
-  "merchantFeatures.description": "Valitse tilaukseesi kuuluvia valinnaisia toimintoja. Lisäykset koskevat uusia keskusteluja; aiemmat säilyttävät alkuperäiset oikeutensa.",
+  "merchantFeatures.description": "Keskustelun ydintoiminnot ovat aina käytössä. Voit ottaa valinnaisia toimintoja käyttöön tai pois käytöstä; muutokset koskevat vain uusia keskusteluja.",
   "merchantFeatures.empty": "Nykyisessä tilauksessasi ei ole saatavilla sopivia toimintoja.",
   "merchantFeatures.optional": "Valinnainen",
-  "merchantFeatures.required": "Tilauksesi hallinnoima",
+  "merchantFeatures.required": "Aina käytössä",
   "merchantFeatures.effectiveOn": "Käytössä nyt",
   "merchantFeatures.effectiveOff": "Pois käytöstä nyt",
   "merchantFeatures.saving": "Tallennetaan…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Asetuksia muutettiin muualla. Päivitä ennen uutta yritystä; syöttämäsi tiedot on säilytetty.",
   "merchantFeatures.denied": "Tätä toimintoa ei voi enää muuttaa.",
   "merchantFeatures.discountHelp": "Alennusapu noudattaa alla olevaa valintaa sekä ilmaisissa että maksullisissa tilauksissa. Seurantaviestit veloitetaan erikseen.",
-  "merchantFeatures.save": "Tallenna toiminnot"
+  "merchantFeatures.save": "Tallenna toiminnot",
+  "merchantFeatures.saved": "Tallennettu automaattisesti."
 }

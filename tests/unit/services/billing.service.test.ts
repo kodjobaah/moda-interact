@@ -26,12 +26,12 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
       price: { amount: "10", currency: "USD" },
     },
     pendingFlatRatePlan: null,
-    usageItems: overrides.usageItems ?? usageEventHandles.map((handle) => ({
+    usageItems: (overrides.usageItems ?? usageEventHandles.map((handle) => ({
       handle,
       description: handle === "credit-pack-meter" ? "Recovery credit pack" : "Recovery usage",
       price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
       usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
-    })),
+    }))) as Array<Record<string, any>>,
     usageEventHandles,
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
@@ -547,7 +547,7 @@ describe("BillingService subscription projection", () => {
     Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
     const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ status: "TRIALING", trialEndsAt: new Date("2026-09-20T00:00:00.000Z"), currentPeriodStart: null, currentPeriodEnd: null })) }, database as never);
 
-    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL", nextReconcileAt: null });
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION", nextReconcileAt: null });
     expect(state.onboardingCompleted).toBe(false);
     expect(state.subscription.pendingPlanId).toBe("paid-1");
     expect(state.subscription.pendingShopifyPlanHandle).toBe("growth");
@@ -1512,6 +1512,7 @@ describe("BillingService subscription projection", () => {
   ] as const)("keeps %s frozen mapping separate from provider presentation", async (_name, plan, mappingStatus) => {
     const { database } = createDatabase({ plan: plan as BillingPlanFixture | null });
     const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(null),
       getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({
         activeSubscription: null,
         latestLifecycleEvent: {
@@ -3038,7 +3039,7 @@ describe("BillingService local recovery capacity", () => {
   it("derives recovery-credit top-up configuration from MerchantPricingPlan usage events rather than legacy BillingPlan fields", async () => {
     const { database, plan } = createRecoveryCapacityDatabase();
     plan.recoveryCreditPackEnabled = false;
-    plan.recoveryCreditsPerPack = null;
+    (plan as Record<string, unknown>).recoveryCreditsPerPack = null;
 
     const result = await new BillingService({ getActiveSubscription: vi.fn() }, database as never).getMerchantRecoveryCapacityState("shop-1");
 
@@ -3648,7 +3649,7 @@ describe("BillingService recovery credit packs", () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
     const service = new BillingService(topUpProvider(providerSubscription()), database as never);
 
-    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "not-a-uuid"))
+    await expect(service.requestRecoveryCreditPack("shop-1", "BUY_RECOVERY_CREDIT_PACK", "not-a-uuid", "credit-pack-meter"))
       .rejects.toThrow("valid recovery credit purchase ID");
     expect(usageEvents).toHaveLength(0);
   });
@@ -3743,6 +3744,7 @@ describe("BillingService recovery credit packs", () => {
       return structuredClone(merchantPricingPlan);
     });
     const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(null),
       getSubscriptionLifecycleSnapshot: vi.fn().mockResolvedValue({ activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null }),
     };
     const service = new BillingService(provider, database as never);
@@ -3756,7 +3758,9 @@ describe("BillingService recovery credit packs", () => {
     const { database, usageEvents } = createRecoveryCreditPurchaseDatabase();
     const initial = providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] });
     const changed = providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] });
-    changed.usageItems.find((item: { handle: string }) => item.handle === "credit-pack-meter").usage.quantity = 0.5;
+    const changedCreditPack = changed.usageItems.find((item) => item.handle === "credit-pack-meter");
+    if (!changedCreditPack) throw new Error("Expected credit-pack-meter fixture item.");
+    changedCreditPack.usage.quantity = 0.5;
     const provider = {
       getSubscriptionLifecycleSnapshot: vi.fn()
         .mockResolvedValueOnce({ activeSubscription: initial, latestLifecycleEvent: null })
@@ -3987,7 +3991,7 @@ describe("BillingService recovery credit packs", () => {
       events.push("transaction");
       return originalTransaction(callback);
     });
-    const provider = { getSubscriptionLifecycleSnapshot: vi.fn().mockImplementation(async () => {
+    const provider = { getActiveSubscription: vi.fn().mockResolvedValue(null), getSubscriptionLifecycleSnapshot: vi.fn().mockImplementation(async () => {
       events.push("provider");
       return { activeSubscription: providerSubscription({ usageEventHandles: ["message-meter", "credit-pack-meter"] }), latestLifecycleEvent: null };
     }) };

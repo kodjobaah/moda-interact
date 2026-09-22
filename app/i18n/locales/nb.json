@@ -260,7 +260,7 @@
   "promotions.nav": "Kampanjer",
   "recoverySettings.nav": "Innstillinger for gjenoppretting",
   "recoverySettings.title": "Innstillinger for gjenoppretting",
-  "recoverySettings.saved": "Innstillingene er lagret.",
+  "recoverySettings.saved": "Gjenopprettingsatferd lagret.",
   "recoverySettings.invalid": "Kontroller innstillingene og prøv igjen.",
   "recoverySettings.adminOverride": "Plattformadministrasjonen styrer nå den effektive gjenopprettingspolicyen. Verdiene dine gjelder når overstyringen avsluttes.",
   "recoverySettings.effective": "Effektiv verdi: {value} minutter",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Send én oppfølging når kunden ikke har svart",
   "recoverySettings.followUp.delay": "Etter (minutter)",
   "recoverySettings.followUp.creditWarning": "Et kundesvar bruker ikke en ekstra gjenopprettingskreditt. En planlagt oppfølging er et nytt proaktivt forsøk og bruker en ekstra kreditt. Tiden måles fra sist sendte proaktive melding.",
-  "recoverySettings.save": "Lagre innstillinger for gjenoppretting",
+  "recoverySettings.save": "Lagre gjenopprettingsatferd",
   "promotions.page.title": "Kampanjetilbud",
   "promotions.page.description": "Velg en tilgjengelig kampanje for å legge til kampanjekreditter for gjenoppretting i butikken din.",
   "promotions.empty": "Ingen kampanjetilbud er tilgjengelige nå.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Periodesiden er ugyldig. Tilbakestill listen for å fortsette.",
   "usageHistory.error": "Brukshistorikken kunne ikke lastes. Prøv igjen.",
   "merchantFeatures.title": "Samtalefunksjoner",
-  "merchantFeatures.description": "Velg valgfrie funksjoner i abonnementet. Tillegg gjelder nye samtaler; eksisterende samtaler beholder sine opprinnelige tillatelser.",
+  "merchantFeatures.description": "Kjernefunksjoner for samtaler er alltid aktivert. Du kan slå valgfrie funksjoner av eller på; endringer gjelder bare nye samtaler.",
   "merchantFeatures.empty": "Ingen tilgjengelige funksjoner i ditt nåværende abonnement.",
   "merchantFeatures.optional": "Valgfri",
-  "merchantFeatures.required": "Styrt av abonnementet",
+  "merchantFeatures.required": "Alltid aktivert",
   "merchantFeatures.effectiveOn": "Aktivert nå",
   "merchantFeatures.effectiveOff": "Deaktivert nå",
   "merchantFeatures.saving": "Lagrer…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Innstillingene er endret et annet sted. Oppdater før du prøver igjen; inndataene er bevart.",
   "merchantFeatures.denied": "Denne funksjonen kan ikke lenger endres.",
   "merchantFeatures.discountHelp": "Rabatthjelp følger valget nedenfor i både gratis og betalte abonnementer. Oppfølginger belastes separat.",
-  "merchantFeatures.save": "Lagre funksjoner"
+  "merchantFeatures.save": "Lagre funksjoner",
+  "merchantFeatures.saved": "Lagret automatisk."
 }

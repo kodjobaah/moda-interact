@@ -260,7 +260,7 @@
   "promotions.nav": "Akce",
   "recoverySettings.nav": "Nastavení obnovy",
   "recoverySettings.title": "Nastavení obnovy",
-  "recoverySettings.saved": "Nastavení obnovy bylo uloženo.",
+  "recoverySettings.saved": "Chování obnovy bylo uloženo.",
   "recoverySettings.invalid": "Zkontrolujte nastavení obnovy a zkuste to znovu.",
   "recoverySettings.adminOverride": "Efektivní zásady obnovy nyní řídí platforma. Vaše hodnoty se použijí po skončení tohoto přepsání.",
   "recoverySettings.effective": "Efektivní hodnota: {value} minut",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Odeslat jednu následnou zprávu, pokud zákazník neodpověděl",
   "recoverySettings.followUp.delay": "Po (minutách)",
   "recoverySettings.followUp.creditWarning": "Odpověď zákazníka nepoužije další kredit obnovy. Naplánovaná následná zpráva je nový proaktivní pokus a použije další kredit obnovy. Čas se měří od poslední odeslané proaktivní zprávy.",
-  "recoverySettings.save": "Uložit nastavení obnovy",
+  "recoverySettings.save": "Uložit chování obnovy",
   "promotions.page.title": "Propagační nabídky",
   "promotions.page.description": "Vyberte dostupnou akci a přidejte do svého obchodu propagační kredity pro obnovu.",
   "promotions.empty": "Momentálně nejsou k dispozici žádné propagační nabídky.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Stránka období je neplatná. Obnovte seznam a pokračujte.",
   "usageHistory.error": "Historii využití nelze načíst. Zkuste to znovu.",
   "merchantFeatures.title": "Funkce konverzací",
-  "merchantFeatures.description": "Vyberte volitelné funkce svého tarifu. Přidané funkce platí pro nové konverzace; stávající si ponechají původní oprávnění.",
+  "merchantFeatures.description": "Základní konverzační funkce jsou vždy zapnuté. Volitelné funkce můžete zapnout nebo vypnout; změny se použijí pouze na nové konverzace.",
   "merchantFeatures.empty": "Ve vašem aktuálním tarifu nejsou dostupné žádné vhodné funkce.",
   "merchantFeatures.optional": "Volitelné",
-  "merchantFeatures.required": "Spravováno tarifem",
+  "merchantFeatures.required": "Vždy zapnuto",
   "merchantFeatures.effectiveOn": "Nyní zapnuto",
   "merchantFeatures.effectiveOff": "Nyní vypnuto",
   "merchantFeatures.saving": "Ukládání…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Nastavení se změnilo jinde. Před dalším pokusem je obnovte; vaše údaje byly zachovány.",
   "merchantFeatures.denied": "Tuto funkci již nelze měnit.",
   "merchantFeatures.discountHelp": "Pomoc se slevami se řídí volbou níže u bezplatných i placených tarifů. Následné zprávy se účtují zvlášť.",
-  "merchantFeatures.save": "Uložit funkce"
+  "merchantFeatures.save": "Uložit funkce",
+  "merchantFeatures.saved": "Uloženo automaticky."
 }

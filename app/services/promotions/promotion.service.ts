@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 
 import prisma from "../../db.server";
 
@@ -41,7 +41,8 @@ export class PromotionSelectionError extends Error {
   }
 }
 
-type PromotionDatabase = typeof prisma;
+type PromotionDatabase = PrismaClient;
+type PromotionReadDatabase = PrismaClient | Prisma.TransactionClient;
 
 type PromotionContext = {
   shopId: string;
@@ -159,7 +160,7 @@ export function projectPromotionHistoryRow(
   };
 }
 
-async function readContext(database: PromotionDatabase, shopId: string): Promise<PromotionContext | null> {
+async function readContext(database: PromotionReadDatabase, shopId: string): Promise<PromotionContext | null> {
   const shop = await database.shop.findUnique({
     where: { id: shopId },
     select: {

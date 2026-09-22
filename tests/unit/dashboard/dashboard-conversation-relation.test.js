@@ -15,24 +15,22 @@ async function readRoute(route) {
 describe("dashboard CheckoutRecovery conversation relation", () => {
   it("uses the singular Prisma relation while preserving the dashboard DTO", async () => {
     const source = await readRoute("app/home/route.jsx");
+    const overviewSource = await readRoute("app/home/overview.server.ts");
 
-    expect(source).toMatch(/conversation: \{ include: \{ messages: true \} \}/);
-    expect(source).not.toMatch(/conversations: \{\s*include:/);
-    expect(source).toMatch(/recovery\.conversation/);
-    expect(source).not.toMatch(/recovery\.conversations\[0\]/);
-    expect(source).toMatch(/conversations:\s*conversation\s*\?/);
-    expect(source).toMatch(/conversation\?\.messages\.length \?\?/);
+    expect(source).toContain("loadOverviewPerformance");
+    expect(overviewSource).toContain("readRecoveryOverview");
+    expect(source).not.toMatch(/conversations:\s*\[\]/);
   });
 
   it("uses the singular relation for usage source resolution", async () => {
     const source = await readRoute("app/usage/route.jsx");
-
-    expect(source).toMatch(
-      /conversation: \{ include: \{ messages: \{ select: \{ id: true \} \} \} \}/,
+    const historySource = await readFile(
+      resolve(repositoryRoot, "app/services/usage/history.server.ts"),
+      "utf8",
     );
-    expect(source).not.toMatch(/conversations: \{\s*include:/);
-    expect(source).toMatch(/const conversation = recovery\.conversation;/);
-    expect(source).not.toMatch(/recovery\.conversations\[0\]/);
-    expect(source).toMatch(/recoveryBySourceId\.set\(message\.id/);
+
+    expect(source).toContain("readUsageHistory(shop.id");
+    expect(historySource).toContain("readUsageSources");
+    expect(source).not.toMatch(/conversations:\s*\[\]/);
   });
 });

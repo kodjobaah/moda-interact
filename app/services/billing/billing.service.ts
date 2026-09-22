@@ -1824,7 +1824,7 @@ async getSubscription(
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
     const merchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
-    const selectedEvent = merchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
+    const selectedEvent = merchantPricingPlan?.usageEvents.find((event: { eventHandle: string }) => event.eventHandle === eventHandle);
     let providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
     if (!merchantPricingPlan || !selectedEvent || !providerPackMeter || !providerSubscription.usageEventHandles.includes(eventHandle)) {
       throw new Error("The selected recovery credit offer could not be verified with Shopify.");
@@ -1861,7 +1861,7 @@ async getSubscription(
       currentPeriodEnd: providerSubscription.currentPeriodEnd,
     });
     const currentMerchantPricingPlan = await this.readMerchantPricingPlan(providerSubscription.planHandle);
-    const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
+    const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event: { eventHandle: string }) => event.eventHandle === eventHandle);
     if (!currentSelectedEvent || currentSelectedEvent.creditsGrantedPerUnit !== creditsGranted) {
       throw new Error("Recovery credit pack configuration changed during purchase request.");
     }
@@ -2445,7 +2445,11 @@ async getSubscription(
         : planIsUsable ? plan?.id ?? null : null;
       const projectedBillingPeriodId = projectionConflict
         ? existingSubscription?.billingPeriodId ?? null
-        : mappedProjection?.kind === "READY" ? mappedProjection.billingPeriodId : billingPeriod?.id ?? null;
+        : mappedProjection?.kind === "READY"
+          ? mappedProjection.billingPeriodId
+          : billingPeriod && "id" in billingPeriod
+            ? billingPeriod.id
+            : null;
       const projectedPeriodStart = projectionConflict
         ? existingSubscription?.currentPeriodStart ?? null
         : providerSubscription.currentPeriodStart;

@@ -149,9 +149,9 @@ describe("BillingPurchaseHub", () => {
       },
     });
 
-    const bronzeButton = markup.match(/aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
-    const silverButton = markup.match(/aria-label="Buy 2 recovery conversations"[^>]*>/)?.[0] ?? "";
-    const goldButton = markup.match(/aria-label="Buy 3 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const bronzeButton = markup.match(/<button[^>]*aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const silverButton = markup.match(/<button[^>]*aria-label="Buy 2 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const goldButton = markup.match(/<button[^>]*aria-label="Buy 3 recovery conversations"[^>]*>/)?.[0] ?? "";
 
     expect(bronzeButton).toContain("disabled");
     expect(silverButton).not.toContain("disabled");

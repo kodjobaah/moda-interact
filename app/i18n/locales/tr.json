@@ -260,7 +260,7 @@
   "promotions.nav": "Promosyonlar",
   "recoverySettings.nav": "Kurtarma ayarları",
   "recoverySettings.title": "Kurtarma ayarları",
-  "recoverySettings.saved": "Kurtarma ayarları kaydedildi.",
+  "recoverySettings.saved": "Kurtarma davranışı kaydedildi.",
   "recoverySettings.invalid": "Ayarları gözden geçirip tekrar deneyin.",
   "recoverySettings.adminOverride": "Etkin kurtarma politikası şu anda platform yönetimi tarafından kontrol ediliyor. Bu geçersiz kılma sona erdiğinde değerleriniz uygulanır.",
   "recoverySettings.effective": "Etkin değer: {value} dakika",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Müşteri yanıt vermediğinde bir takip mesajı gönder",
   "recoverySettings.followUp.delay": "Sonra (dakika)",
   "recoverySettings.followUp.creditWarning": "Müşteri yanıt verirse konuşmaya devam etmek başka kurtarma kredisi kullanmaz. Zamanlanmış takip yeni bir proaktif kurtarma girişimidir ve başka kredi kullanır. Süre, gönderilen son proaktif mesajdan ölçülür.",
-  "recoverySettings.save": "Kurtarma ayarlarını kaydet",
+  "recoverySettings.save": "Kurtarma davranışını kaydet",
   "promotions.page.title": "Promosyon teklifleri",
   "promotions.page.description": "Mağazanıza promosyon kurtarma kredileri eklemek için kullanılabilir bir promosyon seçin.",
   "promotions.empty": "Şu anda kullanılabilir promosyon teklifi yok.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Fatura dönemi sayfası geçersiz. Devam etmek için listeyi sıfırlayın.",
   "usageHistory.error": "Kullanım geçmişi yüklenemedi. Tekrar deneyin.",
   "merchantFeatures.title": "Sohbet özellikleri",
-  "merchantFeatures.description": "Planınızdaki isteğe bağlı özellikleri seçin. Eklemeler yeni sohbetlere uygulanır; mevcut sohbetler ilk izinlerini korur.",
+  "merchantFeatures.description": "Temel konuşma özellikleri her zaman etkindir. İsteğe bağlı özellikleri açıp kapatabilirsiniz; değişiklikler yalnızca yeni konuşmalara uygulanır.",
   "merchantFeatures.empty": "Mevcut planınızda uygun özellik yok.",
   "merchantFeatures.optional": "İsteğe bağlı",
-  "merchantFeatures.required": "Planınız tarafından yönetilir",
+  "merchantFeatures.required": "Her zaman etkin",
   "merchantFeatures.effectiveOn": "Şu anda etkin",
   "merchantFeatures.effectiveOff": "Şu anda devre dışı",
   "merchantFeatures.saving": "Kaydediliyor…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Ayarlar başka bir yerde değişti. Tekrar denemeden önce yenileyin; girdileriniz korundu.",
   "merchantFeatures.denied": "Bu özellik artık değiştirilemez.",
   "merchantFeatures.discountHelp": "İndirim yardımı ücretsiz ve ücretli planlarda aşağıdaki seçime bağlıdır. Takip mesajları ayrıca ücretlendirilir.",
-  "merchantFeatures.save": "Özellikleri kaydet"
+  "merchantFeatures.save": "Özellikleri kaydet",
+  "merchantFeatures.saved": "Otomatik olarak kaydedildi."
 }

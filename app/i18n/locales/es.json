@@ -260,7 +260,7 @@
   "promotions.nav": "Promociones",
   "recoverySettings.nav": "Configuración de recuperación",
   "recoverySettings.title": "Configuración de recuperación",
-  "recoverySettings.saved": "Configuración de recuperación guardada.",
+  "recoverySettings.saved": "Comportamiento de recuperación guardado.",
   "recoverySettings.invalid": "Revisa la configuración e inténtalo de nuevo.",
   "recoverySettings.adminOverride": "La administración de la plataforma controla actualmente la política efectiva de recuperación. Tus valores se aplicarán cuando termine esta anulación.",
   "recoverySettings.effective": "Valor efectivo: {value} minutos",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Enviar un seguimiento si el cliente no ha respondido",
   "recoverySettings.followUp.delay": "Después de (minutos)",
   "recoverySettings.followUp.creditWarning": "Si el cliente responde, continuar la conversación no usa otro crédito de recuperación. Un seguimiento programado es un nuevo intento proactivo y usa otro crédito. El tiempo se mide desde el último mensaje proactivo enviado.",
-  "recoverySettings.save": "Guardar configuración de recuperación",
+  "recoverySettings.save": "Guardar comportamiento de recuperación",
   "promotions.page.title": "Ofertas promocionales",
   "promotions.page.description": "Selecciona una promoción disponible para añadir créditos de recuperación promocionales a tu tienda.",
   "promotions.empty": "No hay ofertas promocionales disponibles.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "La página de períodos no es válida. Restablece la lista para continuar.",
   "usageHistory.error": "No se pudo cargar el historial de uso. Inténtalo de nuevo.",
   "merchantFeatures.title": "Funciones de conversación",
-  "merchantFeatures.description": "Elige funciones opcionales incluidas en tu plan. Las nuevas funciones se aplican a conversaciones nuevas; las existentes conservan sus permisos originales.",
+  "merchantFeatures.description": "Las funciones principales de conversación están siempre activadas. Puedes activar o desactivar las funciones opcionales; los cambios solo se aplican a las conversaciones nuevas.",
   "merchantFeatures.empty": "No hay funciones disponibles para tu plan actual.",
   "merchantFeatures.optional": "Opcional",
-  "merchantFeatures.required": "Gestionado por tu plan",
+  "merchantFeatures.required": "Siempre activado",
   "merchantFeatures.effectiveOn": "Actualmente activado",
   "merchantFeatures.effectiveOff": "Actualmente desactivado",
   "merchantFeatures.saving": "Guardando…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Los ajustes cambiaron en otro lugar. Actualiza antes de reintentar; se conservaron tus datos.",
   "merchantFeatures.denied": "Esta función ya no admite cambios.",
   "merchantFeatures.discountHelp": "La ayuda con descuentos sigue la opción inferior, en planes gratuitos y de pago. Los seguimientos se cobran por separado.",
-  "merchantFeatures.save": "Guardar funciones"
+  "merchantFeatures.save": "Guardar funciones",
+  "merchantFeatures.saved": "Guardado automáticamente."
 }

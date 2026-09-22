@@ -260,7 +260,7 @@
   "promotions.nav": "Promotions",
   "recoverySettings.nav": "Recovery settings",
   "recoverySettings.title": "Recovery settings",
-  "recoverySettings.saved": "Recovery settings saved.",
+  "recoverySettings.saved": "Recovery behaviour saved.",
   "recoverySettings.invalid": "Review the recovery settings and try again.",
   "recoverySettings.adminOverride": "Platform administration currently controls the effective recovery policy. Your values will apply when that override ends.",
   "recoverySettings.effective": "Effective value: {value} minutes",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Send one follow-up when the customer has not replied",
   "recoverySettings.followUp.delay": "After (minutes)",
   "recoverySettings.followUp.creditWarning": "If the customer replies, continuing the recovery conversation does not use another recovery credit. If Moda sends the scheduled follow-up, that follow-up is a new proactive recovery attempt and uses another recovery credit. Follow-up timing is measured from the last proactive recovery message sent.",
-  "recoverySettings.save": "Save recovery settings",
+  "recoverySettings.save": "Save recovery behaviour",
   "promotions.page.title": "Promotion offers",
   "promotions.page.description": "Select an available promotion to add promotional recovery credits to your store.",
   "promotions.empty": "No promotion offers are currently available.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "The billing period page is invalid. Reset the period list to continue.",
   "usageHistory.error": "Usage history could not be loaded. Please try again.",
   "merchantFeatures.title": "Conversation features",
-  "merchantFeatures.description": "Choose optional features included in your plan. Additions apply to new conversations; existing conversations keep their original permissions.",
+  "merchantFeatures.description": "Core conversation features are always enabled. You can switch optional features on or off; changes apply to new conversations only.",
   "merchantFeatures.empty": "No eligible features are available on your current plan.",
   "merchantFeatures.optional": "Optional",
-  "merchantFeatures.required": "Managed by your plan",
+  "merchantFeatures.required": "Always enabled",
   "merchantFeatures.effectiveOn": "Currently enabled",
   "merchantFeatures.effectiveOff": "Currently disabled",
   "merchantFeatures.saving": "Saving…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Settings changed elsewhere. Refresh before retrying; your input has been preserved.",
   "merchantFeatures.denied": "This feature is no longer eligible for changes.",
   "merchantFeatures.discountHelp": "Discount assistance follows the offer choice below, for both Free and Paid plans. Follow-ups remain separately chargeable.",
-  "merchantFeatures.save": "Save features"
+  "merchantFeatures.save": "Save features",
+  "merchantFeatures.saved": "Saved automatically."
 }

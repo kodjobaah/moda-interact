@@ -260,7 +260,7 @@
   "promotions.nav": "Promozioni",
   "recoverySettings.nav": "Impostazioni di recupero",
   "recoverySettings.title": "Impostazioni di recupero",
-  "recoverySettings.saved": "Impostazioni di recupero salvate.",
+  "recoverySettings.saved": "Comportamento di recupero salvato.",
   "recoverySettings.invalid": "Controlla le impostazioni e riprova.",
   "recoverySettings.adminOverride": "L’amministrazione della piattaforma controlla attualmente la policy di recupero effettiva. I tuoi valori si applicheranno al termine della sostituzione.",
   "recoverySettings.effective": "Valore effettivo: {value} minuti",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Invia un seguito se il cliente non ha risposto",
   "recoverySettings.followUp.delay": "Dopo (minuti)",
   "recoverySettings.followUp.creditWarning": "La risposta del cliente non usa un altro credito di recupero. Un seguito programmato è un nuovo tentativo proattivo e usa un altro credito. Il tempo decorre dall’ultimo messaggio proattivo inviato.",
-  "recoverySettings.save": "Salva impostazioni di recupero",
+  "recoverySettings.save": "Salva comportamento di recupero",
   "promotions.page.title": "Offerte promozionali",
   "promotions.page.description": "Seleziona una promozione disponibile per aggiungere crediti di recupero promozionali al tuo negozio.",
   "promotions.empty": "Nessuna offerta promozionale è attualmente disponibile.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "La pagina dei periodi non è valida. Reimposta l’elenco per continuare.",
   "usageHistory.error": "Impossibile caricare la cronologia utilizzo. Riprova.",
   "merchantFeatures.title": "Funzioni di conversazione",
-  "merchantFeatures.description": "Scegli le funzioni opzionali incluse nel piano. Le aggiunte valgono per le nuove conversazioni; quelle esistenti mantengono le autorizzazioni originali.",
+  "merchantFeatures.description": "Le funzionalità principali delle conversazioni sono sempre attive. Puoi attivare o disattivare le funzionalità opzionali; le modifiche si applicano solo alle nuove conversazioni.",
   "merchantFeatures.empty": "Nessuna funzione disponibile per il piano attuale.",
   "merchantFeatures.optional": "Facoltativo",
-  "merchantFeatures.required": "Gestito dal piano",
+  "merchantFeatures.required": "Sempre attivo",
   "merchantFeatures.effectiveOn": "Attualmente attivo",
   "merchantFeatures.effectiveOff": "Attualmente disattivo",
   "merchantFeatures.saving": "Salvataggio…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Le impostazioni sono cambiate altrove. Aggiorna prima di riprovare; i dati inseriti sono conservati.",
   "merchantFeatures.denied": "Questa funzione non è più modificabile.",
   "merchantFeatures.discountHelp": "L’assistenza sugli sconti segue la scelta sottostante, per piani gratuiti e a pagamento. I solleciti restano addebitati separatamente.",
-  "merchantFeatures.save": "Salva funzioni"
+  "merchantFeatures.save": "Salva funzioni",
+  "merchantFeatures.saved": "Salvato automaticamente."
 }

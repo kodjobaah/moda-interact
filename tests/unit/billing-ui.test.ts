@@ -34,7 +34,7 @@ describe("canonical merchant billing UI", () => {
 
   it("sends onboarding plan CTAs to Shopify plan selection", () => {
     expect(onboardingSource).not.toContain('href="/app/billing"');
-    expect(onboardingSource.match(/href="\/app\/billing\/select"/g)).toHaveLength(2);
+    expect(onboardingSource.match(/href="\/app\/billing\/select"/g)).toHaveLength(3);
   });
 
   it("maps billing system messages to lifecycle-allowed destinations", () => {
@@ -70,6 +70,8 @@ vi.mock("react-router", async () => {
     Link: ({ to, children }: { to: string; children: ReactNode }) =>
       createElement("a", { href: to }, children),
     useFetcher: vi.fn(() => ({ data: null, state: "idle" })),
+    useNavigation: vi.fn(() => ({ state: "idle" })),
+    useSubmit: vi.fn(() => vi.fn()),
     useLoaderData: vi.fn(),
   };
 });
@@ -221,7 +223,7 @@ describe("merchant billing UI", () => {
       "getMerchantShopifyLifecycleState(shop.id)",
     );
     expect(billingOptionsRouteSource).toContain(
-      "getMerchantBillingState(shop.id, commercial)",
+      "getMerchantShopifySubscriptionState(shop.id)",
     );
     expect(billingOptionsRouteSource).toContain(
       'managePlansHref="/app/billing/select"',
@@ -385,6 +387,14 @@ describe("merchant billing UI", () => {
   ] as const)("derives purchase-history presentation for %s", async (_state, expected, settings, subscriptionStatus) => {
     findShopSettings.mockResolvedValue(settings);
     getSubscriptionProjection.mockResolvedValue({ status: subscriptionStatus });
+    if (_state === "ONBOARDING") {
+      await expect(
+        billingOptionsLoader({
+          request: new Request("https://example.test/app/billing/options"),
+        } as never),
+      ).rejects.toMatchObject({ status: 302 });
+      return;
+    }
     const data = await billingOptionsLoader({
       request: new Request("https://example.test/app/billing/options"),
     } as never);

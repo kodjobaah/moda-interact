@@ -4,7 +4,7 @@ it("all supported locales include every feature, pending, denial and reconciliat
   const dir = "app/i18n/locales";
   const en = JSON.parse(readFileSync(`${dir}/en.json`, "utf8"));
   const keys = Object.keys(en).filter((k) => k.startsWith("merchantFeatures."));
-  expect(keys).toHaveLength(15);
+  expect(keys).toHaveLength(16);
   for (const name of readdirSync(dir).filter((f) => f.endsWith(".json"))) {
     const data = JSON.parse(readFileSync(`${dir}/${name}`, "utf8"));
     expect(

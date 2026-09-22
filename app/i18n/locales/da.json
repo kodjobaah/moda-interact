@@ -260,7 +260,7 @@
   "promotions.nav": "Kampagner",
   "recoverySettings.nav": "Indstillinger for gendannelse",
   "recoverySettings.title": "Indstillinger for gendannelse",
-  "recoverySettings.saved": "Indstillingerne er gemt.",
+  "recoverySettings.saved": "Gendannelsesadfærd gemt.",
   "recoverySettings.invalid": "Kontrollér indstillingerne, og prøv igen.",
   "recoverySettings.adminOverride": "Platformadministrationen styrer i øjeblikket den effektive gendannelsespolitik. Dine værdier gælder, når tilsidesættelsen slutter.",
   "recoverySettings.effective": "Effektiv værdi: {value} minutter",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "Send én opfølgning, når kunden ikke har svaret",
   "recoverySettings.followUp.delay": "Efter (minutter)",
   "recoverySettings.followUp.creditWarning": "Et kundesvar bruger ikke en ekstra gendannelseskredit. En planlagt opfølgning er et nyt proaktivt gendannelsesforsøg og bruger en ekstra kredit. Tiden måles fra den senest sendte proaktive besked.",
-  "recoverySettings.save": "Gem indstillinger for gendannelse",
+  "recoverySettings.save": "Gem gendannelsesadfærd",
   "promotions.page.title": "Kampagnetilbud",
   "promotions.page.description": "Vælg en tilgængelig kampagne for at tilføje kampagnekreditter til gendannelse til din butik.",
   "promotions.empty": "Der er ingen kampagnetilbud tilgængelige i øjeblikket.",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "Periodesiden er ugyldig. Nulstil listen for at fortsætte.",
   "usageHistory.error": "Brugshistorikken kunne ikke indlæses. Prøv igen.",
   "merchantFeatures.title": "Samtalefunktioner",
-  "merchantFeatures.description": "Vælg valgfrie funktioner i dit abonnement. Tilføjelser gælder nye samtaler; eksisterende samtaler beholder deres oprindelige tilladelser.",
+  "merchantFeatures.description": "Grundlæggende samtalefunktioner er altid aktiveret. Du kan slå valgfrie funktioner til eller fra; ændringer gælder kun for nye samtaler.",
   "merchantFeatures.empty": "Ingen tilgængelige funktioner i dit nuværende abonnement.",
   "merchantFeatures.optional": "Valgfri",
-  "merchantFeatures.required": "Styret af dit abonnement",
+  "merchantFeatures.required": "Altid aktiveret",
   "merchantFeatures.effectiveOn": "Aktiveret nu",
   "merchantFeatures.effectiveOff": "Deaktiveret nu",
   "merchantFeatures.saving": "Gemmer…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "Indstillingerne er ændret et andet sted. Opdater før nyt forsøg; dine indtastninger er bevaret.",
   "merchantFeatures.denied": "Denne funktion kan ikke længere ændres.",
   "merchantFeatures.discountHelp": "Rabathjælp følger valget nedenfor på både gratis og betalte abonnementer. Opfølgninger afregnes separat.",
-  "merchantFeatures.save": "Gem funktioner"
+  "merchantFeatures.save": "Gem funktioner",
+  "merchantFeatures.saved": "Gemt automatisk."
 }

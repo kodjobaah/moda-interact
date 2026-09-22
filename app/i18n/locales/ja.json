@@ -260,7 +260,7 @@
   "promotions.nav": "プロモーション",
   "recoverySettings.nav": "回復設定",
   "recoverySettings.title": "回復設定",
-  "recoverySettings.saved": "回復設定を保存しました。",
+  "recoverySettings.saved": "リカバリー動作を保存しました。",
   "recoverySettings.invalid": "回復設定を確認して、もう一度お試しください。",
   "recoverySettings.adminOverride": "現在、有効な回復ポリシーはプラットフォーム管理者が管理しています。この上書きが終了すると設定が適用されます。",
   "recoverySettings.effective": "有効な値: {value} 分",
@@ -282,7 +282,7 @@
   "recoverySettings.followUp.enable": "顧客が返信しない場合にフォローアップを1回送信",
   "recoverySettings.followUp.delay": "（分）後",
   "recoverySettings.followUp.creditWarning": "顧客が返信した場合、会話の継続に追加の回復クレジットは使いません。予定されたフォローアップは新しい積極的な回復試行となり、追加クレジットを使います。時間は最後に送信した積極的な回復メッセージから測定します。",
-  "recoverySettings.save": "回復設定を保存",
+  "recoverySettings.save": "リカバリー動作を保存",
   "promotions.page.title": "プロモーションオファー",
   "promotions.page.description": "利用可能なプロモーションを選択して、ストアにプロモーション用回復クレジットを追加します。",
   "promotions.empty": "現在利用できるプロモーションオファーはありません。",
@@ -493,10 +493,10 @@
   "usageHistory.invalidCursor": "請求期間のページが無効です。一覧をリセットしてください。",
   "usageHistory.error": "使用履歴を読み込めませんでした。もう一度お試しください。",
   "merchantFeatures.title": "会話機能",
-  "merchantFeatures.description": "プランに含まれるオプション機能を選択します。追加は新しい会話に適用され、既存の会話は元の権限を維持します。",
+  "merchantFeatures.description": "会話のコア機能は常に有効です。オプション機能はオン／オフを切り替えられ、変更は新しい会話にのみ適用されます。",
   "merchantFeatures.empty": "現在のプランで利用できる機能はありません。",
   "merchantFeatures.optional": "任意",
-  "merchantFeatures.required": "プランで管理",
+  "merchantFeatures.required": "常に有効",
   "merchantFeatures.effectiveOn": "現在有効",
   "merchantFeatures.effectiveOff": "現在無効",
   "merchantFeatures.saving": "保存中…",
@@ -506,5 +506,6 @@
   "merchantFeatures.conflict": "設定が別の場所で変更されました。再試行前に再読み込みしてください。入力は保持されています。",
   "merchantFeatures.denied": "この機能は変更できなくなりました。",
   "merchantFeatures.discountHelp": "割引支援は無料・有料プランとも下の選択に従います。フォローアップは別途課金されます。",
-  "merchantFeatures.save": "機能を保存"
+  "merchantFeatures.save": "機能を保存",
+  "merchantFeatures.saved": "自動的に保存されました。"
 }

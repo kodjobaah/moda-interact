@@ -4,12 +4,14 @@ import { Form, useActionData, useLoaderData } from "react-router";
 import { login } from "@/shopify.server";
 import { loginErrorMessage } from "./error.server";
 
+/** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
   const errors = loginErrorMessage(await login(request));
 
   return { errors };
 };
 
+/** @param {{ request: Request }} args */
 export const action = async ({ request }) => {
   const errors = loginErrorMessage(await login(request));
 

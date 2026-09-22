@@ -38,13 +38,13 @@ function render(overrides: Record<string, unknown> = {}) {
 describe("SubscriptionChangePanel", () => {
   it("renders provider current and pending commercial facts separately", () => {
     const markup = render();
-    expect(markup).toContain("growth");
+    expect(markup).toContain("Growth");
     expect(markup).toContain("75.00");
     expect(markup).toContain("£75.00");
     expect(markup).not.toContain("EVERY_30_DAYS");
     expect(markup).toContain("per month");
     expect(markup).toContain("Current plan");
-    expect(markup).toContain("starter");
+    expect(markup).toContain("Starter");
     expect(markup).toContain("35.00");
     expect(markup).toContain("2026");
     expect(markup).toContain("Growth");
@@ -60,7 +60,7 @@ describe("SubscriptionChangePanel", () => {
   it("keeps cancellation distinct from a pending provider update", () => {
     const markup = render();
     expect(markup).not.toContain("end at the end of the current billing period");
-    expect(markup).toContain("starter");
+    expect(markup).toContain("Starter");
   });
 
   it("renders unmapped current contracts and verification states distinctly", () => {

@@ -1,5 +1,6 @@
 // The database-owned seed is a psql script. pg rejects on SQL errors already,
 // so remove only its known fail-fast client directive; preserve every SQL byte.
+/** @param {{ query: (sql: string) => Promise<unknown> }} client @param {string} source */
 export async function loadRecoveryDetailSeed(client, source) {
   const header = source.match(/^\\set ON_ERROR_STOP on\r?\n/);
   if (!header) throw new Error("Expected recovery seed ON_ERROR_STOP header");

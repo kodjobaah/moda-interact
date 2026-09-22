@@ -6,6 +6,7 @@ import "./BillingSetupStatus.css";
 
 const POLL_INTERVAL_MS = 4_000;
 
+/** @param {{ merchantUi: any, setup: any, standalone?: boolean }} props */
 export default function BillingSetupStatus({ merchantUi, setup, standalone = false }) {
   const i18n = createMerchantI18n(merchantUi);
   const revalidator = useRevalidator();
@@ -32,7 +33,7 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
           return;
         }
         if (status.setup) {
-          setLiveSetup((current) => ({
+          setLiveSetup((/** @type {any} */ current) => ({
             ...current,
             ...status.setup,
             planName: status.setup.planHandle === current?.planHandle && current?.planName
