@@ -68,7 +68,14 @@ function topUpProvider(subscription: ReturnType<typeof providerSubscription>) {
 type BillingPlanFixture = Record<string, unknown>;
 type MerchantPricingPlanFeatureFixture = {
   featureId: string;
-  feature: { id: string; key: string; systemRequired: boolean } | null;
+  configuration: unknown;
+  feature: {
+    id: string;
+    key: string;
+    active: boolean;
+    activationMode: "ALWAYS_ENABLED" | "MERCHANT_TOGGLEABLE";
+    systemRequired: boolean;
+  } | null;
 };
 type MerchantPricingPlanFixture = {
   id: string;
@@ -83,7 +90,7 @@ type MerchantPricingPlanFixture = {
   usageEvents: Array<{ eventHandle: string; creditsGrantedPerUnit: number }>;
 };
 type BillingPlanCreateFixtureData = {
-  features: { create: Array<{ featureId: string; enabled: boolean }> };
+  features: { create: Array<{ featureId: string; enabled: boolean; configuration: unknown }> };
   [key: string]: unknown;
 };
 
@@ -92,11 +99,13 @@ function createDatabase({
   pendingPlan = null,
   current = null,
   cataloguePlan = null,
+  activeCompatibilityPairs = [{ purpose: { key: "FAQ" }, dataFormat: { key: "WEB_PAGE" } }],
 }: {
   plan?: BillingPlanFixture | null;
   pendingPlan?: BillingPlanFixture | null;
   current?: BillingPlanFixture | null;
   cataloguePlan?: MerchantPricingPlanFixture | null;
+  activeCompatibilityPairs?: Array<{ purpose: { key: string }; dataFormat: { key: string } }>;
 } = {}) {
   const state: {
     current: BillingPlanFixture | null;
@@ -140,6 +149,15 @@ function createDatabase({
       return { count: 0 };
     }),
   };
+  const merchantKnowledgePurposeDataFormat = {
+    findMany: vi.fn().mockResolvedValue(activeCompatibilityPairs),
+  };
+  const shopFeaturePreference = {
+    create: vi.fn(),
+    upsert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  };
   const billingPeriod = {
     findUnique: vi.fn().mockResolvedValue(null),
     upsert: vi.fn().mockResolvedValue({ id: "period-1", periodStart, periodEnd }),
@@ -161,9 +179,9 @@ function createDatabase({
     billingPeriod,
     shopSettings,
     $queryRaw: vi.fn().mockResolvedValue([]),
-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, merchantPricingPlan, billingPeriod, billingPeriodEntitlementCounter, shopSettings, $queryRaw: database.$queryRaw })),
+    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, merchantPricingPlan, merchantKnowledgePurposeDataFormat, shopFeaturePreference, billingPeriod, billingPeriodEntitlementCounter, shopSettings, $queryRaw: database.$queryRaw })),
   };
-  return { database, state, billingPeriod, billingPeriodEntitlementCounter };
+  return { database, state, billingPeriod, billingPeriodEntitlementCounter, merchantKnowledgePurposeDataFormat, shopFeaturePreference };
 }
 
 function createMerchantPricingPlanFixture(overrides: Partial<MerchantPricingPlanFixture> = {}): MerchantPricingPlanFixture {
@@ -179,15 +197,31 @@ function createMerchantPricingPlanFixture(overrides: Partial<MerchantPricingPlan
     features: [
       {
         featureId: "checkout-feature",
-        feature: { id: "checkout-feature", key: "checkout_recovery", systemRequired: true },
+        configuration: { enabledFor: ["checkout"] },
+        feature: { id: "checkout-feature", key: "checkout_recovery", active: true, activationMode: "ALWAYS_ENABLED", systemRequired: true },
       },
       {
         featureId: "optional-feature",
-        feature: { id: "optional-feature", key: "ai_conversations", systemRequired: false },
+        configuration: { responseStyle: "concise", threshold: 4 },
+        feature: { id: "optional-feature", key: "ai_conversations", active: true, activationMode: "MERCHANT_TOGGLEABLE", systemRequired: false },
       },
     ],
     usageEvents: [],
     ...overrides,
+  };
+}
+
+function merchantKnowledgeMapping(configuration: unknown): MerchantPricingPlanFeatureFixture {
+  return {
+    featureId: "merchant-knowledge-feature",
+    configuration,
+    feature: {
+      id: "merchant-knowledge-feature",
+      key: "merchant_knowledge",
+      active: true,
+      activationMode: "ALWAYS_ENABLED",
+      systemRequired: false,
+    },
   };
 }
 
@@ -1731,8 +1765,10 @@ describe("BillingService subscription projection", () => {
 
   it("reuses an active operational plan and durably marks its catalogue row", async () => {
     const cataloguePlan = createMerchantPricingPlanFixture();
+    const existingConfiguration = { responseStyle: "persisted", maxItems: 3 };
+    const existingFeatures = [{ featureId: "optional-feature", enabled: true, configuration: existingConfiguration }];
     const { database } = createDatabase({
-      plan: { id: "free-1", name: "Free", shopifyPlanHandle: "growth", kind: "FREE", active: true },
+      plan: { id: "free-1", name: "Free", shopifyPlanHandle: "growth", kind: "FREE", active: true, features: existingFeatures },
       cataloguePlan,
     });
     const service = new BillingService({} as never, database as never);
@@ -1744,6 +1780,9 @@ describe("BillingService subscription projection", () => {
 
     expect(database.billingPlan.create).not.toHaveBeenCalled();
     expect(cataloguePlan.materializedAt).toBeInstanceOf(Date);
+    expect(existingFeatures).toEqual([
+      { featureId: "optional-feature", enabled: true, configuration: existingConfiguration },
+    ]);
   });
 
   it("materialises an active FREE catalogue plan with its dynamic feature projection", async () => {
@@ -1764,12 +1803,106 @@ describe("BillingService subscription projection", () => {
       recoveryCreditsPerPack: null,
       shopifyRecoveryCreditPackEventHandle: null,
       features: [
-        { featureId: "checkout-feature", enabled: true },
-        { featureId: "optional-feature", enabled: true },
+        { featureId: "checkout-feature", enabled: true, configuration: { enabledFor: ["checkout"] } },
+        { featureId: "optional-feature", enabled: true, configuration: { responseStyle: "concise", threshold: 4 } },
       ],
     });
     expect(state.cataloguePlan?.materializedAt).toBeInstanceOf(Date);
     expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1" });
+  });
+
+  it("copies valid Merchant Knowledge C2 configuration unchanged through the generic feature projection", async () => {
+    const configuration = {
+      schemaVersion: 1,
+      maxKnowledgeSources: 10,
+      maxContentUnitsPerSource: 1000,
+      allowedSourceTypes: [{ purposeKey: "FAQ", dataFormatKey: "WEB_PAGE" }],
+    };
+    const cataloguePlan = createMerchantPricingPlanFixture({
+      displayName: "Starter",
+      features: [...createMerchantPricingPlanFixture().features, merchantKnowledgeMapping(configuration)],
+    });
+    const { database, state, merchantKnowledgePurposeDataFormat, shopFeaturePreference } = createDatabase({ cataloguePlan });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.plan?.features).toContainEqual({
+      featureId: "merchant-knowledge-feature",
+      enabled: true,
+      configuration,
+    });
+    expect(merchantKnowledgePurposeDataFormat.findMany).toHaveBeenCalledWith({
+      where: {
+        purpose: { is: { active: true } },
+        dataFormat: { is: { active: true } },
+      },
+      select: {
+        purpose: { select: { key: true } },
+        dataFormat: { select: { key: true } },
+      },
+    });
+    expect(shopFeaturePreference.create).not.toHaveBeenCalled();
+    expect(shopFeaturePreference.upsert).not.toHaveBeenCalled();
+    expect(shopFeaturePreference.update).not.toHaveBeenCalled();
+    expect(shopFeaturePreference.delete).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["malformed C2 configuration", { schemaVersion: 2, allowedSourceTypes: [] }],
+    ["missing active catalogue compatibility", {
+      schemaVersion: 1,
+      maxKnowledgeSources: 10,
+      maxContentUnitsPerSource: 1000,
+      allowedSourceTypes: [{ purposeKey: "FAQ", dataFormatKey: "WEB_PAGE" }],
+    }],
+  ])("rejects %s before creating an operational plan", async (label, configuration) => {
+    const cataloguePlan = createMerchantPricingPlanFixture({
+      features: [...createMerchantPricingPlanFixture().features, merchantKnowledgeMapping(configuration)],
+    });
+    const { database, state, merchantKnowledgePurposeDataFormat } = createDatabase({
+      cataloguePlan,
+      activeCompatibilityPairs: label === "missing active catalogue compatibility" ? [] : undefined,
+    });
+    const service = new BillingService({} as never, database as never);
+    const resolution = await (service as unknown as {
+      resolveOrMaterializeBillingPlan: (handle: string) => Promise<unknown>;
+    }).resolveOrMaterializeBillingPlan("growth");
+
+    expect(resolution).toEqual({
+      kind: "INVALID_CATALOGUE_PLAN",
+      reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
+    });
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+    expect(state.plan).toBeNull();
+    expect(cataloguePlan.materializedAt).toBeNull();
+    if (label === "missing active catalogue compatibility") {
+      expect(merchantKnowledgePurposeDataFormat.findMany).toHaveBeenCalled();
+    } else {
+      expect(merchantKnowledgePurposeDataFormat.findMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it("rejects multiple Merchant Knowledge mappings before creating an operational plan", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture({
+      features: [
+        ...createMerchantPricingPlanFixture().features,
+        merchantKnowledgeMapping({ schemaVersion: 1 }),
+        { ...merchantKnowledgeMapping({ schemaVersion: 1 }), featureId: "duplicate-merchant-knowledge-feature" },
+      ],
+    });
+    const { database, state } = createDatabase({ cataloguePlan });
+    const service = new BillingService({} as never, database as never);
+    const resolution = await (service as unknown as {
+      resolveOrMaterializeBillingPlan: (handle: string) => Promise<unknown>;
+    }).resolveOrMaterializeBillingPlan("growth");
+
+    expect(resolution).toEqual({
+      kind: "INVALID_CATALOGUE_PLAN",
+      reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
+    });
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+    expect(state.plan).toBeNull();
   });
 
   it("uses the dedicated paid recovery meter, never a top-up usage event", async () => {
