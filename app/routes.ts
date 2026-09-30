@@ -25,17 +25,23 @@ export default [
 
   route("app", "./routes/app/route.jsx", [
     index("./routes/app/home/route.jsx"),
+    route("recoveries/:recoveryId", "./routes/app/recovery-detail/route.tsx"),
+    route("recoveries", "./routes/app/recoveries/route.tsx"),
     route("usage", "./routes/app/usage/route.jsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
-    route("features", "./routes/app/features/route.tsx"),
+    route("recovery-settings", "./routes/app/recovery-settings/route.tsx"),
     route("merchant-support", "./routes/app/merchant-support/route.jsx"),
     route("billing/options", "./routes/app/billing/options/route.tsx"),
     route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
   ]),
 
+  route("app/recoveries/:recoveryId/messages", "./routes/app/recovery-detail/messages.ts"),
+  route("app/recoveries/:recoveryId/related", "./routes/app/recovery-detail/related.ts"),
+  route("app/settings-save", "./routes/app/settings-save/route.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),
+  route("app/billing/status", "./routes/app/billing/status/route.ts"),
   route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),
 
   route("webhooks", "./routes/webhooks/root/route.jsx"),

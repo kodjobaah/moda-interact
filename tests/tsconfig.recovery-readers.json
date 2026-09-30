@@ -1,0 +1,12 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "checkJs": false,
+    "types": ["node"]
+  },
+  "include": [
+    "../app/services/recoveries/*.ts",
+    "unit/recovery-cohort-readers.test.ts",
+    "../env.d.ts"
+  ]
+}

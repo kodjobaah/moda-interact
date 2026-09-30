@@ -31,6 +31,7 @@ describe("explicit route configuration", () => {
   it("keeps billing transitions standalone", () => {
     expect(source).toContain('route("app/billing/select", "./routes/app/billing/select/route.jsx"),');
     expect(source).toContain('route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),');
+    expect(source).toContain('route("app/billing/status", "./routes/app/billing/status/route.ts"),');
   });
 
   it("keeps pending recoveries standalone", () => {

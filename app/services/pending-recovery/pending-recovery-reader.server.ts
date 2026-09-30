@@ -112,7 +112,9 @@ export async function readPendingRecoveries({
     const totalPages = Math.ceil(total / PAGE_SIZE);
     const effectivePage = totalPages > 0 ? Math.min(page, totalPages) : 1;
     const start = (effectivePage - 1) * PAGE_SIZE;
-    const members = await withTimeout(redis.zrange(indexKey, start, start + PAGE_SIZE - 1, "WITHSCORES"));
+    const members = await withTimeout(
+      redis.zrange(indexKey, start, String(start + PAGE_SIZE - 1), "WITHSCORES"),
+    );
     const rows: PendingRecoveryRow[] = [];
 
     for (let index = 0; index < members.length; index += 2) {

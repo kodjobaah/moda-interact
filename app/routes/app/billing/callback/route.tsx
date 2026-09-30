@@ -9,6 +9,7 @@ import type {
   Subscription,
 } from "@prisma/client";
 import { authenticate } from "@/shopify.server";
+import db from "@/db.server";
 
 import {
   billingService,
@@ -18,7 +19,6 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
-import db from "@/db.server";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -26,6 +26,18 @@ function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
     params.set("requested_plan_handle", requestedPlanHandle);
   }
   return `/app/billing/options?${params.toString()}`;
+}
+
+async function persistOnboardingMilestone(shopId: string): Promise<void> {
+  await db.shopSettings.updateMany({
+    where: {
+      shopId,
+      onboardingCompleted: false,
+    },
+    data: {
+      onboardingCompleted: true,
+    },
+  });
 }
 
 type BillingCallbackSubscription = Pick<
@@ -42,6 +54,7 @@ type BillingCallbackSubscription = Pick<
   | "currentPeriodStart"
   | "currentPeriodEnd"
   | "lastSyncErrorCode"
+  | "providerSubscriptionId"
 > & {
   plan: Pick<BillingPlan, "kind" | "shopifyPlanHandle"> | null;
 };
@@ -73,6 +86,7 @@ export function isVerifiedBillingCallback(
   return currentPlanMatches && !pendingSelectionConflicts;
 }
 
+
 function isVerifiedPaidActivation(
   subscription: BillingCallbackSubscription | null,
   requestedPlanHandle: string,
@@ -102,18 +116,18 @@ export async function loader({
     session,
   } = await authenticate.admin(request);
 
+  const shop = await shopService.resolveShopifyShop({
+    admin,
+    domain: session.shop,
+  });
+  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
+
   const url = new URL(request.url);
   const requestedPlanHandle = url.searchParams.get("plan_handle");
 
   if (!requestedPlanHandle) {
     throw new Response("Missing plan_handle", { status: 400 });
   }
-
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
-  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
   const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
   let verification;
@@ -156,10 +170,7 @@ export async function loader({
     return redirect(billingOptionsRedirect(result.result, requestedPlanHandle));
   }
 
-  await db.shopSettings.updateMany({
-    where: { shopId: shop.id, onboardingCompleted: false },
-    data: { onboardingCompleted: true },
-  });
+  await persistOnboardingMilestone(shop.id);
 
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
     await billingService.preparePaidActivation(shop.id, requestedPlanHandle);

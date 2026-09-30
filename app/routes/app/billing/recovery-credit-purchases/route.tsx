@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { RecoveryCreditPurchaseStatus } from "@prisma/client";
 import { useLoaderData, useRouteError } from "react-router";
-import { boundary } from "@shopify/shopify-app-react-router/server";
+import { boundary, type AdminApiContext } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
@@ -17,6 +17,41 @@ import {
   resolveMerchantExperienceState,
 } from "@/services/shop/merchant-route-access-policy";
 
+
+type ShopifyShopPlanResponse = {
+  data?: {
+    shop?: {
+      plan?: {
+        partnerDevelopment?: boolean | null;
+      } | null;
+    } | null;
+  };
+};
+
+async function resolveShopifyPartnerDevelopment(
+  admin: AdminApiContext,
+): Promise<boolean> {
+  const response = await admin.graphql(
+    `#graphql
+      query ModaInteractRefundShopPlan {
+        shop {
+          plan {
+            partnerDevelopment
+          }
+        }
+      }
+    `,
+  );
+  const result = (await response.json()) as ShopifyShopPlanResponse;
+  const value = result.data?.shop?.plan?.partnerDevelopment;
+  if (typeof value !== "boolean") {
+    throw new Error(
+      "Unable to verify whether the authenticated Shopify shop is a partner development store.",
+    );
+  }
+  return value;
+}
+
 const PURCHASE_HISTORY_FILTERS = [
   "ACTIVE",
   "WITHDRAWN",
@@ -24,6 +59,18 @@ const PURCHASE_HISTORY_FILTERS = [
   "REFUNDED",
   "ALL",
 ] as const;
+
+const PURCHASE_HISTORY_PAGE_SIZES = [5, 10, 20] as const;
+const DEFAULT_PURCHASE_HISTORY_PAGE_SIZE = 5;
+
+function resolvePurchaseHistoryPageSize(value: string | null): number {
+  const parsed = Number(value);
+  return PURCHASE_HISTORY_PAGE_SIZES.includes(
+    parsed as (typeof PURCHASE_HISTORY_PAGE_SIZES)[number],
+  )
+    ? parsed
+    : DEFAULT_PURCHASE_HISTORY_PAGE_SIZE;
+}
 
 type PurchaseHistoryFilter = (typeof PURCHASE_HISTORY_FILTERS)[number];
 
@@ -57,10 +104,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     capability: "read-billing",
     redirectTo: "/app/merchant-support",
   });
-  const settings = await db.shopSettings.findUnique({
-    where: { shopId: shop.id },
-  });
-  const subscription = await billingService.getSubscription(shop.id);
+  const [settings, subscription, shopifyPartnerDevelopment] =
+    await Promise.all([
+      db.shopSettings.findUnique({
+        where: { shopId: shop.id },
+      }),
+      billingService.getSubscription(shop.id),
+      resolveShopifyPartnerDevelopment(admin),
+    ]);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     settings,
@@ -89,8 +140,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
     page: await recoveryCreditPurchaseManagementService.listPurchaseHistory({
       shopId: shop.id,
       shopifyShopId: shop.shopifyShopId ?? "",
+      shopifyPartnerDevelopment,
       page: Number(url.searchParams.get("page") ?? "1"),
-      pageSize: Number(url.searchParams.get("pageSize") ?? "20"),
+      pageSize: resolvePurchaseHistoryPageSize(url.searchParams.get("pageSize")),
       status: FILTER_TO_STATUS[filter],
     }),
   };
@@ -164,10 +216,13 @@ export async function action({ request }: ActionFunctionArgs) {
       { status: 400 },
     );
   }
+  const shopifyPartnerDevelopment =
+    await resolveShopifyPartnerDevelopment(admin);
   return Response.json(
     await recoveryCreditPurchaseManagementService.requestRefundBatch({
       shopId: shop.id,
       shopifyShopId: shop.shopifyShopId ?? "",
+      shopifyPartnerDevelopment,
       purchaseIds,
       requestId,
       shopifyUserId:

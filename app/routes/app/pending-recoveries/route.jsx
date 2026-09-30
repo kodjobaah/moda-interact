@@ -6,6 +6,7 @@ import { billingService } from "@/services/billing/billing.service";
 import db from "@/db.server";
 import { canAccessMerchantSurface, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
+/** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });

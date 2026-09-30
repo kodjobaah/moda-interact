@@ -729,3 +729,10 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Billing options secondary navigation action. */
+.billing-options__history-action {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 16px;
+}

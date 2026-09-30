@@ -146,6 +146,9 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
       usageEvents: plan.usageEvents.map((event) => ({
         cataloguePosition: event.position,
         eventHandle: event.eventHandle,
+        adminLabel: typeof event.adminLabel === "string" && event.adminLabel.trim()
+          ? event.adminLabel.trim()
+          : event.eventHandle,
         creditsGrantedPerUnit: event.creditsGrantedPerUnit,
         maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
         pricingMode: event.pricingMode,
@@ -185,6 +188,9 @@ export function resolveCurrentRecoveryCreditOffers({ providerSubscription, merch
       if (!providerItem) return [];
       return [{
         eventHandle: event.eventHandle,
+        label: typeof event.adminLabel === "string" && event.adminLabel.trim()
+          ? event.adminLabel.trim()
+          : event.eventHandle,
         cataloguePosition: event.position,
         creditsGranted: event.creditsGrantedPerUnit,
         providerPrice: providerItem.price,
@@ -221,6 +227,9 @@ export async function readMerchantPricingPlanForProvider({ planHandle } = {}) {
       cataloguePosition: event.position,
       position: event.position,
       eventHandle: event.eventHandle,
+      adminLabel: typeof event.adminLabel === "string" && event.adminLabel.trim()
+        ? event.adminLabel.trim()
+        : event.eventHandle,
       creditsGrantedPerUnit: event.creditsGrantedPerUnit,
       maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
       pricingMode: event.pricingMode,

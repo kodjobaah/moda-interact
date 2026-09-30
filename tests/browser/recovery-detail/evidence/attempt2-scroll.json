@@ -1,0 +1,25 @@
+[
+  {
+    "scenario": "omitted defaults → detail → related → Back",
+    "before": 575,
+    "after": 575
+  },
+  {
+    "scenario": "reordered",
+    "before": 575,
+    "after": 575,
+    "back": "/app/recoveries?from=2026-09-01&to=2026-09-20&status=all&q=Ada&pageSize=25&shop=fixture.myshopify.com"
+  },
+  {
+    "scenario": "canonical",
+    "before": 575,
+    "after": 575,
+    "back": "/app/recoveries?from=2026-09-01&to=2026-09-20&status=all&q=Ada&pageSize=25&shop=fixture.myshopify.com"
+  },
+  {
+    "scenario": "cursor",
+    "before": 575,
+    "after": 575,
+    "back": "/app/recoveries?from=2026-09-01&to=2026-09-20&status=all&q=Ada&pageSize=25&shop=fixture.myshopify.com&cursor=fixture-page-2"
+  }
+]

@@ -1,55 +1,129 @@
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
+import {
+  recordShopifyWebhookAuthenticationFailure,
+  recordShopifyWebhookReceived,
+  recordShopifyWebhookRouteFailure,
+  recordShopifyWebhookRouteOutcome,
+} from "@/services/webhooks/shopify-webhook-observability.server";
+
+const WEBHOOK_ROUTE = "/webhooks/customers/redact";
 
 // @ts-ignore
 export const action = async ({ request }) => {
-  const { shop, topic, payload } = await authenticate.webhook(request);
+  const startedAt = Date.now();
+  recordShopifyWebhookReceived({ request, route: WEBHOOK_ROUTE });
 
-  console.log(`Received ${topic} webhook for ${shop}`);
-
-  const shopifyCustomerId = payload.customer?.id
-    ? String(payload.customer.id)
-    : null;
-
-  if (!shopifyCustomerId) {
-    return new Response();
+  let authenticated;
+  try {
+    authenticated = await authenticate.webhook(request);
+  } catch (error) {
+    recordShopifyWebhookAuthenticationFailure({
+      request,
+      route: WEBHOOK_ROUTE,
+      error,
+      ackMs: Date.now() - startedAt,
+    });
+    throw error;
   }
 
-  const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+  const { shop, topic, payload, eventId } = authenticated;
 
-  if (!shopRecord) {
-    return new Response();
-  }
+  try {
+    const shopifyCustomerId = payload.customer?.id
+      ? String(payload.customer.id)
+      : null;
 
-  const customer = await db.customer.findUnique({
-    where: {
-      shopId_shopifyCustomerId: {
-        shopId: shopRecord.id,
-        shopifyCustomerId,
+    if (!shopifyCustomerId) {
+      recordShopifyWebhookRouteOutcome({
+        request,
+        route: WEBHOOK_ROUTE,
+        topic: topic ?? "CUSTOMERS_REDACT",
+        eventId: eventId ?? null,
+        shopDomain: shop,
+        outcome: "IGNORED_MISSING_CUSTOMER_ID",
+        ackMs: Date.now() - startedAt,
+      });
+      return new Response();
+    }
+
+    const shopRecord = await db.shop.findUnique({ where: { domain: shop } });
+
+    if (!shopRecord) {
+      recordShopifyWebhookRouteOutcome({
+        request,
+        route: WEBHOOK_ROUTE,
+        topic: topic ?? "CUSTOMERS_REDACT",
+        eventId: eventId ?? null,
+        shopDomain: shop,
+        outcome: "IGNORED_UNKNOWN_SHOP",
+        ackMs: Date.now() - startedAt,
+      });
+      return new Response();
+    }
+
+    const customer = await db.customer.findUnique({
+      where: {
+        shopId_shopifyCustomerId: {
+          shopId: shopRecord.id,
+          shopifyCustomerId,
+        },
       },
-    },
-  });
+    });
 
-  if (!customer) {
+    if (!customer) {
+      recordShopifyWebhookRouteOutcome({
+        request,
+        route: WEBHOOK_ROUTE,
+        topic: topic ?? "CUSTOMERS_REDACT",
+        eventId: eventId ?? null,
+        shopDomain: shop,
+        shopId: shopRecord.id,
+        outcome: "IGNORED_UNKNOWN_CUSTOMER",
+        ackMs: Date.now() - startedAt,
+      });
+      return new Response();
+    }
+
+    // CheckoutRecovery keeps a required-in-practice link to Customer for recovery
+    // and billing history, so we anonymise rather than hard-delete the row.
+    await db.customer.update({
+      where: { id: customer.id },
+      data: {
+        email: null,
+        phone: null,
+        firstName: null,
+        lastName: null,
+      },
+    });
+
+    await db.customerPhone.updateMany({
+      where: { customerId: customer.id, endedAt: null },
+      data: { endedAt: new Date() },
+    });
+
+    recordShopifyWebhookRouteOutcome({
+      request,
+      route: WEBHOOK_ROUTE,
+      topic: topic ?? "CUSTOMERS_REDACT",
+      eventId: eventId ?? null,
+      shopDomain: shop,
+      shopId: shopRecord.id,
+      outcome: "PROCESSED_CUSTOMERS_REDACT",
+      ackMs: Date.now() - startedAt,
+    });
+
     return new Response();
+  } catch (error) {
+    recordShopifyWebhookRouteFailure({
+      request,
+      route: WEBHOOK_ROUTE,
+      topic: topic ?? "CUSTOMERS_REDACT",
+      eventId: eventId ?? null,
+      shopDomain: shop,
+      error,
+      ackMs: Date.now() - startedAt,
+    });
+    throw error;
   }
-
-  // CheckoutRecovery keeps a required-in-practice link to Customer for recovery
-  // and billing history, so we anonymise rather than hard-delete the row.
-  await db.customer.update({
-    where: { id: customer.id },
-    data: {
-      email: null,
-      phone: null,
-      firstName: null,
-      lastName: null,
-    },
-  });
-
-  await db.customerPhone.updateMany({
-    where: { customerId: customer.id, endedAt: null },
-    data: { endedAt: new Date() },
-  });
-
-  return new Response();
 };

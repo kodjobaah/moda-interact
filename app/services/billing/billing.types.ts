@@ -77,6 +77,7 @@ export interface ProviderUsageSnapshot {
 
 export interface RecoveryCreditOffer {
   eventHandle: string;
+  label: string;
   cataloguePosition: number;
   creditsGranted: number;
   providerPrice: ProviderUsageItem["price"];

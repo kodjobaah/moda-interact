@@ -20,7 +20,7 @@ class FakeRedis {
   async zrange(key: string, start: number, stop: number, mode: string) {
     expect(mode).toBe("WITHSCORES");
     return (zsets.get(key) ?? [])
-      .slice(start, stop + 1)
+      .slice(start, Number(stop) + 1)
       .flatMap(([member, score]) => [member, String(score)]);
   }
 

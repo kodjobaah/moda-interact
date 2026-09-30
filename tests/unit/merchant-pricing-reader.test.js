@@ -190,13 +190,13 @@ describe("resolveCurrentRecoveryCreditOffers", () => {
     const result = resolveCurrentRecoveryCreditOffers({
       providerSubscription: providerSubscription([providerItem("second", "8.00"), providerItem("first")]),
       merchantPricingPlan: plan("growth", [
-        { position: 1, eventHandle: "second", creditsGrantedPerUnit: 40 },
-        { position: 0, eventHandle: "first", creditsGrantedPerUnit: 12 },
+        { position: 1, eventHandle: "second", adminLabel: "Silver pack", creditsGrantedPerUnit: 40 },
+        { position: 0, eventHandle: "first", adminLabel: "Bronze pack", creditsGrantedPerUnit: 12 },
       ]),
     });
     expect(result.offers).toEqual([
-      expect.objectContaining({ eventHandle: "first", cataloguePosition: 0, creditsGranted: 12, providerPrice: expect.objectContaining({ active: false }), providerUsage: expect.objectContaining({ costAmount: "4.00" }) }),
-      expect.objectContaining({ eventHandle: "second", cataloguePosition: 1, creditsGranted: 40, providerPrice: expect.objectContaining({ tiers: [{ amountPerUnit: "8.00", amount: "8.00", upTo: null }] }) }),
+      expect.objectContaining({ eventHandle: "first", label: "Bronze pack", cataloguePosition: 0, creditsGranted: 12, providerPrice: expect.objectContaining({ active: false }), providerUsage: expect.objectContaining({ costAmount: "4.00" }) }),
+      expect.objectContaining({ eventHandle: "second", label: "Silver pack", cataloguePosition: 1, creditsGranted: 40, providerPrice: expect.objectContaining({ tiers: [{ amountPerUnit: "8.00", amount: "8.00", upTo: null }] }) }),
     ]);
   });
 

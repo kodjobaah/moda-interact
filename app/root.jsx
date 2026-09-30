@@ -1,5 +1,6 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import "./tailwind.css";
+import { recoveryScrollKey } from "./routes/app/recoveries/recovery-list-state";
 
 export default function App() {
   return (
@@ -18,7 +19,7 @@ export default function App() {
       </head>
       <body>
         <Outlet />
-        <ScrollRestoration />
+        <ScrollRestoration getKey={recoveryScrollKey} />
         <Scripts />
       </body>
     </html>

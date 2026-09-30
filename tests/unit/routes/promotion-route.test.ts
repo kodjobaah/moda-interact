@@ -9,6 +9,10 @@ const layoutSource = await readFile(
   new URL("../../../app/routes/app/route.jsx", import.meta.url),
   "utf8",
 );
+const navigationSource = await readFile(
+  new URL("../../../app/components/dashboard/MerchantNavigation.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("promotion merchant route", () => {
   it("uses promotion-specific localized copy and state", () => {
@@ -19,6 +23,14 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("promotions.history.title");
     expect(routeSource).toContain("promotions.history.granted");
     expect(routeSource).toContain("promotions.status.reopened");
+    expect(routeSource).toContain("getCurrentPromotionSelectionState");
+    expect(routeSource).toContain("promotionSelection");
+    expect(routeSource).toContain("useNavigation");
+    expect(routeSource).toContain("useRef");
+    expect(routeSource).toContain("submitLockRef");
+    expect(routeSource).toContain("guardPromotionSubmit");
+    expect(routeSource).toContain("disabled={selectionLocked || submissionInFlight || offer.currentlySelected}");
+    expect(routeSource).toContain('className="moda-promotions-lock-notice"');
     for (const rawHistoryText of ["No selected promotion history.", "Granted: ", "Currently selected: ", ">Previous<", ">Next<"]) {
       expect(routeSource).not.toContain(rawHistoryText);
     }
@@ -34,8 +46,9 @@ describe("promotion merchant route", () => {
   });
 
   it("localizes the app navigation label", () => {
-    expect(layoutSource).toContain('i18n.t("promotions.nav")');
-    expect(layoutSource).not.toContain('>Promotions</s-link>');
+    expect(navigationSource).toContain('promotions: "promotions.nav"');
+    expect(navigationSource).toContain("i18n.t(keys[item.id])");
+    expect(layoutSource).not.toContain(">Promotions</s-link>");
   });
 
   it("renders authored campaign text without internal metadata", () => {
@@ -44,7 +57,7 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("entry.campaignTitle ?? i18n.t(\"promotions.history.titleUnavailable\")");
     expect(routeSource).toContain("const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale");
     expect(routeSource).toContain("getEligiblePromotionOffers(shop.id, promotionLocale)");
-    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, pageValue)");
+    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, historyPageValue)");
     expect(routeSource).not.toContain("offer.name");
     expect(routeSource).not.toContain("entry.campaignName");
     for (const internalField of ["platformAdminId", "targetPlanId", "targetShopId", "requestKey", "audit"]) {
@@ -52,9 +65,22 @@ describe("promotion merchant route", () => {
     }
   });
 
+  it("renders a structured merchant promotions experience for empty and populated states", () => {
+    expect(routeSource).toContain('import "./PromotionsRoute.css"');
+    expect(routeSource).toContain('className="moda-promotions-hero"');
+    expect(routeSource).toContain('className="moda-promotions-panel"');
+    expect(routeSource).toContain('className="moda-promotions-empty"');
+    expect(routeSource).toContain('className="moda-promotions-offer-grid"');
+    expect(routeSource).toContain('className="moda-promotion-button"');
+    expect(routeSource).toContain('className="moda-promotion-history-list"');
+  });
+
   it("renders tenant-safe history fields and bounded pagination without mutation controls", () => {
     expect(routeSource).toContain("getPromotionHistory");
+    expect(routeSource).toContain("offerPage");
     expect(routeSource).toContain("historyPage");
+    expect(routeSource).toContain("offersPagination");
+    expect(routeSource).toContain("promotionPageHref");
     expect(routeSource).toContain("entry.quantityGranted");
     expect(routeSource).toContain("entry.committedQuantity");
     expect(routeSource).toContain("entry.remainingQuantity");

@@ -1,0 +1,39 @@
+.recovery-list { max-width: 1180px; margin: 0 auto; padding: 32px 24px; color: #202a29; font: 14px/1.5 system-ui, sans-serif; }
+.recovery-list, .recovery-list * { box-sizing: border-box; }
+.recovery-list h1 { font-size: 28px; letter-spacing: -.6px; margin: 0 0 6px; }
+.recovery-list h2 { font-size: 17px; margin: 0; }
+.recovery-list h3 { font-size: 15px; margin: 0; }
+.recovery-list p { margin: 4px 0; color: #596562; }
+.recovery-list a { color: #17654e; text-decoration: underline; text-underline-offset: 3px; }
+.recovery-list :is(a, button, input, select):focus-visible { outline: 3px solid #216bcb; outline-offset: 3px; }
+.recovery-list__header, .recovery-list__results-heading, .recovery-list__filter-footer { display: flex; gap: 16px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.recovery-list__header { margin-bottom: 24px; }
+.recovery-list__filters, .recovery-list__results { background: white; border: 1px solid #d7dfdb; border-radius: 12px; margin-top: 16px; padding: 20px; }
+.recovery-list__presets { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+.recovery-list__presets a { padding: 8px 12px; border: 1px solid #d7dfdb; border-radius: 7px; text-decoration: none; }
+.recovery-list__form { display: grid; grid-template-columns: minmax(135px, 1fr) minmax(135px, 1fr) minmax(150px, 1.6fr) minmax(120px, 1fr) auto; align-items: end; gap: 14px; }
+.recovery-list__form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; min-width: 0; }
+.recovery-list input, .recovery-list select { width: 100%; min-width: 0; height: 42px; padding: 8px; border: 1px solid #87978f; border-radius: 6px; background: white; color: inherit; font: inherit; }
+.recovery-list__button { border: 1px solid #87978f; border-radius: 7px; min-height: 42px; padding: 9px 16px; font: inherit; font-weight: 600; color: inherit; background: white; cursor: pointer; }
+.recovery-list__button--primary { background: #1e5948; color: white; border-color: #1e5948; }
+.recovery-list button:disabled { opacity: .6; cursor: wait; }
+.recovery-list__filter-footer { margin-top: 16px; font-size: 13px; }
+.recovery-list__rows { list-style: none; padding: 0; margin: 18px 0 0; }
+.recovery-list__row { display: grid; grid-template-columns: minmax(160px, 1fr) 2fr; gap: 24px; padding: 22px 0; border-top: 1px solid #e3e8e5; overflow-wrap: anywhere; }
+.recovery-list__customer p { font-size: 13px; }
+.recovery-list__row dl { display: grid; grid-template-columns: 1fr 1fr 1.3fr; margin: 0; gap: 18px; }
+.recovery-list dt { color: #596562; font-size: 12px; margin-bottom: 6px; }
+.recovery-list dd { margin: 0; font-weight: 500; }
+.recovery-list__status { display: inline-block; border-radius: 5px; padding: 3px 8px; background: #eef1ef; font-size: 12px; }
+.recovery-list__status--COMPLETED { color: #20583e; background: #e2f0e6; }
+.recovery-list__status--ENGAGED, .recovery-list__status--MESSAGE_SENT, .recovery-list__status--DETECTED { color: #24567a; background: #e7f0f7; }
+.recovery-list__pagination { display: flex; justify-content: space-between; gap: 20px; margin-top: 18px; border-top: 1px solid #e3e8e5; padding-top: 18px; }
+.recovery-list__pagination :is(a, span) { padding: 8px 12px; }
+.recovery-list__pagination span { color: #65736d; }
+.recovery-list__notice { padding: 40px 0; max-width: 650px; }
+.recovery-list__notice p { margin: 12px 0; }
+.recovery-list__notice button, .recovery-list__notice a { display: inline-block; margin-top: 14px; }
+.recovery-list__loading { padding-top: 20px; }
+.recovery-list__skeleton { height: 68px; margin-top: 14px; border-radius: 6px; background: linear-gradient(100deg, #eef1ef 20%, #f6f8f7 50%, #eef1ef 80%); }
+@media (max-width: 900px) { .recovery-list__form { grid-template-columns: 1fr 1fr; } .recovery-list__search { grid-column: 1 / -1; } .recovery-list__row { grid-template-columns: 1fr; gap: 14px; } }
+@media (max-width: 480px) { .recovery-list { padding: 20px 12px; } .recovery-list__filters, .recovery-list__results { padding: 16px; } .recovery-list__form { grid-template-columns: minmax(0, 1fr); } .recovery-list__row dl { grid-template-columns: 1fr 1fr; } .recovery-list__row dl div:last-child { grid-column: 1 / -1; } .recovery-list__presets a { padding: 8px; } .recovery-list__header { align-items: start; } }
