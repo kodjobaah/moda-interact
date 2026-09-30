@@ -38,7 +38,7 @@ function makeActivationStore(options: {
         }
       : options.profile,
     category: options.category === undefined
-      ? { id: "category-1", defaultTemplateId: "template-1" }
+      ? { id: "category-1", defaultTemplateId: "template-current-b" }
       : options.category,
     revision: options.revision === undefined
       ? {
@@ -273,7 +273,7 @@ describe("initial pending Store Category activation", () => {
     expect(tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
   });
 
-  it("fails closed on stale generations and inconsistent pending provenance", async () => {
+  it("accepts changed category defaults while failing closed on missing pending provenance", async () => {
     const stale = makeActivationStore();
     await expect(activateInitialPendingStoreCategoryIfEligible(
       { shopId: "shop-1", expectedPendingSelectionGeneration: 2 },
@@ -281,20 +281,26 @@ describe("initial pending Store Category activation", () => {
       now,
     )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
 
-    const wrongTemplate = makeActivationStore({
-      revision: {
-        id: "revision-1",
-        promptId: "prompt-1",
-        status: CommercePromptRevisionStatus.DRAFT,
-        promptText,
-        sourceTemplateId: "template-old",
-        sourceTemplateEditVersion: 7,
-        prompt: { scope: CommerceAgentPromptScope.SHOP, shopId: "shop-1" },
-      },
-    });
+    const changedDefault = makeActivationStore();
     await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, wrongTemplate.client as never, now,
-    )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
+      { shopId: "shop-1" }, changedDefault.client as never, now,
+    )).resolves.toMatchObject({ kind: "ACTIVATED" });
+    expect(changedDefault.state.revision).toMatchObject({
+      sourceTemplateId: "template-1",
+      sourceTemplateEditVersion: 7,
+      promptText,
+    });
+
+    for (const revision of [
+      { ...makeActivationStore().state.revision as Record<string, unknown>, sourceTemplateId: null },
+      { ...makeActivationStore().state.revision as Record<string, unknown>, sourceTemplateEditVersion: null },
+    ]) {
+      const missingProvenance = makeActivationStore({ revision });
+      await expect(activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" }, missingProvenance.client as never, now,
+      )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
+      expect(missingProvenance.tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
+    }
   });
 
   it("rejects duplicate configurations rather than selecting an arbitrary one", async () => {

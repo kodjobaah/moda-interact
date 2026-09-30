@@ -95,7 +95,7 @@ export async function activateInitialPendingStoreCategoryIfEligible(
     const [category, revision] = await Promise.all([
       tx.commercePromptTemplateCategory.findUnique({
         where: { id: profile.pendingCategoryId },
-        select: { id: true, defaultTemplateId: true },
+        select: { id: true },
       }),
       tx.commerceAgentPromptRevision.findUnique({
         where: { id: profile.pendingPromptRevisionId },
@@ -110,7 +110,6 @@ export async function activateInitialPendingStoreCategoryIfEligible(
       revision.prompt.shopId !== input.shopId ||
       !revision.sourceTemplateId ||
       revision.sourceTemplateEditVersion === null ||
-      revision.sourceTemplateId !== category.defaultTemplateId ||
       !revision.promptText.trim()
     ) throw pendingStateConflict();
 

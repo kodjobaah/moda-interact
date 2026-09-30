@@ -33,6 +33,7 @@ let postgres: StartedPostgreSqlContainer | undefined;
 let database: PrismaClient | undefined;
 let categoryId: string;
 let templateId: string;
+let replacementTemplateId: string;
 let adminId: string;
 
 async function deployMigrations(databaseUrl: string): Promise<void> {
@@ -177,12 +178,25 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
           updatedByAdminId: adminId,
         },
       });
+      const replacementTemplate = await database.commercePromptTemplate.create({
+        data: {
+          key: `${fixturePrefix.replaceAll("-", "_")}_replacement_template`,
+          categoryId: category.id,
+          displayName: "Replacement Default Template B",
+          promptText: "Replacement template text",
+          enabled: true,
+          editVersion: 1,
+          createdByAdminId: adminId,
+          updatedByAdminId: adminId,
+        },
+      });
       await database.commercePromptTemplateCategory.update({
         where: { id: category.id },
         data: { defaultTemplateId: template.id },
       });
       categoryId = category.id;
       templateId = template.id;
+      replacementTemplateId = replacementTemplate.id;
     } catch (error) {
       await database?.$disconnect();
       await postgres?.stop();
@@ -207,6 +221,10 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
     await db.commercePromptTemplate.update({
       where: { id: templateId },
       data: { promptText: "Current template text changed after selection", editVersion: 8 },
+    });
+    await db.commercePromptTemplateCategory.update({
+      where: { id: categoryId },
+      data: { defaultTemplateId: replacementTemplateId },
     });
 
     await expect(activateInitialPendingStoreCategoryIfEligible(
@@ -245,6 +263,9 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
       pendingSelectionGeneration: 4,
     });
     expect(configurations).toHaveLength(1);
+    expect(await db.commercePromptTemplateCategory.findUniqueOrThrow({
+      where: { id: categoryId },
+    })).toMatchObject({ defaultTemplateId: replacementTemplateId });
     expect(configurations[0]).toMatchObject({
       activePromptRevisionId: fixture.pendingRevisionId,
       promptEditVersion: 2,
