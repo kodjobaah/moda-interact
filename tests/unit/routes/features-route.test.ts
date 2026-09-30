@@ -102,6 +102,40 @@ describe("features route", () => {
     expect(mocks.preferencesFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { shopId: "shop-1" } }));
   });
 
+  it("preserves an opt-in preference while dormant across plan changes", async () => {
+    const savedPreference = { featureId: optionalFeature.id, enabled: true, feature: optionalFeature };
+    mocks.preferencesFindMany.mockResolvedValue([savedPreference]);
+
+    mocks.subscriptionFindUnique.mockResolvedValue({
+      planId: "plan-without-feature",
+      plan: { features: [{ featureId: alwaysEnabled.id, enabled: true, feature: alwaysEnabled }] },
+    });
+    const unsupported = await loader({ request: new Request("https://app.test/app/features") } as never);
+    expect(unsupported.features).toContainEqual(expect.objectContaining({
+      key: "ai_conversations",
+      supportedByCurrentPlan: false,
+      preferenceEnabled: true,
+      effectiveEnabled: false,
+    }));
+
+    mocks.subscriptionFindUnique.mockResolvedValue({
+      planId: "plan-with-feature",
+      plan: { features: [
+        { featureId: alwaysEnabled.id, enabled: true, feature: alwaysEnabled },
+        { featureId: optionalFeature.id, enabled: true, feature: optionalFeature },
+      ] },
+    });
+    const supportedAgain = await loader({ request: new Request("https://app.test/app/features") } as never);
+    expect(supportedAgain.features).toContainEqual(expect.objectContaining({
+      key: "ai_conversations",
+      supportedByCurrentPlan: true,
+      preferenceEnabled: true,
+      effectiveEnabled: true,
+    }));
+    expect(mocks.preferencesFindMany).toHaveBeenCalledTimes(2);
+    expect(mocks.preferenceUpsert).not.toHaveBeenCalled();
+  });
+
   it("rejects feature access for a tenant without an active mapped subscription", async () => {
     mocks.getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
 
