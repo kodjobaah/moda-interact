@@ -93,6 +93,7 @@ describe("merchant route access policy", () => {
         "BILLING_PURCHASE_HISTORY",
         "PROMOTIONS",
         "RECOVERY_SETTINGS",
+        "FEATURES",
         "RECOVERY_HISTORY",
         "SUPPORT",
         "PLAN_SELECT",
@@ -155,7 +156,7 @@ describe("merchant route access policy", () => {
       { id: "home", href: "/app" },
       { id: "support", href: "/app/merchant-support" },
     ]);
-    expect(getMerchantNavigation("ACTIVE")).toHaveLength(6);
+    expect(getMerchantNavigation("ACTIVE")).toHaveLength(7);
     expect(getMerchantNavigation("SUPPORT_ONLY")).toEqual([
       { id: "support", href: "/app/merchant-support" },
     ]);
@@ -181,6 +182,7 @@ describe("merchant route access policy", () => {
         "/app",
         "/app/recoveries",
         "/app/billing/options",
+        "/app/features",
         "/app/promotions",
         "/app/merchant-support",
         "/app/recovery-settings",
@@ -229,6 +231,8 @@ describe("merchant route access policy", () => {
                 ? canAccessMerchantSurface(state, "BILLING_OPTIONS")
                 : item.id === "promotions"
                   ? canAccessMerchantSurface(state, "PROMOTIONS")
+                  : item.id === "features"
+                    ? canAccessMerchantSurface(state, "FEATURES")
                   : item.id === "recoverySettings"
                     ? canAccessMerchantSurface(state, "RECOVERY_SETTINGS")
                     : canAccessMerchantSurface(state, "SUPPORT"),

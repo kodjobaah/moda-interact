@@ -439,6 +439,7 @@ describe("billing callback activation", () => {
 
     await runLoader("free");
 
+    expect(mocks.getState).toHaveBeenCalledBefore(mocks.updateOnboarding);
     expect(mocks.updateOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.prepareFreeActivation.mock.invocationCallOrder[0],
     );
