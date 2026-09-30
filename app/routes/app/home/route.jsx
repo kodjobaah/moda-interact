@@ -23,6 +23,8 @@ import { billingService } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
+import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
+import { suggestStoreCategory } from "@/services/store-profile/shopify-taxonomy-suggestion.server";
 import {
   buildMerchantBillingSetupState,
   shouldShowMerchantBillingSetup,
@@ -94,6 +96,11 @@ export const loader = async ({ request }) => {
    * Shopify subscription is being confirmed/reconciled.
    */
   if (!settings || !settings.onboardingCompleted) {
+    const [storeCategories, storeProfile] = await Promise.all([
+      listSelectableStoreCategories(merchantUi.locale),
+      loadStoreProfile(shop.id, merchantUi.locale),
+    ]);
+    const suggestedCategoryId = await suggestStoreCategory(admin, storeCategories);
     return {
       settings,
       merchantUi,
@@ -101,6 +108,10 @@ export const loader = async ({ request }) => {
       pricingCatalogue,
       subscription: null,
       billingSetup,
+      storeCategories,
+      pendingCategoryId: storeProfile.pendingCategory?.id ?? null,
+      pendingSelectionGeneration: storeProfile.pendingSelectionGeneration,
+      suggestedCategoryId,
     };
   }
 
@@ -232,6 +243,10 @@ export default function Index() {
       <Onboarding
         merchantUi={data.merchantUi}
         pricingCatalogue={data.pricingCatalogue}
+        storeCategories={data.storeCategories}
+        pendingCategoryId={data.pendingCategoryId}
+        pendingSelectionGeneration={data.pendingSelectionGeneration}
+        suggestedCategoryId={data.suggestedCategoryId}
       />
     );
   }

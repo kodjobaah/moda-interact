@@ -1,6 +1,7 @@
 // @ts-nocheck
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { useFetcher, useNavigate } from "react-router";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
@@ -16,11 +17,40 @@ BenefitIcon.propTypes = {
   children: PropTypes.node.isRequired,
 };
 
-export default function Onboarding({ merchantUi, pricingCatalogue }) {
+export default function Onboarding({
+  merchantUi,
+  pricingCatalogue,
+  storeCategories = [],
+  pendingCategoryId,
+  pendingSelectionGeneration = 0,
+  suggestedCategoryId,
+}) {
   const i18n = createMerchantI18n(merchantUi);
   const t = (key, values) => i18n.t(key, values);
   const cataloguePlans = pricingCatalogue ?? [];
   const firstFreePlan = cataloguePlans.find((plan) => plan.planKind === "FREE");
+  const initialCategoryId = storeCategories.some((category) => category.id === pendingCategoryId)
+    ? pendingCategoryId
+    : storeCategories.some((category) => category.id === suggestedCategoryId)
+      ? suggestedCategoryId
+      : storeCategories[0]?.id ?? "";
+  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
+  const categoryFetcher = useFetcher();
+  const navigate = useNavigate();
+  const categorySaving = categoryFetcher.state !== "idle";
+  const categoryError = categoryFetcher.data?.error;
+
+  useEffect(() => {
+    if (categoryFetcher.data?.ok) navigate("/app/billing/select");
+  }, [categoryFetcher.data, navigate]);
+
+  const choosePlan = () => {
+    if (!selectedCategoryId || categorySaving) return;
+    categoryFetcher.submit({
+      categoryId: selectedCategoryId,
+      expectedPendingSelectionGeneration: String(pendingSelectionGeneration),
+    }, { method: "post", action: "/app/store-profile/category" });
+  };
 
   return (
     <s-page heading={t("onboarding.title")}>
@@ -30,16 +60,40 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             <div className="mi-eyebrow mi-eyebrow-light">{t("onboarding.cta.eyebrow")}</div>
             <h2 id="mi-cta-title">{t("onboarding.cta.title")}</h2>
             <p>
-              <a className="mi-cta-link" href="/app/billing/select">
+              <span className="mi-cta-link">
                 {t("onboarding.cta.description")}
-              </a>
+              </span>
             </p>
+            <label className="mi-store-category-control" htmlFor="onboarding-store-category">
+              <span>{t("storeProfile.categoryLabel")}</span>
+              <select
+                id="onboarding-store-category"
+                value={selectedCategoryId}
+                onChange={(event) => setSelectedCategoryId(event.currentTarget.value)}
+                disabled={!storeCategories.length || categorySaving}
+              >
+                {storeCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.localizedDisplayName}
+                  </option>
+                ))}
+              </select>
+              {storeCategories.find((category) => category.id === selectedCategoryId)?.localizedDescription ? (
+                <small>{storeCategories.find((category) => category.id === selectedCategoryId).localizedDescription}</small>
+              ) : null}
+            </label>
+            {!storeCategories.length ? (
+              <p role="status">{t("storeProfile.configurationUnavailable")}</p>
+            ) : null}
+            {categoryError ? (
+              <p role="alert">{t(categoryError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
+            ) : null}
             <div className="mi-shopify-note">
               <span className="mi-lock" aria-hidden="true">✓</span>
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
-          <s-button href="/app/billing/select" variant="primary">
+          <s-button onClick={choosePlan} disabled={!storeCategories.length || categorySaving || !selectedCategoryId} variant="primary">
             {t("onboarding.choosePlan")}
           </s-button>
         </section>
@@ -55,7 +109,7 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
             </p>
 
             <div className="mi-hero-actions">
-              <s-button href="/app/billing/select" variant="primary">
+              <s-button onClick={choosePlan} disabled={!storeCategories.length || categorySaving || !selectedCategoryId} variant="primary">
                 {t("onboarding.choosePlan")}
               </s-button>
               <a className="mi-text-link" href="#how-it-works">
@@ -183,6 +237,10 @@ export default function Onboarding({ merchantUi, pricingCatalogue }) {
 
 Onboarding.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  storeCategories: PropTypes.array,
+  pendingCategoryId: PropTypes.string,
+  pendingSelectionGeneration: PropTypes.number,
+  suggestedCategoryId: PropTypes.string,
   pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
     shopifyPlanHandle: PropTypes.string.isRequired,
     displayName: PropTypes.string.isRequired,
