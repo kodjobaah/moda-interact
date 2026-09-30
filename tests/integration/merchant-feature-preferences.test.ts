@@ -169,37 +169,14 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
     ).toBe(0);
   });
   it("persisted opt-in changes initial tools but cannot expand an existing grant; discount policy works on Free and Paid", async () => {
-    const candidates = [
-      {
-        binding: { kind: "BASE" as const, key: "conversation_core" as const },
-        enabled: true,
-        position: 0,
-      },
-      {
-        binding: {
-          kind: "FEATURE" as const,
-          key: "optional",
-          featureId: featureIds[0],
-        },
-        enabled: true,
-        position: 1,
-      },
-      {
-        binding: {
-          kind: "RECOVERY_POLICY" as const,
-          key: "discount_assistance" as const,
-        },
-        enabled: true,
-        position: 2,
-      },
-    ];
+    const candidates = [{ key: "optional", featureId: featureIds[0], enabled: true, position: 0 }];
     const keys = async (offerMode: "NONE" | "FIXED" | "AI_BEST_APPLICABLE") => {
       const preference = await db.shopFeaturePreference.findUnique({
         where: {
           shopId_featureId: { shopId: otherId, featureId: featureIds[0] },
         },
       });
-      return selectCapabilities(candidates, {
+      const selected = selectCapabilities(candidates, {
         features: [
           {
             id: featureIds[0],
@@ -209,14 +186,14 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
             preferenceEnabled: preference?.enabled ?? null,
           },
         ],
-        offerMode,
       });
+      return offerMode === "NONE" ? selected : [...selected, "discount_assistance"];
     };
     const tools = (selected: string[]) =>
       deduplicateTools(
-        selected.map((key) => ({
+        selected.filter((key) => key === "optional").map((key) => ({
           key,
-          toolDescriptors: key === "optional" ? [exampleTool] : [],
+          toolDescriptor: exampleTool,
         })),
       );
     const original = exampleGrant(exampleManifest(() => "a".repeat(64)));

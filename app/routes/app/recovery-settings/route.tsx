@@ -7,9 +7,15 @@ import {
 } from "@/services/feature-preferences/feature-preferences.server";
 import { loadRecoveryPolicySnapshot } from "@/services/recovery-policy/recovery-policy.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
+import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
 import RecoverySettingsView from "./RecoverySettingsView";
 export async function loader({ request }: LoaderFunctionArgs) {
   const { shop, settings, session } = await settingsAccess(request);
+  const merchantUi = merchantUiContext(settings, session);
+  const [storeCategories, storeProfile] = await Promise.all([
+    listSelectableStoreCategories(merchantUi.locale),
+    loadStoreProfile(shop.id, merchantUi.locale),
+  ]);
   const features = await loadFeaturePreferences(shop.id).catch(
     (error: unknown) => {
       if (error instanceof PreferenceError)
@@ -20,7 +26,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   return {
     ...(await loadRecoveryPolicySnapshot(shop.id)),
     features,
-    merchantUi: merchantUiContext(settings, session),
+    storeCategories,
+    storeProfile,
+    merchantUi,
   };
 }
 export { action } from "../settings-save/route";

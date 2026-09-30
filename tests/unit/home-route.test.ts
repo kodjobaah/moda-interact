@@ -13,6 +13,9 @@ const findBillingPeriod = vi.fn();
 const readRecoveryOverview = vi.fn();
 const findUsageEvents = vi.fn();
 const readActiveMerchantPricingCatalogue = vi.fn();
+const listSelectableStoreCategories = vi.fn();
+const loadStoreProfile = vi.fn();
+const suggestStoreCategory = vi.fn();
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -35,6 +38,13 @@ vi.mock(
 );
 vi.mock("../../app/services/merchant-pricing/merchant-pricing.server", () => ({
   readActiveMerchantPricingCatalogue,
+}));
+vi.mock("../../app/services/store-profile/store-category.server", () => ({
+  listSelectableStoreCategories,
+  loadStoreProfile,
+}));
+vi.mock("../../app/services/store-profile/shopify-taxonomy-suggestion.server", () => ({
+  suggestStoreCategory,
 }));
 vi.mock("../../app/services/recoveries/recovery-readers.server", () => ({
   readRecoveryOverview,
@@ -72,6 +82,14 @@ beforeEach(() => {
   getSubscriptionProjection.mockResolvedValue(null);
   readPendingRecoveries.mockResolvedValue({ available: true, items: [] });
   readActiveMerchantPricingCatalogue.mockResolvedValue([]);
+  listSelectableStoreCategories.mockResolvedValue([
+    { id: "category-home", localizedDisplayName: "Home goods" },
+  ]);
+  loadStoreProfile.mockResolvedValue({
+    pendingCategory: { id: "category-home" },
+    pendingSelectionGeneration: 3,
+  });
+  suggestStoreCategory.mockResolvedValue("category-home");
   readRecoveryOverview.mockResolvedValue({
     summary: { started: 0 },
     preview: [],
@@ -96,7 +114,14 @@ describe("app home loader", () => {
       merchantExperienceState: "ONBOARDING",
       pricingCatalogue: [{ shopifyPlanHandle: "free" }],
       subscription: null,
+      storeCategories: [{ id: "category-home", localizedDisplayName: "Home goods" }],
+      pendingCategoryId: "category-home",
+      pendingSelectionGeneration: 3,
+      suggestedCategoryId: "category-home",
     });
+    expect(listSelectableStoreCategories).toHaveBeenCalledOnce();
+    expect(loadStoreProfile).toHaveBeenCalledWith("shop-1", expect.any(String));
+    expect(suggestStoreCategory).toHaveBeenCalledOnce();
     expect(getSubscription).not.toHaveBeenCalled();
     expect(readPendingRecoveries).not.toHaveBeenCalled();
     expect(findRecoveries).not.toHaveBeenCalled();

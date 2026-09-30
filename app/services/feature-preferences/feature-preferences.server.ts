@@ -61,23 +61,13 @@ export async function loadFeaturePreferences(
   }));
   const selected = new Set(
     selectCapabilities(
-      [
-        {
-          binding: { kind: "BASE", key: "conversation_core" },
-          enabled: true,
-          position: 0,
-        },
-        ...mappings.map((m, i) => ({
-          binding: {
-            kind: "FEATURE" as const,
-            key: `feature_${i}`,
-            featureId: m.featureId,
-          },
-          enabled: true,
-          position: i + 1,
-        })),
-      ],
-      { features: facts, offerMode: "NONE" },
+      mappings.map((mapping, position) => ({
+        key: `feature_${position}`,
+        featureId: mapping.featureId,
+        enabled: true,
+        position,
+      })),
+      { features: facts },
     ),
   );
   return {
