@@ -21,6 +21,9 @@ import {
   requiresMerchantTranslation,
 } from "@modainteract/moda-interact-shared/merchant-communications";
 import {
+  MerchantKnowledgeFeatureConfigurationSchema,
+} from "@modainteract/moda-interact-shared/merchant-knowledge";
+import {
   BILLING_SYSTEM_MESSAGE_CODES,
   APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
   createShopifyUsageIdempotencyKey,
@@ -727,6 +730,48 @@ export class BillingService {
           return { kind: "INVALID_CATALOGUE_PLAN", reason: invalidReason };
         }
 
+        const merchantKnowledgeMappings = catalogue.features.filter((mapping) =>
+          mapping.feature?.key === "merchant_knowledge",
+        );
+        if (merchantKnowledgeMappings.length > 0) {
+          if (merchantKnowledgeMappings.length !== 1) {
+            return {
+              kind: "INVALID_CATALOGUE_PLAN",
+              reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
+            };
+          }
+          const configuration = MerchantKnowledgeFeatureConfigurationSchema.safeParse(
+            merchantKnowledgeMappings[0].configuration,
+          );
+          if (!configuration.success) {
+            return {
+              kind: "INVALID_CATALOGUE_PLAN",
+              reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
+            };
+          }
+          const activeCompatibilityRows = await transaction.merchantKnowledgePurposeDataFormat.findMany({
+            where: {
+              purpose: { is: { active: true } },
+              dataFormat: { is: { active: true } },
+            },
+            select: {
+              purpose: { select: { key: true } },
+              dataFormat: { select: { key: true } },
+            },
+          });
+          const activePairs = new Set(activeCompatibilityRows.map((row) =>
+            `${row.purpose.key}\u0000${row.dataFormat.key}`,
+          ));
+          if (configuration.data.allowedSourceTypes.some((sourceType) =>
+            !activePairs.has(`${sourceType.purposeKey}\u0000${sourceType.dataFormatKey}`),
+          )) {
+            return {
+              kind: "INVALID_CATALOGUE_PLAN",
+              reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
+            };
+          }
+        }
+
         const kind = catalogue.planKind === "FREE"
           ? BillingPlanKind.FREE
           : BillingPlanKind.PAID_METERED;
@@ -749,6 +794,9 @@ export class BillingService {
               create: catalogue.features.map((mapping) => ({
                 featureId: mapping.featureId,
                 enabled: true,
+                configuration: mapping.configuration === null
+                  ? Prisma.JsonNull
+                  : mapping.configuration as Prisma.InputJsonValue,
               })),
             },
           },
