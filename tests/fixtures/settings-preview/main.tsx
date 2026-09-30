@@ -85,10 +85,20 @@ window.fetch = async (_url, options) => {
 document.body.style.cssText =
   "margin:0;padding:24px;background:#f5f6f8;font-family:Arial,sans-serif;color:#202223";
 const banner = document.createElement("nav");
-banner.innerHTML =
-  "<strong>Embedded merchant settings · " +
-  scenario +
-  '</strong> · <a href="?scenario=free">Free</a> · <a href="?scenario=paid">Paid</a> · <a href="?scenario=override">Override</a> · <a href="?scenario=empty">No eligible features</a>';
+const heading = document.createElement("strong");
+heading.textContent = `Embedded merchant settings · ${scenario}`;
+banner.append(heading, document.createTextNode(" · "));
+for (const [label, value] of [
+  ["Free", "free"],
+  ["Paid", "paid"],
+  ["Override", "override"],
+  ["No eligible features", "empty"],
+]) {
+  const link = document.createElement("a");
+  link.href = `?scenario=${value}`;
+  link.textContent = label;
+  banner.append(link, document.createTextNode(" · "));
+}
 document.body.prepend(banner);
 const router = createMemoryRouter([
   { path: "*", element: <RecoverySettingsView data={data as never} /> },
