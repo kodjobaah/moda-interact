@@ -6,12 +6,21 @@ import {
   createShopifyUsageIdempotencyKey,
 } from "@modainteract/moda-interact-shared/billing";
 
-import { BillingService } from "../../../app/services/billing/billing.service";
-import { deriveBillingPeriodPhase } from "../../../app/services/billing/billing.service";
+import {
+  BillingService,
+  deriveBillingPeriodPhase,
+} from "../../../app/services/billing/billing.service";
 import { getMerchantSystemMessageAction } from "../../../app/services/merchant-support/system-message-actions";
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
+
+type ProviderUsageItemFixture = {
+  handle: string;
+  description: string;
+  price: Record<string, unknown>;
+  usage: { quantity: number; costAmount: string; costCurrency: string };
+};
 
 function providerSubscription(overrides: Record<string, unknown> = {}) {
   const usageEventHandles = (overrides.usageEventHandles as string[] | undefined)
@@ -26,12 +35,12 @@ function providerSubscription(overrides: Record<string, unknown> = {}) {
       price: { amount: "10", currency: "USD" },
     },
     pendingFlatRatePlan: null,
-    usageItems: (overrides.usageItems ?? usageEventHandles.map((handle) => ({
+    usageItems: (overrides.usageItems as ProviderUsageItemFixture[] | undefined) ?? usageEventHandles.map((handle) => ({
       handle,
       description: handle === "credit-pack-meter" ? "Recovery credit pack" : "Recovery usage",
       price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
       usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
-    }))) as Array<Record<string, any>>,
+    })),
     usageEventHandles,
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
@@ -57,17 +66,43 @@ function topUpProvider(subscription: ReturnType<typeof providerSubscription>) {
 }
 
 type BillingPlanFixture = Record<string, unknown>;
+type MerchantPricingPlanFeatureFixture = {
+  featureId: string;
+  feature: { id: string; key: string; systemRequired: boolean } | null;
+};
+type MerchantPricingPlanFixture = {
+  id: string;
+  shopifyPlanHandle: string;
+  displayName: string;
+  planKind: "FREE" | "PAID_METERED";
+  isActive: boolean;
+  includedRecoveryCredits: number;
+  shopifyRecoveryUsageEventHandle: string | null;
+  materializedAt: Date | null;
+  features: MerchantPricingPlanFeatureFixture[];
+  usageEvents: Array<{ eventHandle: string; creditsGrantedPerUnit: number }>;
+};
+type BillingPlanCreateFixtureData = {
+  features: { create: Array<{ featureId: string; enabled: boolean }> };
+  [key: string]: unknown;
+};
 
 function createDatabase({
   plan = null,
   pendingPlan = null,
   current = null,
+  cataloguePlan = null,
 }: {
   plan?: BillingPlanFixture | null;
   pendingPlan?: BillingPlanFixture | null;
   current?: BillingPlanFixture | null;
+  cataloguePlan?: MerchantPricingPlanFixture | null;
 } = {}) {
-  const state: { current: BillingPlanFixture | null } = { current };
+  const state: {
+    current: BillingPlanFixture | null;
+    plan: BillingPlanFixture | null;
+    cataloguePlan: MerchantPricingPlanFixture | null;
+  } = { current, plan, cataloguePlan };
   const subscription = {
     findUnique: vi.fn().mockImplementation(async () => state.current),
     update: vi.fn(),
@@ -78,17 +113,32 @@ function createDatabase({
   };
   const billingPlan = {
     findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => {
-      if (where.shopifyPlanHandle === plan?.shopifyPlanHandle || (!plan?.shopifyPlanHandle && where.shopifyPlanHandle === "growth")) return plan;
+      if (where.shopifyPlanHandle === state.plan?.shopifyPlanHandle || (!state.plan?.shopifyPlanHandle && where.shopifyPlanHandle === "growth")) return state.plan;
       if (where.shopifyPlanHandle === "starter") return pendingPlan;
       return null;
     }),
+    create: vi.fn().mockImplementation(async ({ data }: { data: BillingPlanCreateFixtureData }) => {
+      if (state.plan) throw { code: "P2002" };
+      state.plan = { id: "materialized-1", ...data, features: data.features.create };
+      return state.plan;
+    }),
   };
   const merchantPricingPlan = {
-    findUnique: vi.fn().mockResolvedValue(plan
-      ? { usageEvents: Boolean(plan.recoveryCreditPackEnabled)
-          ? [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }]
-          : [] }
-      : null),
+    findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => {
+      if (state.cataloguePlan?.shopifyPlanHandle === where.shopifyPlanHandle) return state.cataloguePlan;
+      return state.plan
+          ? { usageEvents: state.plan.recoveryCreditPackEnabled === true
+            ? [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }]
+            : [] }
+        : null;
+    }),
+    updateMany: vi.fn().mockImplementation(async ({ where, data }: { where: { shopifyPlanHandle: string; materializedAt: null }; data: { materializedAt: Date } }) => {
+      if (state.cataloguePlan?.shopifyPlanHandle === where.shopifyPlanHandle && state.cataloguePlan.materializedAt === null) {
+        state.cataloguePlan.materializedAt = data.materializedAt;
+        return { count: 1 };
+      }
+      return { count: 0 };
+    }),
   };
   const billingPeriod = {
     findUnique: vi.fn().mockResolvedValue(null),
@@ -111,9 +161,34 @@ function createDatabase({
     billingPeriod,
     shopSettings,
     $queryRaw: vi.fn().mockResolvedValue([]),
-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, billingPeriod, billingPeriodEntitlementCounter, shopSettings, $queryRaw: database.$queryRaw })),
+    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, merchantPricingPlan, billingPeriod, billingPeriodEntitlementCounter, shopSettings, $queryRaw: database.$queryRaw })),
   };
   return { database, state, billingPeriod, billingPeriodEntitlementCounter };
+}
+
+function createMerchantPricingPlanFixture(overrides: Partial<MerchantPricingPlanFixture> = {}): MerchantPricingPlanFixture {
+  return {
+    id: "mpp-growth",
+    shopifyPlanHandle: "growth",
+    displayName: "Growth",
+    planKind: "FREE",
+    isActive: true,
+    includedRecoveryCredits: 0,
+    shopifyRecoveryUsageEventHandle: null,
+    materializedAt: null,
+    features: [
+      {
+        featureId: "checkout-feature",
+        feature: { id: "checkout-feature", key: "checkout_recovery", systemRequired: true },
+      },
+      {
+        featureId: "optional-feature",
+        feature: { id: "optional-feature", key: "ai_conversations", systemRequired: false },
+      },
+    ],
+    usageEvents: [],
+    ...overrides,
+  };
 }
 
 function createCurrentProjectionDatabase({
@@ -178,6 +253,10 @@ function createCurrentProjectionDatabase({
     $queryRaw: vi.fn().mockResolvedValue([]),
     subscription: subscriptionModel,
     billingPlan: { findUnique: vi.fn().mockImplementation(async () => state.plan) },
+    merchantPricingPlan: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     billingPeriod,
     billingPeriodEntitlementCounter,
     shopSettings: { findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: true }) },
@@ -238,6 +317,10 @@ function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
   };
   const billingPeriod = {
     findUnique: vi.fn().mockImplementation(async () => state.subscription.billingPeriod),
+    upsert: vi.fn().mockImplementation(async ({ create }: { create: Record<string, unknown> }) => {
+      state.subscription.billingPeriod = { id: "period-upserted", ...create };
+      return state.subscription.billingPeriod;
+    }),
     create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => {
       state.subscription.billingPeriod = { id: "period-1", ...data };
       return state.subscription.billingPeriod;
@@ -274,6 +357,10 @@ function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
     subscription,
     shopSettings,
     billingPlan: { findUnique: vi.fn().mockResolvedValue(plan) },
+    merchantPricingPlan: {
+      findUnique: vi.fn().mockResolvedValue(null),
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     billingPeriod,
     billingPeriodEntitlementCounter,
     shopEntitlementCounter,
@@ -451,7 +538,7 @@ describe("BillingService subscription projection", () => {
   });
 
   it.each([
-    ["inactive", { active: false }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["inactive", { active: false }, "BILLING_PLAN_INACTIVE"],
     ["wrong kind", { kind: "FREE" }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["changed handle", { shopifyPlanHandle: "other" }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["missing meter", { shopifyUsageEventHandle: null }, "MISSING_USAGE_METER"],
@@ -482,7 +569,7 @@ describe("BillingService subscription projection", () => {
       planKind: "PAID_METERED",
     });
 
-    expect(result).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: errorCode, nextReconcileAt: null });
+    expect(result).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: errorCode });
     expect(state.onboardingCompleted).toBe(false);
     expect(state.subscription).toMatchObject({ pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" });
     expect(billingPeriod.create).not.toHaveBeenCalled();
@@ -734,7 +821,7 @@ describe("BillingService subscription projection", () => {
     };
     const merchantPricingPlan = {
       findUnique: vi.fn().mockResolvedValue({
-        usageEvents: Boolean(freePlan.recoveryCreditPackEnabled)
+        usageEvents: freePlan.recoveryCreditPackEnabled
           ? [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: Number(planOverrides.recoveryCreditsPerPack ?? 100) }]
           : [],
       }),
@@ -760,6 +847,10 @@ describe("BillingService subscription projection", () => {
         subscription,
         shopSettings,
         billingPlan: database.billingPlan,
+        merchantPricingPlan: {
+          findUnique: vi.fn().mockResolvedValue(null),
+          updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        },
         billingPeriod,
         shopEntitlementCounter,
         $queryRaw: database.$queryRaw,
@@ -1148,7 +1239,7 @@ describe("BillingService subscription projection", () => {
   });
 
   it("commits one guarded Partner-error retry for the current token", async () => {
-    const { database } = createFreeActivationDatabase();
+    const { database, state } = createFreeActivationDatabase({ onboardingCompleted: true });
     const service = new BillingService({} as never, database as never);
     const activation = await service.prepareFreeActivation("shop-1", "free");
     if (!activation?.token) throw new Error("Expected an initial activation token.");
@@ -1175,6 +1266,7 @@ describe("BillingService subscription projection", () => {
         lastSyncErrorAt: partnerErrorAt,
       },
     });
+    expect(state.onboardingCompleted).toBe(true);
   });
 
   it("completes an initial pack-enabled Free activation without a cycle and keeps top-up eligibility closed", async () => {
@@ -1637,6 +1729,123 @@ describe("BillingService subscription projection", () => {
     }));
   });
 
+  it("reuses an active operational plan and durably marks its catalogue row", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture();
+    const { database } = createDatabase({
+      plan: { id: "free-1", name: "Free", shopifyPlanHandle: "growth", kind: "FREE", active: true },
+      cataloguePlan,
+    });
+    const service = new BillingService({} as never, database as never);
+
+    await expect(service.prepareFreeActivation("shop-1", "growth")).resolves.toMatchObject({
+      mode: "INITIAL",
+      plan: { id: "free-1" },
+    });
+
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+    expect(cataloguePlan.materializedAt).toBeInstanceOf(Date);
+  });
+
+  it("materialises an active FREE catalogue plan with its dynamic feature projection", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture();
+    const { database, state } = createDatabase({ cataloguePlan });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.plan).toMatchObject({
+      id: "materialized-1",
+      name: "Growth",
+      kind: "FREE",
+      active: true,
+      shopifyUsageEventHandle: null,
+      includedRecoveryConversationAllowance: null,
+      recoveryCreditPackEnabled: false,
+      recoveryCreditsPerPack: null,
+      shopifyRecoveryCreditPackEventHandle: null,
+      features: [
+        { featureId: "checkout-feature", enabled: true },
+        { featureId: "optional-feature", enabled: true },
+      ],
+    });
+    expect(state.cataloguePlan?.materializedAt).toBeInstanceOf(Date);
+    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1" });
+  });
+
+  it("uses the dedicated paid recovery meter, never a top-up usage event", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture({
+      planKind: "PAID_METERED",
+      includedRecoveryCredits: 25,
+      shopifyRecoveryUsageEventHandle: " recovery-meter ",
+      usageEvents: [{ eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+    });
+    const { database, state } = createDatabase({ cataloguePlan });
+    const service = new BillingService({
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        usageEventHandles: ["recovery-meter", "credit-pack-meter"],
+      })),
+    }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(state.plan).toMatchObject({
+      kind: "PAID_METERED",
+      shopifyUsageEventHandle: "recovery-meter",
+      includedRecoveryConversationAllowance: 25,
+    });
+    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1" });
+    expect(database.billingPlan.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ shopifyUsageEventHandle: "recovery-meter" }),
+    });
+  });
+
+  it("does not materialise an inactive catalogue plan without an operational plan", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture({ isActive: false });
+    const { database, state } = createDatabase({ cataloguePlan });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+    expect(cataloguePlan.materializedAt).toBeNull();
+    expect(state.current).toMatchObject({ status: "UNMAPPED", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+  });
+
+  it("classifies an invalid active paid catalogue row as a bounded sync error", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture({
+      planKind: "PAID_METERED",
+      includedRecoveryCredits: 25,
+      shopifyRecoveryUsageEventHandle: null,
+    });
+    const { database, state } = createDatabase({ cataloguePlan });
+    const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
+
+    await service.syncSubscription("shop-1");
+
+    expect(database.billingPlan.create).not.toHaveBeenCalled();
+    expect(cataloguePlan.materializedAt).toBeNull();
+    expect(state.current).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "INVALID_MERCHANT_PRICING_PLAN" });
+  });
+
+  it("recovers a unique-handle race by returning the persisted winner", async () => {
+    const cataloguePlan = createMerchantPricingPlanFixture();
+    const { database, state } = createDatabase({ cataloguePlan });
+    database.billingPlan.create.mockImplementation(async ({ data }: { data: BillingPlanCreateFixtureData }) => {
+      state.plan = { id: "race-winner", ...data, features: data.features.create };
+      throw { code: "P2002" };
+    });
+    const service = new BillingService({} as never, database as never);
+
+    const [first, second] = await Promise.all([
+      service.prepareFreeActivation("shop-1", "growth"),
+      service.prepareFreeActivation("shop-1", "growth"),
+    ]);
+
+    expect(first?.plan.id).toBe("race-winner");
+    expect(second?.plan.id).toBe("race-winner");
+    expect(state.cataloguePlan?.materializedAt).toBeInstanceOf(Date);
+  });
+
   it("schedules the next pre-close reconciliation for a pack-enabled Free cycle", async () => {
     const { database, state } = createDatabase({
       plan: {
@@ -1721,7 +1930,7 @@ describe("BillingService subscription projection", () => {
     }));
   });
 
-  it("treats an inactive mapped plan as unmapped", async () => {
+  it("fails closed when an existing operational plan is inactive", async () => {
     const { database, state } = createDatabase({
       plan: { id: "growth-1", shopifyPlanHandle: "growth", kind: "FREE", active: false },
     });
@@ -1729,7 +1938,7 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({ status: "UNMAPPED", planId: null, lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+    expect(state.current).toMatchObject({ status: "SYNC_ERROR", planId: null, lastSyncErrorCode: "BILLING_PLAN_INACTIVE" });
   });
 
   it("persists an unknown current Shopify handle as unmapped", async () => {

@@ -107,6 +107,12 @@ type CurrentBillingPeriodProjectionResult =
       reason: CurrentBillingPeriodProjectionConflictReason;
     };
 
+type OperationalBillingPlanResolution =
+  | { kind: "READY"; plan: BillingPlan; materialized: boolean }
+  | { kind: "UNKNOWN_CATALOGUE_PLAN" }
+  | { kind: "INACTIVE_OPERATIONAL_PLAN"; planId: string }
+  | { kind: "INVALID_CATALOGUE_PLAN"; reason: string };
+
 function hasDurableBillingPeriod(subscription: DurableBillingCycle): boolean {
   return Boolean(
     subscription.billingPeriodId &&
@@ -668,6 +674,119 @@ export class BillingService {
       enqueueTranslationBestEffort,
   ) {}
 
+  private async resolveOrMaterializeBillingPlan(
+    planHandle: string,
+  ): Promise<OperationalBillingPlanResolution> {
+    try {
+      return await this.database.$transaction(async (transaction) => {
+        const existing = await transaction.billingPlan.findUnique({
+          where: { shopifyPlanHandle: planHandle },
+        });
+        if (existing) {
+          if (!existing.active) {
+            return { kind: "INACTIVE_OPERATIONAL_PLAN", planId: existing.id };
+          }
+          const catalogue = await transaction.merchantPricingPlan.findUnique({
+            where: { shopifyPlanHandle: planHandle },
+            select: { materializedAt: true },
+          });
+          if (catalogue?.materializedAt === null) {
+            await transaction.merchantPricingPlan.updateMany({
+              where: { shopifyPlanHandle: planHandle, materializedAt: null },
+              data: { materializedAt: new Date() },
+            });
+          }
+          return { kind: "READY", plan: existing, materialized: false };
+        }
+
+        const catalogue = await transaction.merchantPricingPlan.findUnique({
+          where: { shopifyPlanHandle: planHandle },
+          include: { features: { include: { feature: true } } },
+        });
+        if (!catalogue || !catalogue.isActive) {
+          return { kind: "UNKNOWN_CATALOGUE_PLAN" };
+        }
+
+        const invalidReason = catalogue.planKind !== "FREE" && catalogue.planKind !== "PAID_METERED"
+          ? "INVALID_PLAN_KIND"
+          : !catalogue.features.some((mapping) =>
+              mapping.feature?.key === "checkout_recovery" && mapping.feature.systemRequired,
+            )
+            ? "MISSING_CHECKOUT_RECOVERY_FEATURE"
+            : catalogue.features.some((mapping) => !mapping.feature)
+              ? "MISSING_FEATURE_MAPPING"
+              : catalogue.planKind === "FREE" && catalogue.shopifyRecoveryUsageEventHandle !== null
+                ? "FREE_PLAN_HAS_RECOVERY_USAGE_METER"
+                : catalogue.planKind === "PAID_METERED" &&
+                    !(typeof catalogue.shopifyRecoveryUsageEventHandle === "string" && catalogue.shopifyRecoveryUsageEventHandle.trim())
+                  ? "PAID_PLAN_MISSING_RECOVERY_USAGE_METER"
+                  : !Number.isSafeInteger(catalogue.includedRecoveryCredits) || catalogue.includedRecoveryCredits < 0
+                    ? "INVALID_INCLUDED_RECOVERY_CREDITS"
+                    : null;
+        if (invalidReason) {
+          return { kind: "INVALID_CATALOGUE_PLAN", reason: invalidReason };
+        }
+
+        const kind = catalogue.planKind === "FREE"
+          ? BillingPlanKind.FREE
+          : BillingPlanKind.PAID_METERED;
+        const plan = await transaction.billingPlan.create({
+          data: {
+            shopifyPlanHandle: catalogue.shopifyPlanHandle,
+            name: catalogue.displayName,
+            kind,
+            active: true,
+            shopifyUsageEventHandle: kind === BillingPlanKind.FREE
+              ? null
+              : catalogue.shopifyRecoveryUsageEventHandle!.trim(),
+            includedRecoveryConversationAllowance: kind === BillingPlanKind.FREE
+              ? null
+              : catalogue.includedRecoveryCredits,
+            recoveryCreditPackEnabled: false,
+            recoveryCreditsPerPack: null,
+            shopifyRecoveryCreditPackEventHandle: null,
+            features: {
+              create: catalogue.features.map((mapping) => ({
+                featureId: mapping.featureId,
+                enabled: true,
+              })),
+            },
+          },
+        });
+        if (catalogue.materializedAt === null) {
+          await transaction.merchantPricingPlan.updateMany({
+            where: { shopifyPlanHandle: planHandle, materializedAt: null },
+            data: { materializedAt: new Date() },
+          });
+        }
+        return { kind: "READY", plan, materialized: true };
+      });
+    } catch (error) {
+      if (!isPrismaUniqueConstraintError(error)) throw error;
+
+      return this.database.$transaction(async (transaction) => {
+        const winner = await transaction.billingPlan.findUnique({
+          where: { shopifyPlanHandle: planHandle },
+        });
+        if (!winner) throw error;
+        if (!winner.active) {
+          return { kind: "INACTIVE_OPERATIONAL_PLAN", planId: winner.id };
+        }
+        const catalogue = await transaction.merchantPricingPlan.findUnique({
+          where: { shopifyPlanHandle: planHandle },
+          select: { materializedAt: true },
+        });
+        if (catalogue?.materializedAt === null) {
+          await transaction.merchantPricingPlan.updateMany({
+            where: { shopifyPlanHandle: planHandle, materializedAt: null },
+            data: { materializedAt: new Date() },
+          });
+        }
+        return { kind: "READY", plan: winner, materialized: false };
+      });
+    }
+  }
+
   private async readRecoveryCreditTopUpConfiguration(planHandle: string | null | undefined) {
     if (!planHandle || !this.database.merchantPricingPlan?.findUnique) {
       return { enabled: false, creditsPerPack: null as number | null };
@@ -716,10 +835,9 @@ export class BillingService {
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    const plan = await this.database.billingPlan.findUnique({
-      where: { shopifyPlanHandle: planHandle },
-    });
-    if (!plan?.active || plan.kind !== BillingPlanKind.FREE) return null;
+    const resolution = await this.resolveOrMaterializeBillingPlan(planHandle);
+    if (resolution.kind !== "READY" || resolution.plan.kind !== BillingPlanKind.FREE) return null;
+    const plan = resolution.plan;
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
@@ -792,8 +910,9 @@ export class BillingService {
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    const plan = await this.database.billingPlan.findUnique({ where: { shopifyPlanHandle: planHandle } });
-    if (!plan?.active || plan.kind !== BillingPlanKind.PAID_METERED) return null;
+    const resolution = await this.resolveOrMaterializeBillingPlan(planHandle);
+    if (resolution.kind !== "READY" || resolution.plan.kind !== BillingPlanKind.PAID_METERED) return null;
+    const plan = resolution.plan;
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
@@ -2109,18 +2228,13 @@ async getSubscription(
       return null;
     }
 
-    const plan =
-      await this.database.billingPlan.findUnique({
-        where: {
-          shopifyPlanHandle:
-            providerSubscription.planHandle,
-        },
-      });
+    const resolution = await this.resolveOrMaterializeBillingPlan(providerSubscription.planHandle);
+    const plan = resolution.kind === "READY" ? resolution.plan : null;
     const topUpConfiguration = await this.readRecoveryCreditTopUpConfiguration(
       providerSubscription.planHandle,
     );
 
-    const planIsUsable = Boolean(plan?.active);
+    const planIsUsable = resolution.kind === "READY" && resolution.plan.active;
     const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
       || Boolean(plan.shopifyUsageEventHandle && providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle));
     const paidAllowanceIsValid = plan?.kind !== BillingPlanKind.PAID_METERED
@@ -2129,20 +2243,26 @@ async getSubscription(
         Number.isSafeInteger(plan.includedRecoveryConversationAllowance) &&
         plan.includedRecoveryConversationAllowance >= 0
       );
-    const status = !planIsUsable
+    const status = resolution.kind === "UNKNOWN_CATALOGUE_PLAN"
       ? SubscriptionProjectionStatus.UNMAPPED
-      : !paidMeterIsPresent || !paidAllowanceIsValid
+      : resolution.kind === "INACTIVE_OPERATIONAL_PLAN" || resolution.kind === "INVALID_CATALOGUE_PLAN"
         ? SubscriptionProjectionStatus.SYNC_ERROR
-        : providerSubscription.status === "TRIALING"
-          ? SubscriptionProjectionStatus.TRIALING
-          : SubscriptionProjectionStatus.ACTIVE;
-    const syncErrorCode = status === SubscriptionProjectionStatus.UNMAPPED
+        : !paidMeterIsPresent || !paidAllowanceIsValid
+          ? SubscriptionProjectionStatus.SYNC_ERROR
+          : providerSubscription.status === "TRIALING"
+            ? SubscriptionProjectionStatus.TRIALING
+            : SubscriptionProjectionStatus.ACTIVE;
+    const syncErrorCode = resolution.kind === "UNKNOWN_CATALOGUE_PLAN"
       ? "UNMAPPED_PLAN_HANDLE"
-      : status === SubscriptionProjectionStatus.SYNC_ERROR
-        ? !paidMeterIsPresent
-          ? "MISSING_USAGE_METER"
-          : "INVALID_INCLUDED_ALLOWANCE"
-        : null;
+      : resolution.kind === "INACTIVE_OPERATIONAL_PLAN"
+        ? "BILLING_PLAN_INACTIVE"
+        : resolution.kind === "INVALID_CATALOGUE_PLAN"
+          ? "INVALID_MERCHANT_PRICING_PLAN"
+          : status === SubscriptionProjectionStatus.SYNC_ERROR
+            ? !paidMeterIsPresent
+              ? "MISSING_USAGE_METER"
+              : "INVALID_INCLUDED_ALLOWANCE"
+            : null;
     const now = new Date();
 
     return this.database.$transaction(async (transaction) => {
@@ -2171,6 +2291,7 @@ async getSubscription(
         return null;
       }
       const initialPaidActivation = Boolean(
+        resolution.kind === "READY" &&
         expectedInitialSelection &&
         existingSubscription?.planId === null &&
         !existingSubscription.observedShopifyPlanHandle &&

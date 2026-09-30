@@ -18,6 +18,7 @@ export default function MerchantNavigation({
     home: state === "ONBOARDING" ? "merchantNav.home" : "merchantNav.overview",
     recoveries: "recoveries.title",
     billing: "merchantNav.billing",
+    features: "Features",
     promotions: "promotions.nav",
     support: "merchantNav.support",
     recoverySettings: "recoverySettings.nav",
