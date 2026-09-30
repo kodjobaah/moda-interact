@@ -19,6 +19,7 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
+import { activateInitialPendingStoreCategoryIfEligible } from "@/services/store-profile/store-category-activation.server";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -107,6 +108,20 @@ function isVerifiedPaidActivation(
   );
 }
 
+async function activateInitialCategoryAfterSubscriptionCommit(
+  shopId: string,
+  subscription: Pick<Subscription, "status" | "planId"> | null,
+): Promise<void> {
+  if (
+    subscription?.planId !== null &&
+    subscription?.planId !== undefined &&
+    (subscription.status === SubscriptionProjectionStatus.ACTIVE ||
+      subscription.status === SubscriptionProjectionStatus.TRIALING)
+  ) {
+    await activateInitialPendingStoreCategoryIfEligible({ shopId });
+  }
+}
+
 export async function loader({
   request,
 }: LoaderFunctionArgs) {
@@ -192,6 +207,7 @@ export async function loader({
     const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
 
     if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
+      await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
         subscriptionId: subscription!.id,
@@ -203,6 +219,7 @@ export async function loader({
 
     if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
       const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+      if (completed) await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
       if (completed?.nextReconcileAt) {
         await enqueueBillingSubscriptionReconcileBestEffort({
           shopId: shop.id,
@@ -249,7 +266,8 @@ export async function loader({
   ) && verification.status === "ACTIVE_SUBSCRIPTION" &&
     verification.subscription?.planHandle === requestedPlanHandle;
   if (freshInitialProjection) {
-    await billingService.syncSubscription(shop.id);
+    const subscription = await billingService.syncSubscription(shop.id);
+    await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
     return redirect("/app");
   }
 
