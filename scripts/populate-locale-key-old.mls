@@ -1,0 +1,976 @@
+#!/usr/bin/env node
+
+/**
+ * populate-locale-key.mjs
+ * ============================================================================
+ *
+ * PURPOSE
+ * ============================================================================
+ *
+ * Adds or updates ONE flat translation key across every JSON locale file in:
+ *
+ *   <project-root>/app/i18n/locales
+ *
+ * This project uses FLAT dotted translation keys, for example:
+ *
+ *   "billingPurchases.historicalNotRefundable": "This purchase cannot..."
+ *
+ * This script WILL NOT convert that into:
+ *
+ *   {
+ *     "billingPurchases": {
+ *       "historicalNotRefundable": "..."
+ *     }
+ *   }
+ *
+ *
+ * PROJECT STRUCTURE EXPECTED
+ * ============================================================================
+ *
+ *   moda-interact/
+ *   ├── app/
+ *   │   └── i18n/
+ *   │       └── locales/
+ *   │           ├── cs.json
+ *   │           ├── da.json
+ *   │           ├── de.json
+ *   │           ├── en.json
+ *   │           ├── es.json
+ *   │           ├── ...
+ *   │           └── zh-Hant.json
+ *   │
+ *   └── scripts/
+ *       └── populate-locale-key.mjs
+ *
+ *
+ * IMPORTANT SAFETY BEHAVIOUR
+ * ============================================================================
+ *
+ * The script performs a COMPLETE PRE-FLIGHT before modifying any file.
+ *
+ * It checks:
+ *
+ *   1. Every locale JSON file is valid JSON.
+ *
+ *   2. No locale file contains duplicate top-level translation keys.
+ *
+ *      Example of an invalid file:
+ *
+ *        {
+ *          "billing.title": "Billing",
+ *          "billing.title": "Another Billing"
+ *        }
+ *
+ *      JSON.parse() normally hides this problem by silently keeping the
+ *      second value. This script detects it BEFORE JSON.parse() is trusted.
+ *
+ *   3. The supplied translations file itself contains no duplicate locale
+ *      names.
+ *
+ *   4. Every existing locale has a translation in the supplied translations
+ *      file.
+ *
+ *   5. Every supplied translation is a non-empty string.
+ *
+ *   6. If --after is supplied, the anchor key exists in EVERY locale.
+ *
+ *   7. If the new key already exists:
+ *
+ *        same value      -> file is left unchanged
+ *        different value -> script aborts
+ *
+ *      To deliberately replace a different existing value, use:
+ *
+ *        --force
+ *
+ *   8. NOTHING is written until ALL locale files pass validation.
+ *
+ *
+ * ============================================================================
+ * TRANSLATION VALUES FILE
+ * ============================================================================
+ *
+ * Create a JSON file containing the value for every locale.
+ *
+ * For example:
+ *
+ *   scripts/locale-values/historical-not-refundable.json
+ *
+ * Contents:
+ *
+ *   {
+ *     "cs": "Czech translation",
+ *     "da": "Danish translation",
+ *     "de": "German translation",
+ *     "en": "Historical purchases cannot be refunded.",
+ *     "es": "Spanish translation",
+ *     "fi": "Finnish translation",
+ *     "fr": "French translation",
+ *     "it": "Italian translation",
+ *     "ja": "Japanese translation",
+ *     "ko": "Korean translation",
+ *     "nb": "Norwegian translation",
+ *     "nl": "Dutch translation",
+ *     "pl": "Polish translation",
+ *     "pt-BR": "Brazilian Portuguese translation",
+ *     "pt-PT": "European Portuguese translation",
+ *     "sv": "Swedish translation",
+ *     "th": "Thai translation",
+ *     "tr": "Turkish translation",
+ *     "zh-Hans": "Simplified Chinese translation",
+ *     "zh-Hant": "Traditional Chinese translation"
+ *   }
+ *
+ *
+ * ============================================================================
+ * RECOMMENDED USAGE
+ * ============================================================================
+ *
+ * ALWAYS run --check first.
+ *
+ *
+ * FROM THE moda-interact PROJECT ROOT:
+ * ------------------------------------
+ *
+ *   cd /Users/kwadwoadomafriyie/project/moda-interact-workspace/moda-interact
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values scripts/locale-values/template-values-example.json.json \
+ *     --after billingPurchases.completedCopy \
+ *     --check
+ *
+ *
+ * If the check succeeds, run the same command WITHOUT --check:
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values scripts/locale-values/template-values-example.json \
+ *     --after billingPurchases.completedCopy
+ *
+ *
+ * FROM THE scripts DIRECTORY:
+ * ---------------------------
+ *
+ *  Inside the project directory:
+ *  moda-interact
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values locale-values/template-values-example.json \
+ *     --after billingPurchases.completedCopy \
+ *     --check
+ *
+ *
+ * Then:
+ *
+ *   node populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values locale-values/historical-not-refundable.json \
+ *     --after billingPurchases.completedCopy
+ *
+ *
+ * ============================================================================
+ * COMMAND OPTIONS
+ * ============================================================================
+ *
+ * REQUIRED:
+ *
+ *   --key <translation-key>
+ *
+ *       The flat dotted key to add.
+ *
+ *       Example:
+ *
+ *         --key billingPurchases.historicalNotRefundable
+ *
+ *
+ *   --values <json-file>
+ *
+ *       JSON file containing one value for each locale.
+ *
+ *       The path is resolved relative to the CURRENT TERMINAL DIRECTORY.
+ *
+ *
+ * OPTIONAL:
+ *
+ *   --after <existing-key>
+ *
+ *       Insert the new translation immediately after an existing key.
+ *
+ *       Example:
+ *
+ *         --after billingPurchases.completedCopy
+ *
+ *       If --after is omitted, the new key is added at the end of each
+ *       locale JSON object.
+ *
+ *
+ *   --check
+ *
+ *       Performs every validation but DOES NOT modify any files.
+ *
+ *       Strongly recommended before every write.
+ *
+ *
+ *   --force
+ *
+ *       Allows an existing key with a different value to be replaced.
+ *
+ *       WITHOUT --force:
+ *
+ *         existing same value      -> unchanged
+ *         existing different value -> ABORT
+ *
+ *       WITH --force:
+ *
+ *         existing different value -> replaced
+ *
+ *
+ *   --help
+ *
+ *       Displays abbreviated usage information.
+ *
+ *
+ * ============================================================================
+ * EXAMPLES
+ * ============================================================================
+ *
+ * Check only:
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values scripts/locale-values/historical-not-refundable.json \
+ *     --after billingPurchases.completedCopy \
+ *     --check
+ *
+ *
+ * Apply:
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values scripts/locale-values/historical-not-refundable.json \
+ *     --after billingPurchases.completedCopy
+ *
+ *
+ * Intentionally replace an existing different translation:
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key billingPurchases.historicalNotRefundable \
+ *     --values scripts/locale-values/historical-not-refundable.json \
+ *     --after billingPurchases.completedCopy \
+ *     --force
+ *
+ *
+ * Add a key at the end rather than using an anchor:
+ *
+ *   node scripts/populate-locale-key.mjs \
+ *     --key someNewTranslation.key \
+ *     --values scripts/locale-values/some-new-translation.json
+ *
+ *
+ * ============================================================================
+ */
+
+import fs from "node:fs/promises";
+import path from "node:path";
+import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+/**
+ * Resolve the directory containing THIS script.
+ *
+ * We deliberately do not rely on process.cwd() for locating the locale
+ * directory because the user may run this script from:
+ *
+ *   moda-interact/
+ *
+ * or:
+ *
+ *   moda-interact/scripts/
+ */
+const scriptFile = fileURLToPath(import.meta.url);
+const scriptsDirectory = path.dirname(scriptFile);
+
+/**
+ * scripts/ is directly beneath the moda-interact project root.
+ */
+const projectRoot = path.resolve(scriptsDirectory, "..");
+
+/**
+ * Canonical locale directory.
+ */
+const localesDirectory = path.join(projectRoot, "app", "i18n", "locales");
+
+/**
+ * Parse raw command-line arguments.
+ */
+const args = process.argv.slice(2);
+
+/**
+ * --------------------------------------------------------------------------
+ * CLI helpers
+ * --------------------------------------------------------------------------
+ */
+
+function hasFlag(name) {
+  return args.includes(name);
+}
+
+function getArgument(name) {
+  const index = args.indexOf(name);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  const value = args[index + 1];
+
+  if (!value || value.startsWith("--")) {
+    throw new Error(`Argument "${name}" requires a value.`);
+  }
+
+  return value;
+}
+
+function printHelp() {
+  console.log(`
+Populate a flat translation key across all existing locales.
+
+Usage:
+
+  node scripts/populate-locale-key.mjs \\
+    --key <translation-key> \\
+    --values <translations.json> \\
+    [--after <existing-key>] \\
+    [--check] \\
+    [--force]
+
+Example:
+
+  node scripts/populate-locale-key.mjs \\
+    --key billingPurchases.historicalNotRefundable \\
+    --values scripts/locale-values/historical-not-refundable.json \\
+    --after billingPurchases.completedCopy \\
+    --check
+
+Options:
+
+  --key       Flat dotted translation key to add.
+  --values    JSON file containing values indexed by locale.
+  --after     Insert immediately after this existing translation key.
+  --check     Validate everything without modifying files.
+  --force     Replace an existing different value.
+  --help      Display this help.
+`);
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * Duplicate JSON key detection
+ * --------------------------------------------------------------------------
+ *
+ * JSON.parse() does NOT report duplicate object keys.
+ *
+ * For example:
+ *
+ *   {
+ *     "hello": "first",
+ *     "hello": "second"
+ *   }
+ *
+ * JSON.parse() simply returns:
+ *
+ *   {
+ *     hello: "second"
+ *   }
+ *
+ * Therefore we inspect the raw JSON before parsing it.
+ *
+ * This function finds duplicate TOP-LEVEL object keys.
+ *
+ * That is exactly what we need because locale files look like:
+ *
+ *   {
+ *     "translation.one": "...",
+ *     "translation.two": "...",
+ *     "translation.three": "..."
+ *   }
+ */
+function findDuplicateTopLevelKeys(source) {
+  const keys = [];
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let stringStart = -1;
+
+  for (let index = 0; index < source.length; index++) {
+    const character = source[index];
+
+    /**
+     * We are currently inside a JSON string.
+     */
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+
+      if (character === "\\") {
+        escaped = true;
+        continue;
+      }
+
+      if (character === '"') {
+        inString = false;
+
+        /**
+         * A string at object depth 1 followed by ":" is a top-level key.
+         */
+        if (depth === 1) {
+          let nextIndex = index + 1;
+
+          while (nextIndex < source.length && /\s/.test(source[nextIndex])) {
+            nextIndex++;
+          }
+
+          if (source[nextIndex] === ":") {
+            const rawKey = source.slice(stringStart, index + 1);
+
+            /**
+             * Let JSON.parse handle escaped characters inside the key.
+             */
+            const decodedKey = JSON.parse(rawKey);
+
+            keys.push(decodedKey);
+          }
+        }
+
+        continue;
+      }
+
+      continue;
+    }
+
+    /**
+     * Start JSON string.
+     */
+    if (character === '"') {
+      inString = true;
+      stringStart = index;
+      continue;
+    }
+
+    /**
+     * Track object nesting while ignoring braces inside strings.
+     */
+    if (character === "{") {
+      depth++;
+      continue;
+    }
+
+    if (character === "}") {
+      depth--;
+    }
+  }
+
+  const counts = new Map();
+
+  for (const key of keys) {
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([key, count]) => ({
+      key,
+      count,
+    }));
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * JSON parser with helpful errors
+ * --------------------------------------------------------------------------
+ */
+
+function parseJson(source, description) {
+  try {
+    return JSON.parse(source);
+  } catch (error) {
+    throw new Error(`${description} is not valid JSON:\n${error.message}`);
+  }
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * Basic object validation
+ * --------------------------------------------------------------------------
+ */
+
+function assertPlainObject(value, description) {
+  if (value === null || Array.isArray(value) || typeof value !== "object") {
+    throw new Error(
+      `${description} must contain a JSON object at the top level.`,
+    );
+  }
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * Main
+ * --------------------------------------------------------------------------
+ */
+
+async function main() {
+  if (hasFlag("--help")) {
+    printHelp();
+    return;
+  }
+
+  const translationKey = getArgument("--key");
+  const valuesArgument = getArgument("--values");
+  const afterKey = getArgument("--after");
+
+  const checkOnly = hasFlag("--check");
+  const force = hasFlag("--force");
+
+  /**
+   * Required CLI arguments.
+   */
+  if (!translationKey) {
+    throw new Error(
+      'Missing required argument "--key".\n\n' +
+        "Run with --help for usage instructions.",
+    );
+  }
+
+  if (!valuesArgument) {
+    throw new Error(
+      'Missing required argument "--values".\n\n' +
+        "Run with --help for usage instructions.",
+    );
+  }
+
+  /**
+   * Resolve the values file relative to the directory from which the
+   * command was invoked.
+   *
+   * This allows:
+   *
+   * From project root:
+   *
+   *   --values scripts/locale-values/example.json
+   *
+   * From scripts/:
+   *
+   *   --values locale-values/example.json
+   */
+  const valuesFile = path.resolve(process.cwd(), valuesArgument);
+
+  console.log("");
+  console.log("=".repeat(78));
+  console.log("LOCALE TRANSLATION POPULATOR");
+  console.log("=".repeat(78));
+  console.log("");
+  console.log(`Project root : ${projectRoot}`);
+  console.log(`Locales      : ${localesDirectory}`);
+  console.log(`Key          : ${translationKey}`);
+  console.log(`Values       : ${valuesFile}`);
+  console.log(`Insert after : ${afterKey ?? "(append to end)"}`);
+  console.log(`Mode         : ${checkOnly ? "CHECK ONLY" : "WRITE"}`);
+  console.log(`Force        : ${force ? "YES" : "NO"}`);
+  console.log("");
+
+  /**
+   * ------------------------------------------------------------------------
+   * Validate locale directory exists
+   * ------------------------------------------------------------------------
+   */
+
+  let localeDirectoryStats;
+
+  try {
+    localeDirectoryStats = await fs.stat(localesDirectory);
+  } catch {
+    throw new Error(`Locale directory does not exist:\n${localesDirectory}`);
+  }
+
+  if (!localeDirectoryStats.isDirectory()) {
+    throw new Error(`Locale path is not a directory:\n${localesDirectory}`);
+  }
+
+  /**
+   * ------------------------------------------------------------------------
+   * Read and validate translation values file
+   * ------------------------------------------------------------------------
+   */
+
+  let valuesSource;
+
+  try {
+    valuesSource = await fs.readFile(valuesFile, "utf8");
+  } catch (error) {
+    throw new Error(
+      `Unable to read translation values file:\n` +
+        `${valuesFile}\n\n` +
+        `${error.message}`,
+    );
+  }
+
+  /**
+   * Check duplicate locale names BEFORE JSON.parse().
+   */
+  const duplicateValueLocales = findDuplicateTopLevelKeys(valuesSource);
+
+  if (duplicateValueLocales.length > 0) {
+    const details = duplicateValueLocales
+      .map(({ key, count }) => `  - ${key}: ${count} occurrences`)
+      .join("\n");
+
+    throw new Error(
+      `Translation values file contains duplicate locale keys:\n\n` +
+        `${details}\n\n` +
+        `No locale files were changed.`,
+    );
+  }
+
+  const translations = parseJson(valuesSource, "Translation values file");
+
+  assertPlainObject(translations, "Translation values file");
+
+  /**
+   * ------------------------------------------------------------------------
+   * Discover existing locale JSON files
+   * ------------------------------------------------------------------------
+   */
+
+  const directoryEntries = await fs.readdir(localesDirectory, {
+    withFileTypes: true,
+  });
+
+  /**
+   * Only regular .json files count.
+   *
+   * The existing "typescript" entry is ignored because it is not a .json
+   * locale file.
+   */
+  const localeFiles = directoryEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => {
+      const locale = entry.name.slice(0, -".json".length);
+
+      return {
+        locale,
+        filename: entry.name,
+        absolutePath: path.join(localesDirectory, entry.name),
+      };
+    })
+    .sort((left, right) => left.locale.localeCompare(right.locale));
+
+  if (localeFiles.length === 0) {
+    throw new Error(`No locale JSON files were found in:\n${localesDirectory}`);
+  }
+
+  console.log(`Discovered ${localeFiles.length} locale files:`);
+  console.log(`  ${localeFiles.map(({ locale }) => locale).join(", ")}`);
+  console.log("");
+
+  /**
+   * ------------------------------------------------------------------------
+   * Verify translation coverage
+   * ------------------------------------------------------------------------
+   */
+
+  const existingLocales = new Set(localeFiles.map(({ locale }) => locale));
+
+  const suppliedLocales = Object.keys(translations);
+
+  const missingTranslations = localeFiles
+    .map(({ locale }) => locale)
+    .filter((locale) => !Object.hasOwn(translations, locale));
+
+  if (missingTranslations.length > 0) {
+    throw new Error(
+      `The values file is missing translations for:\n\n` +
+        missingTranslations.map((locale) => `  - ${locale}`).join("\n") +
+        `\n\nNo locale files were changed.`,
+    );
+  }
+
+  /**
+   * Unknown entries are probably a typo, so fail rather than silently
+   * ignoring them.
+   */
+  const unknownTranslations = suppliedLocales.filter(
+    (locale) => !existingLocales.has(locale),
+  );
+
+  if (unknownTranslations.length > 0) {
+    throw new Error(
+      `The values file contains locales which do not exist in ` +
+        `app/i18n/locales:\n\n` +
+        unknownTranslations.map((locale) => `  - ${locale}`).join("\n") +
+        `\n\nNo locale files were changed.`,
+    );
+  }
+
+  /**
+   * ------------------------------------------------------------------------
+   * COMPLETE PRE-FLIGHT
+   * ------------------------------------------------------------------------
+   *
+   * This array stores validated work.
+   *
+   * Nothing is written during this loop.
+   */
+  const preparedFiles = [];
+
+  for (const localeFile of localeFiles) {
+    const { locale, filename, absolutePath } = localeFile;
+
+    const translationValue = translations[locale];
+
+    /**
+     * Values must be non-empty strings.
+     */
+    if (typeof translationValue !== "string") {
+      throw new Error(
+        `Translation for locale "${locale}" must be a string.\n\n` +
+          `No locale files were changed.`,
+      );
+    }
+
+    if (translationValue.trim() === "") {
+      throw new Error(
+        `Translation for locale "${locale}" is empty.\n\n` +
+          `No locale files were changed.`,
+      );
+    }
+
+    const source = await fs.readFile(absolutePath, "utf8");
+
+    /**
+     * Find duplicate translation keys in the raw locale file.
+     */
+    const duplicateKeys = findDuplicateTopLevelKeys(source);
+
+    if (duplicateKeys.length > 0) {
+      const details = duplicateKeys
+        .map(({ key, count }) => `  - ${key}: ${count} occurrences`)
+        .join("\n");
+
+      throw new Error(
+        `${filename} contains duplicate translation keys:\n\n` +
+          `${details}\n\n` +
+          `No locale files were changed.`,
+      );
+    }
+
+    const parsed = parseJson(source, filename);
+
+    assertPlainObject(parsed, filename);
+
+    /**
+     * If --after was requested then EVERY locale must contain the anchor.
+     */
+    if (afterKey && !Object.hasOwn(parsed, afterKey)) {
+      throw new Error(
+        `${filename} does not contain the requested anchor key:\n\n` +
+          `  ${afterKey}\n\n` +
+          `No locale files were changed.`,
+      );
+    }
+
+    /**
+     * Determine whether the target already exists.
+     */
+    const targetAlreadyExists = Object.hasOwn(parsed, translationKey);
+
+    const existingValue = targetAlreadyExists
+      ? parsed[translationKey]
+      : undefined;
+
+    /**
+     * Existing key with different value is protected unless --force
+     * was explicitly supplied.
+     */
+    if (targetAlreadyExists && existingValue !== translationValue && !force) {
+      throw new Error(
+        `${filename} already contains:\n\n` +
+          `  "${translationKey}"\n\n` +
+          `but its existing value is different.\n\n` +
+          `Existing:\n` +
+          `  ${JSON.stringify(existingValue)}\n\n` +
+          `Requested:\n` +
+          `  ${JSON.stringify(translationValue)}\n\n` +
+          `If this replacement is intentional, rerun with --force.\n\n` +
+          `No locale files were changed.`,
+      );
+    }
+
+    preparedFiles.push({
+      ...localeFile,
+      source,
+      parsed,
+      translationValue,
+      targetAlreadyExists,
+      existingValue,
+    });
+  }
+
+  /**
+   * ------------------------------------------------------------------------
+   * PRE-FLIGHT COMPLETE
+   * ------------------------------------------------------------------------
+   */
+
+  console.log("Pre-flight validation: PASS");
+  console.log(`Validated ${preparedFiles.length} locale files.`);
+  console.log("Duplicate translation keys: NONE");
+  console.log("Missing translations: NONE");
+  console.log("Unknown translations: NONE");
+
+  if (afterKey) {
+    console.log(`Anchor present in every locale: ${afterKey}`);
+  }
+
+  console.log("");
+
+  /**
+   * --check means stop here.
+   */
+  if (checkOnly) {
+    console.log("CHECK ONLY — no files were modified.");
+    console.log("");
+    return;
+  }
+
+  /**
+   * ------------------------------------------------------------------------
+   * WRITE PHASE
+   * ------------------------------------------------------------------------
+   *
+   * We only reach this point after every single locale passed preflight.
+   */
+
+  let updatedCount = 0;
+  let unchangedCount = 0;
+
+  for (const prepared of preparedFiles) {
+    const {
+      filename,
+      absolutePath,
+      source,
+      parsed,
+      translationValue,
+      targetAlreadyExists,
+      existingValue,
+    } = prepared;
+
+    /**
+     * If it already contains exactly the requested translation then do
+     * nothing. This also means running the script repeatedly is safe.
+     */
+    if (targetAlreadyExists && existingValue === translationValue) {
+      console.log(`UNCHANGED  ${filename}`);
+
+      unchangedCount++;
+      continue;
+    }
+
+    /**
+     * Build a new object while preserving the existing key order.
+     *
+     * JavaScript preserves string-key insertion order.
+     */
+    const output = {};
+
+    let inserted = false;
+
+    for (const [existingKey, existingTranslationValue] of Object.entries(
+      parsed,
+    )) {
+      /**
+       * If --force is replacing the target key, skip its old location.
+       * It will be inserted again at the requested anchor position.
+       */
+      if (existingKey === translationKey) {
+        continue;
+      }
+
+      output[existingKey] = existingTranslationValue;
+
+      /**
+       * Insert immediately after the requested anchor.
+       */
+      if (afterKey && existingKey === afterKey) {
+        output[translationKey] = translationValue;
+
+        inserted = true;
+      }
+    }
+
+    /**
+     * No --after was supplied, therefore append to the end.
+     */
+    if (!inserted) {
+      output[translationKey] = translationValue;
+    }
+
+    /**
+     * Preserve CRLF if the existing file uses CRLF.
+     *
+     * Otherwise use normal LF.
+     */
+    const newline = source.includes("\r\n") ? "\r\n" : "\n";
+
+    /**
+     * Locale JSON files are written with two-space indentation.
+     */
+    let outputJson = JSON.stringify(output, null, 2);
+
+    if (newline === "\r\n") {
+      outputJson = outputJson.replace(/\n/g, "\r\n");
+    }
+
+    /**
+     * Ensure exactly one final newline.
+     */
+    outputJson += newline;
+
+    await fs.writeFile(absolutePath, outputJson, "utf8");
+
+    console.log(`UPDATED    ${filename}`);
+
+    updatedCount++;
+  }
+
+  console.log("");
+  console.log("=".repeat(78));
+  console.log("COMPLETE");
+  console.log("=".repeat(78));
+  console.log(`Key       : ${translationKey}`);
+  console.log(`Updated   : ${updatedCount}`);
+  console.log(`Unchanged : ${unchangedCount}`);
+  console.log(`Total     : ${preparedFiles.length}`);
+  console.log("");
+}
+
+/**
+ * --------------------------------------------------------------------------
+ * Top-level error handling
+ * --------------------------------------------------------------------------
+ */
+
+main().catch((error) => {
+  console.error("");
+  console.error("=".repeat(78));
+  console.error("FAILED");
+  console.error("=".repeat(78));
+  console.error("");
+  console.error(error.message);
+  console.error("");
+  process.exitCode = 1;
+});
