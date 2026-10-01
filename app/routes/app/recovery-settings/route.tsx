@@ -6,6 +6,7 @@ import {
   PreferenceError,
 } from "@/services/feature-preferences/feature-preferences.server";
 import { loadRecoveryPolicySnapshot } from "@/services/recovery-policy/recovery-policy.server";
+import { loadMerchantKnowledge } from "@/services/merchant-knowledge/merchant-knowledge.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
 import RecoverySettingsView from "./RecoverySettingsView";
@@ -16,6 +17,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     listSelectableStoreCategories(merchantUi.locale),
     loadStoreProfile(shop.id, merchantUi.locale),
   ]);
+  const merchantKnowledge = await loadMerchantKnowledge(shop.id);
   const features = await loadFeaturePreferences(shop.id).catch(
     (error: unknown) => {
       if (error instanceof PreferenceError)
@@ -28,6 +30,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     features,
     storeCategories,
     storeProfile,
+    merchantKnowledge,
     merchantUi,
   };
 }

@@ -5,6 +5,7 @@ import { createMerchantI18n } from "@/utils/merchant-i18n";
 import SettingsForm from "@/components/settings/SettingsForm";
 import FeaturePreferences from "@/components/settings/FeaturePreferences";
 import StoreProfileSection from "@/components/settings/StoreProfileSection";
+import MerchantKnowledgeSection from "@/components/settings/MerchantKnowledgeSection";
 import "./RecoverySettingsRoute.css";
 type DiscountRow = Awaited<ReturnType<typeof loader>>["discounts"][number];
 type DiscountCatalogueStatus = Awaited<
@@ -111,6 +112,7 @@ export default function RecoverySettingsView({
           profile={data.storeProfile}
           t={i18n.t}
         />
+        <MerchantKnowledgeSection data={data.merchantKnowledge} t={i18n.t} />
         <div className="moda-recovery-panel moda-recovery-behaviour-panel">
           <SettingsForm revision={data.revision} intent="recovery" t={i18n.t}>
             <section
