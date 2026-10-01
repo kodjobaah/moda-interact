@@ -12,9 +12,11 @@ import {
 import db from "@/db.server";
 import { loadCurrentMerchantKnowledgeEntitlement } from "./merchant-knowledge-entitlement.server";
 import { enqueueMerchantKnowledgeRevisionBestEffort } from "./merchant-knowledge-queue.server";
+import { loadMerchantKnowledgeR2Config } from "./r2-config.server";
 
 type Database = Pick<PrismaClient, "$transaction" | "merchantKnowledgePurpose" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision" | "subscription" | "feature" | "shopFeaturePreference" | "shopSettings">;
-type Transaction = Prisma.TransactionClient;
+export type MerchantKnowledgeTransaction = Prisma.TransactionClient;
+type Transaction = MerchantKnowledgeTransaction;
 
 export class MerchantKnowledgeError extends Error {
   constructor(readonly code: string) {
@@ -32,7 +34,7 @@ type Activation = {
   merchantEnabled: boolean;
 };
 
-async function readActivation(
+export async function readMerchantKnowledgeActivation(
   shopId: string,
   database: Pick<PrismaClient, "feature" | "shopFeaturePreference">,
 ): Promise<Activation> {
@@ -81,7 +83,7 @@ function parseSourceType(purposeKey: unknown, dataFormatKey: unknown) {
   return { purposeKey: purpose.data, dataFormatKey: dataFormat.data };
 }
 
-async function lockShop(shopId: string, transaction: Transaction): Promise<void> {
+export async function lockMerchantKnowledgeShop(shopId: string, transaction: Transaction): Promise<void> {
   const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT "id" FROM "commerce"."Shop"
     WHERE "id" = ${shopId} AND "status" = 'ACTIVE'
@@ -115,7 +117,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
     database.merchantKnowledgePurposeDataFormat.findMany({
       where: {
         purpose: { active: true },
-        dataFormat: { active: true, key: "WEB_PAGE", inputKind: "REMOTE_URL" },
+        dataFormat: { active: true, inputKind: { in: ["REMOTE_URL", "UPLOAD"] } },
       },
       orderBy: [
         { purpose: { displayOrder: "asc" } },
@@ -125,7 +127,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
       ],
       select: {
         purpose: { select: { key: true, displayName: true } },
-        dataFormat: { select: { key: true, displayName: true } },
+        dataFormat: { select: { key: true, displayName: true, inputKind: true, canonicalExtension: true, acceptedContentTypes: true } },
       },
     }),
     database.merchantKnowledgeSource.findMany({
@@ -133,7 +135,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
       orderBy: [{ position: "asc" }, { id: "asc" }],
       include: {
         purpose: { select: { key: true, displayName: true, active: true } },
-        dataFormat: { select: { key: true, displayName: true, active: true } },
+        dataFormat: { select: { key: true, displayName: true, active: true, inputKind: true } },
         revisions: {
           orderBy: [{ generation: "desc" }, { id: "desc" }],
           take: 1,
@@ -149,12 +151,13 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
             fetchedAt: true,
             completedAt: true,
             failureCode: true,
+            uploadedAsset: { select: { originalFileName: true } },
           },
         },
       },
     }),
   ]);
-  const activation = await readActivation(shopId, database);
+  const activation = await readMerchantKnowledgeActivation(shopId, database);
   const activeRevisions = sources.length
     ? await database.merchantKnowledgeSourceRevision.findMany({
         where: { sourceId: { in: sources.map(({ id }) => id) }, status: "ACTIVE" },
@@ -170,7 +173,6 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
       : [],
   );
   const allowedCatalogue = catalogue.filter(({ purpose, dataFormat }) =>
-    dataFormat.key === "WEB_PAGE" &&
     allowed.has(`${purpose.key}\u0000${dataFormat.key}`),
   );
   const typeEligible = sources.filter((source) =>
@@ -187,6 +189,13 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
     merchantEnabled: activation.merchantEnabled,
     effectiveEnabled: planEntitled && activation.merchantEnabled,
     maxKnowledgeSources,
+    maxUploadBytes: (() => {
+      try {
+        return loadMerchantKnowledgeR2Config().maxUploadBytes;
+      } catch {
+        return 0;
+      }
+    })(),
     configuredCount: sources.length,
     planEligibleSourceCount: typeEligible.length,
     defaultLanguageTag: resolveModaConfigurationLocale(settings?.defaultLanguageTag),
@@ -211,6 +220,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
         purposeDisplayName: source.purpose.displayName,
         dataFormatKey: source.dataFormat.key,
         dataFormatDisplayName: source.dataFormat.displayName,
+        uploadedFileName: source.revisions[0]?.uploadedAsset?.originalFileName ?? null,
         languageTag: source.languageTag,
         position: source.position,
         currentGeneration: source.currentGeneration,
@@ -238,10 +248,11 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
   };
 }
 
-async function requireAllowedPair(
+export async function requireAllowedPair(
   transaction: Transaction,
   configuration: { allowedSourceTypes: readonly { purposeKey: string; dataFormatKey: string }[] },
   type: { purposeKey: string; dataFormatKey: string },
+  inputKind: "REMOTE_URL" | "UPLOAD" = "REMOTE_URL",
 ) {
   if (!configuration.allowedSourceTypes.some((allowed) =>
     allowed.purposeKey === type.purposeKey && allowed.dataFormatKey === type.dataFormatKey,
@@ -249,7 +260,7 @@ async function requireAllowedPair(
   const pair = await transaction.merchantKnowledgePurposeDataFormat.findFirst({
     where: {
       purpose: { key: type.purposeKey, active: true },
-      dataFormat: { key: type.dataFormatKey, active: true, inputKind: "REMOTE_URL" },
+      dataFormat: { key: type.dataFormatKey, active: true, inputKind },
     },
     select: { purposeId: true, dataFormatId: true },
   });
@@ -257,7 +268,7 @@ async function requireAllowedPair(
   return pair;
 }
 
-async function requireCurrentlyPlanEntitledSource(
+export async function requireCurrentlyPlanEntitledSource(
   transaction: Transaction,
   shopId: string,
   sourceId: string,
@@ -286,9 +297,16 @@ async function requireCurrentlyPlanEntitledSource(
     throw denied();
 }
 
-async function createRevision(
+export async function createMerchantKnowledgeRevision(
   transaction: Transaction,
-  input: { sourceId: string; shopId: string; generation: number; reason: "CREATE" | "URL_CHANGE" | "REFRESH"; requestedUrl: string },
+  input: {
+    sourceId: string;
+    shopId: string;
+    generation: number;
+    reason: "CREATE" | "URL_CHANGE" | "REFRESH" | "FILE_REPLACE" | "REPROCESS";
+    requestedUrl: string | null;
+    uploadedAssetId?: string | null;
+  },
 ) {
   const requestedAt = new Date();
   const sourceRevisionId = randomUUID();
@@ -296,6 +314,7 @@ async function createRevision(
     data: {
       id: sourceRevisionId,
       sourceId: input.sourceId,
+      uploadedAssetId: input.uploadedAssetId ?? null,
       generation: input.generation,
       reason: input.reason,
       requestedUrl: input.requestedUrl,
@@ -311,13 +330,13 @@ async function createRevision(
   };
 }
 
-async function enqueueIfEnabled(
-  revision: Awaited<ReturnType<typeof createRevision>> | null,
+export async function enqueueMerchantKnowledgeRevisionIfEnabled(
+  revision: Awaited<ReturnType<typeof createMerchantKnowledgeRevision>> | null,
   merchantEnabled: boolean,
   queue?: Parameters<typeof enqueueMerchantKnowledgeRevisionBestEffort>[1],
 ) {
-  if (revision && merchantEnabled)
-    await enqueueMerchantKnowledgeRevisionBestEffort(revision, queue);
+  if (!revision || !merchantEnabled) return false;
+  return enqueueMerchantKnowledgeRevisionBestEffort(revision, queue);
 }
 
 export async function createWebPageSource(input: {
@@ -336,11 +355,11 @@ export async function createWebPageSource(input: {
   const type = parseSourceType(input.purposeKey, input.dataFormatKey);
   const database = input.database ?? db;
   const result = await database.$transaction(async (transaction) => {
-    await lockShop(input.shopId, transaction);
+    await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
     if (entitlement.kind !== "entitled") throw denied();
     const pair = await requireAllowedPair(transaction, entitlement.configuration, type);
-    const activation = await readActivation(input.shopId, transaction);
+    const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
     const shopSettings = await transaction.shopSettings.findUnique({
       where: { shopId: input.shopId },
       select: { defaultLanguageTag: true },
@@ -367,7 +386,7 @@ export async function createWebPageSource(input: {
         currentGeneration: 1,
       },
     });
-    const revision = await createRevision(transaction, {
+    const revision = await createMerchantKnowledgeRevision(transaction, {
       sourceId,
       shopId: input.shopId,
       generation: 1,
@@ -376,7 +395,7 @@ export async function createWebPageSource(input: {
     });
     return { sourceId, revision, merchantEnabled: activation.merchantEnabled };
   });
-  await enqueueIfEnabled(result.revision, result.merchantEnabled, input.queue);
+  await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, result.merchantEnabled, input.queue);
   return { sourceId: result.sourceId };
 }
 
@@ -395,7 +414,7 @@ export async function editWebPageSource(input: {
   const languageTag = parseLanguageTag(input.languageTag, null);
   const database = input.database ?? db;
   const result = await database.$transaction(async (transaction) => {
-    await lockShop(input.shopId, transaction);
+    await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -415,12 +434,12 @@ export async function editWebPageSource(input: {
     const latest = source.revisions[0];
     if (!latest) throw conflict();
     const urlChanged = latest.requestedUrl !== requestedUrl;
-    const activation = await readActivation(input.shopId, transaction);
+    const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
     await transaction.merchantKnowledgeSource.update({
       where: { id: source.id },
       data: { name, languageTag, ...(urlChanged ? { currentGeneration: { increment: 1 } } : {}) },
     });
-    const revision = urlChanged ? await createRevision(transaction, {
+    const revision = urlChanged ? await createMerchantKnowledgeRevision(transaction, {
       sourceId: source.id,
       shopId: input.shopId,
       generation: source.currentGeneration + 1,
@@ -429,7 +448,7 @@ export async function editWebPageSource(input: {
     }) : null;
     return { revision, merchantEnabled: activation.merchantEnabled };
   });
-  await enqueueIfEnabled(result.revision, result.merchantEnabled, input.queue);
+  await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, result.merchantEnabled, input.queue);
   return { ok: true };
 }
 
@@ -441,7 +460,7 @@ export async function refreshWebPageSource(input: {
 }) {
   const database = input.database ?? db;
   const result = await database.$transaction(async (transaction) => {
-    await lockShop(input.shopId, transaction);
+    await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -457,10 +476,10 @@ export async function refreshWebPageSource(input: {
     if (source.dataFormat.key !== "WEB_PAGE" || !source.revisions[0]?.requestedUrl) throw denied();
     await requireAllowedPair(transaction, entitlement.configuration, { purposeKey: source.purpose.key, dataFormatKey: source.dataFormat.key });
     await requireCurrentlyPlanEntitledSource(transaction, input.shopId, source.id, entitlement.configuration);
-    const activation = await readActivation(input.shopId, transaction);
+    const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
     const generation = source.currentGeneration + 1;
     await transaction.merchantKnowledgeSource.update({ where: { id: source.id }, data: { currentGeneration: generation } });
-    const revision = await createRevision(transaction, {
+    const revision = await createMerchantKnowledgeRevision(transaction, {
       sourceId: source.id,
       shopId: input.shopId,
       generation,
@@ -469,7 +488,7 @@ export async function refreshWebPageSource(input: {
     });
     return { revision, merchantEnabled: activation.merchantEnabled };
   });
-  await enqueueIfEnabled(result.revision, result.merchantEnabled, input.queue);
+  await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, result.merchantEnabled, input.queue);
   return { ok: true };
 }
 
@@ -498,7 +517,7 @@ export async function deleteMerchantKnowledgeSource(input: {
 }) {
   const database = input.database ?? db;
   await database.$transaction(async (transaction) => {
-    await lockShop(input.shopId, transaction);
+    await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
@@ -527,7 +546,7 @@ export async function reorderMerchantKnowledgeSources(input: {
   const sourceIds = input.sourceIds as string[];
   const database = input.database ?? db;
   await database.$transaction(async (transaction) => {
-    await lockShop(input.shopId, transaction);
+    await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.merchantKnowledgeSource.findMany({

@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Hinnoittelu",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Verkkosivu",
   "merchantKnowledge.dataFormats.CSV.label": "CSV-taulukko",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel-taulukko (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel-taulukko (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Tarkoitus",
+  "merchantKnowledge.upload.dataFormat": "Tietomuoto",
+  "merchantKnowledge.upload.sourceName": "Lähteen nimi",
+  "merchantKnowledge.upload.file": "Tiedosto",
+  "merchantKnowledge.upload.maxSize": "Latauksen enimmäiskoko: {bytes} tavua",
+  "merchantKnowledge.upload.language": "Kieli",
+  "merchantKnowledge.upload.submit": "Lataa tiedosto",
+  "merchantKnowledge.upload.preparing": "Valmistellaan",
+  "merchantKnowledge.upload.uploading": "Ladataan",
+  "merchantKnowledge.upload.finalizing": "Viimeistellään",
+  "merchantKnowledge.upload.queued": "Jonossa",
+  "merchantKnowledge.upload.pending": "Tallennettu käsiteltäväksi",
+  "merchantKnowledge.upload.failed": "Lataus epäonnistui",
+  "merchantKnowledge.upload.reprocess": "Käsittele uudelleen",
+  "merchantKnowledge.upload.replaceFile": "Korvaa tiedosto",
+  "merchantKnowledge.upload.edit": "Muokkaa",
+  "merchantKnowledge.upload.save": "Tallenna"
 }

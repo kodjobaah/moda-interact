@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "가격",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "웹페이지",
   "merchantKnowledge.dataFormats.CSV.label": "CSV 스프레드시트",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel 스프레드시트(.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel 스프레드시트(.xlsx)",
+  "merchantKnowledge.upload.purpose": "용도",
+  "merchantKnowledge.upload.dataFormat": "데이터 형식",
+  "merchantKnowledge.upload.sourceName": "소스 이름",
+  "merchantKnowledge.upload.file": "파일",
+  "merchantKnowledge.upload.maxSize": "최대 업로드 크기: {bytes}바이트",
+  "merchantKnowledge.upload.language": "언어",
+  "merchantKnowledge.upload.submit": "파일 업로드",
+  "merchantKnowledge.upload.preparing": "준비 중",
+  "merchantKnowledge.upload.uploading": "업로드 중",
+  "merchantKnowledge.upload.finalizing": "마무리 중",
+  "merchantKnowledge.upload.queued": "대기열에 추가됨",
+  "merchantKnowledge.upload.pending": "처리 대기 상태로 저장됨",
+  "merchantKnowledge.upload.failed": "업로드에 실패했습니다",
+  "merchantKnowledge.upload.reprocess": "다시 처리",
+  "merchantKnowledge.upload.replaceFile": "파일 교체",
+  "merchantKnowledge.upload.edit": "수정",
+  "merchantKnowledge.upload.save": "저장"
 }

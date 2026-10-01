@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Fiyatlandırma",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Web sayfası",
   "merchantKnowledge.dataFormats.CSV.label": "CSV tablosu",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel tablosu (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel tablosu (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Amaç",
+  "merchantKnowledge.upload.dataFormat": "Veri biçimi",
+  "merchantKnowledge.upload.sourceName": "Kaynak adı",
+  "merchantKnowledge.upload.file": "Dosya",
+  "merchantKnowledge.upload.maxSize": "Maksimum yükleme boyutu: {bytes} bayt",
+  "merchantKnowledge.upload.language": "Dil",
+  "merchantKnowledge.upload.submit": "Dosya yükle",
+  "merchantKnowledge.upload.preparing": "Hazırlanıyor",
+  "merchantKnowledge.upload.uploading": "Yükleniyor",
+  "merchantKnowledge.upload.finalizing": "Tamamlanıyor",
+  "merchantKnowledge.upload.queued": "Kuyruğa alındı",
+  "merchantKnowledge.upload.pending": "İşlenmek üzere kaydedildi",
+  "merchantKnowledge.upload.failed": "Dosya yüklenemedi",
+  "merchantKnowledge.upload.reprocess": "Yeniden işle",
+  "merchantKnowledge.upload.replaceFile": "Dosyayı değiştir",
+  "merchantKnowledge.upload.edit": "Düzenle",
+  "merchantKnowledge.upload.save": "Kaydet"
 }

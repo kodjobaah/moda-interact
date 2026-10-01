@@ -28,13 +28,20 @@ const knowledge: Parameters<typeof MerchantKnowledgeSection>[0]["data"] = {
   merchantEnabled: false,
   effectiveEnabled: false,
   maxKnowledgeSources: 2,
+  maxUploadBytes: 10_485_760,
   configuredCount: 0,
   planEligibleSourceCount: 0,
   defaultLanguageTag: "en",
   supportedLanguageTags: MODA_SUPPORTED_LANGUAGE_TAGS,
   catalogue: [{
     purpose: { key: "FAQ", displayName: "Frequently asked questions" },
-    dataFormat: { key: "WEB_PAGE", displayName: "Web page" },
+    dataFormat: {
+      key: "WEB_PAGE",
+      displayName: "Web page",
+      inputKind: "REMOTE_URL",
+      canonicalExtension: null,
+      acceptedContentTypes: [],
+    },
   }],
   sources: [],
 };

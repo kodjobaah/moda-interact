@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Priser",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Webside",
   "merchantKnowledge.dataFormats.CSV.label": "CSV-regneark",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel-regneark (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel-regneark (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Formål",
+  "merchantKnowledge.upload.dataFormat": "Dataformat",
+  "merchantKnowledge.upload.sourceName": "Kildenavn",
+  "merchantKnowledge.upload.file": "Fil",
+  "merchantKnowledge.upload.maxSize": "Maksimal filstørrelse: {bytes} byte",
+  "merchantKnowledge.upload.language": "Sprog",
+  "merchantKnowledge.upload.submit": "Upload fil",
+  "merchantKnowledge.upload.preparing": "Forbereder",
+  "merchantKnowledge.upload.uploading": "Uploader",
+  "merchantKnowledge.upload.finalizing": "Afslutter",
+  "merchantKnowledge.upload.queued": "I kø",
+  "merchantKnowledge.upload.pending": "Gemt til behandling",
+  "merchantKnowledge.upload.failed": "Upload mislykkedes",
+  "merchantKnowledge.upload.reprocess": "Behandl igen",
+  "merchantKnowledge.upload.replaceFile": "Erstat fil",
+  "merchantKnowledge.upload.edit": "Rediger",
+  "merchantKnowledge.upload.save": "Gem"
 }

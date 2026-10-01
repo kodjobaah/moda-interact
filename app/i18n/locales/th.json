@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "ราคา",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "หน้าเว็บ",
   "merchantKnowledge.dataFormats.CSV.label": "สเปรดชีต CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "สเปรดชีต Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "สเปรดชีต Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "วัตถุประสงค์",
+  "merchantKnowledge.upload.dataFormat": "รูปแบบข้อมูล",
+  "merchantKnowledge.upload.sourceName": "ชื่อแหล่งข้อมูล",
+  "merchantKnowledge.upload.file": "ไฟล์",
+  "merchantKnowledge.upload.maxSize": "ขนาดอัปโหลดสูงสุด: {bytes} ไบต์",
+  "merchantKnowledge.upload.language": "ภาษา",
+  "merchantKnowledge.upload.submit": "อัปโหลดไฟล์",
+  "merchantKnowledge.upload.preparing": "กำลังเตรียม",
+  "merchantKnowledge.upload.uploading": "กำลังอัปโหลด",
+  "merchantKnowledge.upload.finalizing": "กำลังดำเนินการให้เสร็จ",
+  "merchantKnowledge.upload.queued": "อยู่ในคิว",
+  "merchantKnowledge.upload.pending": "บันทึกเพื่อรอประมวลผล",
+  "merchantKnowledge.upload.failed": "อัปโหลดไม่สำเร็จ",
+  "merchantKnowledge.upload.reprocess": "ประมวลผลอีกครั้ง",
+  "merchantKnowledge.upload.replaceFile": "แทนที่ไฟล์",
+  "merchantKnowledge.upload.edit": "แก้ไข",
+  "merchantKnowledge.upload.save": "บันทึก"
 }

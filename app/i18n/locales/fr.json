@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Tarifs",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Page web",
   "merchantKnowledge.dataFormats.CSV.label": "Tableur CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "Tableur Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Tableur Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Objectif",
+  "merchantKnowledge.upload.dataFormat": "Format des données",
+  "merchantKnowledge.upload.sourceName": "Nom de la source",
+  "merchantKnowledge.upload.file": "Fichier",
+  "merchantKnowledge.upload.maxSize": "Taille maximale du fichier : {bytes} octets",
+  "merchantKnowledge.upload.language": "Langue",
+  "merchantKnowledge.upload.submit": "Importer le fichier",
+  "merchantKnowledge.upload.preparing": "Préparation",
+  "merchantKnowledge.upload.uploading": "Importation en cours",
+  "merchantKnowledge.upload.finalizing": "Finalisation",
+  "merchantKnowledge.upload.queued": "Mis en file d’attente",
+  "merchantKnowledge.upload.pending": "Enregistré pour traitement",
+  "merchantKnowledge.upload.failed": "Échec de l’importation",
+  "merchantKnowledge.upload.reprocess": "Relancer le traitement",
+  "merchantKnowledge.upload.replaceFile": "Remplacer le fichier",
+  "merchantKnowledge.upload.edit": "Modifier",
+  "merchantKnowledge.upload.save": "Enregistrer"
 }

@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Prijzen",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Webpagina",
   "merchantKnowledge.dataFormats.CSV.label": "CSV-spreadsheet",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel-spreadsheet (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel-spreadsheet (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Doel",
+  "merchantKnowledge.upload.dataFormat": "Gegevensformaat",
+  "merchantKnowledge.upload.sourceName": "Naam van de bron",
+  "merchantKnowledge.upload.file": "Bestand",
+  "merchantKnowledge.upload.maxSize": "Maximale uploadgrootte: {bytes} bytes",
+  "merchantKnowledge.upload.language": "Taal",
+  "merchantKnowledge.upload.submit": "Bestand uploaden",
+  "merchantKnowledge.upload.preparing": "Voorbereiden",
+  "merchantKnowledge.upload.uploading": "Uploaden",
+  "merchantKnowledge.upload.finalizing": "Afronden",
+  "merchantKnowledge.upload.queued": "In wachtrij",
+  "merchantKnowledge.upload.pending": "Opgeslagen voor verwerking",
+  "merchantKnowledge.upload.failed": "Upload mislukt",
+  "merchantKnowledge.upload.reprocess": "Opnieuw verwerken",
+  "merchantKnowledge.upload.replaceFile": "Bestand vervangen",
+  "merchantKnowledge.upload.edit": "Bewerken",
+  "merchantKnowledge.upload.save": "Opslaan"
 }

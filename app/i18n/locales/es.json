@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Precios",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Página web",
   "merchantKnowledge.dataFormats.CSV.label": "Hoja de cálculo CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "Hoja de cálculo Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Hoja de cálculo Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Finalidad",
+  "merchantKnowledge.upload.dataFormat": "Formato de datos",
+  "merchantKnowledge.upload.sourceName": "Nombre de la fuente",
+  "merchantKnowledge.upload.file": "Archivo",
+  "merchantKnowledge.upload.maxSize": "Tamaño máximo de carga: {bytes} bytes",
+  "merchantKnowledge.upload.language": "Idioma",
+  "merchantKnowledge.upload.submit": "Subir archivo",
+  "merchantKnowledge.upload.preparing": "Preparando",
+  "merchantKnowledge.upload.uploading": "Subiendo",
+  "merchantKnowledge.upload.finalizing": "Finalizando",
+  "merchantKnowledge.upload.queued": "En cola",
+  "merchantKnowledge.upload.pending": "Guardado para procesar",
+  "merchantKnowledge.upload.failed": "Error al subir el archivo",
+  "merchantKnowledge.upload.reprocess": "Volver a procesar",
+  "merchantKnowledge.upload.replaceFile": "Reemplazar archivo",
+  "merchantKnowledge.upload.edit": "Editar",
+  "merchantKnowledge.upload.save": "Guardar"
 }

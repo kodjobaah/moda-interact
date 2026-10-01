@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Preços",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Página da web",
   "merchantKnowledge.dataFormats.CSV.label": "Planilha CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "Planilha Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Planilha Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Finalidade",
+  "merchantKnowledge.upload.dataFormat": "Formato dos dados",
+  "merchantKnowledge.upload.sourceName": "Nome da fonte",
+  "merchantKnowledge.upload.file": "Arquivo",
+  "merchantKnowledge.upload.maxSize": "Tamanho máximo do upload: {bytes} bytes",
+  "merchantKnowledge.upload.language": "Idioma",
+  "merchantKnowledge.upload.submit": "Enviar arquivo",
+  "merchantKnowledge.upload.preparing": "Preparando",
+  "merchantKnowledge.upload.uploading": "Enviando",
+  "merchantKnowledge.upload.finalizing": "Finalizando",
+  "merchantKnowledge.upload.queued": "Na fila",
+  "merchantKnowledge.upload.pending": "Salvo para processamento",
+  "merchantKnowledge.upload.failed": "Falha no envio do arquivo",
+  "merchantKnowledge.upload.reprocess": "Processar novamente",
+  "merchantKnowledge.upload.replaceFile": "Substituir arquivo",
+  "merchantKnowledge.upload.edit": "Editar",
+  "merchantKnowledge.upload.save": "Salvar"
 }

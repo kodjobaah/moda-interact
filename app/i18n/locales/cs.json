@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Ceny",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Webová stránka",
   "merchantKnowledge.dataFormats.CSV.label": "Tabulka CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "Tabulka Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Tabulka Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Účel",
+  "merchantKnowledge.upload.dataFormat": "Formát dat",
+  "merchantKnowledge.upload.sourceName": "Název zdroje",
+  "merchantKnowledge.upload.file": "Soubor",
+  "merchantKnowledge.upload.maxSize": "Maximální velikost nahrávaného souboru: {bytes} bajtů",
+  "merchantKnowledge.upload.language": "Jazyk",
+  "merchantKnowledge.upload.submit": "Nahrát soubor",
+  "merchantKnowledge.upload.preparing": "Příprava",
+  "merchantKnowledge.upload.uploading": "Nahrávání",
+  "merchantKnowledge.upload.finalizing": "Dokončování",
+  "merchantKnowledge.upload.queued": "Zařazeno do fronty",
+  "merchantKnowledge.upload.pending": "Uloženo ke zpracování",
+  "merchantKnowledge.upload.failed": "Nahrání se nezdařilo",
+  "merchantKnowledge.upload.reprocess": "Znovu zpracovat",
+  "merchantKnowledge.upload.replaceFile": "Nahradit soubor",
+  "merchantKnowledge.upload.edit": "Upravit",
+  "merchantKnowledge.upload.save": "Uložit"
 }

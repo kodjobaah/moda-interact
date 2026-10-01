@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useFetcher, useRevalidator } from "react-router";
 import type { loader } from "@/routes/app/recovery-settings/route";
+import MerchantKnowledgeUploadForm from "./MerchantKnowledgeUploadForm";
 
 type KnowledgeData = Awaited<ReturnType<typeof loader>>["merchantKnowledge"];
 type Translate = (key: string, values?: Record<string, string | number>) => string;
@@ -15,23 +16,26 @@ export default function MerchantKnowledgeSection({
   const createFetcher = useFetcher();
   const reorderFetcher = useFetcher();
   const refreshFetcher = useFetcher();
+  const reprocessFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const revalidator = useRevalidator();
-  const busy = [createFetcher, reorderFetcher, refreshFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
+  const busy = [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
   const [selectedPurpose, setSelectedPurpose] = useState(data.catalogue[0]?.purpose.key ?? "");
 
   useEffect(() => {
-    if ([createFetcher, reorderFetcher, refreshFetcher, deleteFetcher].some((fetcher) => fetcher.data?.ok))
+    if ([createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.data?.ok))
       void revalidator.revalidate();
-  }, [createFetcher, reorderFetcher, refreshFetcher, deleteFetcher, revalidator]);
+  }, [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher, revalidator]);
 
   function submit(fetcher: typeof createFetcher, form: HTMLFormElement) {
     const body = new FormData(form);
     fetcher.submit(body, { method: "post", action: form.action });
   }
 
-  const purposes = [...new Map(data.catalogue.map((item) => [item.purpose.key, item.purpose])).values()];
-  const purposeType = data.catalogue.find((item) => item.purpose.key === selectedPurpose && item.dataFormat.key === "WEB_PAGE");
+  const webCatalogue = data.catalogue.filter((item) => item.dataFormat.key === "WEB_PAGE");
+  const uploadCatalogue = data.catalogue.filter((item) => item.dataFormat.key === "CSV" || item.dataFormat.key === "XLSX");
+  const purposes = [...new Map(webCatalogue.map((item) => [item.purpose.key, item.purpose])).values()];
+  const purposeType = webCatalogue.find((item) => item.purpose.key === selectedPurpose);
 
   return (
     <section className="moda-recovery-panel" aria-labelledby="merchant-knowledge-heading">
@@ -54,7 +58,7 @@ export default function MerchantKnowledgeSection({
               {data.configuredCount} of {data.maxKnowledgeSources} sources configured
           </p>
 
-          {data.catalogue.length ? (
+          {webCatalogue.length ? (
             <form
               action="/app/merchant-knowledge/source"
               method="post"
@@ -100,6 +104,16 @@ export default function MerchantKnowledgeSection({
               <p role="status">No web page source types are available for this plan.</p>
           )}
 
+          {uploadCatalogue.length ? (
+            <MerchantKnowledgeUploadForm
+              catalogue={uploadCatalogue}
+              maxUploadBytes={data.maxUploadBytes}
+              defaultLanguageTag={data.defaultLanguageTag}
+              supportedLanguageTags={data.supportedLanguageTags}
+              t={t}
+            />
+          ) : null}
+
           {!data.sources.length ? (
               <p role="status">No knowledge sources configured.</p>
           ) : (
@@ -109,7 +123,7 @@ export default function MerchantKnowledgeSection({
                   <div>
                     <h3>{source.name}</h3>
                     <p>{t(`merchantKnowledge.purposes.${source.purposeKey}.label`)} · {t(`merchantKnowledge.dataFormats.${source.dataFormatKey}.label`)} · {source.languageTag}</p>
-                      <p>{source.revision?.requestedUrl ?? "No URL recorded"}</p>
+                      <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? "No URL recorded"}</p>
                     <p>
                       {source.dormantReason
                           ? source.dormantReason.replaceAll("_", " ").toLowerCase()
@@ -138,20 +152,44 @@ export default function MerchantKnowledgeSection({
                       <input type="hidden" name="sourceId" value={source.id} />
                       <button type="submit" disabled={busy || source.dataFormatKey !== "WEB_PAGE"}>Refresh</button>
                     </form>
+                    {source.dataFormatKey === "CSV" || source.dataFormatKey === "XLSX" ? (
+                      <>
+                        <form action="/app/merchant-knowledge/reprocess" method="post" onSubmit={(event) => {
+                          event.preventDefault();
+                          submit(reprocessFetcher, event.currentTarget);
+                        }}>
+                          <input type="hidden" name="sourceId" value={source.id} />
+                          <button type="submit" disabled={busy || !source.currentlyPlanEntitled}>{t("merchantKnowledge.upload.reprocess")}</button>
+                        </form>
+                        <details>
+                          <summary>{t("merchantKnowledge.upload.replaceFile")}</summary>
+                          <MerchantKnowledgeUploadForm
+                            catalogue={uploadCatalogue.filter((item) => item.purpose.key === source.purposeKey && item.dataFormat.key === source.dataFormatKey)}
+                            maxUploadBytes={data.maxUploadBytes}
+                            defaultLanguageTag={data.defaultLanguageTag}
+                            supportedLanguageTags={data.supportedLanguageTags}
+                            sourceId={source.id}
+                            initialName={source.name}
+                            initialLanguageTag={source.languageTag}
+                            t={t}
+                          />
+                        </details>
+                      </>
+                    ) : null}
                     <details>
-                      <summary>Edit</summary>
+                      <summary>{t("merchantKnowledge.upload.edit")}</summary>
                       <form action="/app/merchant-knowledge/source" method="post" onSubmit={(event) => {
                         event.preventDefault();
                         const body = new FormData(event.currentTarget);
-                        body.set("operation", "edit");
+                        body.set("operation", source.dataFormatKey === "WEB_PAGE" ? "edit" : "edit-upload");
                         createFetcher.submit(body, { method: "post", action: event.currentTarget.action });
                       }}>
                         <input type="hidden" name="operation" value="edit" />
                         <input type="hidden" name="sourceId" value={source.id} />
-                        <label>Source name<input name="name" maxLength={160} defaultValue={source.name} required /></label>
-                        <label>URL<input name="url" type="url" maxLength={2048} defaultValue={source.revision?.requestedUrl ?? ""} required /></label>
-                        <label>Language<select name="languageTag" defaultValue={source.languageTag}>{data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label>
-                        <button type="submit" disabled={busy}>Save</button>
+                        <label>{t("merchantKnowledge.upload.sourceName")}<input name="name" maxLength={160} defaultValue={source.name} required /></label>
+                        {source.dataFormatKey === "WEB_PAGE" ? <label>URL<input name="url" type="url" maxLength={2048} defaultValue={source.revision?.requestedUrl ?? ""} required /></label> : null}
+                        <label>{t("merchantKnowledge.upload.language")}<select name="languageTag" defaultValue={source.languageTag}>{data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label>
+                        <button type="submit" disabled={busy || !source.currentlyPlanEntitled}>{t("merchantKnowledge.upload.save")}</button>
                       </form>
                     </details>
                     <form action="/app/merchant-knowledge/delete" method="post" onSubmit={(event) => {

@@ -5,6 +5,7 @@ import {
   editWebPageSource,
   MerchantKnowledgeError,
 } from "@/services/merchant-knowledge/merchant-knowledge.server";
+import { editMerchantKnowledgeUploadSource } from "@/services/merchant-knowledge/upload.server";
 
 function validFields(form: FormData, fields: readonly string[]): boolean {
   return [...form.keys()].every((key) => fields.includes(key) && form.getAll(key).length === 1);
@@ -23,6 +24,8 @@ export async function action({ request }: ActionFunctionArgs) {
     ? ["operation", "name", "purposeKey", "dataFormatKey", "url", "languageTag"]
     : operation === "edit"
       ? ["operation", "sourceId", "name", "url", "languageTag"]
+      : operation === "edit-upload"
+        ? ["operation", "sourceId", "name", "languageTag"]
       : [];
   if (!fields.length || !validFields(form, fields))
     return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
@@ -42,13 +45,22 @@ export async function action({ request }: ActionFunctionArgs) {
     const sourceId = stringField(form, "sourceId");
     if (!sourceId || sourceId.length > 128)
       return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
-    await editWebPageSource({
-      shopId: shop.id,
-      sourceId,
-      name: stringField(form, "name"),
-      url: stringField(form, "url"),
-      languageTag: stringField(form, "languageTag"),
-    });
+    if (operation === "edit-upload") {
+      await editMerchantKnowledgeUploadSource({
+        shopId: shop.id,
+        sourceId,
+        name: stringField(form, "name"),
+        languageTag: stringField(form, "languageTag"),
+      });
+    } else {
+      await editWebPageSource({
+        shopId: shop.id,
+        sourceId,
+        name: stringField(form, "name"),
+        url: stringField(form, "url"),
+        languageTag: stringField(form, "languageTag"),
+      });
+    }
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     if (error instanceof MerchantKnowledgeError)

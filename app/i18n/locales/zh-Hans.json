@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "价格",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "网页",
   "merchantKnowledge.dataFormats.CSV.label": "CSV 表格",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel 表格（.xlsx）"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel 表格（.xlsx）",
+  "merchantKnowledge.upload.purpose": "用途",
+  "merchantKnowledge.upload.dataFormat": "数据格式",
+  "merchantKnowledge.upload.sourceName": "来源名称",
+  "merchantKnowledge.upload.file": "文件",
+  "merchantKnowledge.upload.maxSize": "最大上传大小：{bytes} 字节",
+  "merchantKnowledge.upload.language": "语言",
+  "merchantKnowledge.upload.submit": "上传文件",
+  "merchantKnowledge.upload.preparing": "准备中",
+  "merchantKnowledge.upload.uploading": "上传中",
+  "merchantKnowledge.upload.finalizing": "正在完成",
+  "merchantKnowledge.upload.queued": "已加入队列",
+  "merchantKnowledge.upload.pending": "已保存，等待处理",
+  "merchantKnowledge.upload.failed": "上传失败",
+  "merchantKnowledge.upload.reprocess": "重新处理",
+  "merchantKnowledge.upload.replaceFile": "替换文件",
+  "merchantKnowledge.upload.edit": "编辑",
+  "merchantKnowledge.upload.save": "保存"
 }
