@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import type {
-  BillingPlan,
   PrismaClient,
   Subscription,
 } from "@prisma/client";
@@ -58,6 +57,25 @@ import {
 import { SubscriptionReadService } from "./subscription-read.service";
 import { MerchantRecoveryCapacityReadService } from "./merchant-recovery-capacity-read.service";
 import { MerchantBillingReadService } from "./merchant-billing-read.service";
+import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
+import {
+  matchesInitialFreeActivationToken,
+  SubscriptionActivationService,
+} from "./subscription-activation.service";
+import type {
+  CompletedFreeActivation,
+  FreeActivationResult,
+  InitialFreeActivationToken,
+} from "./subscription-activation.service";
+import { lockInitialFreeActivationState } from "./subscription-locks";
+
+export { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
+export type {
+  CompletedFreeActivation,
+  FreeActivationResult,
+  InitialFreeActivationToken,
+  InitialPaidActivationToken,
+} from "./subscription-activation.service";
 
 type TranslationDispatch = (translationId: string) => Promise<void>;
 
@@ -86,29 +104,6 @@ const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
-export const INITIAL_BILLING_RETRY_DELAY_MS = 60_000;
-
-export type InitialFreeActivationToken = Readonly<{
-  subscriptionId: string;
-  pendingPlanId: string;
-  pendingShopifyPlanHandle: string;
-  pendingEffectiveAt: Date;
-  nextReconcileAt: Date;
-  planKind?: BillingPlanKind;
-}>;
-
-export type InitialPaidActivationToken = InitialFreeActivationToken;
-
-export type FreeActivationResult = {
-  plan: BillingPlan;
-  mode: "INITIAL" | "VERIFIED_REPLAY";
-  token: InitialFreeActivationToken | null;
-};
-
-export type CompletedFreeActivation = {
-  subscriptionId: string;
-  nextReconcileAt: Date | null;
-};
 
 export type HostedPlanChangeReturnResult =
   | "current"
@@ -225,41 +220,6 @@ function sameRecoveryCreditProviderEvidence(
 
 function unresolvedPurchaseMessage(): string {
   return "A recovery credit pack is already awaiting Shopify confirmation.";
-}
-
-function matchesInitialFreeActivationToken(
-  subscription: {
-    id: string;
-    pendingPlanId: string | null;
-    pendingShopifyPlanHandle: string | null;
-    pendingEffectiveAt: Date | null;
-    nextReconcileAt: Date | null;
-  } | null,
-  expected: InitialFreeActivationToken,
-): boolean {
-  return subscription?.id === expected.subscriptionId &&
-    subscription.pendingPlanId === expected.pendingPlanId &&
-    subscription.pendingShopifyPlanHandle === expected.pendingShopifyPlanHandle &&
-    subscription.pendingEffectiveAt?.getTime() === expected.pendingEffectiveAt.getTime() &&
-    subscription.nextReconcileAt?.getTime() === expected.nextReconcileAt.getTime();
-}
-
-async function lockInitialFreeActivationState(
-  transaction: Prisma.TransactionClient,
-  shopId: string,
-): Promise<void> {
-  await transaction.$queryRaw(Prisma.sql`
-    SELECT "shopId"
-    FROM "shopify"."ShopSettings"
-    WHERE "shopId" = ${shopId}
-    FOR UPDATE
-  `);
-  await transaction.$queryRaw(Prisma.sql`
-    SELECT "id"
-    FROM "billing"."Subscription"
-    WHERE "shopId" = ${shopId}
-    FOR UPDATE
-  `);
 }
 
 async function lockShopForInitialPaidActivation(
@@ -415,6 +375,7 @@ async function persistSubscriptionEndedNotification(
 export class BillingService {
   private readonly planResolutionService: BillingPlanResolutionService;
   private readonly subscriptionReadService: SubscriptionReadService;
+  private readonly subscriptionActivationService: SubscriptionActivationService;
   private readonly recoveryCapacityReadService: MerchantRecoveryCapacityReadService;
   private readonly merchantBillingReadService: MerchantBillingReadService;
 
@@ -427,6 +388,10 @@ export class BillingService {
   ) {
     this.planResolutionService = new BillingPlanResolutionService(database);
     this.subscriptionReadService = new SubscriptionReadService(provider, database);
+    this.subscriptionActivationService = new SubscriptionActivationService(
+      database,
+      this.planResolutionService,
+    );
     this.recoveryCapacityReadService = new MerchantRecoveryCapacityReadService(
       database,
       this.planResolutionService,
@@ -448,119 +413,14 @@ export class BillingService {
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    const resolution = await this.resolveOrMaterializeBillingPlan(planHandle);
-    if (resolution.kind !== "READY" || resolution.plan.kind !== BillingPlanKind.FREE) return null;
-    const plan = resolution.plan;
-
-    const now = new Date();
-    return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
-      const currentSubscription = await transaction.subscription.findUnique({
-        where: { shopId },
-        select: {
-          status: true,
-          planId: true,
-          observedShopifyPlanHandle: true,
-        },
-      });
-      const isVerifiedReplay = currentSubscription?.planId === plan.id &&
-        currentSubscription.observedShopifyPlanHandle === planHandle &&
-        (currentSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
-          currentSubscription.status === SubscriptionProjectionStatus.TRIALING);
-      const isInitialActivation = !currentSubscription ||
-        (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
-          currentSubscription.planId === null &&
-          !currentSubscription.observedShopifyPlanHandle);
-      if (!isInitialActivation && !isVerifiedReplay) return null;
-
-      if (isVerifiedReplay) {
-        return { plan, mode: "VERIFIED_REPLAY", token: null };
-      }
-
-      const subscription = await transaction.subscription.upsert({
-        where: { shopId },
-        update: {
-          pendingShopifyPlanHandle: planHandle,
-          pendingPlanId: plan.id,
-          pendingEffectiveAt: now,
-          nextReconcileAt: now,
-        },
-        create: {
-          shopId,
-          status: SubscriptionProjectionStatus.NO_CONTRACT,
-          planId: null,
-          pendingShopifyPlanHandle: planHandle,
-          pendingPlanId: plan.id,
-          pendingEffectiveAt: now,
-          nextReconcileAt: now,
-        },
-      });
-      if (
-        !subscription.id ||
-        !subscription.pendingPlanId ||
-        !subscription.pendingShopifyPlanHandle ||
-        !subscription.pendingEffectiveAt ||
-        !subscription.nextReconcileAt
-      ) {
-        throw new Error("Initial Free activation token was not persisted.");
-      }
-      return {
-        plan,
-        mode: "INITIAL",
-        token: Object.freeze({
-          subscriptionId: subscription.id,
-          pendingPlanId: subscription.pendingPlanId,
-          pendingShopifyPlanHandle: subscription.pendingShopifyPlanHandle,
-          pendingEffectiveAt: subscription.pendingEffectiveAt,
-          nextReconcileAt: subscription.nextReconcileAt,
-          planKind: BillingPlanKind.FREE,
-        }),
-      };
-    });
+    return this.subscriptionActivationService.prepareFreeActivation(shopId, planHandle);
   }
 
   async preparePaidActivation(
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    const resolution = await this.resolveOrMaterializeBillingPlan(planHandle);
-    if (resolution.kind !== "READY" || resolution.plan.kind !== BillingPlanKind.PAID_METERED) return null;
-    const plan = resolution.plan;
-
-    const now = new Date();
-    return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
-      const currentSubscription = await transaction.subscription.findUnique({
-        where: { shopId },
-        select: { status: true, planId: true, observedShopifyPlanHandle: true },
-      });
-      const isInitialActivation = !currentSubscription ||
-        (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
-          currentSubscription.planId === null &&
-          !currentSubscription.observedShopifyPlanHandle);
-      if (!isInitialActivation) return null;
-
-      const subscription = await transaction.subscription.upsert({
-        where: { shopId },
-        update: { pendingShopifyPlanHandle: planHandle, pendingPlanId: plan.id, pendingEffectiveAt: now, nextReconcileAt: now },
-        create: { shopId, status: SubscriptionProjectionStatus.NO_CONTRACT, planId: null, pendingShopifyPlanHandle: planHandle, pendingPlanId: plan.id, pendingEffectiveAt: now, nextReconcileAt: now },
-      });
-      if (!subscription.id || !subscription.pendingPlanId || !subscription.pendingShopifyPlanHandle || !subscription.pendingEffectiveAt || !subscription.nextReconcileAt) {
-        throw new Error("Initial Paid activation token was not persisted.");
-      }
-      return {
-        plan,
-        mode: "INITIAL",
-        token: Object.freeze({
-          subscriptionId: subscription.id,
-          pendingPlanId: subscription.pendingPlanId,
-          pendingShopifyPlanHandle: subscription.pendingShopifyPlanHandle,
-          pendingEffectiveAt: subscription.pendingEffectiveAt,
-          nextReconcileAt: subscription.nextReconcileAt,
-          planKind: BillingPlanKind.PAID_METERED,
-        }),
-      };
-    });
+    return this.subscriptionActivationService.preparePaidActivation(shopId, planHandle);
   }
 
   async getSubscriptionProjection(shopId: string) {
@@ -578,39 +438,11 @@ export class BillingService {
     nextReconcileAt: Date;
     partnerErrorAt?: Date | null;
   }): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
-    return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
-      const subscription = await transaction.subscription.findUnique({
-        where: { shopId },
-        select: {
-          id: true,
-          pendingPlanId: true,
-          pendingShopifyPlanHandle: true,
-          pendingEffectiveAt: true,
-          nextReconcileAt: true,
-        },
-      });
-      if (!matchesInitialFreeActivationToken(subscription, expected)) {
-        return null;
-      }
-      const updated = await transaction.subscription.update({
-        where: { shopId },
-        data: {
-          nextReconcileAt,
-          ...(partnerErrorAt
-            ? {
-                lastSyncErrorCode: "PARTNER_API_ERROR",
-                lastSyncErrorAt: partnerErrorAt,
-              }
-            : {}),
-        },
-        select: { id: true, nextReconcileAt: true },
-      });
-      if (!updated.nextReconcileAt) return null;
-      return {
-        subscriptionId: updated.id,
-        nextReconcileAt: updated.nextReconcileAt,
-      };
+    return this.subscriptionActivationService.scheduleInitialFreeReconciliationIfCurrent({
+      shopId,
+      expected,
+      nextReconcileAt,
+      partnerErrorAt,
     });
   }
 
@@ -618,63 +450,7 @@ export class BillingService {
     shopId: string,
     requestedPlanHandle: string,
   ): Promise<CompletedFreeActivation | null> {
-    const topUpConfiguration = await this.planResolutionService.readRecoveryCreditTopUpConfiguration(requestedPlanHandle);
-    return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
-      const subscription = await transaction.subscription.findUnique({
-        where: { shopId },
-        include: { plan: true },
-      });
-      if (
-        !subscription ||
-        !subscription.plan ||
-        subscription.plan.kind !== BillingPlanKind.FREE ||
-        subscription.plan.shopifyPlanHandle !== requestedPlanHandle ||
-        (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
-        subscription.observedShopifyPlanHandle !== requestedPlanHandle
-      ) {
-        return null;
-      }
-      const hasPendingSelection =
-        subscription.pendingShopifyPlanHandle !== null ||
-        subscription.pendingPlanId !== null ||
-        subscription.pendingEffectiveAt !== null;
-
-      if (
-        hasPendingSelection &&
-        (
-        subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
-        subscription.pendingPlanId !== subscription.planId ||
-        !subscription.pendingEffectiveAt
-        )
-      ) {
-        return null;
-      }
-
-      const completionNow = new Date();
-      const completedNextReconcileAt = !topUpConfiguration.enabled
-        ? null
-        : subscription.currentPeriodEnd
-          ? new Date(Math.max(
-              completionNow.getTime(),
-              subscription.currentPeriodEnd.getTime() -
-                APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
-            ))
-          : new Date(completionNow.getTime() + INITIAL_BILLING_RETRY_DELAY_MS);
-      await transaction.subscription.update({
-        where: { shopId },
-        data: {
-          pendingShopifyPlanHandle: null,
-          pendingPlanId: null,
-          pendingEffectiveAt: null,
-          nextReconcileAt: completedNextReconcileAt,
-        },
-      });
-      return {
-        subscriptionId: subscription.id,
-        nextReconcileAt: completedNextReconcileAt,
-      };
-    });
+    return this.subscriptionActivationService.completeFreeActivation(shopId, requestedPlanHandle);
   }
 
 async getSubscription(
