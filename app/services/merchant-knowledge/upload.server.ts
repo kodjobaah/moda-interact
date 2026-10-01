@@ -161,13 +161,14 @@ export async function createMerchantKnowledgeUploadIntent(input: {
       bucket: deps.config.bucket,
       key: intent.objectKey,
       contentType,
+      ifNoneMatch: "*",
       expiresIn: SIGNED_PUT_SECONDS,
     });
     return {
       assetId: intent.id,
       uploadUrl,
       expiresAt: intent.uploadExpiresAt.toISOString(),
-      requiredHeaders: { "Content-Type": contentType },
+      requiredHeaders: { "Content-Type": contentType, "If-None-Match": "*" },
       maxUploadBytes: deps.config.maxUploadBytes,
     };
   } catch (error) {

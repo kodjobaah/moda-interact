@@ -12,7 +12,7 @@ export interface MerchantKnowledgeR2ObjectMetadata {
 }
 
 export interface MerchantKnowledgeR2Client {
-  signPut(input: { bucket: string; key: string; contentType: string; expiresIn: number }): Promise<string>;
+  signPut(input: { bucket: string; key: string; contentType: string; ifNoneMatch: "*"; expiresIn: number }): Promise<string>;
   headObject(input: { bucket: string; key: string }): Promise<MerchantKnowledgeR2ObjectMetadata>;
 }
 
@@ -28,11 +28,12 @@ export function createMerchantKnowledgeR2Client(config: MerchantKnowledgeR2Confi
   });
 
   return {
-    async signPut({ bucket, key, contentType, expiresIn }) {
+    async signPut({ bucket, key, contentType, ifNoneMatch, expiresIn }) {
       return getSignedUrl(client, new PutObjectCommand({
         Bucket: bucket,
         Key: key,
         ContentType: contentType,
+        IfNoneMatch: ifNoneMatch,
       }), { expiresIn });
     },
     async headObject({ bucket, key }) {

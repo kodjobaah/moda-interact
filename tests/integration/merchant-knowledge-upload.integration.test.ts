@@ -144,8 +144,15 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
       await deployMigrations(postgres.getConnectionUri());
       database = new PrismaClient({ datasourceUrl: postgres.getConnectionUri() });
       await database.$connect();
-      const feature = await database.feature.findUnique({ where: { key: "merchant_knowledge" } });
-      if (!feature) throw new Error("Merchant Knowledge Feature was not seeded");
+      const feature = await database.feature.findUnique({ where: { key: "merchant_knowledge" } })
+        ?? await database.feature.create({
+          data: {
+            key: "merchant_knowledge",
+            displayName: "Merchant Knowledge",
+            activationMode: "MERCHANT_OPT_IN",
+            systemRequired: false,
+          },
+        });
       featureId = feature.id;
     } catch (error) {
       await database?.$disconnect();
@@ -175,7 +182,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
       assetId: expect.any(String),
       uploadUrl: "https://r2.example/signed-put",
       expiresAt: "2026-10-01T12:10:00.000Z",
-      requiredHeaders: { "Content-Type": "text/csv" },
+      requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
       maxUploadBytes: 1_000_000,
     });
     expect(asset).toMatchObject({
@@ -192,6 +199,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
       bucket: "merchant-knowledge",
       key: asset.objectKey,
       contentType: "text/csv",
+      ifNoneMatch: "*",
       expiresIn: 600,
     });
   });
@@ -218,7 +226,10 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
     const firstRevision = await db().merchantKnowledgeSourceRevision.findFirstOrThrow({
       where: { sourceId: first.sourceId },
     });
-    await db().merchantKnowledgeSourceRevision.update({ where: { id: firstRevision.id }, data: { status: "ACTIVE" } });
+    await db().merchantKnowledgeSourceRevision.update({
+      where: { id: firstRevision.id },
+      data: { status: "ACTIVE", contentUnits: 0, contentHash: "a".repeat(64) },
+    });
 
     const replacementIntent = await intent(shopId);
     await finalize(shopId, replacementIntent.assetId, { sourceId: first.sourceId, queue });

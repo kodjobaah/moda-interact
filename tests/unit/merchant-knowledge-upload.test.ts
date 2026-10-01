@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from "vitest";
+import { createMerchantKnowledgeR2Client } from "../../app/services/merchant-knowledge/r2-client.server";
 import {
   loadMerchantKnowledgeR2Config,
   MerchantKnowledgeR2ConfigurationError,
@@ -133,8 +134,30 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     bucket: "merchant-knowledge",
     key: created.data.objectKey,
     contentType: "text/csv",
+    ifNoneMatch: "*",
     expiresIn: 600,
   });
+  expect(result).toEqual({
+    assetId: expect.any(String),
+    uploadUrl: "https://r2.example/signed-put",
+    expiresAt: "2026-10-01T12:10:00.000Z",
+    requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
+    maxUploadBytes: 1_000,
+  });
+});
+
+it("includes the lowercase if-none-match header in the signed PUT request", async () => {
+  const client = createMerchantKnowledgeR2Client(testConfig);
+  const signedUrl = await client.signPut({
+    bucket: "merchant-knowledge",
+    key: "merchant-knowledge/shop-1/asset-1/source.csv",
+    contentType: "text/csv",
+    ifNoneMatch: "*",
+    expiresIn: 600,
+  });
+
+  const signedHeaders = new URL(signedUrl).searchParams.get("X-Amz-SignedHeaders")?.split(";");
+  expect(signedHeaders).toContain("if-none-match");
 });
 
 it("rejects unsupported file pair and size before allocating an asset", async () => {

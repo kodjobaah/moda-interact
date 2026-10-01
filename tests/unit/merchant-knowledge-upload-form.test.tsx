@@ -30,7 +30,7 @@ beforeEach(() => {
     .mockResolvedValueOnce({ ok: true, json: async () => ({
       assetId: "asset-1",
       uploadUrl: "https://r2.example/signed-put",
-      requiredHeaders: { "Content-Type": "text/csv" },
+      requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
     }) })
     .mockResolvedValueOnce({ ok: true })
     .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, queued: true }) });
@@ -80,7 +80,7 @@ it("uploads bytes directly to R2 without credentials, hashes, then finalizes", a
     method: "PUT",
     credentials: "omit",
     body: file,
-    headers: { "Content-Type": "text/csv" },
+    headers: { "Content-Type": "text/csv", "If-None-Match": "*" },
   }));
   expect(fetchMock).toHaveBeenNthCalledWith(3, "/app/merchant-knowledge/upload-finalize", expect.objectContaining({ method: "POST" }));
   expect(mocks.revalidate).toHaveBeenCalledOnce();
@@ -115,7 +115,7 @@ it("shows saved-for-processing when finalization succeeds without queue publicat
     .mockResolvedValueOnce({ ok: true, json: async () => ({
       assetId: "asset-1",
       uploadUrl: "https://r2.example/signed-put",
-      requiredHeaders: { "Content-Type": "text/csv" },
+      requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
     }) })
     .mockResolvedValueOnce({ ok: true })
     .mockResolvedValueOnce({ ok: true, json: async () => ({ ok: true, queued: false }) });
