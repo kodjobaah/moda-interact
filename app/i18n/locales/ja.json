@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "価格",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "ウェブページ",
   "merchantKnowledge.dataFormats.CSV.label": "CSVスプレッドシート",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excelスプレッドシート（.xlsx）"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excelスプレッドシート（.xlsx）",
+  "merchantKnowledge.upload.purpose": "目的",
+  "merchantKnowledge.upload.dataFormat": "データ形式",
+  "merchantKnowledge.upload.sourceName": "ソース名",
+  "merchantKnowledge.upload.file": "ファイル",
+  "merchantKnowledge.upload.maxSize": "アップロードの最大サイズ: {bytes} バイト",
+  "merchantKnowledge.upload.language": "言語",
+  "merchantKnowledge.upload.submit": "ファイルをアップロード",
+  "merchantKnowledge.upload.preparing": "準備中",
+  "merchantKnowledge.upload.uploading": "アップロード中",
+  "merchantKnowledge.upload.finalizing": "完了処理中",
+  "merchantKnowledge.upload.queued": "キューに追加済み",
+  "merchantKnowledge.upload.pending": "処理用に保存済み",
+  "merchantKnowledge.upload.failed": "アップロードに失敗しました",
+  "merchantKnowledge.upload.reprocess": "再処理",
+  "merchantKnowledge.upload.replaceFile": "ファイルを置き換え",
+  "merchantKnowledge.upload.edit": "編集",
+  "merchantKnowledge.upload.save": "保存"
 }

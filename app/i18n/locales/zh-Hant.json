@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "價格",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "網頁",
   "merchantKnowledge.dataFormats.CSV.label": "CSV 試算表",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel 試算表（.xlsx）"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel 試算表（.xlsx）",
+  "merchantKnowledge.upload.purpose": "用途",
+  "merchantKnowledge.upload.dataFormat": "資料格式",
+  "merchantKnowledge.upload.sourceName": "來源名稱",
+  "merchantKnowledge.upload.file": "檔案",
+  "merchantKnowledge.upload.maxSize": "最大上傳大小：{bytes} 位元組",
+  "merchantKnowledge.upload.language": "語言",
+  "merchantKnowledge.upload.submit": "上傳檔案",
+  "merchantKnowledge.upload.preparing": "準備中",
+  "merchantKnowledge.upload.uploading": "上傳中",
+  "merchantKnowledge.upload.finalizing": "正在完成",
+  "merchantKnowledge.upload.queued": "已加入佇列",
+  "merchantKnowledge.upload.pending": "已儲存，等待處理",
+  "merchantKnowledge.upload.failed": "上傳失敗",
+  "merchantKnowledge.upload.reprocess": "重新處理",
+  "merchantKnowledge.upload.replaceFile": "取代檔案",
+  "merchantKnowledge.upload.edit": "編輯",
+  "merchantKnowledge.upload.save": "儲存"
 }

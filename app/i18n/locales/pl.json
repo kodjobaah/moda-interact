@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Cennik",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Strona internetowa",
   "merchantKnowledge.dataFormats.CSV.label": "Arkusz CSV",
-  "merchantKnowledge.dataFormats.XLSX.label": "Arkusz Excel (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Arkusz Excel (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Cel",
+  "merchantKnowledge.upload.dataFormat": "Format danych",
+  "merchantKnowledge.upload.sourceName": "Nazwa źródła",
+  "merchantKnowledge.upload.file": "Plik",
+  "merchantKnowledge.upload.maxSize": "Maksymalny rozmiar przesyłanego pliku: {bytes} bajtów",
+  "merchantKnowledge.upload.language": "Język",
+  "merchantKnowledge.upload.submit": "Prześlij plik",
+  "merchantKnowledge.upload.preparing": "Przygotowywanie",
+  "merchantKnowledge.upload.uploading": "Przesyłanie",
+  "merchantKnowledge.upload.finalizing": "Finalizowanie",
+  "merchantKnowledge.upload.queued": "W kolejce",
+  "merchantKnowledge.upload.pending": "Zapisano do przetworzenia",
+  "merchantKnowledge.upload.failed": "Przesyłanie nie powiodło się",
+  "merchantKnowledge.upload.reprocess": "Przetwórz ponownie",
+  "merchantKnowledge.upload.replaceFile": "Zastąp plik",
+  "merchantKnowledge.upload.edit": "Edytuj",
+  "merchantKnowledge.upload.save": "Zapisz"
 }

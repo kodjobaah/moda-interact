@@ -39,10 +39,10 @@ export async function enqueueMerchantKnowledgeRevisionBestEffort(
     requestedAt: Date;
   },
   injectedQueue?: KnowledgeQueue | null,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const targetQueue = injectedQueue === undefined ? await getQueue() : injectedQueue;
-    if (!targetQueue) return;
+    if (!targetQueue) return false;
     const data = MerchantKnowledgeProcessSourceRevisionJobSchema.parse({
       schemaVersion: MERCHANT_KNOWLEDGE_PROCESS_SCHEMA_VERSION,
       shopId: input.shopId,
@@ -53,8 +53,10 @@ export async function enqueueMerchantKnowledgeRevisionBestEffort(
     await targetQueue.add(MERCHANT_KNOWLEDGE_PROCESS_JOB_NAME, data, {
       jobId: createMerchantKnowledgeProcessJobId(input),
     });
+    return true;
   } catch {
     // The revision is durable before this queue hint is published.
+    return false;
   }
 }
 

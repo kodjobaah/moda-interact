@@ -534,5 +534,22 @@
   "merchantKnowledge.purposes.PRICING.label": "Priser",
   "merchantKnowledge.dataFormats.WEB_PAGE.label": "Webbsida",
   "merchantKnowledge.dataFormats.CSV.label": "CSV-kalkylblad",
-  "merchantKnowledge.dataFormats.XLSX.label": "Excel-kalkylblad (.xlsx)"
+  "merchantKnowledge.dataFormats.XLSX.label": "Excel-kalkylblad (.xlsx)",
+  "merchantKnowledge.upload.purpose": "Syfte",
+  "merchantKnowledge.upload.dataFormat": "Dataformat",
+  "merchantKnowledge.upload.sourceName": "Källnamn",
+  "merchantKnowledge.upload.file": "Fil",
+  "merchantKnowledge.upload.maxSize": "Maximal uppladdningsstorlek: {bytes} byte",
+  "merchantKnowledge.upload.language": "Språk",
+  "merchantKnowledge.upload.submit": "Ladda upp fil",
+  "merchantKnowledge.upload.preparing": "Förbereder",
+  "merchantKnowledge.upload.uploading": "Laddar upp",
+  "merchantKnowledge.upload.finalizing": "Slutför",
+  "merchantKnowledge.upload.queued": "Köad",
+  "merchantKnowledge.upload.pending": "Sparad för bearbetning",
+  "merchantKnowledge.upload.failed": "Uppladdningen misslyckades",
+  "merchantKnowledge.upload.reprocess": "Bearbeta igen",
+  "merchantKnowledge.upload.replaceFile": "Ersätt fil",
+  "merchantKnowledge.upload.edit": "Redigera",
+  "merchantKnowledge.upload.save": "Spara"
 }
