@@ -105,6 +105,31 @@ async function grantPlan(
   });
 }
 
+async function updatePlanConfiguration(shopId: string, configuration: unknown): Promise<void> {
+  const subscription = await db().subscription.findUniqueOrThrow({
+    where: { shopId },
+    select: { planId: true },
+  });
+  if (!subscription.planId) throw new Error("Current plan is unavailable");
+  const updated = await db().billingPlanFeature.updateMany({
+    where: { planId: subscription.planId, featureId },
+    data: { configuration: configuration as Prisma.InputJsonValue },
+  });
+  if (updated.count !== 1) throw new Error("Merchant Knowledge plan mapping is unavailable");
+}
+
+async function setPlanFeatureEnabled(shopId: string, enabled: boolean): Promise<void> {
+  const subscription = await db().subscription.findUniqueOrThrow({
+    where: { shopId },
+    select: { planId: true },
+  });
+  if (!subscription.planId) throw new Error("Current plan is unavailable");
+  await db().billingPlanFeature.updateMany({
+    where: { planId: subscription.planId, featureId },
+    data: { enabled },
+  });
+}
+
 async function setMerchantEnabled(shopId: string, enabled: boolean): Promise<void> {
   const snapshot = await loadFeaturePreferences(shopId, db());
   await saveFeaturePreferences(
@@ -350,6 +375,90 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
       allowedSourceTypes: [{ purposeKey: "FAQ", dataFormatKey: "WEB_PAGE" }],
     });
     await expect(createPage(restrictedShop, "Pricing", { purposeKey: "PRICING" })).rejects.toMatchObject({ code: "DENIED" });
+  }, 30_000);
+
+  it("denies edit and refresh outside a downgraded source-count window until reorder", async () => {
+    const shopId = await createShop();
+    await grantPlan(shopId);
+    await setMerchantEnabled(shopId, true);
+    const add = vi.fn().mockResolvedValue(undefined);
+    const queueClient = queue(add);
+    const first = await createPage(shopId, "First source", { queue: queueClient });
+    const second = await createPage(shopId, "Second source", { queue: queueClient });
+
+    await updatePlanConfiguration(shopId, { ...baseConfiguration, maxKnowledgeSources: 1 });
+    let readModel = await loadMerchantKnowledge(shopId, db());
+    expect(readModel.sources.map(({ id, dormantReason }) => ({ id, dormantReason }))).toEqual([
+      { id: first.sourceId, dormantReason: null },
+      { id: second.sourceId, dormantReason: "SOURCE_COUNT" },
+    ]);
+    const beforeDeniedMutations = {
+      source: await db().merchantKnowledgeSource.findUniqueOrThrow({ where: { id: second.sourceId } }),
+      revisions: await db().merchantKnowledgeSourceRevision.findMany({ where: { sourceId: second.sourceId } }),
+      enqueueCount: add.mock.calls.length,
+    };
+
+    await expect(editWebPageSource({
+      shopId,
+      sourceId: second.sourceId,
+      name: "Second source edited",
+      url: "https://example.test/second-edited",
+      languageTag: "en",
+      database: db(),
+      queue: queueClient,
+    })).rejects.toMatchObject({ code: "DENIED" });
+    await expect(refreshWebPageSource({
+      shopId,
+      sourceId: second.sourceId,
+      database: db(),
+      queue: queueClient,
+    })).rejects.toMatchObject({ code: "DENIED" });
+    expect(await db().merchantKnowledgeSource.findUniqueOrThrow({ where: { id: second.sourceId } })).toEqual(beforeDeniedMutations.source);
+    expect(await db().merchantKnowledgeSourceRevision.findMany({ where: { sourceId: second.sourceId } })).toEqual(beforeDeniedMutations.revisions);
+    expect(add).toHaveBeenCalledTimes(beforeDeniedMutations.enqueueCount);
+
+    await reorderMerchantKnowledgeSources({ shopId, sourceIds: [second.sourceId, first.sourceId], database: db() });
+    readModel = await loadMerchantKnowledge(shopId, db());
+    expect(readModel.sources.map(({ id, currentlyPlanEntitled, dormantReason }) => ({ id, currentlyPlanEntitled, dormantReason }))).toEqual([
+      { id: second.sourceId, currentlyPlanEntitled: true, dormantReason: null },
+      { id: first.sourceId, currentlyPlanEntitled: false, dormantReason: "SOURCE_COUNT" },
+    ]);
+
+    await refreshWebPageSource({ shopId, sourceId: second.sourceId, database: db(), queue: queueClient });
+    expect(add).toHaveBeenCalledTimes(beforeDeniedMutations.enqueueCount + 1);
+    expect(await db().merchantKnowledgeSourceRevision.findMany({
+      where: { sourceId: second.sourceId },
+      orderBy: { generation: "asc" },
+      select: { generation: true, reason: true, status: true },
+    })).toEqual([
+      { generation: 1, reason: "CREATE", status: "PENDING" },
+      { generation: 2, reason: "REFRESH", status: "PENDING" },
+    ]);
+  }, 30_000);
+
+  it("denies delete and reorder without current entitlement without changing source positions", async () => {
+    const shopId = await createShop();
+    await grantPlan(shopId);
+    const first = await createPage(shopId, "First source");
+    const second = await createPage(shopId, "Second source");
+    await setPlanFeatureEnabled(shopId, false);
+    const before = await db().merchantKnowledgeSource.findMany({
+      where: { shopId },
+      orderBy: [{ position: "asc" }, { id: "asc" }],
+    });
+
+    await expect(deleteMerchantKnowledgeSource({ shopId, sourceId: first.sourceId, database: db() }))
+      .rejects.toMatchObject({ code: "DENIED" });
+    await expect(reorderMerchantKnowledgeSources({
+      shopId,
+      sourceIds: [second.sourceId, first.sourceId],
+      database: db(),
+    })).rejects.toMatchObject({ code: "DENIED" });
+
+    expect(await db().merchantKnowledgeSource.findMany({
+      where: { shopId },
+      orderBy: [{ position: "asc" }, { id: "asc" }],
+    })).toEqual(before);
   }, 30_000);
 
   it("isolates source mutations and read models by shop", async () => {

@@ -59,7 +59,9 @@ function parsePublicHttpsUrl(value: unknown): string {
     throw invalid();
   }
   if (url.protocol !== "https:" || url.username || url.password) throw invalid();
-  return url.toString();
+  const canonical = url.toString();
+  if (canonical.length > 2048) throw invalid();
+  return canonical;
 }
 
 function parseLanguageTag(value: unknown, defaultLanguageTag: string | null): string {
@@ -255,6 +257,35 @@ async function requireAllowedPair(
   return pair;
 }
 
+async function requireCurrentlyPlanEntitledSource(
+  transaction: Transaction,
+  shopId: string,
+  sourceId: string,
+  configuration: {
+    maxKnowledgeSources: number;
+    allowedSourceTypes: readonly { purposeKey: string; dataFormatKey: string }[];
+  },
+): Promise<void> {
+  const allowed = new Set(configuration.allowedSourceTypes.map(({ purposeKey, dataFormatKey }) =>
+    `${purposeKey}\u0000${dataFormatKey}`,
+  ));
+  const sources = await transaction.merchantKnowledgeSource.findMany({
+    where: { shopId },
+    orderBy: [{ position: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      purpose: { select: { key: true, active: true } },
+      dataFormat: { select: { key: true, active: true } },
+    },
+  });
+  const eligible = sources.filter((source) =>
+    source.purpose.active && source.dataFormat.active &&
+    allowed.has(`${source.purpose.key}\u0000${source.dataFormat.key}`),
+  );
+  if (!eligible.slice(0, configuration.maxKnowledgeSources).some(({ id }) => id === sourceId))
+    throw denied();
+}
+
 async function createRevision(
   transaction: Transaction,
   input: { sourceId: string; shopId: string; generation: number; reason: "CREATE" | "URL_CHANGE" | "REFRESH"; requestedUrl: string },
@@ -380,6 +411,7 @@ export async function editWebPageSource(input: {
     const pair = await loadSourcePair(source, transaction);
     if (!pair || pair.dataFormat.key !== "WEB_PAGE") throw denied();
     await requireAllowedPair(transaction, entitlement.configuration, { purposeKey: pair.purpose.key, dataFormatKey: pair.dataFormat.key });
+    await requireCurrentlyPlanEntitledSource(transaction, input.shopId, source.id, entitlement.configuration);
     const latest = source.revisions[0];
     if (!latest) throw conflict();
     const urlChanged = latest.requestedUrl !== requestedUrl;
@@ -424,6 +456,7 @@ export async function refreshWebPageSource(input: {
     });
     if (source.dataFormat.key !== "WEB_PAGE" || !source.revisions[0]?.requestedUrl) throw denied();
     await requireAllowedPair(transaction, entitlement.configuration, { purposeKey: source.purpose.key, dataFormatKey: source.dataFormat.key });
+    await requireCurrentlyPlanEntitledSource(transaction, input.shopId, source.id, entitlement.configuration);
     const activation = await readActivation(input.shopId, transaction);
     const generation = source.currentGeneration + 1;
     await transaction.merchantKnowledgeSource.update({ where: { id: source.id }, data: { currentGeneration: generation } });
@@ -466,6 +499,8 @@ export async function deleteMerchantKnowledgeSource(input: {
   const database = input.database ?? db;
   await database.$transaction(async (transaction) => {
     await lockShop(input.shopId, transaction);
+    const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
       WHERE "id" = ${input.sourceId} AND "shopId" = ${input.shopId}
@@ -493,6 +528,8 @@ export async function reorderMerchantKnowledgeSources(input: {
   const database = input.database ?? db;
   await database.$transaction(async (transaction) => {
     await lockShop(input.shopId, transaction);
+    const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.merchantKnowledgeSource.findMany({
       where: { shopId: input.shopId },
       select: { id: true },
