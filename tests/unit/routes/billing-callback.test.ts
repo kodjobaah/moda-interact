@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   enqueueReconcile: vi.fn(),
   enqueueDiscountSync: vi.fn(),
   updateOnboarding: vi.fn(),
+  activateInitialCategory: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -42,6 +43,9 @@ vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
 }));
 vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", () => ({
   enqueueSubscriptionActivatedDiscountSyncBestEffort: mocks.enqueueDiscountSync,
+}));
+vi.mock("../../../app/services/store-profile/store-category-activation.server", () => ({
+  activateInitialPendingStoreCategoryIfEligible: mocks.activateInitialCategory,
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
@@ -148,6 +152,7 @@ beforeEach(() => {
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
+  mocks.activateInitialCategory.mockResolvedValue({ kind: "ACTIVATED" });
 });
 
 describe("billing callback activation", () => {
@@ -164,6 +169,8 @@ describe("billing callback activation", () => {
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
+    expect(mocks.activateInitialCategory).toHaveBeenCalledWith({ shopId: "shop-1" });
+    expect(mocks.completeFreeActivation).toHaveBeenCalledBefore(mocks.activateInitialCategory);
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
@@ -190,6 +197,8 @@ describe("billing callback activation", () => {
 
     expect(mocks.preparePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
+    expect(mocks.activateInitialCategory).toHaveBeenCalledWith({ shopId: "shop-1" });
+    expect(mocks.syncSubscription).toHaveBeenCalledBefore(mocks.activateInitialCategory);
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));
@@ -474,7 +483,30 @@ describe("billing callback activation", () => {
 
     expect(mocks.updateOnboarding).toHaveBeenCalled();
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.recordReturn).not.toHaveBeenCalled();
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("does not activate from Shopify configure intent while the durable projection is NO_CONTRACT", async () => {
+    mocks.getFence.mockResolvedValue(null);
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "free", pendingUpdate: null },
+    });
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue(null);
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "NO_CONTRACT",
+      planId: null,
+      plan: null,
+      observedShopifyPlanHandle: null,
+    }));
+
+    await runLoader("free");
+
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
@@ -500,6 +532,7 @@ describe("billing callback activation", () => {
 
     expect(mocks.updateOnboarding).toHaveBeenCalled();
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.recordReturn).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
