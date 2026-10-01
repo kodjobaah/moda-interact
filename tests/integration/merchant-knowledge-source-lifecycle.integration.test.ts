@@ -298,6 +298,9 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
     expect(afterOff.chunks).toContainEqual(expect.objectContaining({ id: retainedChunkId, content: "retained reference" }));
     expect((await loadMerchantKnowledge(shopId, db())).effectiveEnabled).toBe(false);
 
+    await refreshWebPageSource({ shopId, sourceId: source.id, database: db(), queue: queueClient });
+    expect(enqueue).toHaveBeenCalledTimes(3);
+
     await editWebPageSource({
       shopId,
       sourceId: source.id,
@@ -308,12 +311,13 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
       queue: queueClient,
     });
     expect(enqueue).toHaveBeenCalledTimes(3);
-    expect(await db().merchantKnowledgeSourceRevision.count({ where: { sourceId: source.id } })).toBe(4);
+    expect(await db().merchantKnowledgeSourceRevision.count({ where: { sourceId: source.id } })).toBe(5);
     await reorderMerchantKnowledgeSources({ shopId, sourceIds: [source.id, second.sourceId], database: db() });
     await deleteMerchantKnowledgeSource({ shopId, sourceId: second.sourceId, database: db() });
     const remaining = await db().merchantKnowledgeSource.findMany({ where: { shopId }, select: { id: true, position: true } });
     expect(remaining).toEqual([{ id: source.id, position: 0 }]);
-    expect((await db().merchantKnowledgeSourceRevision.findFirstOrThrow({ where: { sourceId: source.id, generation: 4 } })).status).toBe("PENDING");
+    expect((await db().merchantKnowledgeSourceRevision.findFirstOrThrow({ where: { sourceId: source.id, generation: 4 } })).reason).toBe("REFRESH");
+    expect((await db().merchantKnowledgeSourceRevision.findFirstOrThrow({ where: { sourceId: source.id, generation: 5 } })).status).toBe("PENDING");
   }, 60_000);
 
   it("leaves committed PENDING work durable when queue publication rejects", async () => {
