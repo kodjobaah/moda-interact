@@ -60,6 +60,7 @@ function createHarness({
 function createPaidFinalisationHarness({
   planOverrides = {},
   providerOverrides = {},
+  subscriptionOverrides = {},
   shopStatus = "ACTIVE",
   billingPeriod = null,
   periodCounter = null,
@@ -68,6 +69,12 @@ function createPaidFinalisationHarness({
 }: {
   planOverrides?: Record<string, unknown>;
   providerOverrides?: Partial<ProviderSubscription>;
+  subscriptionOverrides?: Partial<{
+    id: string;
+    planId: string | null;
+    pendingPlanId: string | null;
+    pendingShopifyPlanHandle: string | null;
+  }>;
   shopStatus?: string;
   billingPeriod?: Record<string, unknown> | null;
   periodCounter?: Record<string, unknown> | null;
@@ -146,6 +153,7 @@ function createPaidFinalisationHarness({
     planId: null,
     pendingPlanId: "paid-1",
     pendingShopifyPlanHandle: "growth",
+    ...subscriptionOverrides,
   };
   const finalize = () => service.finalizeInitialPaidActivation({
     transaction: transaction as never,
@@ -361,8 +369,11 @@ describe("SubscriptionActivationService", () => {
   it.each([
     ["inactive plan", { planOverrides: { active: false } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["mismatched plan kind", { planOverrides: { kind: BillingPlanKind.FREE } }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["mismatched plan handle", { planOverrides: { shopifyPlanHandle: "other" } }, "INVALID_PAID_PLAN_CONFIGURATION"],
+    ["mismatched pending plan identity", { subscriptionOverrides: { pendingPlanId: "other" } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["missing usage meter", { planOverrides: { shopifyUsageEventHandle: null } }, "MISSING_USAGE_METER"],
     ["unexposed usage meter", { providerOverrides: { usageEventHandles: [] } }, "MISSING_USAGE_METER"],
+    ["missing included allowance", { planOverrides: { includedRecoveryConversationAllowance: null } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["invalid included allowance", { planOverrides: { includedRecoveryConversationAllowance: -1 } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["missing provider cycle", { providerOverrides: { currentPeriodStart: null } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["inactive Shop", { shopStatus: "SUSPENDED" }, "INVALID_PAID_PLAN_CONFIGURATION"],
