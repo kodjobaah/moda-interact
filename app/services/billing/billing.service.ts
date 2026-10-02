@@ -14,11 +14,6 @@ import {
   SubscriptionProjectionStatus,
 } from "@prisma/client";
 import {
-  PLATFORM_SUPPORT_LANGUAGE_TAG,
-  requiresMerchantTranslation,
-} from "@modainteract/moda-interact-shared/merchant-communications";
-import {
-  BILLING_SYSTEM_MESSAGE_CODES,
   APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
 } from "@modainteract/moda-interact-shared/billing";
 
@@ -43,10 +38,6 @@ export { deriveBillingPeriodPhase };
 
 import prisma from "../../db.server";
 import {
-  enqueueTranslationBestEffort,
-  trustedSupportLanguageTag,
-} from "../merchant-support/merchant-support.service";
-import {
   BillingPlanResolutionService,
   type OperationalBillingPlanResolution,
 } from "./billing-plan-resolution.service";
@@ -70,6 +61,14 @@ import type {
 } from "./subscription-activation.service";
 import { lockInitialFreeActivationState } from "./subscription-locks";
 import { RecoveryCreditPurchaseRequestService } from "./recovery-credit-purchase-request.service";
+import {
+  deriveLifecycleIdentity,
+  defaultTranslationDispatch,
+  SubscriptionEndedNotificationService,
+  type TranslationDispatch,
+} from "./subscription-ended-notification.service";
+
+export { renderSubscriptionEndedMessage } from "./subscription-ended-notification.service";
 
 export { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
 export type {
@@ -83,25 +82,6 @@ export type {
   HostedPlanVerificationFence,
 } from "./hosted-plan-change.service";
 
-type TranslationDispatch = (translationId: string) => Promise<void>;
-
-type SubscriptionLifecycle = {
-  planHandle: string;
-  provider: string;
-  lifecycleIdentity: string | null;
-};
-
-type SubscriptionIdentityFacts = {
-  observedShopifyPlanHandle: string | null;
-  providerSubscriptionId: string | null;
-  currentPeriodStart: Date | null;
-  currentPeriodEnd: Date | null;
-  trialEndsAt: Date | null;
-};
-
-const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
-  "Unable to derive a durable subscription lifecycle identity.";
-
 async function lockShopForInitialPaidActivation(
   transaction: Prisma.TransactionClient,
   shopId: string,
@@ -114,144 +94,6 @@ async function lockShopForInitialPaidActivation(
   `);
 }
 
-function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
-  if (subscription.providerSubscriptionId?.trim()) {
-    return `provider:${subscription.providerSubscriptionId.trim()}`;
-  }
-
-  const cycleFacts = [
-    subscription.currentPeriodStart?.toISOString(),
-    subscription.currentPeriodEnd?.toISOString(),
-    subscription.trialEndsAt?.toISOString(),
-  ];
-  if (cycleFacts.every((fact) => !fact)) return null;
-  return `cycle:${subscription.observedShopifyPlanHandle ?? "unknown"}:${cycleFacts.map((fact) => fact ?? "none").join(":")}`;
-}
-
-export function renderSubscriptionEndedMessage(planHandle: string): string {
-  return `Your ${planHandle} subscription has ended and is no longer active.`;
-}
-
-async function persistSubscriptionEndedNotification(
-  database: PrismaClient,
-  shopId: string,
-  lifecycle: SubscriptionLifecycle,
-): Promise<string | null> {
-  return database.$transaction(async (transaction) => {
-    const settings = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
-      SELECT "defaultLanguageTag"
-      FROM "shopify"."ShopSettings"
-      WHERE "shopId" = ${shopId}
-    `);
-    const configuredLanguageTag = trustedSupportLanguageTag(
-      settings[0]?.defaultLanguageTag,
-    );
-    const now = new Date();
-    if (!lifecycle.lifecycleIdentity) {
-      throw new Error(MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY);
-    }
-    const sourceKey = [
-      "subscription-ended:v1",
-      shopId,
-      lifecycle.provider,
-      lifecycle.lifecycleIdentity,
-    ].map((part) => encodeURIComponent(part)).join(":");
-    const existing = await transaction.$queryRaw<[
-      { id: string; displayLanguageTag: string | null } | undefined
-    ]>(Prisma.sql`
-      SELECT "id", "displayLanguageTag"
-      FROM "support"."MerchantSupportMessage"
-      WHERE "sourceKey" = ${sourceKey}
-    `);
-    let messageId = existing[0]?.id;
-    let messageWasInserted = false;
-    const displayLanguageTag = existing[0]?.displayLanguageTag ?? configuredLanguageTag;
-    const needsTranslation = requiresMerchantTranslation(
-      PLATFORM_SUPPORT_LANGUAGE_TAG,
-      displayLanguageTag,
-    );
-
-    const thread = await transaction.$queryRaw<[{ id: string }]>(Prisma.sql`
-      INSERT INTO "support"."MerchantSupportThread" (
-        "id", "shopId", "createdAt", "updatedAt"
-      ) VALUES (${randomUUID()}, ${shopId}, ${now}, ${now})
-      ON CONFLICT ("shopId") DO UPDATE SET "updatedAt" = ${now}
-      RETURNING "id"
-    `);
-    const threadId = thread[0]?.id;
-    if (!threadId) {
-      throw new Error("Unable to create subscription-ended support thread.");
-    }
-
-    if (!messageId) {
-      messageId = randomUUID();
-      const inserted = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
-        INSERT INTO "support"."MerchantSupportMessage" (
-          "id", "threadId", "kind", "state", "originalBody",
-          "sourceLanguageTag", "displayLanguageTag", "systemCode",
-          "systemVersion", "sourceKey", "availableAt", "createdAt", "updatedAt"
-        ) VALUES (
-          ${messageId}, ${threadId}, 'SYSTEM',
-          ${needsTranslation ? "PROCESSING" : "AVAILABLE"},
-          ${renderSubscriptionEndedMessage(lifecycle.planHandle)},
-          ${PLATFORM_SUPPORT_LANGUAGE_TAG}, ${displayLanguageTag},
-          ${BILLING_SYSTEM_MESSAGE_CODES.SUBSCRIPTION_ENDED}, '1', ${sourceKey},
-          ${needsTranslation ? null : now}, ${now}, ${now}
-        ) ON CONFLICT ("sourceKey") DO NOTHING
-        RETURNING "id"
-        `);
-      messageId = inserted[0]?.id;
-      messageWasInserted = Boolean(messageId);
-      if (!messageId) {
-        const persisted = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
-          SELECT "id"
-          FROM "support"."MerchantSupportMessage"
-          WHERE "sourceKey" = ${sourceKey}
-        `);
-        messageId = persisted[0]?.id;
-      }
-      if (!messageId) {
-        throw new Error("Unable to persist subscription-ended support message.");
-      }
-    }
-
-    await transaction.$executeRaw(Prisma.sql`
-      UPDATE "support"."MerchantSupportThread"
-      SET "lastMessageAt" = CASE
-        WHEN ${!messageWasInserted} THEN "lastMessageAt"
-        ELSE ${now}
-      END,
-      "updatedAt" = ${now}
-      WHERE "id" = ${threadId} AND "shopId" = ${shopId}
-    `);
-
-    if (!needsTranslation) return null;
-
-    const translations = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
-      SELECT "id"
-      FROM "support"."MerchantMessageTranslation"
-      WHERE "messageId" = ${messageId}
-        AND "targetLanguageTag" = ${displayLanguageTag}
-    `);
-    if (translations[0]?.id) return null;
-
-    const translationId = randomUUID();
-    const insertedTranslation = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
-      INSERT INTO "support"."MerchantMessageTranslation" (
-        "id", "messageId", "direction", "sourceLanguageTag",
-        "targetLanguageTag", "status", "createdAt", "updatedAt"
-      ) VALUES (
-        ${translationId}, ${messageId}, 'SYSTEM_TO_MERCHANT',
-        ${PLATFORM_SUPPORT_LANGUAGE_TAG}, ${displayLanguageTag},
-        'PENDING', ${now}, ${now}
-      ) ON CONFLICT ("messageId", "targetLanguageTag") DO NOTHING
-      RETURNING "id"
-    `);
-    return insertedTranslation[0]?.id ?? null;
-  });
-}
-
-
 export class BillingService {
   private readonly planResolutionService: BillingPlanResolutionService;
   private readonly subscriptionReadService: SubscriptionReadService;
@@ -260,13 +102,14 @@ export class BillingService {
   private readonly recoveryCreditPurchaseRequestService: RecoveryCreditPurchaseRequestService;
   private readonly recoveryCapacityReadService: MerchantRecoveryCapacityReadService;
   private readonly merchantBillingReadService: MerchantBillingReadService;
+  private readonly subscriptionEndedNotificationService: SubscriptionEndedNotificationService;
 
   constructor(
     private readonly provider: BillingProvider =
       new ShopifyBillingProvider(),
     private readonly database: PrismaClient = prisma,
-    private readonly dispatchTranslation: TranslationDispatch =
-      enqueueTranslationBestEffort,
+    dispatchTranslation: TranslationDispatch =
+      defaultTranslationDispatch,
   ) {
     this.planResolutionService = new BillingPlanResolutionService(database);
     this.subscriptionReadService = new SubscriptionReadService(provider, database);
@@ -288,6 +131,10 @@ export class BillingService {
       provider,
       database,
       this.planResolutionService,
+    );
+    this.subscriptionEndedNotificationService = new SubscriptionEndedNotificationService(
+      database,
+      dispatchTranslation,
     );
   }
 
@@ -531,22 +378,10 @@ async getSubscription(
       });
 
       if (lifecycle) {
-        try {
-          const translationId = await persistSubscriptionEndedNotification(
-            this.database,
-            shopId,
-            lifecycle,
-          );
-          if (translationId) await this.dispatchTranslation(translationId);
-        } catch (error) {
-          // Billing state is committed independently of notification persistence.
-          if (
-            error instanceof Error &&
-            error.message === MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY
-          ) {
-            throw error;
-          }
-        }
+        await this.subscriptionEndedNotificationService.notifySubscriptionEnded(
+          shopId,
+          lifecycle,
+        );
       }
 
       return null;
