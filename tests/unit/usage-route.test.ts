@@ -3,7 +3,6 @@ const mocks = vi.hoisted(() => ({
   auth: vi.fn(),
   shop: vi.fn(),
   subscription: vi.fn(),
-  settings: vi.fn(),
   period: vi.fn(),
   periods: vi.fn(),
   recoveries: vi.fn(),
@@ -23,7 +22,6 @@ vi.mock("../../app/services/billing/billing.service", () => ({
 }));
 vi.mock("../../app/db.server", () => ({
   default: {
-    shopSettings: { findUnique: mocks.settings },
     billingPeriod: { findFirst: mocks.period, findMany: mocks.periods },
     checkoutRecovery: { findMany: mocks.recoveries },
     usageEvent: {
@@ -61,9 +59,13 @@ beforeEach(() => {
     admin: {},
     session: { shop: "merchant.myshopify.com" },
   });
-  mocks.shop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
+  mocks.shop.mockResolvedValue({
+    id: "shop-1",
+    status: "ACTIVE",
+    onboardingCompleted: true,
+    defaultTimeZone: "UTC",
+  });
   mocks.subscription.mockResolvedValue({ status: "ACTIVE" });
-  mocks.settings.mockResolvedValue({ onboardingCompleted: true });
   mocks.period.mockResolvedValue(period());
   mocks.periods.mockResolvedValue([period()]);
   mocks.events.mockResolvedValue([]);
@@ -76,7 +78,12 @@ const request = (query = "") => ({
 });
 describe("usage route and bounded readers", () => {
   it("keeps onboarding out of usage before any billing-history query", async () => {
-    mocks.settings.mockResolvedValue({ onboardingCompleted: false });
+    mocks.shop.mockResolvedValue({
+      id: "shop-1",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+      defaultTimeZone: "UTC",
+    });
     await expect(loader(request("?billId=foreign"))).rejects.toSatisfy(
       (r: Response) =>
         r.headers.get("Location") === "/app?shop=merchant.myshopify.com",

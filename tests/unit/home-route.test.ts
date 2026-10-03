@@ -118,7 +118,6 @@ describe("app home loader", () => {
     });
 
     expect(result).toMatchObject({
-      settings: { onboardingCompleted: true },
       merchantExperienceState: "ONBOARDING",
       pricingCatalogue: [{ shopifyPlanHandle: "free" }],
       subscription: null,
@@ -188,7 +187,6 @@ describe("app home loader", () => {
     });
 
     expect(result).toMatchObject({
-      settings: { onboardingCompleted: false },
       merchantExperienceState: "ONBOARDING",
       billingSetup: {
         phase: "FINALIZING_SUBSCRIPTION",
@@ -223,7 +221,6 @@ describe("app home loader", () => {
     });
 
     expect(result).toMatchObject({
-      settings: { onboardingCompleted: true },
       merchantExperienceState: "NO_CONTRACT",
       subscription: { status: "NO_CONTRACT" },
       pricingCatalogue: [{ shopifyPlanHandle: "database-plan" }],

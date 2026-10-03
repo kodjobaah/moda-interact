@@ -94,8 +94,8 @@ export function createMerchantI18n({ locale, timeZone, fallbackLocale } = {}) {
   };
 }
 
-export function merchantUiContext(settings, authenticatedLocale) {
-  const merchantLocale = settings?.defaultLanguageTag;
+export function merchantUiContext(shop, authenticatedLocale) {
+  const merchantLocale = shop?.defaultLanguageTag;
   const sessionLocale = typeof authenticatedLocale === "string"
     ? authenticatedLocale
     : authenticatedLocale?.locale;
@@ -105,8 +105,8 @@ export function merchantUiContext(settings, authenticatedLocale) {
 
   return {
     locale: resolveLocale(selectedLocale),
-    timeZone: resolveTimeZone(settings?.defaultTimeZone),
-    fallbackLocale: resolveLocale(settings?.defaultLanguageTag || DEFAULT_LOCALE),
+    timeZone: resolveTimeZone(shop?.defaultTimeZone),
+    fallbackLocale: resolveLocale(shop?.defaultLanguageTag || DEFAULT_LOCALE),
   };
 }
 

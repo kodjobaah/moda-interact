@@ -26,7 +26,7 @@ import { loadMerchantKnowledgeR2Config, type MerchantKnowledgeR2Config } from ".
 type Database = Pick<PrismaClient,
   "$transaction" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat"
   | "merchantKnowledgeUploadedAsset" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision"
-  | "shopSettings" | "subscription" | "feature" | "shopFeaturePreference"
+  | "shop" | "subscription" | "feature" | "shopFeaturePreference"
 >;
 type Queue = Parameters<typeof enqueueMerchantKnowledgeRevisionIfEnabled>[2];
 type DataFormatKey = "CSV" | "XLSX";
@@ -318,8 +318,8 @@ export async function finalizeMerchantKnowledgeUpload(input: {
         const allowed = new Set(entitlement.configuration.allowedSourceTypes.map((entry) => `${entry.purposeKey}\u0000${entry.dataFormatKey}`));
         const eligible = sources.filter((entry) => entry.purpose.active && entry.dataFormat.active && allowed.has(`${entry.purpose.key}\u0000${entry.dataFormat.key}`));
         if (eligible.length >= entitlement.configuration.maxKnowledgeSources) throw DENIED();
-        const settings = await transaction.shopSettings.findUnique({ where: { shopId: input.shopId }, select: { defaultLanguageTag: true } });
-        const selectedLanguageTag = parseLanguage(languageTag, settings?.defaultLanguageTag ?? null);
+        const shop = await transaction.shop.findUnique({ where: { id: input.shopId }, select: { defaultLanguageTag: true } });
+        const selectedLanguageTag = parseLanguage(languageTag, shop?.defaultLanguageTag ?? null);
         actualSourceId = randomUUID();
         generation = 1;
         reason = "CREATE";
@@ -385,13 +385,13 @@ export async function editMerchantKnowledgeUploadSource(input: {
         dataFormatKey: formatKey,
       }, "UPLOAD");
       await requireCurrentlyPlanEntitledSource(transaction, input.shopId, source.id, entitlement.configuration);
-      const settings = await transaction.shopSettings.findUnique({
-        where: { shopId: input.shopId },
+      const shop = await transaction.shop.findUnique({
+        where: { id: input.shopId },
         select: { defaultLanguageTag: true },
       });
       await transaction.merchantKnowledgeSource.update({
         where: { id: source.id },
-        data: { name, languageTag: parseLanguage(input.languageTag, settings?.defaultLanguageTag ?? null) },
+        data: { name, languageTag: parseLanguage(input.languageTag, shop?.defaultLanguageTag ?? null) },
       });
     });
     return { ok: true };

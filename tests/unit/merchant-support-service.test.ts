@@ -53,6 +53,7 @@ describe("merchant support compose", () => {
     });
 
     expect(result.translationId).toBeNull();
+    expect(transaction.$queryRaw.mock.calls[0]?.[0].sql).toContain('FROM "commerce"."Shop"');
     expect(transaction.$executeRaw).toHaveBeenCalledTimes(2);
     expect(queue.add).not.toHaveBeenCalled();
   });
@@ -69,6 +70,7 @@ describe("merchant support compose", () => {
     });
 
     expect(result.translationId).toEqual(expect.any(String));
+    expect(transaction.$queryRaw.mock.calls[0]?.[0].sql).toContain('FROM "commerce"."Shop"');
     expect(transaction.$executeRaw).toHaveBeenCalledTimes(3);
     expect(queue.add).toHaveBeenCalledWith(
       "translation-dispatch",

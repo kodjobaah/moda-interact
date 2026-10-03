@@ -13,7 +13,6 @@ import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-a
 import { readMerchantSupportMessages } from "@/services/merchant-support/merchant-support.service";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import MerchantNavigation from "@/components/dashboard/MerchantNavigation";
-import db from "@/db.server";
 
 /** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
@@ -45,9 +44,6 @@ export const loader = async ({ request }) => {
     page: 1,
     pageSize: 1,
   });
-  const settings = await db.shopSettings.findUnique({
-    where: { shopId: shop.id },
-  });
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
@@ -57,7 +53,7 @@ export const loader = async ({ request }) => {
   return {
     apiKey: process.env.SHOPIFY_API_KEY || "",
     unreadMessages: support.unread,
-    merchantUi: merchantUiContext(settings, session),
+    merchantUi: merchantUiContext(shop, session),
     merchantExperienceState,
   };
 };

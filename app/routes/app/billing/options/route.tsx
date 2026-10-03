@@ -5,7 +5,6 @@ import { billingService } from "@/services/billing/billing.service";
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
@@ -84,9 +83,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     capability: "manage-billing",
     redirectTo: "/app/merchant-support",
   });
-  const settings = await db.shopSettings.findUnique({
-    where: { shopId: shop.id },
-  });
   const subscription = await billingService.getSubscriptionProjection(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
@@ -112,7 +108,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     merchantExperienceState,
     "BILLING_PURCHASE_HISTORY",
   );
-  const merchantUi = merchantUiContext(settings, session);
+  const merchantUi = merchantUiContext(shop, session);
 
   try {
     // The billing page needs current commercial truth, not historical lifecycle

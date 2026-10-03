@@ -17,7 +17,6 @@ import RecoveryList from "../../app/routes/app/recoveries/RecoveryList";
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   shop: vi.fn(),
-  settings: vi.fn(),
   subscription: vi.fn(),
   page: vi.fn(),
   exists: vi.fn(),
@@ -33,7 +32,6 @@ vi.mock("../../app/services/billing/billing.service", () => ({
 }));
 vi.mock("../../app/db.server", () => ({
   default: {
-    shopSettings: { findUnique: mocks.settings },
     checkoutRecovery: { findFirst: mocks.exists },
   },
 }));
@@ -64,8 +62,9 @@ beforeEach(() => {
     admin: {},
     session: { shop: "owned.myshopify.com", locale: "en-GB" },
   });
-  mocks.shop.mockResolvedValue({ id: "owned-shop", status: "ACTIVE" });
-  mocks.settings.mockResolvedValue({
+  mocks.shop.mockResolvedValue({
+    id: "owned-shop",
+    status: "ACTIVE",
     onboardingCompleted: true,
     defaultTimeZone: "Europe/London",
   });
@@ -119,8 +118,8 @@ describe("independent recovery list loader", () => {
         id: "owned-shop",
         status,
         reinstallPendingAt,
+        onboardingCompleted,
       });
-      mocks.settings.mockResolvedValue({ onboardingCompleted });
       const result = await loadRecoveryList(
         request("host=YWJj&embedded=1"),
       ).catch((e) => e as Response);

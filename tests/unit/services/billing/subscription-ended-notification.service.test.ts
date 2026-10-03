@@ -12,9 +12,9 @@ import {
 } from "../../../../app/services/billing/subscription-ended-notification.service";
 
 function makeDatabase(results: unknown[]) {
-  const queries: Array<{ values: unknown[] }> = [];
-  const queryRaw = vi.fn(async (query: { values: unknown[] }) => {
-    queries.push(query);
+  const queries: Array<{ sql: string; values: unknown[] }> = [];
+  const queryRaw = vi.fn(async (query: { sql: string; values: unknown[] }) => {
+    queries.push({ sql: query.sql, values: query.values });
     return results.shift() ?? [];
   });
   const executeRaw = vi.fn().mockResolvedValue(1);
@@ -134,6 +134,7 @@ describe("SubscriptionEndedNotificationService", () => {
     expect(insertedMessageValues).toContain("PROCESSING");
     expect(insertedMessageValues).toContain("fr-FR");
     expect(insertedMessageValues).toContain("BILLING_SUBSCRIPTION_ENDED");
+    expect(state.queries[0]?.sql).toContain('FROM "commerce"."Shop"');
     expect(insertedTranslationValues).toContain("fr-FR");
     expect(dispatch).toHaveBeenCalledOnce();
     expect(dispatch).toHaveBeenCalledWith("translation-1");
