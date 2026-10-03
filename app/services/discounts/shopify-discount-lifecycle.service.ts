@@ -136,7 +136,7 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
           id: true,
           domain: true,
           status: true,
-          settings: { select: { onboardingCompleted: true } },
+          onboardingCompleted: true,
           subscription: { select: { status: true } },
         },
       });
@@ -149,7 +149,7 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
       });
       const eligible = isDiscountSyncEligible({
         shopStatus: authoritativeShop.status,
-        onboardingCompleted: authoritativeShop.settings?.onboardingCompleted === true,
+        onboardingCompleted: authoritativeShop.onboardingCompleted,
         subscriptionStatus: authoritativeShop.subscription?.status,
         sessionScope: offlineSession?.scope,
       });

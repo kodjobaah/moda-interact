@@ -90,7 +90,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const subscription = await billingService.getSubscriptionProjection(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   const currentContract = durableCurrentContract(subscription);
@@ -231,13 +230,9 @@ export async function action({ request }: ActionFunctionArgs) {
     capability: "purchase-recovery-credits",
     redirectTo: "/app/merchant-support",
   });
-  const [settings, subscription] = await Promise.all([
-    db.shopSettings.findUnique({ where: { shopId: shop.id } }),
-    billingService.getSubscriptionProjection(shop.id),
-  ]);
+  const subscription = await billingService.getSubscriptionProjection(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS"))

@@ -24,7 +24,6 @@ export async function settingsAccess(request: Request) {
   });
   const state = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription: await billingService.getSubscription(shop.id),
   });
   if (!canAccessMerchantSurface(state, "RECOVERY_SETTINGS"))

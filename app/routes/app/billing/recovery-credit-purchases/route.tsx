@@ -114,7 +114,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
     ]);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   if (
@@ -159,13 +158,9 @@ export async function action({ request }: ActionFunctionArgs) {
     capability: "manage-billing",
     redirectTo: "/app/merchant-support",
   });
-  const [settings, subscription] = await Promise.all([
-    db.shopSettings.findUnique({ where: { shopId: shop.id } }),
-    billingService.getSubscription(shop.id),
-  ]);
+  const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   if (

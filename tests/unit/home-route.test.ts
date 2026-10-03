@@ -73,6 +73,7 @@ beforeEach(() => {
     id: "shop-1",
     domain: "merchant.myshopify.com",
     status: "ACTIVE",
+    onboardingCompleted: true,
   });
   findShopSettings.mockResolvedValue({ onboardingCompleted: false });
   getMerchantRecoveryCapacityState.mockResolvedValue({
@@ -102,6 +103,13 @@ beforeEach(() => {
 
 describe("app home loader", () => {
   it("returns onboarding data without loading dashboard datasets", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     readActiveMerchantPricingCatalogue.mockResolvedValue([
       { shopifyPlanHandle: "free" },
     ]);
@@ -110,7 +118,7 @@ describe("app home loader", () => {
     });
 
     expect(result).toMatchObject({
-      settings: { onboardingCompleted: false },
+      settings: { onboardingCompleted: true },
       merchantExperienceState: "ONBOARDING",
       pricingCatalogue: [{ shopifyPlanHandle: "free" }],
       subscription: null,
@@ -130,6 +138,12 @@ describe("app home loader", () => {
   });
 
   it("keeps detail requests on the onboarding surface", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
     const result = await loader({
       request: new Request(
         "https://example.test/app?view=detail&billId=missing-period",
@@ -147,6 +161,12 @@ describe("app home loader", () => {
   });
 
   it("shows subscription setup instead of plan selection once durable Shopify evidence exists", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
     readActiveMerchantPricingCatalogue.mockResolvedValue([
       {
         shopifyPlanHandle: "free",

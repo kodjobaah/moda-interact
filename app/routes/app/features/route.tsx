@@ -32,9 +32,8 @@ async function resolveFeatureShop(request: Request) {
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const shop = await resolveFeatureShop(request);
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
-  const state = resolveMerchantExperienceState({ shop, settings, subscription });
+  const state = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(state, "FEATURES")) {
     throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(state, "FEATURES") } });
   }
@@ -73,9 +72,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   const shop = await resolveFeatureShop(request);
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
-  const state = resolveMerchantExperienceState({ shop, settings, subscription });
+  const state = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(state, "FEATURES")) {
     throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(state, "FEATURES") } });
   }

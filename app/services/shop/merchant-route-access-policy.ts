@@ -30,15 +30,9 @@ export type MerchantSurface = (typeof MERCHANT_SURFACES)[number];
 
 type MerchantShop = {
   status: string;
+  onboardingCompleted?: boolean | null;
   reinstallPendingAt?: Date | string | null;
 };
-
-type MerchantSettings =
-  | {
-      onboardingCompleted?: boolean | null;
-    }
-  | null
-  | undefined;
 
 type MerchantSubscription =
   | {
@@ -49,7 +43,6 @@ type MerchantSubscription =
 
 export type MerchantRouteAccessInput = {
   shop: MerchantShop;
-  settings?: MerchantSettings;
   subscription?: MerchantSubscription;
 };
 
@@ -149,14 +142,13 @@ function historyNavigation(): MerchantNavigationItem[] {
 
 export function resolveMerchantExperienceState({
   shop,
-  settings,
   subscription,
 }: MerchantRouteAccessInput): MerchantExperienceState {
   if (shop.status === "UNINSTALLED" && shop.reinstallPendingAt != null)
     return "REINSTALLING";
   if (shop.status === "SUSPENDED") return "SUPPORT_ONLY";
   if (shop.status !== "ACTIVE") return "SIGNED_OUT";
-  if (settings?.onboardingCompleted !== true) return "ONBOARDING";
+  if (shop.onboardingCompleted !== true) return "ONBOARDING";
 
   switch (subscription?.status) {
     case "ACTIVE":

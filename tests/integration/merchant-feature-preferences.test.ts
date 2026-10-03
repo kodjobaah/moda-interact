@@ -61,6 +61,7 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
       const shop = await db.shop.create({
         data: {
           domain: `${prefix}-${name}.myshopify.com`,
+          onboardingCompleted: true,
           settings: { create: { onboardingCompleted: true } },
           subscription: { create: { planId, status: "ACTIVE" } },
         },

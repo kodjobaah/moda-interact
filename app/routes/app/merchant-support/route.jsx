@@ -32,7 +32,7 @@ export async function loader({ request }) {
   });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   return Response.json({ ...support, merchantUi: merchantUiContext(settings, session), merchantExperienceState });
 }
 

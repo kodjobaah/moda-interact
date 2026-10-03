@@ -1,7 +1,6 @@
 import type { LoaderFunctionArgs } from "react-router";
 
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
 import { billingService } from "@/services/billing/billing.service";
 import {
   buildMerchantBillingSetupState,
@@ -22,16 +21,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     redirectTo: "/app/merchant-support",
   });
 
-  const [settings, subscription] = await Promise.all([
-    db.shopSettings.findUnique({
-      where: { shopId: shop.id },
-      select: { onboardingCompleted: true },
-    }),
-    billingService.getSubscriptionProjection(shop.id),
-  ]);
+  const subscription = await billingService.getSubscriptionProjection(shop.id);
 
   const requiresSetupScreen = shouldShowMerchantBillingSetup(
-    settings?.onboardingCompleted,
+    shop.onboardingCompleted,
     subscription,
   );
 
