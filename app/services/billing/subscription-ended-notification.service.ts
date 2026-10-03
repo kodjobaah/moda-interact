@@ -77,13 +77,13 @@ export class SubscriptionEndedNotificationService {
     lifecycle: SubscriptionLifecycle,
   ): Promise<string | null> {
     return this.database.$transaction(async (transaction) => {
-      const settings = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
+      const shopContext = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
         SELECT "defaultLanguageTag"
-        FROM "shopify"."ShopSettings"
-        WHERE "shopId" = ${shopId}
+        FROM "commerce"."Shop"
+        WHERE "id" = ${shopId}
       `);
       const configuredLanguageTag = trustedSupportLanguageTag(
-        settings[0]?.defaultLanguageTag,
+        shopContext[0]?.defaultLanguageTag,
       );
       const now = new Date();
       if (!lifecycle.lifecycleIdentity) {

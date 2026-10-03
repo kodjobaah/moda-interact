@@ -119,12 +119,12 @@ export async function composeMerchantMessage(input: ComposeMerchantMessageInput)
   const database = input.database ?? (prisma as unknown as DatabaseClient);
   const messageId = randomUUID();
   const result = await database.$transaction(async (transaction) => {
-    const settings = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
+    const shopContext = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
       SELECT "defaultLanguageTag"
-      FROM "shopify"."ShopSettings"
-      WHERE "shopId" = ${input.shopId}
+      FROM "commerce"."Shop"
+      WHERE "id" = ${input.shopId}
     `);
-    const displayLanguageTag = trustedSupportLanguageTag(settings[0]?.defaultLanguageTag);
+    const displayLanguageTag = trustedSupportLanguageTag(shopContext[0]?.defaultLanguageTag);
     const needsTranslation = requiresMerchantTranslation(
       displayLanguageTag,
       PLATFORM_SUPPORT_LANGUAGE_TAG,

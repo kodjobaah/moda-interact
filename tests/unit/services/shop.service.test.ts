@@ -352,7 +352,7 @@ describe("ShopService.resolveShopifyShop", () => {
     },
   );
 
-  it("creates settings from the primary Shopify locale and store context", async () => {
+  it("creates shared and compatibility context from the primary Shopify locale", async () => {
     const admin = adminFor({
       shopifyShopId: shop.shopifyShopId,
       myshopifyDomain: shop.domain,
@@ -377,7 +377,31 @@ describe("ShopService.resolveShopifyShop", () => {
         defaultTimeZone: "Europe/London",
         defaultCountryCode: "GB",
       },
-      update: {},
+      update: {
+        defaultLanguageTag: "fr-CA",
+        defaultTimeZone: "Europe/London",
+        defaultCountryCode: "GB",
+      },
+    });
+
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith({
+      where: { domain: shop.domain },
+      create: {
+        domain: shop.domain,
+        shopifyShopId: shop.shopifyShopId,
+        status: "ACTIVE",
+        storeLocale: "fr-CA",
+        defaultLanguageTag: "fr-CA",
+        defaultTimeZone: "Europe/London",
+        defaultCountryCode: "GB",
+      },
+      update: {
+        shopifyShopId: shop.shopifyShopId,
+        storeLocale: "fr-CA",
+        defaultLanguageTag: "fr-CA",
+        defaultTimeZone: "Europe/London",
+        defaultCountryCode: "GB",
+      },
     });
 
     const query = (admin.graphql as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as string;
@@ -390,7 +414,7 @@ describe("ShopService.resolveShopifyShop", () => {
     expect(query).not.toContain("Session.locale");
   });
 
-  it("does not overwrite merchant settings on repeated resolution", async () => {
+  it("updates shared and compatibility context from Shopify on repeated resolution", async () => {
     const admin = adminFor({
       shopifyShopId: shop.shopifyShopId,
       myshopifyDomain: shop.domain,
@@ -404,9 +428,42 @@ describe("ShopService.resolveShopifyShop", () => {
       domain: shop.domain,
     });
 
-    expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ update: {} }),
-    );
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({
+        storeLocale: "fr-CA",
+        defaultLanguageTag: "fr-CA",
+        defaultTimeZone: "America/Toronto",
+        defaultCountryCode: "CA",
+      }),
+    }));
+    expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: {
+        defaultLanguageTag: "fr-CA",
+        defaultTimeZone: "America/Toronto",
+        defaultCountryCode: "CA",
+      },
+    }));
+  });
+
+  it("preserves a valid provider locale without requiring Moda translation coverage", async () => {
+    const admin = adminFor({
+      shopifyShopId: shop.shopifyShopId,
+      myshopifyDomain: shop.domain,
+      shopLocales: [{ locale: "haw-US", primary: true, published: true }],
+    });
+
+    await new ShopService().resolveShopifyShop({ admin, domain: shop.domain });
+
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        storeLocale: "haw-US",
+        defaultLanguageTag: "haw-US",
+      }),
+      update: expect.objectContaining({
+        storeLocale: "haw-US",
+        defaultLanguageTag: "haw-US",
+      }),
+    }));
   });
 
   it("does not change the shop lifecycle status during resolution", async () => {
@@ -429,9 +486,15 @@ describe("ShopService.resolveShopifyShop", () => {
         domain: shop.domain,
         shopifyShopId: shop.shopifyShopId,
         status: "ACTIVE",
+        storeLocale: null,
+        defaultLanguageTag: null,
+        defaultTimeZone: "UTC",
+        defaultCountryCode: "GB",
       },
       update: {
         shopifyShopId: shop.shopifyShopId,
+        defaultTimeZone: "UTC",
+        defaultCountryCode: "GB",
       },
     });
   });
@@ -460,5 +523,8 @@ describe("ShopService.resolveShopifyShop", () => {
         },
       }),
     );
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: { shopifyShopId: shop.shopifyShopId },
+    }));
   });
 });

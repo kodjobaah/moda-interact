@@ -9,7 +9,6 @@ import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { assertSupportShop } from "@/services/shop/shop-access-policy";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
-import db from "@/db.server";
 import {
   composeMerchantMessage,
   markMerchantSupportMessageRead,
@@ -30,10 +29,9 @@ export async function loader({ request }) {
     page: Number(url.searchParams.get("page") ?? "1"),
     pageSize: Number(url.searchParams.get("pageSize") ?? "25"),
   });
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
-  return Response.json({ ...support, merchantUi: merchantUiContext(settings, session), merchantExperienceState });
+  return Response.json({ ...support, merchantUi: merchantUiContext(shop, session), merchantExperienceState });
 }
 
 /** @param {{ request: Request }} args */
@@ -216,6 +214,7 @@ MessageCard.propTypes = {
     createdAt: PropTypes.string.isRequired,
   }).isRequired,
   i18n: PropTypes.shape({
+    t: PropTypes.func.isRequired,
     formatDateTime: PropTypes.func.isRequired,
   }).isRequired,
   merchantExperienceState: PropTypes.string.isRequired,

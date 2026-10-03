@@ -15,7 +15,6 @@ import {
   selectPromotionOffer,
 } from "@/services/promotions/promotion.service";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
-import db from "@/db.server";
 import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { billingService } from "@/services/billing/billing.service";
 import "./PromotionsRoute.css";
@@ -24,14 +23,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/promotions", capability: "read-promotions", redirectTo: "/app/merchant-support" });
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const url = new URL(request.url);
   const historyPageValue = Number(url.searchParams.get("historyPage"));
   const offerPageValue = Number(url.searchParams.get("offerPage"));
-  const merchantUi = merchantUiContext(settings, session);
+  const merchantUi = merchantUiContext(shop, session);
   const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale;
   const [allOffers, promotionSelection, history] = await Promise.all([
     getEligiblePromotionOffers(shop.id, promotionLocale),

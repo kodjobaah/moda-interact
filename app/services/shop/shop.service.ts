@@ -99,80 +99,87 @@ export class ShopService {
       );
     }
    
+    const shopDomain = shopifyGraphqlShop.myshopifyDomain;
     const shopifyShopId = shopifyGraphqlShop.shopifyShopId;
-
-    const shop = await prisma.shop.upsert({
-      where: {
-        domain:
-          shopifyGraphqlShop.myshopifyDomain,
-      },
-
-      create: {
-        domain:
-          shopifyGraphqlShop.myshopifyDomain,
-
-        shopifyShopId:
-          shopifyShopId,
-
-        status: "ACTIVE",
-      },
-
-      update: {
-        shopifyShopId:
-          shopifyShopId,
-      },
-    });
-
-    await prisma.subscription.upsert({
-      where: {
-        shopId: shop.id,
-      },
-      create: {
-        shopId: shop.id,
-        status: "NO_CONTRACT",
-        planId: null,
-        observedShopifyPlanHandle: null,
-        billingPeriodId: null,
-        currentPeriodStart: null,
-        currentPeriodEnd: null,
-        trialEndsAt: null,
-        cancelAtPeriodEnd: false,
-        providerSubscriptionId: null,
-        pendingShopifyPlanHandle: null,
-        pendingPlanId: null,
-        pendingEffectiveAt: null,
-      },
-      update: {},
-    });
-
     const primaryLocale =
       result.data?.shopLocales?.find(
         (shopLocale) => shopLocale.primary === true,
       )?.locale;
+    const storeLocale = normalizeStoreLocale(primaryLocale);
+    const defaultLanguageTag = normalizeOptional(
+      primaryLocale,
+      canonicaliseLanguageTag,
+    );
+    const defaultTimeZone = normalizeOptional(
+      shopifyGraphqlShop.ianaTimezone,
+      normalizeTimeZone,
+    );
+    const defaultCountryCode = normalizeOptional(
+      shopifyGraphqlShop.shopAddress?.countryCodeV2,
+      normalizeCountryCode,
+    );
+    const updateContext = {
+      ...(storeLocale ? { storeLocale } : {}),
+      ...(defaultLanguageTag ? { defaultLanguageTag } : {}),
+      ...(defaultTimeZone ? { defaultTimeZone } : {}),
+      ...(defaultCountryCode ? { defaultCountryCode } : {}),
+    };
 
-    await prisma.shopSettings.upsert({
-      where: {
-        shopId: shop.id,
-      },
-      create: {
-        shopId: shop.id,
-        defaultLanguageTag: normalizeOptional(
-          primaryLocale,
-          canonicaliseLanguageTag,
-        ),
-        defaultTimeZone: normalizeOptional(
-          shopifyGraphqlShop.ianaTimezone,
-          normalizeTimeZone,
-        ),
-        defaultCountryCode: normalizeOptional(
-          shopifyGraphqlShop.shopAddress?.countryCodeV2,
-          normalizeCountryCode,
-        ),
-      },
-      update: {},
+    return prisma.$transaction(async (transaction) => {
+      const shop = await transaction.shop.upsert({
+        where: { domain: shopDomain },
+        create: {
+          domain: shopDomain,
+          shopifyShopId,
+          status: "ACTIVE",
+          storeLocale,
+          defaultLanguageTag,
+          defaultTimeZone,
+          defaultCountryCode,
+        },
+        update: {
+          shopifyShopId,
+          ...updateContext,
+        },
+      });
+
+      await transaction.subscription.upsert({
+        where: { shopId: shop.id },
+        create: {
+          shopId: shop.id,
+          status: "NO_CONTRACT",
+          planId: null,
+          observedShopifyPlanHandle: null,
+          billingPeriodId: null,
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+          trialEndsAt: null,
+          cancelAtPeriodEnd: false,
+          providerSubscriptionId: null,
+          pendingShopifyPlanHandle: null,
+          pendingPlanId: null,
+          pendingEffectiveAt: null,
+        },
+        update: {},
+      });
+
+      await transaction.shopSettings.upsert({
+        where: { shopId: shop.id },
+        create: {
+          shopId: shop.id,
+          defaultLanguageTag,
+          defaultTimeZone,
+          defaultCountryCode,
+        },
+        update: {
+          ...(defaultLanguageTag ? { defaultLanguageTag } : {}),
+          ...(defaultTimeZone ? { defaultTimeZone } : {}),
+          ...(defaultCountryCode ? { defaultCountryCode } : {}),
+        },
+      });
+
+      return shop;
     });
-
-    return shop;
   }
 
 
@@ -426,6 +433,18 @@ function normalizeOptional(
 
   try {
     return normalize(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStoreLocale(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const locale = value.trim();
+  if (!locale || locale.length > 128) return null;
+  try {
+    new Intl.Locale(locale);
+    return locale;
   } catch {
     return null;
   }
