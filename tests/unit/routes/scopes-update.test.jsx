@@ -49,7 +49,7 @@ const shopRecord = {
   id: "shop-1",
   domain: "merchant.myshopify.com",
   status: "ACTIVE",
-  settings: { onboardingCompleted: true },
+  onboardingCompleted: true,
   subscription: { status: "ACTIVE" },
 };
 

@@ -35,7 +35,6 @@ export async function requireRecoveryHistory(request: Request) {
       : null;
   const state = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   if (!canAccessMerchantSurface(state, "RECOVERY_HISTORY")) {

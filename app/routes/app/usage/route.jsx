@@ -43,7 +43,6 @@ export const loader = async ({ request }) => {
   const subscription = await billingService.getSubscription(shop.id);
   const state = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
   if (!canAccessMerchantSurface(state, "USAGE"))

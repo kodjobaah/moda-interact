@@ -44,7 +44,7 @@ describe("Shopify discount lifecycle contract", () => {
       id: "shop-1",
       domain: "shop.myshopify.com",
       status: "ACTIVE",
-      settings: { onboardingCompleted: true },
+      onboardingCompleted: true,
       subscription: { status: "ACTIVE" },
     });
     mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products" });
@@ -66,7 +66,7 @@ describe("Shopify discount lifecycle contract", () => {
       id: "shop-1",
       domain: "shop.myshopify.com",
       status: "ACTIVE",
-      settings: { onboardingCompleted: true },
+      onboardingCompleted: true,
       subscription: { status: "TRIALING" },
     });
     mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });

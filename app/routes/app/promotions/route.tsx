@@ -26,7 +26,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   assertActiveShop(shop, { route: "/app/promotions", capability: "read-promotions", redirectTo: "/app/merchant-support" });
   const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const url = new URL(request.url);
   const historyPageValue = Number(url.searchParams.get("historyPage"));
@@ -61,9 +61,8 @@ export async function action({ request }: ActionFunctionArgs) {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/promotions", capability: "select-promotions", redirectTo: "/app/merchant-support" });
-  const settings = await db.shopSettings.findUnique({ where: { shopId: shop.id } });
   const subscription = await billingService.getSubscription(shop.id);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const formData = await request.formData();
   const campaignId = String(formData.get("campaignId") ?? "");

@@ -30,14 +30,22 @@ function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
 }
 
 async function persistOnboardingMilestone(shopId: string): Promise<void> {
-  await db.shopSettings.updateMany({
-    where: {
-      shopId,
-      onboardingCompleted: false,
-    },
-    data: {
-      onboardingCompleted: true,
-    },
+  await db.$transaction(async (transaction) => {
+    const shop = await transaction.shop.updateMany({
+      where: { id: shopId },
+      data: { onboardingCompleted: true },
+    });
+    if (shop.count !== 1) {
+      throw new Error(`Unable to mark onboarding complete for Shop ${shopId}`);
+    }
+
+    const settings = await transaction.shopSettings.updateMany({
+      where: { shopId },
+      data: { onboardingCompleted: true },
+    });
+    if (settings.count !== 1) {
+      throw new Error(`ShopSettings invariant missing for Shop ${shopId}`);
+    }
   });
 }
 

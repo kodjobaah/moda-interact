@@ -51,7 +51,6 @@ export const loader = async ({ request }) => {
   const subscription = await billingService.getSubscription(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription,
   });
 

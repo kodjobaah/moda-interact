@@ -9,7 +9,7 @@ import {
   resolveMerchantExperienceState,
 } from "../../app/services/shop/merchant-route-access-policy";
 
-const activeShop = { status: "ACTIVE" };
+const activeShop = { status: "ACTIVE", onboardingCompleted: true };
 
 const inputFor = (state: string) => {
   if (state === "REINSTALLING")
@@ -18,14 +18,12 @@ const inputFor = (state: string) => {
   if (state === "SIGNED_OUT") return { shop: { status: "UNINSTALLED" } };
   if (state === "ONBOARDING")
     return {
-      shop: activeShop,
-      settings: { onboardingCompleted: false },
+      shop: { ...activeShop, onboardingCompleted: false },
       subscription: { status: "NO_CONTRACT" },
     };
   const subscription = state === "ACTIVE" ? "ACTIVE" : state;
   return {
     shop: activeShop,
-    settings: { onboardingCompleted: true },
     subscription: { status: subscription },
   };
 };
@@ -38,8 +36,7 @@ describe("merchant route access policy", () => {
   it("gives onboarding precedence over subscription state", () => {
     expect(
       resolveMerchantExperienceState({
-        shop: activeShop,
-        settings: { onboardingCompleted: false },
+        shop: { ...activeShop, onboardingCompleted: false },
         subscription: { status: "ACTIVE" },
       }),
     ).toBe("ONBOARDING");
@@ -49,20 +46,17 @@ describe("merchant route access policy", () => {
     expect(
       resolveMerchantExperienceState({
         shop: activeShop,
-        settings: { onboardingCompleted: true },
       }),
     ).toBe("BILLING_ATTENTION");
     expect(
       resolveMerchantExperienceState({
         shop: activeShop,
-        settings: { onboardingCompleted: true },
         subscription: { status: "UNMAPPED" },
       }),
     ).toBe("BILLING_ATTENTION");
     expect(
       resolveMerchantExperienceState({
         shop: activeShop,
-        settings: { onboardingCompleted: true },
         subscription: { status: "SYNC_ERROR" },
       }),
     ).toBe("BILLING_ATTENTION");

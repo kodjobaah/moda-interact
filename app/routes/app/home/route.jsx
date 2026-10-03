@@ -71,7 +71,7 @@ export const loader = async ({ request }) => {
   });
 
   const merchantUi = merchantUiContext(settings, session);
-  const onboardingState = resolveMerchantExperienceState({ shop, settings });
+  const onboardingState = resolveMerchantExperienceState({ shop });
 
   /*
    * The home route only polls Moda's local projection. Shopify reconciliation
@@ -84,7 +84,7 @@ export const loader = async ({ request }) => {
     billingService.getSubscriptionProjection(shop.id),
   ]);
   const billingSetup = shouldShowMerchantBillingSetup(
-    settings?.onboardingCompleted,
+    shop.onboardingCompleted,
     subscriptionProjection,
   )
     ? buildMerchantBillingSetupState(subscriptionProjection, pricingCatalogue)
@@ -95,7 +95,7 @@ export const loader = async ({ request }) => {
    * evidence exists, never send the merchant back to plan selection while the
    * Shopify subscription is being confirmed/reconciled.
    */
-  if (!settings || !settings.onboardingCompleted) {
+  if (!shop.onboardingCompleted) {
     const [storeCategories, storeProfile] = await Promise.all([
       listSelectableStoreCategories(merchantUi.locale),
       loadStoreProfile(shop.id, merchantUi.locale),
@@ -117,7 +117,6 @@ export const loader = async ({ request }) => {
 
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
-    settings,
     subscription: subscriptionProjection,
   });
   if (
@@ -230,8 +229,7 @@ export default function Index() {
   const navigation = useNavigation();
   const revalidator = useRevalidator();
   if (
-    data.merchantExperienceState === "ONBOARDING" ||
-    !data.settings?.onboardingCompleted
+    data.merchantExperienceState === "ONBOARDING"
   ) {
     return data.billingSetup ? (
       <BillingSetupStatus

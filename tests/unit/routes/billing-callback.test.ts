@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   enqueueReconcile: vi.fn(),
   enqueueDiscountSync: vi.fn(),
   updateOnboarding: vi.fn(),
+  updateShopOnboarding: vi.fn(),
+  transaction: vi.fn(),
   activateInitialCategory: vi.fn(),
 }));
 
@@ -51,7 +53,7 @@ vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
 }));
 vi.mock("../../../app/db.server", () => ({
-  default: { shopSettings: { updateMany: mocks.updateOnboarding } },
+  default: { $transaction: mocks.transaction },
 }));
 
 import { loader } from "../../../app/routes/app/billing/callback/route";
@@ -118,7 +120,12 @@ beforeEach(() => {
     session: { shop: "example.myshopify.com" },
   });
   mocks.resolveShop.mockResolvedValue(shop);
+  mocks.transaction.mockImplementation(async (callback) => callback({
+    shop: { updateMany: mocks.updateShopOnboarding },
+    shopSettings: { updateMany: mocks.updateOnboarding },
+  }));
   mocks.updateOnboarding.mockResolvedValue({ count: 1 });
+  mocks.updateShopOnboarding.mockResolvedValue({ count: 1 });
   mocks.getFence.mockResolvedValue(verificationFence);
   mocks.getState.mockResolvedValue({
     status: "ACTIVE_SUBSCRIPTION",
@@ -159,11 +166,16 @@ describe("billing callback activation", () => {
   it("completes onboarding only after current Free verification", async () => {
     await runLoader("free");
 
-    expect(mocks.updateOnboarding).toHaveBeenCalledWith({
-      where: { shopId: "shop-1", onboardingCompleted: false },
+    expect(mocks.updateShopOnboarding).toHaveBeenCalledWith({
+      where: { id: "shop-1" },
       data: { onboardingCompleted: true },
     });
-    expect(mocks.updateOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith({
+      where: { shopId: "shop-1" },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.transaction).toHaveBeenCalledOnce();
+    expect(mocks.updateShopOnboarding.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.prepareFreeActivation.mock.invocationCallOrder[0],
     );
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
@@ -174,6 +186,24 @@ describe("billing callback activation", () => {
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
+  });
+
+  it("rolls back shared completion when the required legacy settings row is missing", async () => {
+    mocks.updateOnboarding.mockResolvedValue({ count: 0 });
+
+    await expect(runLoader("free")).rejects.toThrow(
+      "ShopSettings invariant missing for Shop shop-1",
+    );
+
+    expect(mocks.updateShopOnboarding).toHaveBeenCalledWith({
+      where: { id: "shop-1" },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.updateOnboarding).toHaveBeenCalledWith({
+      where: { shopId: "shop-1" },
+      data: { onboardingCompleted: true },
+    });
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 
   it("records and completes a first paid activation only after matching verification", async () => {

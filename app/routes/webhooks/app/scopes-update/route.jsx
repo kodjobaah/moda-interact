@@ -63,7 +63,7 @@ export const action = async ({ request }) => {
           id: true,
           domain: true,
           status: true,
-          settings: { select: { onboardingCompleted: true } },
+          onboardingCompleted: true,
           subscription: { select: { status: true } },
         },
       });
@@ -77,7 +77,7 @@ export const action = async ({ request }) => {
       const offlineScope = offlineSession?.scope ?? null;
       const eligible = isDiscountSyncEligible({
         shopStatus: shopRecord.status,
-        onboardingCompleted: shopRecord.settings?.onboardingCompleted === true,
+        onboardingCompleted: shopRecord.onboardingCompleted,
         subscriptionStatus: shopRecord.subscription?.status,
         sessionScope: offlineScope,
       });

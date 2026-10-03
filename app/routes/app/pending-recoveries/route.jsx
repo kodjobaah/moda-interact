@@ -3,7 +3,6 @@ import { readPendingRecoveries } from "@/services/pending-recovery/pending-recov
 import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { billingService } from "@/services/billing/billing.service";
-import db from "@/db.server";
 import { canAccessMerchantSurface, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
 /** @param {{ request: Request }} args */
@@ -11,11 +10,8 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/pending-recoveries", capability: "read-recoveries", redirectTo: "/app/merchant-support" });
-  const [settings, subscription] = await Promise.all([
-    db.shopSettings.findUnique({ where: { shopId: shop.id } }),
-    billingService.getSubscription(shop.id),
-  ]);
-  const merchantExperienceState = resolveMerchantExperienceState({ shop, settings, subscription });
+  const subscription = await billingService.getSubscription(shop.id);
+  const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PENDING_RECOVERIES")) {
     return Response.json({
       pendingRecoveries: {
