@@ -65,14 +65,20 @@ describe("promotion merchant route", () => {
     }
   });
 
-  it("renders a structured merchant promotions experience for empty and populated states", () => {
+  it("renders a focused current-offer-history merchant experience", () => {
     expect(routeSource).toContain('import "./PromotionsRoute.css"');
-    expect(routeSource).toContain('className="moda-promotions-hero"');
+    expect(routeSource).toContain('className="moda-promotions-intro"');
+    expect(routeSource).toContain('className="moda-promotions-lock-notice"');
+    expect(routeSource).toContain('id="current-promotion-heading"');
+    expect(routeSource).toContain("const visibleOffers = promotionSelection");
+    expect(routeSource).toContain("offer.id !== promotionSelection.campaignId");
     expect(routeSource).toContain('className="moda-promotions-panel"');
     expect(routeSource).toContain('className="moda-promotions-empty"');
     expect(routeSource).toContain('className="moda-promotions-offer-grid"');
     expect(routeSource).toContain('className="moda-promotion-button"');
+    expect(routeSource).toContain('className="moda-promotions-history-disclosure"');
     expect(routeSource).toContain('className="moda-promotion-history-list"');
+    expect(routeSource).not.toContain('className="moda-promotions-hero-art"');
   });
 
   it("renders tenant-safe history fields and bounded pagination without mutation controls", () => {

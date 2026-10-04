@@ -1,85 +1,313 @@
-.index {
-  align-items: center;
-  display: flex;
-  justify-content: center;
-  height: 100%;
+.page {
+  min-height: 100%;
   width: 100%;
-  text-align: center;
-  padding: 1rem;
-  background: #f4faf6;
+  padding: 48px 24px 72px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(199, 226, 211, 0.44), transparent 34rem),
+    linear-gradient(180deg, #f7fbf8 0%, #f1f8f4 100%);
+}
+
+.shell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+  display: grid;
+  gap: 28px;
+}
+
+.hero,
+.benefits,
+.pricingSection {
+  border: 1px solid #d8e3dc;
+  border-radius: 30px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 24px 60px rgba(20, 61, 44, 0.08);
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, 0.85fr);
+  gap: 42px;
+  align-items: center;
+  padding: 48px;
+}
+
+.heroCopy {
+  display: grid;
+  gap: 18px;
+  text-align: left;
+}
+
+.eyebrow,
+.sectionEyebrow,
+.connectionPill {
+  width: fit-content;
+  margin: 0;
+  color: #286b50;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .heading,
-.text {
-  padding: 0;
+.text,
+.connectionCard h2,
+.connectionText,
+.reassurance,
+.benefitCard h3,
+.benefitCard p,
+.sectionHeading h2,
+.sectionHeading p,
+.pricingNote {
   margin: 0;
 }
 
 .heading {
+  max-width: 760px;
   color: #102a24;
   font-family: "Avenir Next", "Trebuchet MS", sans-serif;
+  font-size: clamp(2.35rem, 5vw, 4.8rem);
+  line-height: 0.98;
+  letter-spacing: -0.045em;
 }
 
 .text {
-  color: #286b50;
-  font-size: 1.2rem;
-  padding-bottom: 2rem;
+  max-width: 700px;
+  color: #52675c;
+  font-size: 1.12rem;
+  line-height: 1.7;
 }
 
-.content {
+.websiteLink {
+  width: fit-content;
+  color: #1f664a;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.websiteLink:hover,
+.websiteLink:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.connectionCard {
   display: grid;
-  gap: 2rem;
+  gap: 16px;
+  padding: 26px;
+  border: 1px solid #cfe0d5;
+  border-radius: 24px;
+  background: linear-gradient(160deg, #f7fbf8 0%, #eef6f1 100%);
+}
+
+.connectionPill {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: #e6f1ea;
+}
+
+.connectionCard h2 {
+  color: #143d2c;
+  font-size: 1.65rem;
+  line-height: 1.15;
+}
+
+.connectionText,
+.reassurance,
+.label small,
+.sectionHeading p,
+.pricingNote {
+  color: #637269;
+  line-height: 1.55;
 }
 
 .form {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin: 0 auto;
-  gap: 1rem;
+  display: grid;
+  gap: 14px;
 }
 
 .label {
   display: grid;
-  gap: 0.2rem;
-  max-width: 20rem;
+  gap: 7px;
+  color: #143d2c;
+  font-size: 0.92rem;
+  font-weight: 800;
   text-align: left;
-  font-size: 1rem;
 }
 
 .input {
-  padding: 0.4rem;
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 13px;
+  border: 1px solid #b9ccc0;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #102a24;
+  font: inherit;
+}
+
+.input:focus {
+  outline: 3px solid rgba(42, 106, 77, 0.16);
+  border-color: #2a6a4d;
 }
 
 .button {
+  min-height: 48px;
   border: 0;
-  border-radius: 0.5rem;
-  color: white;
+  border-radius: 12px;
   cursor: pointer;
-  font-weight: 700;
-  padding: 0.4rem;
+  font: inherit;
+  font-weight: 800;
+  padding: 12px 18px;
+  box-shadow: 0 12px 24px rgba(31, 83, 61, 0.16);
 }
 
-.list {
-  list-style: none;
-  padding: 0;
-  padding-top: 3rem;
-  margin: 0;
+.button:hover {
+  filter: brightness(1.04);
+}
+
+.detectedStore {
   display: flex;
-  gap: 2rem;
-}
-
-.list > li {
-  max-width: 20rem;
+  gap: 12px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid #c7d9ce;
+  border-radius: 14px;
+  background: #ffffff;
   text-align: left;
 }
 
-@media only screen and (max-width: 50rem) {
-  .list {
-    display: block;
+.detectedStore > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.detectedStore strong {
+  overflow-wrap: anywhere;
+  color: #143d2c;
+}
+
+.storeLabel {
+  color: #6a776f;
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.storeStatus {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #2a7c59;
+  box-shadow: 0 0 0 5px rgba(42, 124, 89, 0.1);
+}
+
+.reassurance {
+  font-size: 0.84rem;
+}
+
+.benefits,
+.pricingSection {
+  display: grid;
+  gap: 24px;
+  padding: 34px;
+}
+
+.sectionHeading {
+  display: grid;
+  gap: 8px;
+  max-width: 760px;
+}
+
+.sectionHeading h2 {
+  color: #143d2c;
+  font-size: clamp(1.7rem, 3vw, 2.35rem);
+  line-height: 1.08;
+}
+
+.benefitGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.benefitCard {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid #d8e3dc;
+  border-radius: 20px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  text-align: left;
+}
+
+.benefitNumber {
+  color: #2a6a4d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.benefitCard h3 {
+  color: #143d2c;
+  font-size: 1.08rem;
+}
+
+.benefitCard p {
+  color: #637269;
+  line-height: 1.55;
+}
+
+.pricingSection :global(.mi-pricing-catalogue-grid) {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.pricingSection :global(.mi-pricing-catalogue-card) {
+  min-height: 100%;
+}
+
+.pricingNote {
+  padding-top: 2px;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 900px) {
+  .page {
+    padding: 24px 16px 48px;
   }
 
-  .list > li {
-    padding-bottom: 1rem;
+  .hero {
+    grid-template-columns: 1fr;
+    padding: 30px;
+  }
+
+  .benefitGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero,
+  .benefits,
+  .pricingSection {
+    border-radius: 22px;
+  }
+
+  .hero,
+  .benefits,
+  .pricingSection {
+    padding: 22px;
+  }
+
+  .heading {
+    font-size: 2.35rem;
+  }
+
+  .connectionCard {
+    padding: 20px;
   }
 }

@@ -91,6 +91,9 @@ export default function PromotionsRoute() {
   const submitLockRef = useRef(false);
   const [submittingCampaignId, setSubmittingCampaignId] = useState<string | null>(null);
   const selectionLocked = promotionSelection?.locked === true;
+  const visibleOffers = promotionSelection
+    ? offers.filter((offer) => offer.id !== promotionSelection.campaignId)
+    : offers;
 
   useEffect(() => {
     if (navigation.state === "idle") {
@@ -116,19 +119,9 @@ export default function PromotionsRoute() {
     <s-page heading={i18n.t("promotions.page.title")}>
       <Breadcrumbs items={[]} current={i18n.t("promotions.page.title")} merchantUi={merchantUi} />
       <div className="moda-promotions-page">
-        <section className="moda-promotions-hero">
-          <div className="moda-promotions-hero-copy">
-            <span className="moda-promotions-eyebrow">{i18n.t("promotions.nav")}</span>
-            <h1>{i18n.t("promotions.page.title")}</h1>
-            <p>{i18n.t("promotions.page.description")}</p>
-          </div>
-          <div className="moda-promotions-hero-art" aria-hidden="true">
-            <div className="moda-promotions-ticket moda-promotions-ticket-back" />
-            <div className="moda-promotions-ticket moda-promotions-ticket-front">
-              <span>+</span>
-              <strong>{offersPagination.totalEntries}</strong>
-            </div>
-          </div>
+        <section className="moda-promotions-intro">
+          <span className="moda-promotions-eyebrow">{i18n.t("promotions.nav")}</span>
+          <p>{i18n.t("promotions.page.description")}</p>
         </section>
 
         {actionData?.ok === true ? (
@@ -145,16 +138,33 @@ export default function PromotionsRoute() {
         ) : null}
 
         {promotionSelection?.locked === true ? (
-          <div className="moda-promotions-lock-notice" role="status">
-            <h3>
-              {i18n.t("promotions.status.selected")}
-              {promotionSelection.merchantTitle ? `: ${promotionSelection.merchantTitle}` : ""}
-            </h3>
-            <p>{i18n.t("promotions.error.activeSelected")}</p>
-            <p><strong>{i18n.t("promotions.expires")}</strong>: {i18n.formatDate(promotionSelection.expiresAt)}</p>
-            <p>{i18n.t("promotions.remaining", { quantity: promotionSelection.remainingQuantity })}</p>
-            {promotionSelection.exhausted ? <p>{i18n.t("promotions.status.exhausted")}</p> : null}
-          </div>
+          <section
+            className="moda-promotions-lock-notice"
+            role="status"
+            aria-labelledby="current-promotion-heading"
+          >
+            <div className="moda-promotions-current-heading">
+              <div>
+                <span className="moda-promotions-kicker">{i18n.t("promotions.status.selected")}</span>
+                <h2 id="current-promotion-heading">
+                  {promotionSelection.merchantTitle ?? i18n.t("promotions.history.titleUnavailable")}
+                </h2>
+              </div>
+              {promotionSelection.exhausted ? (
+                <span className="moda-promotion-status">{i18n.t("promotions.status.exhausted")}</span>
+              ) : null}
+            </div>
+            <div className="moda-promotions-current-balance">
+              <strong>{i18n.t("promotions.remaining", { quantity: promotionSelection.remainingQuantity })}</strong>
+            </div>
+            <div className="moda-promotions-current-meta">
+              <p>
+                <strong>{i18n.t("promotions.expires")}</strong>
+                <span>{i18n.formatDate(promotionSelection.expiresAt)}</span>
+              </p>
+              <p className="moda-promotions-current-guidance">{i18n.t("promotions.error.activeSelected")}</p>
+            </div>
+          </section>
         ) : null}
 
         <section id="promotion-offers" className="moda-promotions-panel" aria-labelledby="promotion-offers-heading">
@@ -163,10 +173,9 @@ export default function PromotionsRoute() {
               <span className="moda-promotions-kicker">{i18n.t("promotions.nav")}</span>
               <h2 id="promotion-offers-heading">{i18n.t("promotions.page.title")}</h2>
             </div>
-            <span className="moda-promotions-count" aria-label={`${offersPagination.totalEntries}`}>{offersPagination.totalEntries}</span>
           </div>
 
-          {offers.length === 0 ? (
+          {visibleOffers.length === 0 ? (
             <div className="moda-promotions-empty">
               <div className="moda-promotions-empty-icon" aria-hidden="true">
                 <span>+</span>
@@ -179,110 +188,112 @@ export default function PromotionsRoute() {
           ) : (
             <>
               <div className="moda-promotions-offer-grid">
-                {offers.map((offer: PromotionOffer) => (
-                <article className={`moda-promotion-card${offer.currentlySelected ? " is-selected" : ""}`} key={offer.id}>
-                  <div className="moda-promotion-card-top">
-                    <span className="moda-promotion-status">
-                      {i18n.t(offer.exhausted ? "promotions.status.exhausted" : offer.currentlySelected ? "promotions.status.selected" : offer.previouslyClaimed ? "promotions.status.claimed" : "promotions.status.available")}
-                    </span>
-                    <span className="moda-promotion-credit-badge">{i18n.t("promotions.credits", { quantity: offer.quantity })}</span>
-                  </div>
-                  <div className="moda-promotion-card-copy">
-                    <h3>{offer.merchantTitle}</h3>
-                    <p>{offer.merchantDescription}</p>
-                  </div>
-                  <div className="moda-promotion-card-meta">
-                    <span><strong>{i18n.t("promotions.expires")}</strong>{i18n.formatDate(offer.expiresAt)}</span>
-                    {offer.previouslyClaimed && !offer.exhausted ? <span><strong>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</strong></span> : null}
-                  </div>
-                  <Form method="post" className="moda-promotion-card-action" onSubmit={guardPromotionSubmit(offer.id)}>
-                    <input type="hidden" name="campaignId" value={offer.id} />
-                    <button
-                      className="moda-promotion-button"
-                      type="submit"
-                      disabled={selectionLocked || submissionInFlight || offer.currentlySelected}
-                      aria-busy={submittingCampaignId === offer.id}
-                    >
-                      {offer.currentlySelected
-                        ? i18n.t("promotions.status.selected")
-                        : offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}
-                    </button>
-                  </Form>
-                </article>
+                {visibleOffers.map((offer: PromotionOffer) => (
+                  <article className="moda-promotion-card" key={offer.id}>
+                    <div className="moda-promotion-card-top">
+                      <span className="moda-promotion-status">
+                        {i18n.t(offer.exhausted ? "promotions.status.exhausted" : offer.previouslyClaimed ? "promotions.status.claimed" : "promotions.status.available")}
+                      </span>
+                      <span className="moda-promotion-credit-badge">{i18n.t("promotions.credits", { quantity: offer.quantity })}</span>
+                    </div>
+                    <div className="moda-promotion-card-copy">
+                      <h3>{offer.merchantTitle}</h3>
+                      <p>{offer.merchantDescription}</p>
+                    </div>
+                    <div className="moda-promotion-card-meta">
+                      <span><strong>{i18n.t("promotions.expires")}</strong>{i18n.formatDate(offer.expiresAt)}</span>
+                      {offer.previouslyClaimed && !offer.exhausted ? <span><strong>{i18n.t("promotions.remaining", { quantity: offer.remainingQuantity })}</strong></span> : null}
+                    </div>
+                    <Form method="post" className="moda-promotion-card-action" onSubmit={guardPromotionSubmit(offer.id)}>
+                      <input type="hidden" name="campaignId" value={offer.id} />
+                      <button
+                        className="moda-promotion-button"
+                        type="submit"
+                        disabled={selectionLocked || submissionInFlight || offer.currentlySelected}
+                        aria-busy={submittingCampaignId === offer.id}
+                        title={selectionLocked ? i18n.t("promotions.error.activeSelected") : undefined}
+                      >
+                        {offer.currentlySelected
+                          ? i18n.t("promotions.status.selected")
+                          : offer.previouslyClaimed ? i18n.t("promotions.action.reselect") : i18n.t("promotions.action.select")}
+                      </button>
+                    </Form>
+                  </article>
                 ))}
               </div>
               {offersPagination.totalPages > 1 ? (
                 <PromotionPagination
-                currentPage={offersPagination.page}
-                totalPages={offersPagination.totalPages}
-                previousLabel={i18n.t("promotions.history.previous")}
-                nextLabel={i18n.t("promotions.history.next")}
-                previousHref={offersPagination.page > 1 ? promotionPageHref(offersPagination.page - 1, history.page, "promotion-offers") : null}
-                nextHref={offersPagination.page < offersPagination.totalPages ? promotionPageHref(offersPagination.page + 1, history.page, "promotion-offers") : null}
+                  currentPage={offersPagination.page}
+                  totalPages={offersPagination.totalPages}
+                  previousLabel={i18n.t("promotions.history.previous")}
+                  nextLabel={i18n.t("promotions.history.next")}
+                  previousHref={offersPagination.page > 1 ? promotionPageHref(offersPagination.page - 1, history.page, "promotion-offers") : null}
+                  nextHref={offersPagination.page < offersPagination.totalPages ? promotionPageHref(offersPagination.page + 1, history.page, "promotion-offers") : null}
                 />
               ) : null}
             </>
           )}
         </section>
 
-        <section id="promotion-history" className="moda-promotions-panel" aria-labelledby="promotion-history-heading">
-          <div className="moda-promotions-panel-heading">
+        <details id="promotion-history" className="moda-promotions-history-disclosure">
+          <summary>
             <div>
               <span className="moda-promotions-kicker">{i18n.t("promotions.history.title")}</span>
               <h2 id="promotion-history-heading">{i18n.t("promotions.history.title")}</h2>
             </div>
-            <span className="moda-promotions-count" aria-label={`${history.totalEntries}`}>{history.totalEntries}</span>
-          </div>
-
-          {history.entries.length === 0 ? (
-            <div className="moda-promotions-empty moda-promotions-empty-history">
-              <div className="moda-promotions-empty-icon moda-promotions-empty-icon-history" aria-hidden="true">
-                <span>↺</span>
+            <span className="moda-promotions-history-count" aria-label={`${history.totalEntries}`}>{history.totalEntries}</span>
+          </summary>
+          <div className="moda-promotions-history-content" aria-labelledby="promotion-history-heading">
+            {history.entries.length === 0 ? (
+              <div className="moda-promotions-empty moda-promotions-empty-history">
+                <div className="moda-promotions-empty-icon moda-promotions-empty-icon-history" aria-hidden="true">
+                  <span>↺</span>
+                </div>
+                <div>
+                  <h3>{i18n.t("promotions.history.empty")}</h3>
+                  <p>{i18n.t("promotions.empty")}</p>
+                </div>
               </div>
-              <div>
-                <h3>{i18n.t("promotions.history.empty")}</h3>
-                <p>{i18n.t("promotions.empty")}</p>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="moda-promotion-history-list">
-                {history.entries.map((entry: PromotionHistoryEntry) => (
-                  <article className="moda-promotion-history-card" key={entry.campaignId}>
-                    <div className="moda-promotion-history-title-row">
-                      <div>
-                        <span className="moda-promotion-status">{historyStatusLabel(entry.status, i18n)}</span>
-                        <h3>{entry.campaignTitle ?? i18n.t("promotions.history.titleUnavailable")}</h3>
+            ) : (
+              <>
+                <div className="moda-promotion-history-list">
+                  {history.entries.map((entry: PromotionHistoryEntry) => (
+                    <article className="moda-promotion-history-card" key={entry.campaignId}>
+                      <div className="moda-promotion-history-title-row">
+                        <div>
+                          <span className="moda-promotion-status">{historyStatusLabel(entry.status, i18n)}</span>
+                          <h3>{entry.campaignTitle ?? i18n.t("promotions.history.titleUnavailable")}</h3>
+                        </div>
+                        <strong className="moda-promotion-history-remaining">{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</strong>
                       </div>
-                      <strong className="moda-promotion-history-remaining">{i18n.t("promotions.remaining", { quantity: entry.remainingQuantity })}</strong>
-                    </div>
-                    <div className="moda-promotion-history-stats">
-                      <span>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</span>
-                      <span>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</span>
-                      <span>{i18n.t("promotions.history.currentlySelected", { value: entry.currentlySelected ? i18n.t("promotions.history.yes") : i18n.t("promotions.history.no") })}</span>
-                    </div>
-                    <div className="moda-promotion-history-meta">
-                      <p>{i18n.t("promotions.history.selectedRange", { first: formatHistoryDate(entry.firstSelectedAt, i18n), last: formatHistoryDate(entry.lastSelectedAt, i18n) })}</p>
-                      <p>{i18n.t("promotions.history.usedRange", { first: formatHistoryDate(entry.firstUsedAt, i18n), last: formatHistoryDate(entry.lastUsedAt, i18n) })}</p>
-                      <p><strong>{i18n.t("promotions.expires")}:</strong> {i18n.formatDate(entry.expiresAt)}</p>
-                      <p>{i18n.t("promotions.history.status", { status: historyStatusLabel(entry.status, i18n) })}</p>
-                    </div>
-                  </article>
-                ))}
-              </div>
-              {history.totalPages > 1 ? (
-                <PromotionPagination
-                  currentPage={history.page}
-                  totalPages={history.totalPages}
-                  previousLabel={i18n.t("promotions.history.previous")}
-                  nextLabel={i18n.t("promotions.history.next")}
-                  previousHref={history.page > 1 ? promotionPageHref(offersPagination.page, history.page - 1, "promotion-history") : null}
-                  nextHref={history.page < history.totalPages ? promotionPageHref(offersPagination.page, history.page + 1, "promotion-history") : null}
-                />
-              ) : null}
-            </>
-          )}
-        </section>
+                      <div className="moda-promotion-history-stats">
+                        <span>{i18n.t("promotions.history.granted", { quantity: entry.quantityGranted })}</span>
+                        <span>{i18n.t("promotions.history.usedCredits", { quantity: entry.committedQuantity })}</span>
+                        <span>{i18n.t("promotions.history.currentlySelected", { value: entry.currentlySelected ? i18n.t("promotions.history.yes") : i18n.t("promotions.history.no") })}</span>
+                      </div>
+                      <div className="moda-promotion-history-meta">
+                        <p>{i18n.t("promotions.history.selectedRange", { first: formatHistoryDate(entry.firstSelectedAt, i18n), last: formatHistoryDate(entry.lastSelectedAt, i18n) })}</p>
+                        <p>{i18n.t("promotions.history.usedRange", { first: formatHistoryDate(entry.firstUsedAt, i18n), last: formatHistoryDate(entry.lastUsedAt, i18n) })}</p>
+                        <p><strong>{i18n.t("promotions.expires")}:</strong> {i18n.formatDate(entry.expiresAt)}</p>
+                        <p>{i18n.t("promotions.history.status", { status: historyStatusLabel(entry.status, i18n) })}</p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                {history.totalPages > 1 ? (
+                  <PromotionPagination
+                    currentPage={history.page}
+                    totalPages={history.totalPages}
+                    previousLabel={i18n.t("promotions.history.previous")}
+                    nextLabel={i18n.t("promotions.history.next")}
+                    previousHref={history.page > 1 ? promotionPageHref(offersPagination.page, history.page - 1, "promotion-history") : null}
+                    nextHref={history.page < history.totalPages ? promotionPageHref(offersPagination.page, history.page + 1, "promotion-history") : null}
+                  />
+                ) : null}
+              </>
+            )}
+          </div>
+        </details>
       </div>
     </s-page>
   );

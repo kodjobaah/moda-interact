@@ -7,7 +7,7 @@ void React;
 
 /**
  * @typedef {{ contentKey: string, position: number, title: string, description: string }} PricingHighlight
- * @typedef {{ shopifyPlanHandle: string, displayName: string, planKind: string, featured: boolean, localizedDescription: string, includedRecoveryCredits: number, allowancePeriod: string, billingPeriod: string, recurringAmountMinor: number, currency: string, highlights: PricingHighlight[] }} PricingPlan
+ * @typedef {{ shopifyPlanHandle?: string, cataloguePosition: number, displayName: string, planKind: string, featured: boolean, localizedDescription: string, includedRecoveryCredits: number, allowancePeriod: string, billingPeriod: string, recurringAmountMinor: number, currency: string, highlights: PricingHighlight[] }} PricingPlan
  */
 
 /** @param {{ merchantUi: object, pricingCatalogue?: PricingPlan[], showChoosePlanAction?: boolean }} props */
@@ -25,7 +25,7 @@ export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue,
         {plans.map((plan) => {
           const lifetime = plan.planKind === "FREE" || plan.allowancePeriod === "LIFETIME";
           return (
-            <article className={`mi-pricing-catalogue-card${plan.featured ? " mi-pricing-catalogue-card-featured" : ""}`} key={plan.shopifyPlanHandle}>
+            <article className={`mi-pricing-catalogue-card${plan.featured ? " mi-pricing-catalogue-card-featured" : ""}`} key={`${plan.cataloguePosition}:${plan.displayName}`}>
               <div className="mi-pricing-catalogue-pill">{plan.displayName}</div>
               {plan.featured && <div className="mi-pricing-catalogue-badge">{i18n.t("onboarding.pricing.mostPopular")}</div>}
               <h3>{plan.displayName}</h3>
@@ -58,7 +58,8 @@ export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue,
 MerchantPricingCatalogue.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
   pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
-    shopifyPlanHandle: PropTypes.string.isRequired,
+    shopifyPlanHandle: PropTypes.string,
+    cataloguePosition: PropTypes.number.isRequired,
     displayName: PropTypes.string.isRequired,
     planKind: PropTypes.string.isRequired,
     featured: PropTypes.bool.isRequired,

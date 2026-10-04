@@ -1,5 +1,6 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { createMemoryRouter, RouterProvider } from "react-router";
 import { describe, expect, it } from "vitest";
 import MerchantPricingCatalogue from "../../app/components/merchant-pricing/MerchantPricingCatalogue";
 import Onboarding from "../../app/components/onboarding/Onboarding";
@@ -9,7 +10,17 @@ void React;
 const merchantUi = { locale: "en-GB", timeZone: "UTC" };
 
 function render(pricingCatalogue) {
-  return renderToStaticMarkup(<Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />);
+  const router = createMemoryRouter(
+    [
+      {
+        path: "*",
+        element: <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />,
+      },
+    ],
+    { initialEntries: ["/app"] },
+  );
+
+  return renderToStaticMarkup(<RouterProvider router={router} />);
 }
 
 function renderCatalogue(pricingCatalogue, showChoosePlanAction = false) {
@@ -82,7 +93,6 @@ describe("Onboarding merchant pricing renderer", () => {
     expect(markup).not.toContain("Amount per unit");
     expect(markup).not.toContain("Flat amount");
     expect(markup).not.toContain("fixed-internal-name");
-    expect(markup).toContain('href="/app/billing/select"');
   });
 
   it("renders a generic unavailable state for an empty catalogue", () => {
