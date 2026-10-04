@@ -5,6 +5,10 @@ const source = await readFile(
   new URL("../../../app/routes.ts", import.meta.url),
   "utf8",
 );
+const featuresRouteSource = await readFile(
+  new URL("../../../app/routes/app/features/route.tsx", import.meta.url),
+  "utf8",
+);
 
 describe("explicit route configuration", () => {
   it("does not use filesystem-inferred flatRoutes", () => {
@@ -20,8 +24,18 @@ describe("explicit route configuration", () => {
     expect(source).not.toContain('route("billing", "./routes/app/billing/route.tsx")');
     expect(source).not.toContain('route("additional", "./routes/app/additional/route.jsx")');
     expect(source).toContain('route("promotions", "./routes/app/promotions/route.tsx"),');
+    expect(source).toContain('route("features", "./routes/app/features/route.tsx"),');
     expect(source).toContain('route("merchant-support", "./routes/app/merchant-support/route.jsx"),');
     expect(source).not.toContain('route("app/billing/options", "./routes/app/billing/options/route.tsx"),');
+  });
+
+  it("keeps /app/features only as a compatibility redirect", () => {
+    expect(source).toContain('route("features", "./routes/app/features/route.tsx"),');
+    expect(featuresRouteSource).toContain(
+      '"/app/recovery-settings#conversation-features"',
+    );
+    expect(featuresRouteSource).not.toContain("shopFeaturePreference");
+    expect(featuresRouteSource).not.toContain("billingPlanFeature");
   });
 
   it("declares the restoration route as a standalone exact path", () => {

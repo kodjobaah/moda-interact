@@ -9,9 +9,11 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
 export default function MerchantKnowledgeSection({
   data,
   t,
+  embedded = false,
 }: {
   data: KnowledgeData;
   t: Translate;
+  embedded?: boolean;
 }) {
   const createFetcher = useFetcher();
   const reorderFetcher = useFetcher();
@@ -38,11 +40,19 @@ export default function MerchantKnowledgeSection({
   const purposeType = webCatalogue.find((item) => item.purpose.key === selectedPurpose);
 
   return (
-    <section className="moda-recovery-panel" aria-labelledby="merchant-knowledge-heading">
-      <div className="moda-recovery-section-heading">
+    <section
+      className={embedded
+        ? "moda-merchant-knowledge-panel moda-recovery-embedded-panel"
+        : "moda-recovery-panel moda-merchant-knowledge-panel"}
+      aria-labelledby={embedded ? undefined : "merchant-knowledge-heading"}
+      aria-label={embedded ? "Merchant Knowledge" : undefined}
+    >
+      {!embedded ? (
+        <div className="moda-recovery-section-heading">
           <h2 id="merchant-knowledge-heading">Merchant Knowledge</h2>
           <p>Configure web pages the assistant can use as reference material.</p>
-      </div>
+        </div>
+      ) : null}
 
       {!data.planEntitled ? (
           <p role="status">Merchant Knowledge configuration is unavailable on the current plan.</p>
@@ -58,69 +68,93 @@ export default function MerchantKnowledgeSection({
               {data.configuredCount} of {data.maxKnowledgeSources} sources configured
           </p>
 
-          {webCatalogue.length ? (
-            <form
-              action="/app/merchant-knowledge/source"
-              method="post"
-              onSubmit={(event) => {
-                event.preventDefault();
-                submit(createFetcher, event.currentTarget);
-              }}
-              className="moda-recovery-behaviour-section"
-            >
-              <input type="hidden" name="operation" value="create" />
-              <label>
-                  Source name
-                <input name="name" maxLength={160} required />
-              </label>
-              <label>
-                  Purpose
-                <select name="purposeKey" value={selectedPurpose} onChange={(event) => setSelectedPurpose(event.currentTarget.value)} required>
-                  {purposes.map((purpose) => (
-                    <option key={purpose.key} value={purpose.key}>{t(`merchantKnowledge.purposes.${purpose.key}.label`)}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                  Data format
-                <input type="hidden" name="dataFormatKey" value={purposeType?.dataFormat.key ?? "WEB_PAGE"} />
-                <span>{purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}</span>
-              </label>
-              <label>
-                  URL
-                <input name="url" type="url" maxLength={2048} placeholder="https://" required />
-              </label>
-              <label>
-                  Language
-                <select name="languageTag" defaultValue={data.defaultLanguageTag} required>
-                  {data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
-                </select>
-              </label>
-              <button type="submit" disabled={busy || data.planEligibleSourceCount >= data.maxKnowledgeSources}>
-                  Add web page
-              </button>
-            </form>
-          ) : (
-              <p role="status">No web page source types are available for this plan.</p>
-          )}
+          <div className="moda-merchant-knowledge-add-grid">
+            {webCatalogue.length ? (
+              <details className="moda-settings-disclosure moda-merchant-knowledge-add">
+                <summary>
+                  <span>Add web page</span>
+                  <small>
+                    {purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}
+                  </small>
+                </summary>
+                <div className="moda-settings-disclosure-body">
+                  <form
+                    action="/app/merchant-knowledge/source"
+                    method="post"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      submit(createFetcher, event.currentTarget);
+                    }}
+                    className="moda-merchant-knowledge-form moda-merchant-knowledge-web-form"
+                  >
+                    <input type="hidden" name="operation" value="create" />
+                    <label className="moda-merchant-knowledge-field">
+                        Source name
+                      <input name="name" maxLength={160} required />
+                    </label>
+                    <label className="moda-merchant-knowledge-field">
+                        Purpose
+                      <select name="purposeKey" value={selectedPurpose} onChange={(event) => setSelectedPurpose(event.currentTarget.value)} required>
+                        {purposes.map((purpose) => (
+                          <option key={purpose.key} value={purpose.key}>{t(`merchantKnowledge.purposes.${purpose.key}.label`)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="moda-merchant-knowledge-field">
+                        Data format
+                      <input type="hidden" name="dataFormatKey" value={purposeType?.dataFormat.key ?? "WEB_PAGE"} />
+                      <span className="moda-merchant-knowledge-readonly">{purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}</span>
+                    </label>
+                    <label className="moda-merchant-knowledge-field">
+                        URL
+                      <input name="url" type="url" maxLength={2048} placeholder="https://" required />
+                    </label>
+                    <label className="moda-merchant-knowledge-field">
+                        Language
+                      <select name="languageTag" defaultValue={data.defaultLanguageTag} required>
+                        {data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                      </select>
+                    </label>
+                    <button className="moda-merchant-knowledge-primary-action" type="submit" disabled={busy || data.planEligibleSourceCount >= data.maxKnowledgeSources}>
+                        Add web page
+                    </button>
+                  </form>
+                </div>
+              </details>
+            ) : (
+                <p role="status">No web page source types are available for this plan.</p>
+            )}
 
-          {uploadCatalogue.length ? (
-            <MerchantKnowledgeUploadForm
-              catalogue={uploadCatalogue}
-              maxUploadBytes={data.maxUploadBytes}
-              defaultLanguageTag={data.defaultLanguageTag}
-              supportedLanguageTags={data.supportedLanguageTags}
-              t={t}
-            />
-          ) : null}
+            {uploadCatalogue.length ? (
+              <details className="moda-settings-disclosure moda-merchant-knowledge-add">
+                <summary>
+                  <span>{t("merchantKnowledge.upload.submit")}</span>
+                  <small>
+                    {[...new Set(uploadCatalogue.map((item) => item.dataFormat.key))]
+                      .map((key) => t(`merchantKnowledge.dataFormats.${key}.label`))
+                      .join(" / ")}
+                  </small>
+                </summary>
+                <div className="moda-settings-disclosure-body">
+                  <MerchantKnowledgeUploadForm
+                    catalogue={uploadCatalogue}
+                    maxUploadBytes={data.maxUploadBytes}
+                    defaultLanguageTag={data.defaultLanguageTag}
+                    supportedLanguageTags={data.supportedLanguageTags}
+                    t={t}
+                  />
+                </div>
+              </details>
+            ) : null}
+          </div>
 
           {!data.sources.length ? (
               <p role="status">No knowledge sources configured.</p>
           ) : (
-            <ol className="moda-recovery-behaviour-section">
+            <ol className="moda-recovery-behaviour-section moda-merchant-knowledge-source-list">
               {data.sources.map((source, index) => (
-                <li key={source.id} className="moda-recovery-setting-row">
-                  <div>
+                <li key={source.id} className="moda-recovery-setting-row moda-merchant-knowledge-source-card">
+                  <div className="moda-merchant-knowledge-source-copy">
                     <h3>{source.name}</h3>
                     <p>{t(`merchantKnowledge.purposes.${source.purposeKey}.label`)} · {t(`merchantKnowledge.dataFormats.${source.dataFormatKey}.label`)} · {source.languageTag}</p>
                       <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? "No URL recorded"}</p>

@@ -106,13 +106,6 @@ export default function RecoverySettingsView({
             <p>{i18n.t("recoverySettings.adminOverride")}</p>
           </div>
         ) : null}
-        <FeaturePreferences snapshot={data.features} t={i18n.t} />
-        <StoreProfileSection
-          categories={data.storeCategories}
-          profile={data.storeProfile}
-          t={i18n.t}
-        />
-        <MerchantKnowledgeSection data={data.merchantKnowledge} t={i18n.t} />
         <div className="moda-recovery-panel moda-recovery-behaviour-panel">
           <SettingsForm revision={data.revision} intent="recovery" t={i18n.t}>
             <section
@@ -371,6 +364,61 @@ export default function RecoverySettingsView({
             </section>
           </SettingsForm>
         </div>
+        <FeaturePreferences snapshot={data.features} t={i18n.t} />
+
+        <section
+          className="moda-recovery-panel moda-recovery-context-panel"
+          aria-labelledby="store-assistant-context-heading"
+        >
+          <div className="moda-recovery-panel-heading moda-recovery-context-heading">
+            <div>
+              <h2 id="store-assistant-context-heading">
+                Store &amp; assistant context
+              </h2>
+              <p>
+                Store classification and reference material used by the assistant.
+              </p>
+            </div>
+          </div>
+
+          <div className="moda-recovery-context-list">
+            <details className="moda-settings-disclosure moda-recovery-context-disclosure">
+              <summary>
+                <span>{i18n.t("storeProfile.title")}</span>
+                <small>
+                  {data.storeProfile.pendingCategory?.localizedDisplayName
+                    ?? data.storeProfile.activeCategory?.localizedDisplayName
+                    ?? i18n.t("storeProfile.none")}
+                </small>
+              </summary>
+              <div className="moda-settings-disclosure-body moda-recovery-context-body">
+                <StoreProfileSection
+                  embedded
+                  categories={data.storeCategories}
+                  profile={data.storeProfile}
+                  t={i18n.t}
+                />
+              </div>
+            </details>
+
+            <details className="moda-settings-disclosure moda-recovery-context-disclosure">
+              <summary>
+                <span>Merchant Knowledge</span>
+                <small>
+                  {data.merchantKnowledge.configuredCount} of{" "}
+                  {data.merchantKnowledge.maxKnowledgeSources} sources configured
+                </small>
+              </summary>
+              <div className="moda-settings-disclosure-body moda-recovery-context-body">
+                <MerchantKnowledgeSection
+                  embedded
+                  data={data.merchantKnowledge}
+                  t={i18n.t}
+                />
+              </div>
+            </details>
+          </div>
+        </section>
       </div>
     </s-page>
   );

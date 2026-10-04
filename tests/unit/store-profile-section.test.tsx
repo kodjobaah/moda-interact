@@ -42,9 +42,46 @@ describe("Recovery Settings Store Profile section", () => {
     expect(html).toContain("Food");
     expect(html).toContain("storeProfile.pendingPublication");
     expect(html).toContain("storeProfile.templateProvenance:Food default:food.default:4");
+    expect(html).toContain('class="moda-settings-disclosure moda-store-profile-disclosure"');
     expect(html).toContain('action="/app/store-profile/category"');
     expect(html).toContain('name="expectedPendingSelectionGeneration" value="9"');
     expect(html).toContain('value="food" selected=""');
     expect(html).not.toContain("promptText");
+  });
+
+  it("supports embedded presentation without repeating the section heading", () => {
+    const html = renderToStaticMarkup(createElement(StoreProfileSection, {
+      embedded: true,
+      categories: [],
+      profile: {
+        activeCategory: null,
+        pendingCategory: null,
+        pendingSelectionGeneration: 0,
+        pendingState: "NONE",
+        pendingTemplate: null,
+      },
+      t: (key) => key,
+    }));
+
+    expect(html).toContain('class="moda-recovery-embedded-panel"');
+    expect(html).toContain('aria-label="storeProfile.title"');
+    expect(html).not.toContain('id="store-profile-heading"');
+  });
+
+  it("shows only the unavailable state when there is no selectable category", () => {
+    const html = renderToStaticMarkup(createElement(StoreProfileSection, {
+      categories: [],
+      profile: {
+        activeCategory: null,
+        pendingCategory: null,
+        pendingSelectionGeneration: 0,
+        pendingState: "NONE",
+        pendingTemplate: null,
+      },
+      t: (key) => key,
+    }));
+
+    expect(html).toContain("storeProfile.configurationUnavailable");
+    expect(html).not.toContain('action="/app/store-profile/category"');
   });
 });

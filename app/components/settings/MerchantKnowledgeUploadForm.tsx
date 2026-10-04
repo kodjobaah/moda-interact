@@ -139,8 +139,8 @@ export default function MerchantKnowledgeUploadForm({
   if (!catalogue.length) return null;
 
   return (
-    <form className="moda-recovery-behaviour-section" onSubmit={upload}>
-      <label>
+    <form className="moda-merchant-knowledge-form moda-merchant-knowledge-upload-form" onSubmit={upload}>
+      <label className="moda-merchant-knowledge-field">
           {localized(t, "merchantKnowledge.upload.purpose", "Purpose")}
         <select
           value={selected?.purpose.key ?? ""}
@@ -155,7 +155,7 @@ export default function MerchantKnowledgeUploadForm({
         </select>
       </label>
       {selected ? (
-        <label>
+        <label className="moda-merchant-knowledge-field">
           {localized(t, "merchantKnowledge.upload.dataFormat", "Data format")}
           <select
             value={selected.dataFormat.key}
@@ -170,11 +170,11 @@ export default function MerchantKnowledgeUploadForm({
           </select>
         </label>
       ) : null}
-      <label>
+      <label className="moda-merchant-knowledge-field">
         {localized(t, "merchantKnowledge.upload.sourceName", "Source name")}
         <input value={name} maxLength={160} required onChange={(event) => setName(event.currentTarget.value)} />
       </label>
-      <label>
+      <label className="moda-merchant-knowledge-field moda-merchant-knowledge-field-wide">
         {localized(t, "merchantKnowledge.upload.file", "File")}
         <input
           type="file"
@@ -183,14 +183,14 @@ export default function MerchantKnowledgeUploadForm({
           onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
         />
       </label>
-      <p>{localized(t, "merchantKnowledge.upload.maxSize", `Maximum upload size: ${maxUploadBytes} bytes`, { bytes: maxUploadBytes })}</p>
-      <label>
+      <p className="moda-merchant-knowledge-help">{localized(t, "merchantKnowledge.upload.maxSize", `Maximum upload size: ${maxUploadBytes} bytes`, { bytes: maxUploadBytes })}</p>
+      <label className="moda-merchant-knowledge-field">
         {localized(t, "merchantKnowledge.upload.language", "Language")}
         <select value={languageTag} onChange={(event) => setLanguageTag(event.currentTarget.value)}>
           {supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
         </select>
       </label>
-      <button type="submit" disabled={busy || !file || !name.trim()}>
+      <button className="moda-merchant-knowledge-primary-action" type="submit" disabled={busy || !file || !name.trim()}>
         {localized(t, `merchantKnowledge.upload.${stage === "idle" ? "submit" : stage}`, {
           idle: "Upload file",
           preparing: "Preparing",

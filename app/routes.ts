@@ -29,6 +29,7 @@ export default [
     route("recoveries", "./routes/app/recoveries/route.tsx"),
     route("usage", "./routes/app/usage/route.jsx"),
     route("promotions", "./routes/app/promotions/route.tsx"),
+    route("features", "./routes/app/features/route.tsx"),
     route("recovery-settings", "./routes/app/recovery-settings/route.tsx"),
     route("merchant-support", "./routes/app/merchant-support/route.jsx"),
     route("billing/options", "./routes/app/billing/options/route.tsx"),

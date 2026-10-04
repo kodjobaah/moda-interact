@@ -27,10 +27,12 @@ export default function StoreProfileSection({
   categories,
   profile,
   t,
+  embedded = false,
 }: {
   categories: Category[];
   profile: Profile;
   t: (key: string, values?: Record<string, string | number>) => string;
+  embedded?: boolean;
 }) {
   const fetcher = useFetcher<SelectionResult>();
   const revalidator = useRevalidator();
@@ -54,13 +56,19 @@ export default function StoreProfileSection({
   }, [profile.activeCategory?.id, profile.pendingCategory?.id, categories]);
 
   return (
-    <section className="moda-recovery-panel" aria-labelledby="store-profile-heading">
-      <div className="moda-recovery-panel-heading">
-        <div>
-          <h2 id="store-profile-heading">{t("storeProfile.title")}</h2>
-          <p>{t("storeProfile.description")}</p>
+    <section
+      className={embedded ? "moda-recovery-embedded-panel" : "moda-recovery-panel"}
+      aria-labelledby={embedded ? undefined : "store-profile-heading"}
+      aria-label={embedded ? t("storeProfile.title") : undefined}
+    >
+      {!embedded ? (
+        <div className="moda-recovery-panel-heading">
+          <div>
+            <h2 id="store-profile-heading">{t("storeProfile.title")}</h2>
+            <p>{t("storeProfile.description")}</p>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <dl className="moda-store-profile-summary">
         <div>
@@ -93,34 +101,51 @@ export default function StoreProfileSection({
         </p>
       ) : null}
 
-      <fetcher.Form method="post" action="/app/store-profile/category" className="moda-store-profile-form">
-        <input type="hidden" name="expectedPendingSelectionGeneration" value={generation} />
-        <label htmlFor="settings-store-category">
-          <span>{t("storeProfile.categoryLabel")}</span>
-          <select
-            id="settings-store-category"
-            name="categoryId"
-            value={selectedCategoryId}
-            onChange={(event) => setSelectedCategoryId(event.currentTarget.value)}
-            disabled={!categories.length || saving}
-          >
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.localizedDisplayName}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" disabled={!categories.length || saving || !selectedCategoryId}>
-          {saving ? t("storeProfile.saving") : t("storeProfile.changeCategory")}
-        </button>
-      </fetcher.Form>
+      {categories.length ? (
+        <details className="moda-settings-disclosure moda-store-profile-disclosure">
+          <summary>
+            <span>{t("storeProfile.categoryLabel")}</span>
+            <small>
+              {profile.pendingCategory?.localizedDisplayName
+                ?? profile.activeCategory?.localizedDisplayName
+                ?? t("storeProfile.none")}
+            </small>
+          </summary>
+          <div className="moda-settings-disclosure-body">
+            <fetcher.Form method="post" action="/app/store-profile/category" className="moda-store-profile-form">
+              <input type="hidden" name="expectedPendingSelectionGeneration" value={generation} />
+              <label htmlFor="settings-store-category">
+                <span>{t("storeProfile.categoryLabel")}</span>
+                <select
+                  id="settings-store-category"
+                  name="categoryId"
+                  value={selectedCategoryId}
+                  onChange={(event) => setSelectedCategoryId(event.currentTarget.value)}
+                  disabled={saving}
+                >
+                  {categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.localizedDisplayName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" disabled={saving || !selectedCategoryId}>
+                {saving ? t("storeProfile.saving") : t("storeProfile.changeCategory")}
+              </button>
+            </fetcher.Form>
 
-      {!categories.length ? <p role="status">{t("storeProfile.configurationUnavailable")}</p> : null}
-      {selectionError ? (
-        <p role="alert">{t(selectionError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
-      ) : null}
-      {fetcher.data?.ok ? <p role="status">{t("storeProfile.saved")}</p> : null}
+            {selectionError ? (
+              <p role="alert">{t(selectionError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
+            ) : null}
+            {fetcher.data?.ok ? <p role="status">{t("storeProfile.saved")}</p> : null}
+          </div>
+        </details>
+      ) : (
+        <p className="moda-store-profile-unavailable" role="status">
+          {t("storeProfile.configurationUnavailable")}
+        </p>
+      )}
     </section>
   );
 }

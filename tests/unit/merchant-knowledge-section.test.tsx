@@ -81,24 +81,35 @@ it("keeps source configuration available while OFF and uses only FeaturePreferen
     </Fragment>,
   ));
 
+  expect(host.querySelector("#conversation-features")).not.toBeNull();
   expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
   expect(host.querySelector('input[type="checkbox"][data-feature-id="feature-mk"]')).not.toBeNull();
   expect(host.querySelector('form[action="/app/merchant-knowledge/source"]')).not.toBeNull();
+  expect(host.querySelector(".moda-merchant-knowledge-panel")).not.toBeNull();
+  expect(host.querySelector("form.moda-merchant-knowledge-form")).not.toBeNull();
+  expect(host.querySelectorAll("details.moda-merchant-knowledge-add")).toHaveLength(1);
+  expect(host.querySelector("details.moda-merchant-knowledge-add > summary")?.textContent).toContain("Add web page");
   expect(host.querySelector('input[name="url"]')).not.toBeNull();
   expect(host.textContent).toContain("Ingestion and retrieval are disabled");
   expect(host.querySelector('button[type="submit"]')?.hasAttribute("disabled")).toBe(false);
 });
 
-it("orders Conversation Features, Store Profile, Merchant Knowledge, then recovery controls", async () => {
+it("puts recovery behaviour first and progressively discloses lower-frequency context", async () => {
   const { readFileSync } = await import("node:fs");
   const view = readFileSync("app/routes/app/recovery-settings/RecoverySettingsView.tsx", "utf8");
+  const recoverySettings = view.indexOf("<SettingsForm revision={data.revision}");
   const features = view.indexOf("<FeaturePreferences");
+  const context = view.indexOf('className="moda-recovery-panel moda-recovery-context-panel"');
   const storeProfile = view.indexOf("<StoreProfileSection");
   const merchantKnowledge = view.indexOf("<MerchantKnowledgeSection");
-  const recoverySettings = view.indexOf("<SettingsForm revision={data.revision}");
 
-  expect(features).toBeGreaterThanOrEqual(0);
-  expect(features).toBeLessThan(storeProfile);
+  expect(recoverySettings).toBeGreaterThanOrEqual(0);
+  expect(recoverySettings).toBeLessThan(features);
+  expect(features).toBeLessThan(context);
+  expect(context).toBeLessThan(storeProfile);
   expect(storeProfile).toBeLessThan(merchantKnowledge);
-  expect(merchantKnowledge).toBeLessThan(recoverySettings);
+  expect(view).toContain("Store &amp; assistant context");
+  expect(view).toContain("moda-recovery-context-disclosure");
+  expect(view).toContain("<StoreProfileSection\n                  embedded");
+  expect(view).toContain("<MerchantKnowledgeSection\n                  embedded");
 });

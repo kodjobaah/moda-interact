@@ -55,6 +55,7 @@ it("uploads bytes directly to R2 without credentials, hashes, then finalizes", a
     />,
   ));
 
+  expect(host.querySelector("form.moda-merchant-knowledge-upload-form")).not.toBeNull();
   const nameInput = host.querySelector<HTMLInputElement>('input:not([type="file"])')!;
   const fileInput = host.querySelector<HTMLInputElement>('input[type="file"]')!;
   const file = new File(["a,b\n1,2"], "faq.csv", { type: "text/csv" });

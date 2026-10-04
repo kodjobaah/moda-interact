@@ -17,6 +17,7 @@ export default function FeaturePreferences({
 
   return (
     <section
+      id="conversation-features"
       className="moda-recovery-panel moda-recovery-feature-panel"
       aria-labelledby="merchant-features-title"
     >

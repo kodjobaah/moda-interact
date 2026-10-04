@@ -745,3 +745,557 @@
     width: 100%;
   }
 }
+
+/* Store Profile and Merchant Knowledge are composed inside Recovery Settings but
+ * use native form controls rather than Polaris primitives. Keep their presentation
+ * aligned with the surrounding recovery-settings visual system. */
+.moda-store-profile-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.moda-store-profile-summary > div {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff, #fbfdfc);
+}
+
+.moda-store-profile-summary dt {
+  margin: 0 0 6px;
+  color: var(--recovery-green-700);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.moda-store-profile-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--recovery-green-950);
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.moda-store-profile-summary dd + dd {
+  margin-top: 5px;
+  color: var(--recovery-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.moda-store-profile-provenance {
+  margin: -4px 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--recovery-green-200);
+  border-radius: 13px;
+  background: var(--recovery-green-100);
+  color: var(--recovery-green-800);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.moda-store-profile-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 15px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 17px;
+  background: var(--recovery-soft);
+}
+
+.moda-store-profile-form label,
+.moda-merchant-knowledge-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  color: var(--recovery-green-900);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.moda-store-profile-form select,
+.moda-merchant-knowledge-field input:not([type="file"]),
+.moda-merchant-knowledge-field select,
+.moda-merchant-knowledge-panel details input:not([type="hidden"]),
+.moda-merchant-knowledge-panel details select {
+  width: 100%;
+  min-width: 0;
+  min-height: 43px;
+  padding: 9px 11px;
+  border: 1px solid #bdcbc2;
+  border-radius: 11px;
+  background: #fff;
+  color: var(--recovery-ink);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+}
+
+.moda-store-profile-form select:focus,
+.moda-merchant-knowledge-field input:not([type="file"]):focus,
+.moda-merchant-knowledge-field select:focus,
+.moda-merchant-knowledge-panel details input:not([type="hidden"]):focus,
+.moda-merchant-knowledge-panel details select:focus {
+  border-color: var(--recovery-green-600);
+  box-shadow: 0 0 0 3px rgba(63, 125, 97, 0.14);
+}
+
+.moda-store-profile-form select:disabled,
+.moda-merchant-knowledge-field input:disabled,
+.moda-merchant-knowledge-field select:disabled {
+  cursor: not-allowed;
+  background: #eef2ef;
+  color: #7d8a82;
+}
+
+.moda-store-profile-form button,
+.moda-merchant-knowledge-primary-action {
+  min-height: 43px;
+  padding: 10px 17px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--recovery-green-800), var(--recovery-green-600));
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 9px 20px rgba(20, 61, 44, 0.15);
+  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+}
+
+.moda-store-profile-form button:hover:not(:disabled),
+.moda-merchant-knowledge-primary-action:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 13px 24px rgba(20, 61, 44, 0.2);
+}
+
+.moda-store-profile-form button:disabled,
+.moda-merchant-knowledge-primary-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+  box-shadow: none;
+}
+
+.moda-store-profile-form ~ [role="status"],
+.moda-store-profile-form ~ [role="alert"] {
+  margin: 12px 0 0;
+  padding: 11px 13px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 13px;
+  background: var(--recovery-soft);
+  color: var(--recovery-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.moda-store-profile-form ~ [role="alert"] {
+  border-color: #e9caca;
+  background: #fff7f7;
+  color: #7a2c2c;
+}
+
+.moda-merchant-knowledge-panel > .moda-recovery-effective-value {
+  min-height: 0;
+  margin: 14px 0 0;
+  padding: 12px 15px;
+}
+
+.moda-merchant-knowledge-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+  align-items: end;
+  margin: 0;
+}
+
+.moda-merchant-knowledge-field-wide {
+  grid-column: span 2;
+}
+
+.moda-merchant-knowledge-readonly {
+  display: flex;
+  align-items: center;
+  min-height: 43px;
+  padding: 9px 11px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 11px;
+  background: #f3f7f4;
+  color: var(--recovery-muted);
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.moda-merchant-knowledge-field input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  min-height: 43px;
+  padding: 5px;
+  border: 1px solid #bdcbc2;
+  border-radius: 11px;
+  background: #fff;
+  color: var(--recovery-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.moda-merchant-knowledge-field input[type="file"]::file-selector-button {
+  min-height: 31px;
+  margin-right: 9px;
+  padding: 6px 11px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--recovery-green-100);
+  color: var(--recovery-green-800);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.moda-merchant-knowledge-help {
+  align-self: center;
+  margin: 0;
+  color: var(--recovery-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.moda-merchant-knowledge-panel > [role="status"]:not(.moda-recovery-inline-message),
+.moda-merchant-knowledge-source-list + [role="status"] {
+  margin: 14px 0 0;
+  color: var(--recovery-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.moda-merchant-knowledge-source-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 18px 0 0;
+  list-style: none;
+}
+
+.moda-merchant-knowledge-source-card {
+  padding: 14px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #fff, #fbfdfc);
+}
+
+.moda-merchant-knowledge-source-copy h3 {
+  margin: 0 0 6px;
+  color: var(--recovery-green-950);
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.moda-merchant-knowledge-source-copy p {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--recovery-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.moda-recovery-setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.moda-recovery-setting-actions form {
+  margin: 0;
+}
+
+.moda-recovery-setting-actions button,
+.moda-recovery-setting-actions details > summary {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 9px;
+  background: #fff;
+  color: var(--recovery-green-800);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.moda-recovery-setting-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.moda-recovery-setting-actions details {
+  flex-basis: 100%;
+  padding-top: 3px;
+}
+
+.moda-recovery-setting-actions details > summary {
+  width: fit-content;
+  list-style-position: inside;
+}
+
+.moda-recovery-setting-actions details form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 13px;
+  background: var(--recovery-soft);
+}
+
+.moda-recovery-setting-actions details form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--recovery-green-900);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+@media (max-width: 820px) {
+  .moda-store-profile-summary,
+  .moda-merchant-knowledge-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .moda-merchant-knowledge-field-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 560px) {
+  .moda-store-profile-summary,
+  .moda-store-profile-form,
+  .moda-merchant-knowledge-form,
+  .moda-recovery-setting-actions details form {
+    grid-template-columns: 1fr;
+  }
+
+  .moda-store-profile-form button,
+  .moda-merchant-knowledge-primary-action {
+    width: 100%;
+  }
+
+  .moda-merchant-knowledge-field-wide {
+    grid-column: auto;
+  }
+
+  .moda-recovery-setting-actions {
+    justify-content: flex-start;
+  }
+}
+
+.moda-merchant-knowledge-form > [role="status"],
+.moda-merchant-knowledge-form > [role="alert"] {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--recovery-soft);
+  color: var(--recovery-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.moda-merchant-knowledge-form > [role="alert"] {
+  border: 1px solid #e9caca;
+  background: #fff7f7;
+  color: #7a2c2c;
+}
+
+
+/* Progressive disclosure keeps this multi-purpose settings page scannable while
+ * preserving the architecture-required section order and all existing actions. */
+.moda-settings-disclosure {
+  overflow: clip;
+  border: 1px solid var(--recovery-line);
+  border-radius: 15px;
+  background: linear-gradient(180deg, #fff, #fbfdfc);
+}
+
+.moda-settings-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 48px;
+  padding: 12px 14px;
+  color: var(--recovery-green-900);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.16s ease;
+}
+
+.moda-settings-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.moda-settings-disclosure > summary:hover {
+  background: var(--recovery-soft);
+}
+
+.moda-settings-disclosure > summary:focus-visible {
+  outline: 3px solid rgba(63, 125, 97, 0.2);
+  outline-offset: -3px;
+}
+
+.moda-settings-disclosure > summary::after {
+  content: "+";
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--recovery-green-100);
+  color: var(--recovery-green-800);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.moda-settings-disclosure[open] > summary::after {
+  content: "−";
+}
+
+.moda-settings-disclosure > summary span {
+  min-width: 0;
+}
+
+.moda-settings-disclosure > summary small {
+  margin-left: auto;
+  overflow-wrap: anywhere;
+  color: var(--recovery-muted);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.moda-settings-disclosure-body {
+  padding: 14px;
+  border-top: 1px solid var(--recovery-line);
+  background: var(--recovery-soft);
+}
+
+.moda-store-profile-disclosure {
+  margin-top: 2px;
+}
+
+.moda-store-profile-disclosure .moda-store-profile-form {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.moda-store-profile-unavailable {
+  margin: 0;
+  padding: 11px 13px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 13px;
+  background: var(--recovery-soft);
+  color: var(--recovery-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.moda-merchant-knowledge-add-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.moda-merchant-knowledge-add[open] {
+  grid-column: 1 / -1;
+}
+
+.moda-merchant-knowledge-add .moda-settings-disclosure-body {
+  padding: 14px;
+}
+
+.moda-merchant-knowledge-add .moda-merchant-knowledge-form {
+  padding: 0;
+}
+
+@media (max-width: 700px) {
+  .moda-merchant-knowledge-add-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .moda-merchant-knowledge-add[open] {
+    grid-column: auto;
+  }
+
+  .moda-settings-disclosure > summary {
+    align-items: flex-start;
+  }
+
+  .moda-settings-disclosure > summary small {
+    display: none;
+  }
+}
+
+/* Keep the primary recovery controls first, then progressively disclose lower-frequency
+ * store context so this page reads as Recovery Settings rather than a general settings hub. */
+.moda-recovery-context-heading {
+  margin-bottom: 12px;
+}
+
+.moda-recovery-context-list {
+  display: grid;
+  gap: 10px;
+}
+
+.moda-recovery-context-disclosure > summary {
+  min-height: 56px;
+}
+
+.moda-recovery-context-body {
+  padding: 0;
+  background: #fff;
+}
+
+.moda-recovery-embedded-panel {
+  padding: 16px;
+}
+
+.moda-recovery-embedded-panel > :first-child {
+  margin-top: 0;
+}
+
+.moda-recovery-embedded-panel > :last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 560px) {
+  .moda-recovery-embedded-panel {
+    padding: 14px;
+  }
+}

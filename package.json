@@ -2,6 +2,9 @@
   "name": "moda-interact",
   "private": true,
   "scripts": {
+    "shopify": "node scripts/shopify.mjs",
+    "shopify:ngrok": "ngrok http 50620",
+    "shopify:dev": "node scripts/shopify-dev.mjs",
     "build": "npm run prisma:generate && react-router build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
@@ -13,7 +16,6 @@
     "migrate": "npm run prisma:migrate:deploy",
     "seed": "npm run prisma:seed",
     "lint": "eslint --ignore-path .gitignore --cache --cache-location ./node_modules/.cache/eslint .",
-    "shopify": "shopify",
     "prisma": "prisma",
     "graphql-codegen": "graphql-codegen",
     "vite": "vite",

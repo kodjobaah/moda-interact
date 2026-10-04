@@ -19,7 +19,6 @@ export const MERCHANT_SURFACES = [
   "BILLING_PURCHASE_HISTORY",
   "PROMOTIONS",
   "RECOVERY_SETTINGS",
-  "FEATURES",
   "RECOVERY_HISTORY",
   "SUPPORT",
   "PLAN_SELECT",
@@ -53,7 +52,6 @@ export type MerchantNavigationItem = {
     | "billing"
     | "support"
     | "promotions"
-    | "features"
     | "recoverySettings";
   href: string;
 };
@@ -72,7 +70,6 @@ const surfaceMatrix: Record<
     "BILLING_OPTIONS",
     "BILLING_PURCHASE_HISTORY",
     "PROMOTIONS",
-    "FEATURES",
     "RECOVERY_SETTINGS",
     "RECOVERY_HISTORY",
     "SUPPORT",
@@ -122,7 +119,6 @@ const navigationByState: Record<
     { id: "home", href: "/app" },
     { id: "recoveries", href: "/app/recoveries" },
     { id: "billing", href: "/app/billing/options" },
-    { id: "features", href: "/app/features" },
     { id: "promotions", href: "/app/promotions" },
     { id: "support", href: "/app/merchant-support" },
     { id: "recoverySettings", href: "/app/recovery-settings" },

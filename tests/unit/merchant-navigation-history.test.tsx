@@ -39,10 +39,14 @@ describe("merchant navigation and history links", () => {
         expect(html).not.toContain("/app/usage");
         expect(html).not.toContain("/app/billing/options");
       }
-      if (state === "ACTIVE")
+      if (state === "ACTIVE") {
         expect(html.indexOf(">Overview<")).toBeLessThan(
           html.indexOf(">Recoveries<"),
         );
+        expect(html).toContain(">Recovery settings<");
+        expect(html).not.toContain(">Conversation features<");
+        expect(html).not.toContain('href="/app/features"');
+      }
     },
   );
   it("links billing breadcrumb and owned recovery directly, with safe unresolved fallback", () => {
