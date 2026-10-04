@@ -48,7 +48,7 @@ export default function RecoveryList({
       : value;
   return (
     <main
-      className="recovery-list"
+      className="recovery-list moda-page-shell moda-page-shell--wide"
       aria-labelledby="recoveries-title"
       aria-busy={busy}
     >

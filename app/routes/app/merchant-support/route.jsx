@@ -108,25 +108,27 @@ export default function MerchantSupport() {
 
   return (
     <s-page heading={i18n.t("dashboard.messagesSent")}>
-      <s-section heading="Support thread">
-        {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
-          {messages.map((/** @type {any} */ message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
-        </ol>}
-        {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
-          {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
-          <span>Page {support.page} of {support.totalPages}</span>
-          {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>Next</Link> : <span aria-disabled="true">Next</span>}
-        </nav> : null}
-      </s-section>
-      <s-section heading="Contact Moda Support">
-        <form className="merchant-support-compose" onSubmit={submitMessage} noValidate>
-          <label htmlFor="message-body">Message</label>
-          <textarea id="message-body" value={body} onChange={(event) => setBody(event.target.value)} aria-describedby="message-count message-error" required />
-          <div id="message-count" aria-live="polite">{graphemeCount}/500</div>
-          {validationError || fetcher.data?.error ? <p id="message-error" role="alert">{validationError || fetcher.data.error}</p> : null}
-          <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? "Sending..." : "Send"}</button>
-        </form>
-      </s-section>
+      <div className="merchant-support-page moda-page-shell moda-page-shell--narrow">
+        <s-section heading="Support thread">
+          {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
+            {messages.map((/** @type {any} */ message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
+          </ol>}
+          {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
+            {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
+            <span>Page {support.page} of {support.totalPages}</span>
+            {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>Next</Link> : <span aria-disabled="true">Next</span>}
+          </nav> : null}
+        </s-section>
+        <s-section heading="Contact Moda Support">
+          <form className="merchant-support-compose" onSubmit={submitMessage} noValidate>
+            <label htmlFor="message-body">Message</label>
+            <textarea id="message-body" value={body} onChange={(event) => setBody(event.target.value)} aria-describedby="message-count message-error" required />
+            <div id="message-count" aria-live="polite">{graphemeCount}/500</div>
+            {validationError || fetcher.data?.error ? <p id="message-error" role="alert">{validationError || fetcher.data.error}</p> : null}
+            <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? "Sending..." : "Send"}</button>
+          </form>
+        </s-section>
+      </div>
     </s-page>
   );
 }

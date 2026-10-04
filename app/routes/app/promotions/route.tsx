@@ -118,7 +118,7 @@ export default function PromotionsRoute() {
   return (
     <s-page heading={i18n.t("promotions.page.title")}>
       <Breadcrumbs items={[]} current={i18n.t("promotions.page.title")} merchantUi={merchantUi} />
-      <div className="moda-promotions-page">
+      <div className="moda-promotions-page moda-page-shell moda-page-shell--standard">
         <section className="moda-promotions-intro">
           <span className="moda-promotions-eyebrow">{i18n.t("promotions.nav")}</span>
           <p>{i18n.t("promotions.page.description")}</p>

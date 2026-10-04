@@ -1,4 +1,4 @@
-.recovery-list { max-width: 1180px; margin: 0 auto; padding: 32px 24px; color: #202a29; font: 14px/1.5 system-ui, sans-serif; }
+.recovery-list { padding: 32px 24px; color: #202a29; font: 14px/1.5 system-ui, sans-serif; }
 .recovery-list, .recovery-list * { box-sizing: border-box; }
 .recovery-list h1 { font-size: 28px; letter-spacing: -.6px; margin: 0 0 6px; }
 .recovery-list h2 { font-size: 17px; margin: 0; }

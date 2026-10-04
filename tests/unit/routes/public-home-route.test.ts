@@ -54,14 +54,21 @@ describe("public home route", () => {
     expect(readActiveMerchantPricingCatalogue).toHaveBeenCalledWith({ locale: "en-GB" });
   });
 
-  it("uses an embedded Shopify shop hint as a detected-store connection context", async () => {
-    const result = await loader(loaderArgs(
-      "https://example.test/?shop=eugene-bdx7mzhn.myshopify.com&host=encoded&embedded=1",
-    ));
+  it("redirects an embedded Shopify launch into the authenticated app shell", async () => {
+    let response: Response | undefined;
+    try {
+      await loader(loaderArgs(
+        "https://example.test/?shop=eugene-bdx7mzhn.myshopify.com&host=encoded&embedded=1",
+      ));
+    } catch (error) {
+      response = error as Response;
+    }
 
-    expect(result).toMatchObject({
-      detectedShop: "eugene-bdx7mzhn.myshopify.com",
-    });
+    expect(response).toBeInstanceOf(Response);
+    expect(response?.headers.get("Location")).toContain(
+      "/app?shop=eugene-bdx7mzhn.myshopify.com&host=encoded&embedded=1",
+    );
+    expect(readActiveMerchantPricingCatalogue).not.toHaveBeenCalled();
   });
 
   it("preserves the existing direct-shop redirect outside the embedded surface", async () => {
@@ -79,11 +86,9 @@ describe("public home route", () => {
 
   it("renders contextual connection copy, canonical pricing, and the public Moda Interact link", () => {
     expect(routeSource).toContain('href="https://www.modainteract.com/"');
-    expect(routeSource).toContain("Connect this Shopify store");
     expect(routeSource).toContain("Connect your Shopify store");
     expect(routeSource).toContain("MerchantPricingCatalogue");
     expect(routeSource).toContain("showChoosePlanAction={false}");
-    expect(routeSource).toContain('type="hidden" name="shop" value={detectedShop}');
     expect(routeSource).toContain("Pricing shown here comes from the active Moda Interact merchant catalogue");
   });
 });

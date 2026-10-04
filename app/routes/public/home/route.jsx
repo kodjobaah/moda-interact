@@ -6,29 +6,27 @@ import styles from "./styles.module.css";
 
 const MYSHOPIFY_DOMAIN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i;
 
+/** @param {Request} request */
 function requestLocale(request) {
   const accepted = request.headers.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
   return accepted || "en-GB";
 }
 
+/** @param {URL} url */
 function detectedShopFromUrl(url) {
   const raw = url.searchParams.get("shop")?.trim().toLowerCase() ?? "";
   return MYSHOPIFY_DOMAIN.test(raw) ? raw : null;
-}
-
-function hasEmbeddedHint(url) {
-  return url.searchParams.get("embedded") === "1" || Boolean(url.searchParams.get("host"));
 }
 
 /** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
   const detectedShop = detectedShopFromUrl(url);
-  const embedded = hasEmbeddedHint(url);
 
-  // Preserve the existing direct-shop navigation behaviour outside the embedded
-  // install/connect surface. Shopify embedded launches carry host/embedded hints.
-  if (detectedShop && !embedded) {
+  // The public home page is intentionally the standalone connection/pricing
+  // surface. Any Shopify launch that identifies a valid shop must enter the
+  // authenticated /app layout so AppProvider and MerchantNavigation are mounted.
+  if (detectedShop) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
@@ -49,7 +47,7 @@ export const loader = async ({ request }) => {
 
   return {
     showForm: Boolean(login),
-    detectedShop: embedded ? detectedShop : null,
+    detectedShop: null,
     merchantUi: {
       locale,
       timeZone: "UTC",

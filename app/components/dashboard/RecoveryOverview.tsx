@@ -67,7 +67,7 @@ export default function RecoveryOverview({
             : "billing.configurationUnavailableDescription";
   const summary = overview?.summary;
   return (
-    <main className="recovery-overview" dir={i18n.direction}>
+    <main className="recovery-overview moda-page-shell moda-page-shell--wide" dir={i18n.direction}>
       <header>
         <div>
           <h1>{t("overview.title")}</h1>

@@ -358,38 +358,40 @@ export default function BillingOptionsPage() {
 
   return (
     <s-page heading={i18n.t("billingCommerce.page.title")}>
-      <Breadcrumbs
-        items={[]}
-        current={i18n.t("billingCommerce.page.title")}
-        merchantUi={data.merchantUi}
-      />
-      {data.usageHistoryAvailable && (
-        <div className="billing-options__history-action">
-          <s-button href={data.usageHistoryHref} variant="secondary">
-            {i18n.t("usageHistory.title")}
-          </s-button>
-        </div>
-      )}
-      <BillingPurchaseHub
-        merchantUi={data.merchantUi}
-        capacity={data.capacity}
-        billingPeriodPhase={data.billingPeriodPhase}
-        lifecycleState={data.lifecycleState}
-        verificationState={data.verificationState}
-        mappingStatus={mappingStatus}
-        topUpState={topUpState}
-        current={current}
-        pending={pending}
-        requestedSelection={data.requestedSelection}
-        initialView={initialView}
-        scheduledCancellation={data.scheduledCancellation}
-        purchaseHistoryAvailable={data.purchaseHistoryAvailable}
-        managePlansHref="/app/billing/select"
-        managePlansAvailable={
-          data.verificationState !== "VERIFICATION_UNAVAILABLE" &&
-          data.lifecycleState !== "FROZEN"
-        }
-      />
+      <div className="moda-page-shell moda-page-shell--standard">
+        <Breadcrumbs
+          items={[]}
+          current={i18n.t("billingCommerce.page.title")}
+          merchantUi={data.merchantUi}
+        />
+        {data.usageHistoryAvailable && (
+          <div className="billing-options__history-action">
+            <s-button href={data.usageHistoryHref} variant="secondary">
+              {i18n.t("usageHistory.title")}
+            </s-button>
+          </div>
+        )}
+        <BillingPurchaseHub
+          merchantUi={data.merchantUi}
+          capacity={data.capacity}
+          billingPeriodPhase={data.billingPeriodPhase}
+          lifecycleState={data.lifecycleState}
+          verificationState={data.verificationState}
+          mappingStatus={mappingStatus}
+          topUpState={topUpState}
+          current={current}
+          pending={pending}
+          requestedSelection={data.requestedSelection}
+          initialView={initialView}
+          scheduledCancellation={data.scheduledCancellation}
+          purchaseHistoryAvailable={data.purchaseHistoryAvailable}
+          managePlansHref="/app/billing/select"
+          managePlansAvailable={
+            data.verificationState !== "VERIFICATION_UNAVAILABLE" &&
+            data.lifecycleState !== "FROZEN"
+          }
+        />
+      </div>
     </s-page>
   );
 }

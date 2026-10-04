@@ -23,6 +23,42 @@ body {
   background: #f4faf6;
 }
 
+/*
+ * Shared merchant application page widths.
+ *
+ * Keep operational pages centered, but let information-dense screens make
+ * better use of the Shopify canvas on large displays. Individual routes choose
+ * the width tier that matches their content rather than inventing their own
+ * max-width.
+ */
+.moda-page-shell {
+  --moda-page-max-width: 1240px;
+  width: min(
+    var(--moda-page-max-width),
+    calc(100% - clamp(24px, 5vw, 88px))
+  );
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+.moda-page-shell--wide {
+  --moda-page-max-width: 1480px;
+}
+
+.moda-page-shell--standard {
+  --moda-page-max-width: 1240px;
+}
+
+.moda-page-shell--narrow {
+  --moda-page-max-width: 980px;
+}
+
+@media (max-width: 720px) {
+  .moda-page-shell {
+    width: calc(100% - 24px);
+  }
+}
+
 .brand-mark {
   height: 48px;
   width: auto;
@@ -49,6 +85,12 @@ body {
   padding: 14px 24px;
   background: #e3f0e8;
   border-bottom: 1px solid rgb(40 107 80 / 18%);
+}
+
+.merchant-support-page {
+  display: grid;
+  gap: 18px;
+  padding-bottom: 32px;
 }
 
 .merchant-support-thread {

@@ -52,7 +52,7 @@ export default function RecoverySettingsView({
         current={i18n.t("recoverySettings.title")}
         merchantUi={data.merchantUi}
       />
-      <div className="moda-recovery-settings-page">
+      <div className="moda-recovery-settings-page moda-page-shell moda-page-shell--standard">
         <section className="moda-recovery-hero">
           <div className="moda-recovery-hero-copy">
             <span className="moda-recovery-eyebrow">
