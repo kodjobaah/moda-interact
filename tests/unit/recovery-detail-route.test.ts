@@ -18,7 +18,6 @@ import { InvalidRecoveryDetailQuery } from "../../app/services/recoveries/detail
 const mocks = vi.hoisted(() => ({
   authenticate: vi.fn(),
   shop: vi.fn(),
-  settings: vi.fn(),
   subscription: vi.fn(),
   detail: vi.fn(),
   messages: vi.fn(),
@@ -32,9 +31,6 @@ vi.mock("../../app/services/shop/shop.service", () => ({
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: { getSubscription: mocks.subscription },
-}));
-vi.mock("../../app/db.server", () => ({
-  default: { shopSettings: { findUnique: mocks.settings } },
 }));
 vi.mock("../../app/services/recoveries/recovery-detail.server", () => ({
   readRecoveryDetail: mocks.detail,
@@ -75,8 +71,9 @@ beforeEach(() => {
     admin: {},
     session: { shop: "owned.myshopify.com", locale: "en-GB" },
   });
-  mocks.shop.mockResolvedValue({ id: "owned-shop", status: "ACTIVE" });
-  mocks.settings.mockResolvedValue({
+  mocks.shop.mockResolvedValue({
+    id: "owned-shop",
+    status: "ACTIVE",
     onboardingCompleted: true,
     defaultTimeZone: "Europe/London",
   });
@@ -129,8 +126,8 @@ describe.each(loaders)("independent guarded endpoint", (loader) => {
         id: "owned-shop",
         status,
         reinstallPendingAt,
+        onboardingCompleted,
       });
-      mocks.settings.mockResolvedValue({ onboardingCompleted });
       await expect(loader(args())).rejects.toBeInstanceOf(Response);
       expect(mocks.detail).not.toHaveBeenCalled();
       expect(mocks.messages).not.toHaveBeenCalled();

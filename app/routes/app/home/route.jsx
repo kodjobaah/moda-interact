@@ -60,17 +60,7 @@ export const loader = async ({ request }) => {
     redirectTo: "/app/merchant-support",
   });
 
-  /*
-   * ShopSettings is now related using shopId,
-   * rather than the Shopify domain string.
-   */
-  const settings = await db.shopSettings.findUnique({
-    where: {
-      shopId: shop.id,
-    },
-  });
-
-  const merchantUi = merchantUiContext(settings, session);
+  const merchantUi = merchantUiContext(shop, session);
   const onboardingState = resolveMerchantExperienceState({ shop });
 
   /*
@@ -102,7 +92,6 @@ export const loader = async ({ request }) => {
     ]);
     const suggestedCategoryId = await suggestStoreCategory(admin, storeCategories);
     return {
-      settings,
       merchantUi,
       merchantExperienceState: onboardingState,
       pricingCatalogue,
@@ -142,7 +131,6 @@ export const loader = async ({ request }) => {
       // Missing, foreign and malformed IDs share one safe outcome; echo none of them.
       if (!period)
         return {
-          settings,
           merchantUi,
           merchantExperienceState,
           billingSetup,
@@ -185,7 +173,6 @@ export const loader = async ({ request }) => {
       };
 
   return {
-    settings,
     merchantUi,
     merchantExperienceState,
     pricingCatalogue,

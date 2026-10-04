@@ -14,7 +14,7 @@ import { loadCurrentMerchantKnowledgeEntitlement } from "./merchant-knowledge-en
 import { enqueueMerchantKnowledgeRevisionBestEffort } from "./merchant-knowledge-queue.server";
 import { loadMerchantKnowledgeR2Config } from "./r2-config.server";
 
-type Database = Pick<PrismaClient, "$transaction" | "merchantKnowledgePurpose" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision" | "subscription" | "feature" | "shopFeaturePreference" | "shopSettings">;
+type Database = Pick<PrismaClient, "$transaction" | "merchantKnowledgePurpose" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision" | "subscription" | "feature" | "shopFeaturePreference" | "shop">;
 export type MerchantKnowledgeTransaction = Prisma.TransactionClient;
 type Transaction = MerchantKnowledgeTransaction;
 
@@ -108,10 +108,10 @@ async function loadSourcePair(source: { purposeId: string; dataFormatId: string 
 }
 
 export async function loadMerchantKnowledge(shopId: string, database: Database = db) {
-  const [entitlement, settings, catalogue, sources] = await Promise.all([
+  const [entitlement, shop, catalogue, sources] = await Promise.all([
     loadCurrentMerchantKnowledgeEntitlement(shopId, database),
-    database.shopSettings.findUnique({
-      where: { shopId },
+    database.shop.findUnique({
+      where: { id: shopId },
       select: { defaultLanguageTag: true },
     }),
     database.merchantKnowledgePurposeDataFormat.findMany({
@@ -198,7 +198,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
     })(),
     configuredCount: sources.length,
     planEligibleSourceCount: typeEligible.length,
-    defaultLanguageTag: resolveModaConfigurationLocale(settings?.defaultLanguageTag),
+    defaultLanguageTag: resolveModaConfigurationLocale(shop?.defaultLanguageTag),
     supportedLanguageTags: MODA_SUPPORTED_LANGUAGE_TAGS,
     catalogue: allowedCatalogue,
     sources: sources.map((source) => {
@@ -360,11 +360,11 @@ export async function createWebPageSource(input: {
     if (entitlement.kind !== "entitled") throw denied();
     const pair = await requireAllowedPair(transaction, entitlement.configuration, type);
     const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
-    const shopSettings = await transaction.shopSettings.findUnique({
-      where: { shopId: input.shopId },
+    const shop = await transaction.shop.findUnique({
+      where: { id: input.shopId },
       select: { defaultLanguageTag: true },
     });
-    const languageTag = parseLanguageTag(input.languageTag, shopSettings?.defaultLanguageTag ?? null);
+    const languageTag = parseLanguageTag(input.languageTag, shop?.defaultLanguageTag ?? null);
     const existing = await transaction.merchantKnowledgeSource.findMany({
       where: { shopId: input.shopId },
       select: { id: true, position: true, purpose: { select: { key: true, active: true } }, dataFormat: { select: { key: true, active: true } } },

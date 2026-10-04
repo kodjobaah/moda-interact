@@ -11,7 +11,6 @@ import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { billingService } from "@/services/billing/billing.service";
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import {
   canAccessMerchantSurface,
@@ -37,9 +36,6 @@ export const loader = async ({ request }) => {
     route: "/app/usage",
     redirectTo: "/app/merchant-support",
   });
-  const settings = await db.shopSettings.findUnique({
-    where: { shopId: shop.id },
-  });
   const subscription = await billingService.getSubscription(shop.id);
   const state = resolveMerchantExperienceState({
     shop,
@@ -49,7 +45,7 @@ export const loader = async ({ request }) => {
     throw redirect(
       `${getMerchantDeniedRedirect(state, "USAGE")}?${new URLSearchParams(embed)}`,
     );
-  const merchantUi = merchantUiContext(settings, session);
+  const merchantUi = merchantUiContext(shop, session);
   try {
     return {
       merchantUi,

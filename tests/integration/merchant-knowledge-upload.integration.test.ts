@@ -70,8 +70,7 @@ function makeQueue(add = vi.fn().mockResolvedValue(undefined)) {
 
 async function createShop(): Promise<string> {
   const shopId = `${fixturePrefix}-${randomUUID()}`;
-  await db().shop.create({ data: { id: shopId, domain: `${shopId}.myshopify.com` } });
-  await db().shopSettings.create({ data: { shopId, defaultLanguageTag: "fr" } });
+  await db().shop.create({ data: { id: shopId, domain: `${shopId}.myshopify.com`, defaultLanguageTag: "fr" } });
   const plan = await db().billingPlan.create({
     data: {
       shopifyPlanHandle: `${fixturePrefix}-${randomUUID()}`,

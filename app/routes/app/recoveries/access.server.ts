@@ -2,7 +2,6 @@ import { redirect } from "react-router";
 import { authenticate } from "../../../shopify.server";
 import { shopService } from "../../../services/shop/shop.service";
 import { billingService } from "../../../services/billing/billing.service";
-import db from "../../../db.server";
 import {
   canAccessMerchantSurface,
   getMerchantDeniedRedirect,
@@ -24,11 +23,6 @@ export async function requireRecoveryHistory(request: Request) {
   if (host && /^[A-Za-z0-9+/_=-]{1,512}$/.test(host)) embed.host = host;
   if (url.searchParams.get("embedded") === "1") embed.embedded = "1";
   // Resolve lifecycle before recovery reads, even when this loader runs without its parent.
-  // Inactive shops need no settings/subscription query to determine denial.
-  const settings =
-    shop.status === "ACTIVE"
-      ? await db.shopSettings.findUnique({ where: { shopId: shop.id } })
-      : null;
   const subscription =
     shop.status === "ACTIVE"
       ? await billingService.getSubscription(shop.id)
@@ -43,7 +37,7 @@ export async function requireRecoveryHistory(request: Request) {
   }
   return {
     shopId: shop.id,
-    merchantUi: merchantUiContext(settings, session),
+    merchantUi: merchantUiContext(shop, session),
     embed,
   };
 }

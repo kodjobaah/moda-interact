@@ -58,7 +58,7 @@ function database(
   preference: { enabled: boolean } | null = { enabled: false },
 ) {
   return {
-    shopSettings: { findUnique: vi.fn().mockResolvedValue({ defaultLanguageTag: "en" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ defaultLanguageTag: "en" }) },
     merchantKnowledgePurposeDataFormat: { findMany: vi.fn().mockResolvedValue(pairs) },
     merchantKnowledgeSource: { findMany: vi.fn().mockResolvedValue(sources) },
     merchantKnowledgeSourceRevision: { findMany: vi.fn().mockResolvedValue([]) },
@@ -138,4 +138,19 @@ it("enables processing only when the current opt-in preference is true", async (
     merchantEnabled: true,
     effectiveEnabled: true,
   });
+});
+
+it("uses the shared Shop language tag as the default", async () => {
+  const client = database([], { enabled: true });
+
+  const result = await loadMerchantKnowledge(
+    "shop-1",
+    client as unknown as NonNullable<Parameters<typeof loadMerchantKnowledge>[1]>,
+  );
+
+  expect(client.shop.findUnique).toHaveBeenCalledWith({
+    where: { id: "shop-1" },
+    select: { defaultLanguageTag: true },
+  });
+  expect(result.defaultLanguageTag).toBe("en");
 });

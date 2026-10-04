@@ -8,7 +8,6 @@ import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { recoveryCreditPurchaseManagementService } from "@/services/billing/recovery-credit-purchase-management.service";
 import { billingService } from "@/services/billing/billing.service";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
-import db from "@/db.server";
 import RecoveryCreditPurchaseManager from "@/components/dashboard/RecoveryCreditPurchaseManager";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import {
@@ -104,11 +103,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     capability: "read-billing",
     redirectTo: "/app/merchant-support",
   });
-  const [settings, subscription, shopifyPartnerDevelopment] =
+  const [subscription, shopifyPartnerDevelopment] =
     await Promise.all([
-      db.shopSettings.findUnique({
-        where: { shopId: shop.id },
-      }),
       billingService.getSubscription(shop.id),
       resolveShopifyPartnerDevelopment(admin),
     ]);
@@ -134,7 +130,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
   const filter = resolvePurchaseHistoryFilter(url.searchParams.get("filter"));
   return {
-    merchantUi: merchantUiContext(settings, session),
+    merchantUi: merchantUiContext(shop, session),
     filter,
     page: await recoveryCreditPurchaseManagementService.listPurchaseHistory({
       shopId: shop.id,

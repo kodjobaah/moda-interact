@@ -11,8 +11,8 @@ import { merchantUiContext } from "@/utils/merchant-i18n";
 import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
 import RecoverySettingsView from "./RecoverySettingsView";
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, settings, session } = await settingsAccess(request);
-  const merchantUi = merchantUiContext(settings, session);
+  const { shop, session } = await settingsAccess(request);
+  const merchantUi = merchantUiContext(shop, session);
   const [storeCategories, storeProfile] = await Promise.all([
     listSelectableStoreCategories(merchantUi.locale),
     loadStoreProfile(shop.id, merchantUi.locale),
