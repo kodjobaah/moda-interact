@@ -939,24 +939,50 @@
   font-weight: 650;
 }
 
-.moda-merchant-knowledge-field input[type="file"] {
+.moda-merchant-knowledge-dropzone {
+  display: flex;
+  align-items: center;
+  gap: 11px;
   width: 100%;
   min-width: 0;
-  min-height: 43px;
-  padding: 5px;
-  border: 1px solid #bdcbc2;
-  border-radius: 11px;
+  min-height: 56px;
+  padding: 7px 9px;
+  border: 1px dashed #9fb7a8;
+  border-radius: 12px;
   background: #fff;
-  color: var(--recovery-muted);
+  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.moda-merchant-knowledge-dropzone.is-drag-active {
+  border-color: var(--recovery-green-700);
+  background: var(--recovery-green-50);
+  box-shadow: 0 0 0 3px rgba(38, 111, 82, 0.12);
+}
+
+.moda-merchant-knowledge-dropzone.has-file {
+  border-style: solid;
+  border-color: #a8c2b2;
+}
+
+.moda-merchant-knowledge-dropzone input[type="file"] {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  max-width: 132px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: transparent;
   font: inherit;
   font-size: 13px;
   font-weight: 500;
 }
 
-.moda-merchant-knowledge-field input[type="file"]::file-selector-button {
-  min-height: 31px;
-  margin-right: 9px;
-  padding: 6px 11px;
+.moda-merchant-knowledge-dropzone input[type="file"]::file-selector-button {
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 12px;
   border: 0;
   border-radius: 8px;
   background: var(--recovery-green-100);
@@ -965,6 +991,26 @@
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.moda-merchant-knowledge-dropzone input[type="file"]:disabled::file-selector-button {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.moda-merchant-knowledge-selected-file {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--recovery-muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.moda-merchant-knowledge-dropzone.has-file .moda-merchant-knowledge-selected-file {
+  color: var(--recovery-green-900);
 }
 
 .moda-merchant-knowledge-help {
@@ -1012,6 +1058,47 @@
   color: var(--recovery-muted);
   font-size: 12px;
   line-height: 1.45;
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 999px;
+  background: var(--recovery-soft);
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status strong {
+  color: inherit;
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-processing {
+  border-color: var(--recovery-green-200);
+  background: var(--recovery-green-100);
+  color: var(--recovery-green-800);
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-ready {
+  border-color: var(--recovery-green-300);
+  background: #eef7f1;
+  color: var(--recovery-green-900);
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-failed {
+  border-color: #e9caca;
+  background: #fff7f7;
+  color: #7a2c2c;
+}
+
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-paused,
+.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-inactive {
+  color: var(--recovery-muted);
+}
+
+.moda-merchant-knowledge-processing-note {
+  max-width: 560px;
 }
 
 .moda-recovery-setting-actions {

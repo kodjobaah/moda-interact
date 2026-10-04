@@ -6,6 +6,43 @@ import MerchantKnowledgeUploadForm from "./MerchantKnowledgeUploadForm";
 type KnowledgeData = Awaited<ReturnType<typeof loader>>["merchantKnowledge"];
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
+type KnowledgeSource = KnowledgeData["sources"][number];
+type SourceStatusTone = "processing" | "ready" | "failed" | "paused" | "inactive";
+
+function merchantKnowledgeSourceStatus(source: KnowledgeSource): { label: string; tone: SourceStatusTone; detail?: string } {
+  if (source.dormantReason === "MERCHANT_DISABLED") {
+    return { label: "Configured — processing paused", tone: "paused" };
+  }
+  if (source.dormantReason === "NO_CURRENT_PLAN") {
+    return { label: "Configured — unavailable on current plan", tone: "inactive" };
+  }
+  if (source.dormantReason === "SOURCE_TYPE") {
+    return { label: "Configured — source type unavailable", tone: "inactive" };
+  }
+  if (source.dormantReason === "SOURCE_COUNT") {
+    return { label: "Configured — over current source limit", tone: "inactive" };
+  }
+
+  switch (source.revision?.status) {
+    case "ACTIVE":
+      return { label: "Ready", tone: "ready" };
+    case "FAILED":
+      return {
+        label: "Processing failed",
+        tone: "failed",
+        detail: source.revision.failureCode
+          ? source.revision.failureCode.replaceAll("_", " ").toLowerCase()
+          : undefined,
+      };
+    case "SUPERSEDED":
+      return { label: "Superseded", tone: "inactive" };
+    case "PROCESSING":
+    case "PENDING":
+    default:
+      return { label: "Processing", tone: "processing" };
+  }
+}
+
 export default function MerchantKnowledgeSection({
   data,
   t,
@@ -23,15 +60,37 @@ export default function MerchantKnowledgeSection({
   const revalidator = useRevalidator();
   const busy = [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
   const [selectedPurpose, setSelectedPurpose] = useState(data.catalogue[0]?.purpose.key ?? "");
+  const hasProcessingSources = data.sources.some((source) =>
+    source.processingEligible && (source.revision?.status === "PENDING" || source.revision?.status === "PROCESSING"),
+  );
 
   useEffect(() => {
     if ([createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.data?.ok))
       void revalidator.revalidate();
   }, [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher, revalidator]);
 
+  useEffect(() => {
+    if (!hasProcessingSources) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== "hidden") void revalidator.revalidate();
+    }, 4_000);
+    const timeout = window.setTimeout(() => window.clearInterval(interval), 60_000);
+
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
+  }, [hasProcessingSources, revalidator]);
+
+  function formAction(form: HTMLFormElement): string | undefined {
+    const action = form.getAttribute("action");
+    return action?.trim() || undefined;
+  }
+
   function submit(fetcher: typeof createFetcher, form: HTMLFormElement) {
     const body = new FormData(form);
-    fetcher.submit(body, { method: "post", action: form.action });
+    fetcher.submit(body, { method: "post", action: formAction(form) });
   }
 
   const webCatalogue = data.catalogue.filter((item) => item.dataFormat.key === "WEB_PAGE");
@@ -152,21 +211,24 @@ export default function MerchantKnowledgeSection({
               <p role="status">No knowledge sources configured.</p>
           ) : (
             <ol className="moda-recovery-behaviour-section moda-merchant-knowledge-source-list">
-              {data.sources.map((source, index) => (
+              {data.sources.map((source, index) => {
+                const status = merchantKnowledgeSourceStatus(source);
+                return (
                 <li key={source.id} className="moda-recovery-setting-row moda-merchant-knowledge-source-card">
                   <div className="moda-merchant-knowledge-source-copy">
                     <h3>{source.name}</h3>
                     <p>{t(`merchantKnowledge.purposes.${source.purposeKey}.label`)} · {t(`merchantKnowledge.dataFormats.${source.dataFormatKey}.label`)} · {source.languageTag}</p>
-                      <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? "No URL recorded"}</p>
-                    <p>
-                      {source.dormantReason
-                          ? source.dormantReason.replaceAll("_", " ").toLowerCase()
-                          : (source.revision?.status ?? "PENDING").toLowerCase()}
+                    <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? "No URL recorded"}</p>
+                    <p className={`moda-merchant-knowledge-source-status is-${status.tone}`}>
+                      <strong>{status.label}</strong>{status.detail ? ` · ${status.detail}` : ""}
                     </p>
-                    {source.revision?.activeContentUnits !== null && source.revision?.activeContentUnits !== undefined ? (
-                        <p>{source.revision.activeContentUnits} active content units{source.revision.activeTruncated ? " · truncated" : ""}</p>
+                    {status.tone === "processing" ? (
+                      <p className="moda-merchant-knowledge-processing-note">This page updates automatically while the source is processing.</p>
                     ) : null}
-                      {source.revision?.activeFetchedAt ? <p>Last processed {new Date(source.revision.activeFetchedAt).toLocaleString()}</p> : null}
+                    {source.revision?.activeContentUnits !== null && source.revision?.activeContentUnits !== undefined ? (
+                      <p>{source.revision.activeContentUnits} active content units{source.revision.activeTruncated ? " · truncated" : ""}</p>
+                    ) : null}
+                    {source.revision?.activeFetchedAt ? <p>Last processed {new Date(source.revision.activeFetchedAt).toLocaleString()}</p> : null}
                   </div>
                   <div className="moda-recovery-setting-actions">
                     <button type="button" disabled={busy || index === 0} onClick={() => {
@@ -193,7 +255,12 @@ export default function MerchantKnowledgeSection({
                           submit(reprocessFetcher, event.currentTarget);
                         }}>
                           <input type="hidden" name="sourceId" value={source.id} />
-                          <button type="submit" disabled={busy || !source.currentlyPlanEntitled}>{t("merchantKnowledge.upload.reprocess")}</button>
+                          <button
+                            type="submit"
+                            disabled={busy || !source.currentlyPlanEntitled || source.revision?.status === "PENDING" || source.revision?.status === "PROCESSING"}
+                          >
+                            {t("merchantKnowledge.upload.reprocess")}
+                          </button>
                         </form>
                         <details>
                           <summary>{t("merchantKnowledge.upload.replaceFile")}</summary>
@@ -216,7 +283,7 @@ export default function MerchantKnowledgeSection({
                         event.preventDefault();
                         const body = new FormData(event.currentTarget);
                         body.set("operation", source.dataFormatKey === "WEB_PAGE" ? "edit" : "edit-upload");
-                        createFetcher.submit(body, { method: "post", action: event.currentTarget.action });
+                        createFetcher.submit(body, { method: "post", action: formAction(event.currentTarget) });
                       }}>
                         <input type="hidden" name="operation" value="edit" />
                         <input type="hidden" name="sourceId" value={source.id} />
@@ -235,7 +302,8 @@ export default function MerchantKnowledgeSection({
                     </form>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ol>
           )}
         </>

@@ -108,6 +108,7 @@ beforeEach(() => {
 it("persists a server-generated object key before signing one 600-second PUT", async () => {
   const result = await createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: " catalog.csv ",
@@ -124,7 +125,7 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     shopId: "shop-1",
     dataFormatId: "format-csv",
     status: "PENDING_UPLOAD",
-    objectKey: expect.stringMatching(/^merchant-knowledge\/shop-1\/[^/]+\/source\.csv$/),
+    objectKey: expect.stringMatching(/^merchant-knowledge\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/),
     originalFileName: "catalog.csv",
     uploadExpiresAt: new Date("2026-10-01T12:10:00.000Z"),
   });
@@ -160,9 +161,27 @@ it("includes the lowercase if-none-match header in the signed PUT request", asyn
   expect(signedHeaders).toContain("if-none-match");
 });
 
+it("rejects a non-canonical Shopify domain before allocating an asset", async () => {
+  await expect(createMerchantKnowledgeUploadIntent({
+    shopId: "shop-1",
+    shopDomain: "https://attacker.example/path",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "CSV",
+    originalFileName: "catalog.csv",
+    contentType: "text/csv",
+    sizeBytes: 32,
+    database: serviceMocks.database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+    config: testConfig,
+  })).rejects.toMatchObject({ code: "INVALID_INPUT" });
+  expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
+  expect(serviceMocks.signPut).not.toHaveBeenCalled();
+});
+
 it("rejects unsupported file pair and size before allocating an asset", async () => {
   await expect(createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",

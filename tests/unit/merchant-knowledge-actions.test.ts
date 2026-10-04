@@ -1,16 +1,27 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({
-  settingsAccess: vi.fn(),
-  createWebPageSource: vi.fn(),
-  editWebPageSource: vi.fn(),
-  refreshWebPageSource: vi.fn(),
-  reorderMerchantKnowledgeSources: vi.fn(),
-  deleteMerchantKnowledgeSource: vi.fn(),
-  createMerchantKnowledgeUploadIntent: vi.fn(),
-  finalizeMerchantKnowledgeUpload: vi.fn(),
-  reprocessMerchantKnowledgeUpload: vi.fn(),
-}));
+const mocks = vi.hoisted(() => {
+  class MerchantKnowledgeError extends Error {
+    constructor(readonly code: string) {
+      super(code);
+      this.name = "MerchantKnowledgeError";
+    }
+  }
+
+  return {
+    settingsAccess: vi.fn(),
+    createWebPageSource: vi.fn(),
+    editWebPageSource: vi.fn(),
+    refreshWebPageSource: vi.fn(),
+    reorderMerchantKnowledgeSources: vi.fn(),
+    deleteMerchantKnowledgeSource: vi.fn(),
+    createMerchantKnowledgeUploadIntent: vi.fn(),
+    finalizeMerchantKnowledgeUpload: vi.fn(),
+    reprocessMerchantKnowledgeUpload: vi.fn(),
+    recordMerchantKnowledgeUploadFailure: vi.fn(),
+    MerchantKnowledgeError,
+  };
+});
 
 vi.mock("../../app/services/feature-preferences/access.server", () => ({
   settingsAccess: mocks.settingsAccess,
@@ -21,17 +32,16 @@ vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", () =>
   refreshWebPageSource: mocks.refreshWebPageSource,
   reorderMerchantKnowledgeSources: mocks.reorderMerchantKnowledgeSources,
   deleteMerchantKnowledgeSource: mocks.deleteMerchantKnowledgeSource,
-  MerchantKnowledgeError: class MerchantKnowledgeError extends Error {
-    constructor(readonly code: string) {
-      super(code);
-    }
-  },
+  MerchantKnowledgeError: mocks.MerchantKnowledgeError,
 }));
 vi.mock("../../app/services/merchant-knowledge/upload.server", () => ({
   createMerchantKnowledgeUploadIntent: mocks.createMerchantKnowledgeUploadIntent,
   finalizeMerchantKnowledgeUpload: mocks.finalizeMerchantKnowledgeUpload,
   reprocessMerchantKnowledgeUpload: mocks.reprocessMerchantKnowledgeUpload,
   editMerchantKnowledgeUploadSource: vi.fn(),
+}));
+vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-observability.server", () => ({
+  recordMerchantKnowledgeUploadFailure: mocks.recordMerchantKnowledgeUploadFailure,
 }));
 
 import { action as sourceAction } from "../../app/routes/app/merchant-knowledge/source/route";
@@ -40,6 +50,7 @@ import { action as refreshAction } from "../../app/routes/app/merchant-knowledge
 import { action as deleteAction } from "../../app/routes/app/merchant-knowledge/delete/route";
 import { action as uploadIntentAction } from "../../app/routes/app/merchant-knowledge/upload-intent/route";
 import { action as uploadFinalizeAction } from "../../app/routes/app/merchant-knowledge/upload-finalize/route";
+import { action as uploadFailureAction } from "../../app/routes/app/merchant-knowledge/upload-failure/route";
 import { action as reprocessAction } from "../../app/routes/app/merchant-knowledge/reprocess/route";
 
 type Action = (args: { request: Request }) => Promise<Response>;
@@ -64,7 +75,9 @@ async function postJson(action: Action, body: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.settingsAccess.mockResolvedValue({ shop: { id: "authenticated-shop" } });
+  mocks.settingsAccess.mockResolvedValue({
+    shop: { id: "authenticated-shop", domain: "authenticated-shop.myshopify.com" },
+  });
   mocks.createWebPageSource.mockResolvedValue({ sourceId: "source-1" });
   mocks.editWebPageSource.mockResolvedValue({ ok: true });
   mocks.refreshWebPageSource.mockResolvedValue({ ok: true });
@@ -177,6 +190,7 @@ it("returns only the signed intent contract and derives tenant identity from Sho
   });
   expect(mocks.createMerchantKnowledgeUploadIntent).toHaveBeenCalledWith({
     shopId: "authenticated-shop",
+    shopDomain: "authenticated-shop.myshopify.com",
     purposeKey: "FAQ",
     dataFormatKey: "CSV",
     originalFileName: "help.csv",
@@ -193,6 +207,7 @@ it("rejects browser tenant/key fields before upload mutation", async () => {
     contentType: "text/csv",
     sizeBytes: 42,
     shopId: "attacker-shop",
+    shopDomain: "attacker.myshopify.com",
     objectKey: "attacker-key",
   });
   expect(response.status).toBe(400);
@@ -222,4 +237,59 @@ it("routes upload finalization and reprocess with the authenticated shop only", 
     shopId: "authenticated-shop",
     sourceId: "source-1",
   });
+});
+
+it("records Merchant Knowledge upload failures with authenticated shop identity", async () => {
+  const response = await postJson(uploadFailureAction as Action, {
+    stage: "storage_put",
+    assetId: "asset-1",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "XLSX",
+    sizeBytes: 4096,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    statusCode: 403,
+    errorCode: "STORAGE_HTTP_403",
+  });
+
+  expect(response.status).toBe(204);
+  expect(mocks.recordMerchantKnowledgeUploadFailure).toHaveBeenCalledWith({
+    stage: "storage_put",
+    shopId: "authenticated-shop",
+    assetId: "asset-1",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "XLSX",
+    sizeBytes: 4096,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    statusCode: 403,
+    errorCode: "STORAGE_HTTP_403",
+  });
+});
+
+it("logs server-side upload intent failures without browser filenames", async () => {
+  mocks.createMerchantKnowledgeUploadIntent.mockRejectedValueOnce(
+    new mocks.MerchantKnowledgeError("DENIED"),
+  );
+
+  const response = await postJson(uploadIntentAction as Action, {
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "XLSX",
+    originalFileName: "customer-private-name.xlsx",
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    sizeBytes: 4096,
+  });
+
+  expect(response.status).toBe(403);
+  expect(mocks.recordMerchantKnowledgeUploadFailure).toHaveBeenCalledWith({
+    stage: "intent",
+    shopId: "authenticated-shop",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "XLSX",
+    sizeBytes: 4096,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    statusCode: 403,
+    errorCode: "DENIED",
+  });
+  expect(JSON.stringify(mocks.recordMerchantKnowledgeUploadFailure.mock.calls)).not.toContain(
+    "customer-private-name.xlsx",
+  );
 });

@@ -45,6 +45,7 @@ export default [
   route("app/merchant-knowledge/delete", "./routes/app/merchant-knowledge/delete/route.ts"),
   route("app/merchant-knowledge/upload-intent", "./routes/app/merchant-knowledge/upload-intent/route.ts"),
   route("app/merchant-knowledge/upload-finalize", "./routes/app/merchant-knowledge/upload-finalize/route.ts"),
+  route("app/merchant-knowledge/upload-failure", "./routes/app/merchant-knowledge/upload-failure/route.ts"),
   route("app/merchant-knowledge/reprocess", "./routes/app/merchant-knowledge/reprocess/route.ts"),
   route("app/store-profile/category", "./routes/app/store-profile/category/route.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),

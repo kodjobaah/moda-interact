@@ -1,0 +1,10 @@
+SKU,Product name,Category,Price GBP,In stock,Short description,Support notes
+MODA-TEE-001,Classic Cotton T-Shirt,Clothing,24.99,true,Soft 100% cotton crew-neck T-shirt for everyday wear.,"Machine wash at 30°C. Available in black, white, and forest green."
+MODA-HOOD-002,Essential Zip Hoodie,Clothing,54.00,true,Mid-weight zip hoodie with brushed inner fleece.,"If a customer is between sizes, recommend the larger size."
+MODA-BAG-003,Everyday Canvas Tote,Accessories,18.50,true,Reusable canvas tote with reinforced handles.,Dimensions: 38 cm x 42 cm. Maximum recommended load is 8 kg.
+MODA-BTL-004,Insulated Water Bottle,Accessories,29.95,false,750 ml stainless-steel bottle that keeps drinks cold for up to 18 hours.,Hand wash only; do not place in a microwave or freezer.
+MODA-MUG-005,Ceramic Logo Mug,Home,14.00,true,350 ml ceramic mug with Moda Interact logo.,Dishwasher safe. The printed design is suitable for normal domestic dishwasher cycles.
+MODA-GIFT-006,Digital Gift Card,Gift cards,50.00,true,Digital gift card delivered by email after purchase.,Gift cards are non-refundable and can be used across multiple orders until the balance reaches zero.
+MODA-SCARF-007,Merino Blend Scarf,Accessories,39.00,true,Warm merino-blend scarf with a soft brushed finish.,"Care note: hand wash cold, reshape while damp.
+Do not tumble dry."
+MODA-NOTE-008,A5 Recycled Notebook,Stationery,12.75,true,A5 notebook with 160 lined pages made from recycled paper.,"Suitable for gifting; add the note ""Please remove the price"" in order notes when requested."

@@ -38,6 +38,13 @@ describe("explicit route configuration", () => {
     expect(featuresRouteSource).not.toContain("billingPlanFeature");
   });
 
+
+  it("registers the Merchant Knowledge client failure reporting endpoint", () => {
+    expect(source).toContain(
+      'route("app/merchant-knowledge/upload-failure", "./routes/app/merchant-knowledge/upload-failure/route.ts"),',
+    );
+  });
+
   it("declares the restoration route as a standalone exact path", () => {
     expect(source).toContain('route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),');
   });

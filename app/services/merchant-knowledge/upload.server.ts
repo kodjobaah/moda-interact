@@ -35,6 +35,7 @@ const INVALID = () => new MerchantKnowledgeError("INVALID_INPUT");
 const DENIED = () => new MerchantKnowledgeError("DENIED");
 const CONFLICT = () => new MerchantKnowledgeError("CONFLICT");
 const SIGNED_PUT_SECONDS = 600;
+const FINALIZE_TRANSACTION_TIMEOUT_MS = 10_000;
 
 function positiveSafeInteger(value: unknown, max: number): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= max;
@@ -102,8 +103,15 @@ function dependencies(input: {
   };
 }
 
+function parseShopDomain(value: unknown): string {
+  const domain = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) throw INVALID();
+  return domain;
+}
+
 export async function createMerchantKnowledgeUploadIntent(input: {
   shopId: string;
+  shopDomain: unknown;
   purposeKey: unknown;
   dataFormatKey: unknown;
   originalFileName: unknown;
@@ -115,6 +123,7 @@ export async function createMerchantKnowledgeUploadIntent(input: {
   now?: () => Date;
 }) {
   const deps = dependencies(input);
+  const shopDomain = parseShopDomain(input.shopDomain);
   const purposeKey = parsePurpose(input.purposeKey);
   const formatKey = parseFormat(input.dataFormatKey);
   const originalFileName = parseFileName(input.originalFileName, 255);
@@ -143,7 +152,7 @@ export async function createMerchantKnowledgeUploadIntent(input: {
       const id = randomUUID();
       const now = input.now?.() ?? new Date();
       const uploadExpiresAt = new Date(now.getTime() + SIGNED_PUT_SECONDS * 1000);
-      const objectKey = `merchant-knowledge/${input.shopId}/${id}/source.${formatKey.toLowerCase()}`;
+      const objectKey = `merchant-knowledge/${shopDomain}/${id}/source.${formatKey.toLowerCase()}`;
       await transaction.merchantKnowledgeUploadedAsset.create({
         data: {
           id,
@@ -272,7 +281,6 @@ export async function finalizeMerchantKnowledgeUpload(input: {
         dataFormatKey: formatKey,
       }, "UPLOAD");
       if (pair.dataFormatId !== asset.dataFormatId) throw DENIED();
-      const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
       let source: {
         id: string;
         purposeId: string;
@@ -294,7 +302,6 @@ export async function finalizeMerchantKnowledgeUpload(input: {
             purpose: { select: { key: true } }, dataFormat: { select: { key: true } } },
         });
         if (source.dataFormatId !== asset.dataFormatId || source.dataFormat.key !== formatKey || source.purpose.key !== purposeKey) throw DENIED();
-        await requireAllowedPair(transaction, entitlement.configuration, { purposeKey, dataFormatKey: formatKey }, "UPLOAD");
         await requireCurrentlyPlanEntitledSource(transaction, input.shopId, source.id, entitlement.configuration);
       }
 
@@ -345,9 +352,17 @@ export async function finalizeMerchantKnowledgeUpload(input: {
         requestedUrl: null,
         uploadedAssetId: assetId,
       });
-      return { sourceId: actualSourceId, revision, merchantEnabled: activation.merchantEnabled };
-    });
-    const queued = await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, result.merchantEnabled, deps.queue);
+      return { sourceId: actualSourceId, revision };
+    }, { timeout: FINALIZE_TRANSACTION_TIMEOUT_MS });
+
+    let merchantEnabled = false;
+    try {
+      merchantEnabled = (await readMerchantKnowledgeActivation(input.shopId, deps.database)).merchantEnabled;
+    } catch {
+      // Finalization is already durable. Queue publication remains best effort and
+      // reconciliation can publish the pending revision when the database recovers.
+    }
+    const queued = await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, merchantEnabled, deps.queue);
     return { sourceId: result.sourceId, queued };
   } catch (error) {
     normalizeError(error);

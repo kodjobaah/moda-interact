@@ -56,6 +56,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount());
   host.remove();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
@@ -94,6 +95,30 @@ it("keeps source configuration available while OFF and uses only FeaturePreferen
   expect(host.querySelector('button[type="submit"]')?.hasAttribute("disabled")).toBe(false);
 });
 
+it("submits merchant knowledge forms with route paths instead of resolved absolute form actions", async () => {
+  await act(async () => root.render(
+    <MerchantKnowledgeSection
+      data={{ ...knowledge, merchantEnabled: true, effectiveEnabled: true }}
+      t={(key) => key}
+    />,
+  ));
+
+  const form = host.querySelector('form[action="/app/merchant-knowledge/source"]') as HTMLFormElement | null;
+  expect(form).not.toBeNull();
+  expect(form!.action).toMatch(/^https?:\/\//);
+
+  mocks.submit.mockClear();
+  await act(async () => {
+    form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  });
+
+  expect(mocks.submit).toHaveBeenCalledTimes(1);
+  expect(mocks.submit.mock.calls[0]?.[1]).toMatchObject({
+    method: "post",
+    action: "/app/merchant-knowledge/source",
+  });
+});
+
 it("puts recovery behaviour first and progressively discloses lower-frequency context", async () => {
   const { readFileSync } = await import("node:fs");
   const view = readFileSync("app/routes/app/recovery-settings/RecoverySettingsView.tsx", "utf8");
@@ -112,4 +137,69 @@ it("puts recovery behaviour first and progressively discloses lower-frequency co
   expect(view).toContain("moda-recovery-context-disclosure");
   expect(view).toContain("<StoreProfileSection\n                  embedded");
   expect(view).toContain("<MerchantKnowledgeSection\n                  embedded");
+});
+
+
+it("presents pending revisions as Processing and auto-refreshes while work is active", async () => {
+  const intervalSpy = vi.spyOn(window, "setInterval");
+  const processingSource = {
+    id: "source-upload",
+    name: "Product spreadsheet",
+    purposeKey: "PRODUCT_INFORMATION",
+    purposeDisplayName: "Product information",
+    dataFormatKey: "XLSX",
+    dataFormatDisplayName: "Excel spreadsheet (.xlsx)",
+    uploadedFileName: "products.xlsx",
+    languageTag: "en",
+    position: 0,
+    currentGeneration: 1,
+    currentlyPlanEntitled: true,
+    processingEligible: true,
+    dormantReason: null,
+    revision: {
+      id: "revision-1",
+      generation: 1,
+      reason: "CREATE",
+      status: "PENDING",
+      requestedUrl: null,
+      resolvedUrl: null,
+      contentUnits: null,
+      truncated: false,
+      fetchedAt: null,
+      completedAt: null,
+      failureCode: null,
+      activeContentUnits: null,
+      activeTruncated: false,
+      activeFetchedAt: null,
+    },
+  } as Parameters<typeof MerchantKnowledgeSection>[0]["data"]["sources"][number];
+
+  await act(async () => root.render(
+    <MerchantKnowledgeSection
+      data={{
+        ...knowledge,
+        merchantEnabled: true,
+        effectiveEnabled: true,
+        configuredCount: 1,
+        planEligibleSourceCount: 1,
+        catalogue: [{
+          purpose: { key: "PRODUCT_INFORMATION", displayName: "Product information" },
+          dataFormat: {
+            key: "XLSX",
+            displayName: "Excel spreadsheet (.xlsx)",
+            inputKind: "UPLOAD",
+            canonicalExtension: ".xlsx",
+            acceptedContentTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
+          },
+        }],
+        sources: [processingSource],
+      }}
+      t={(key) => key}
+    />,
+  ));
+
+  expect(host.textContent).toContain("Processing");
+  expect(host.textContent).toContain("This page updates automatically while the source is processing.");
+  expect(host.textContent).not.toContain("pending");
+  expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 4_000);
 });
