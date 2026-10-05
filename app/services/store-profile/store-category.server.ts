@@ -1,9 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import db from "@/db.server";
-import {
-  hasStoreCategoryLocalization,
-  localizeStoreCategory,
-} from "./store-category-localization";
+import { localizeStoreCategory } from "./store-category-localization";
 
 type CategoryReader = Pick<typeof db, "commercePromptTemplateCategory" | "commerceShopProfile">;
 type LocalizedCategory = Parameters<typeof localizeStoreCategory>[0] & { id: string };
@@ -21,8 +18,7 @@ export async function listSelectableStoreCategories(locale: string, client: Cate
       !template ||
       !template.enabled ||
       template.categoryId !== category.id ||
-      !template.promptText.trim() ||
-      !hasStoreCategoryLocalization(category.slug)
+      !template.promptText.trim()
     ) return [];
 
     return [{

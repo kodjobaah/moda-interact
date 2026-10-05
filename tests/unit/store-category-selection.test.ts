@@ -125,6 +125,17 @@ const select = (client: unknown, generation = 0, now = new Date("2026-09-30T12:0
   }, client as never, now);
 
 describe("pending Store Category selection", () => {
+  it("accepts an enabled Admin-authored category even when no Shopify localization keys exist", async () => {
+    const { client, state } = makeStore({ latestRevisionNumber: 1 });
+    state.category.slug = "not-localized";
+
+    await expect(select(client)).resolves.toMatchObject({
+      pendingCategoryId: "category-home",
+      pendingPromptRevisionId: "draft-1",
+      pendingSelectionGeneration: 1,
+    });
+  });
+
   it("creates one Shop lineage and pins the exact canonical-English template as a DRAFT", async () => {
     const { client, tx, state } = makeStore({ latestRevisionNumber: 3 });
 
@@ -235,7 +246,7 @@ describe("pending Store Category selection", () => {
 });
 
 describe("selectable Store Category read model", () => {
-  it("filters invalid defaults and untranslated slugs, then returns only the ordered browser DTO", async () => {
+  it("filters invalid defaults while allowing Admin-authored slugs to fall back to database presentation", async () => {
     const template = {
       id: "template-home",
       key: "home-goods.default",
@@ -262,6 +273,18 @@ describe("selectable Store Category read model", () => {
     const client = { commercePromptTemplateCategory: { findMany } } as never;
 
     await expect(listSelectableStoreCategories("en", client)).resolves.toEqual([
+      {
+        id: "untranslated",
+        slug: "not-localized",
+        localizedDisplayName: "Unknown",
+        localizedDescription: "Unknown",
+        defaultTemplate: {
+          id: "unknown-template",
+          key: "home-goods.default",
+          displayName: "Home goods",
+          editVersion: 7,
+        },
+      },
       {
         id: "a",
         slug: "home-goods",

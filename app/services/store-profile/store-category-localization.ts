@@ -12,13 +12,6 @@ export function storeCategoryKey(slug: string, field: "displayName" | "descripti
   return `storeProfile.categories.${slug}.${field}`;
 }
 
-export function hasStoreCategoryLocalization(slug: string) {
-  const english = catalogues.en;
-  return ["displayName", "description"].every((field) =>
-    typeof english?.[storeCategoryKey(slug, field as "displayName" | "description")] === "string",
-  );
-}
-
 function catalogueFor(locale: string) {
   return catalogues[locale] ?? catalogues[locale.split("-")[0]] ?? catalogues.en;
 }

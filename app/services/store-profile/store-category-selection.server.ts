@@ -5,7 +5,6 @@ import {
   type PrismaClient,
 } from "@prisma/client";
 import db from "@/db.server";
-import { hasStoreCategoryLocalization } from "./store-category-localization";
 
 export type StoreCategorySelectionInput = {
   shopId: string;
@@ -48,8 +47,7 @@ export async function selectPendingStoreCategory(
       !template ||
       !template.enabled ||
       template.categoryId !== category.id ||
-      !template.promptText.trim() ||
-      !hasStoreCategoryLocalization(category.slug)
+      !template.promptText.trim()
     ) throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
 
     const lineages = await tx.commerceAgentPrompt.findMany({
