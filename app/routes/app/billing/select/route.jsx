@@ -21,11 +21,7 @@ export async function loader(/** @type {import("react-router").LoaderFunctionArg
     throw new Response("Shopify billing is currently being restored.", { status: 403 });
   }
 
-  const appHandle = process.env.SHOPIFY_APP_HANDLE;
-
-  if (!appHandle) {
-    throw new Error("SHOPIFY_APP_HANDLE is not configured");
-  }
+  const appHandle = process.env.SHOPIFY_APP_HANDLE?.trim() || "moda-interact";
 
   const storeHandle = session.shop.replace(/\.myshopify\.com$/, "");
 

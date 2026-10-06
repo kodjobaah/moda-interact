@@ -30,6 +30,8 @@ describe("canonical merchant billing UI", () => {
     expect(optionsSource).not.toContain('<s-link href={data.usageHistoryHref}>');
     expect(callbackSource).toContain("/app/billing/options");
     expect(selectSource).toContain('target: "_top"');
+    expect(selectSource).toContain('process.env.SHOPIFY_APP_HANDLE?.trim() || "moda-interact"');
+    expect(selectSource).not.toContain('throw new Error("SHOPIFY_APP_HANDLE is not configured")');
   });
 
   it("sends onboarding plan CTA to Shopify plan selection after category persistence", () => {
