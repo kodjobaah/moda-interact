@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const readPendingRecoveries = vi.fn();
-const getSubscription = vi.fn();
-const findShopSettings = vi.fn();
+const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -16,10 +15,7 @@ vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", ()
   readPendingRecoveries,
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
-  billingService: { getSubscription },
-}));
-vi.mock("../../app/db.server", () => ({
-  default: { shopSettings: { findUnique: findShopSettings } },
+  billingService: { getSubscriptionProjection },
 }));
 
 const { loader } = await import("../../app/routes/app/pending-recoveries/route");
@@ -34,9 +30,9 @@ describe("pending recoveries resource loader", () => {
       id: "internal-shop-1",
       domain: "merchant.myshopify.com",
       status: "ACTIVE",
+      onboardingCompleted: true,
     });
-    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
-    getSubscription.mockResolvedValue({ status: "ACTIVE" });
+    getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });
     readPendingRecoveries.mockResolvedValue({
       available: true,
       page: 2,
@@ -114,7 +110,12 @@ describe("pending recoveries resource loader", () => {
   });
 
   it("fails closed for an incomplete onboarding shop", async () => {
-    findShopSettings.mockResolvedValue({ onboardingCompleted: false });
+    resolveShopifyShop.mockResolvedValue({
+      id: "internal-shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
     readPendingRecoveries.mockClear();
 
     const response = await loader({
@@ -130,7 +131,7 @@ describe("pending recoveries resource loader", () => {
   });
 
   it("fails closed for a no-contract shop", async () => {
-    getSubscription.mockResolvedValue({ status: "NO_CONTRACT" });
+    getSubscriptionProjection.mockResolvedValue({ status: "NO_CONTRACT", lastProviderLifecycleState: null });
     readPendingRecoveries.mockClear();
 
     const response = await loader({
@@ -143,5 +144,23 @@ describe("pending recoveries resource loader", () => {
       refreshedAt: null,
     });
     expect(readPendingRecoveries).not.toHaveBeenCalled();
+  });
+
+  it("allows pending recovery reads after a verified subscription end", async () => {
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      lastProviderLifecycleState: "CANCELED",
+    });
+
+    const response = await loader({
+      request: new Request("https://example.test/app/pending-recoveries"),
+    });
+
+    expect(response.status).toBe(200);
+    expect(readPendingRecoveries).toHaveBeenCalledWith({
+      shopId: "internal-shop-1",
+      shopDomain: "merchant.myshopify.com",
+      page: 1,
+    });
   });
 });

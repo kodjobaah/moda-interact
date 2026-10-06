@@ -124,6 +124,71 @@ export class ShopService {
       ...(defaultTimeZone ? { defaultTimeZone } : {}),
       ...(defaultCountryCode ? { defaultCountryCode } : {}),
     };
+    const settingsUpdateContext = {
+      ...(defaultLanguageTag ? { defaultLanguageTag } : {}),
+      ...(defaultTimeZone ? { defaultTimeZone } : {}),
+      ...(defaultCountryCode ? { defaultCountryCode } : {}),
+    };
+
+    const existingShop = await prisma.shop.findUnique({
+      where: { domain: shopDomain },
+    });
+    const [existingSubscription, existingSettings] = existingShop
+      ? await Promise.all([
+          prisma.subscription.findUnique({
+            where: { shopId: existingShop.id },
+            select: { id: true },
+          }),
+          prisma.shopSettings.findUnique({
+            where: { shopId: existingShop.id },
+            select: {
+              id: true,
+              defaultLanguageTag: true,
+              defaultTimeZone: true,
+              defaultCountryCode: true,
+            },
+          }),
+        ])
+      : [null, null];
+    const shopNeedsRefresh = existingShop !== null && (
+      existingShop.shopifyShopId !== shopifyShopId ||
+      (storeLocale !== null && existingShop.storeLocale !== storeLocale) ||
+      (defaultLanguageTag !== null && existingShop.defaultLanguageTag !== defaultLanguageTag) ||
+      (defaultTimeZone !== null && existingShop.defaultTimeZone !== defaultTimeZone) ||
+      (defaultCountryCode !== null && existingShop.defaultCountryCode !== defaultCountryCode)
+    );
+    const settingsNeedsRefresh = existingSettings !== null && (
+      (defaultLanguageTag !== null && existingSettings.defaultLanguageTag !== defaultLanguageTag) ||
+      (defaultTimeZone !== null && existingSettings.defaultTimeZone !== defaultTimeZone) ||
+      (defaultCountryCode !== null && existingSettings.defaultCountryCode !== defaultCountryCode)
+    );
+
+    if (existingShop && existingSubscription && existingSettings) {
+      if (!shopNeedsRefresh && !settingsNeedsRefresh) {
+        return existingShop;
+      }
+
+      return prisma.$transaction(async (transaction) => {
+        const shop = shopNeedsRefresh
+          ? await transaction.shop.update({
+              where: { id: existingShop.id },
+              data: {
+                shopifyShopId,
+                ...updateContext,
+              },
+            })
+          : existingShop;
+
+        if (settingsNeedsRefresh) {
+          await transaction.shopSettings.update({
+            where: { shopId: existingShop.id },
+            data: settingsUpdateContext,
+          });
+        }
+
+        return shop;
+      });
+    }
 
     return prisma.$transaction(async (transaction) => {
       const shop = await transaction.shop.upsert({
@@ -143,40 +208,45 @@ export class ShopService {
         },
       });
 
-      await transaction.subscription.upsert({
-        where: { shopId: shop.id },
-        create: {
-          shopId: shop.id,
-          status: "NO_CONTRACT",
-          planId: null,
-          observedShopifyPlanHandle: null,
-          billingPeriodId: null,
-          currentPeriodStart: null,
-          currentPeriodEnd: null,
-          trialEndsAt: null,
-          cancelAtPeriodEnd: false,
-          providerSubscriptionId: null,
-          pendingShopifyPlanHandle: null,
-          pendingPlanId: null,
-          pendingEffectiveAt: null,
-        },
-        update: {},
-      });
+      if (!existingSubscription) {
+        await transaction.subscription.upsert({
+          where: { shopId: shop.id },
+          create: {
+            shopId: shop.id,
+            status: "NO_CONTRACT",
+            planId: null,
+            observedShopifyPlanHandle: null,
+            billingPeriodId: null,
+            currentPeriodStart: null,
+            currentPeriodEnd: null,
+            trialEndsAt: null,
+            cancelAtPeriodEnd: false,
+            providerSubscriptionId: null,
+            pendingShopifyPlanHandle: null,
+            pendingPlanId: null,
+            pendingEffectiveAt: null,
+          },
+          update: {},
+        });
+      }
 
-      await transaction.shopSettings.upsert({
-        where: { shopId: shop.id },
-        create: {
-          shopId: shop.id,
-          defaultLanguageTag,
-          defaultTimeZone,
-          defaultCountryCode,
-        },
-        update: {
-          ...(defaultLanguageTag ? { defaultLanguageTag } : {}),
-          ...(defaultTimeZone ? { defaultTimeZone } : {}),
-          ...(defaultCountryCode ? { defaultCountryCode } : {}),
-        },
-      });
+      if (!existingSettings) {
+        await transaction.shopSettings.upsert({
+          where: { shopId: shop.id },
+          create: {
+            shopId: shop.id,
+            defaultLanguageTag,
+            defaultTimeZone,
+            defaultCountryCode,
+          },
+          update: settingsUpdateContext,
+        });
+      } else if (settingsNeedsRefresh) {
+        await transaction.shopSettings.update({
+          where: { shopId: shop.id },
+          data: settingsUpdateContext,
+        });
+      }
 
       return shop;
     });

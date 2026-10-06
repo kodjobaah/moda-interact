@@ -12,6 +12,7 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
   const revalidator = useRevalidator();
   const [liveSetup, setLiveSetup] = useState(setup);
   const confirmed = liveSetup?.phase === "FINALIZING_SUBSCRIPTION";
+  const verifying = liveSetup?.phase === "VERIFYING_SUBSCRIPTION";
 
   useEffect(() => {
     setLiveSetup(setup);
@@ -55,17 +56,27 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
 
   const title = confirmed
     ? i18n.t("billingSetup.confirmedTitle")
-    : i18n.t("billingCommerce.plans.awaitingShopifyConfirmation");
+    : verifying
+      ? i18n.t("billingSetup.verifyingTitle")
+      : i18n.t("billingCommerce.plans.awaitingShopifyConfirmation");
   const description = confirmed
     ? i18n.t("billingSetup.confirmedDescription")
-    : i18n.t("billingSetup.waitingDescription");
+    : verifying
+      ? i18n.t("billingSetup.verifyingDescription")
+      : i18n.t("billingSetup.waitingDescription");
   const status = confirmed
     ? i18n.t("billingSetup.finalizingStatus")
-    : i18n.t("billingCommerce.plans.awaitingShopifyConfirmation");
+    : verifying
+      ? i18n.t("billingSetup.verifyingStatus")
+      : i18n.t("billingCommerce.plans.awaitingShopifyConfirmation");
 
   const content = (
     <section className="mi-billing-setup" aria-live="polite" aria-labelledby="mi-billing-setup-title">
-      <div className="mi-billing-setup-progress" aria-hidden="true">
+      <div
+        className="mi-billing-setup-progress"
+        data-phase={liveSetup?.phase ?? "AWAITING_SHOPIFY_CONFIRMATION"}
+        aria-hidden="true"
+      >
         <span />
         <span />
         <span />
@@ -81,7 +92,7 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
             <dd>{liveSetup?.planName || liveSetup?.planHandle || i18n.t("billing.unknownPlan")}</dd>
           </div>
           <div>
-            <dt>{i18n.t("billing.status")}</dt>
+            <dt>{i18n.t("billingSetup.pageTitle")}</dt>
             <dd>{status}</dd>
           </div>
           {liveSetup?.currentPeriodStart && liveSetup?.currentPeriodEnd ? (
@@ -91,12 +102,6 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
                 start: i18n.formatDate(liveSetup.currentPeriodStart),
                 end: i18n.formatDate(liveSetup.currentPeriodEnd),
               })}</dd>
-            </div>
-          ) : null}
-          {liveSetup?.lastSyncedAt ? (
-            <div className="mi-billing-setup-wide">
-              <dt>{i18n.t("pending.lastActivity")}</dt>
-              <dd>{i18n.t("pending.lastUpdated", { time: i18n.formatTime(liveSetup.lastSyncedAt) })}</dd>
             </div>
           ) : null}
         </dl>
@@ -114,7 +119,7 @@ export default function BillingSetupStatus({ merchantUi, setup, standalone = fal
 BillingSetupStatus.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
   setup: PropTypes.shape({
-    phase: PropTypes.oneOf(["AWAITING_SHOPIFY_CONFIRMATION", "FINALIZING_SUBSCRIPTION"]).isRequired,
+    phase: PropTypes.oneOf(["AWAITING_SHOPIFY_CONFIRMATION", "VERIFYING_SUBSCRIPTION", "FINALIZING_SUBSCRIPTION"]).isRequired,
     planHandle: PropTypes.string,
     planName: PropTypes.string,
     currentPeriodStart: PropTypes.string,

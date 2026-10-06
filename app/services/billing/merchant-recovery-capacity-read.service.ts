@@ -5,6 +5,7 @@ import {
   EntitlementCounter,
   PromotionCampaignStatus,
   PromotionTargetScope,
+  ProviderSubscriptionLifecycleState,
   SubscriptionProjectionStatus,
   type PrismaClient,
 } from "@prisma/client";
@@ -31,6 +32,7 @@ export class MerchantRecoveryCapacityReadService {
         where: { shopId },
         include: {
           plan: true,
+          shop: { select: { onboardingCompleted: true } },
           billingPeriod: {
             include: {
               entitlementCounters: {
@@ -178,21 +180,47 @@ export class MerchantRecoveryCapacityReadService {
         }
       : null;
 
-    const topUpConfiguration = await this.planResolutionService.readRecoveryCreditTopUpConfiguration(
-      subscription?.plan?.shopifyPlanHandle ?? subscription?.observedShopifyPlanHandle,
+    const postContract = Boolean(
+      subscription?.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+      subscription.lastProviderLifecycleState === ProviderSubscriptionLifecycleState.CANCELED &&
+      subscription.shop?.onboardingCompleted === true,
     );
+    const spendablePromotional = postContract
+      ? { granted: 0, committed: 0, reserved: 0, remaining: 0 }
+      : promotional;
+    const topUpConfiguration = !subscription || subscription.status === SubscriptionProjectionStatus.NO_CONTRACT
+      ? { enabled: false, creditsPerPack: null }
+      : await this.planResolutionService.readRecoveryCreditTopUpConfiguration(
+          subscription.plan?.shopifyPlanHandle ?? subscription.observedShopifyPlanHandle,
+        );
 
     const base = {
       reconciledPlanMapping,
       observedShopifyPlanHandle: subscription?.observedShopifyPlanHandle ?? null,
       freeLifetime,
       paidIncluded,
-      promotional,
+      promotional: spendablePromotional,
       purchased,
       topUpConfiguration,
     };
-    if (!subscription || subscription.status === SubscriptionProjectionStatus.NO_CONTRACT) {
+    if (!subscription) {
       return { ...base, availability: "CONTRACT_REQUIRED", capacitySource: null, canStartRecovery: false };
+    }
+    if (subscription.status === SubscriptionProjectionStatus.NO_CONTRACT) {
+      if (!postContract) {
+        return { ...base, availability: "CONTRACT_REQUIRED", capacitySource: null, canStartRecovery: false };
+      }
+      const capacitySource = purchased.available > 0
+        ? "PURCHASED" as const
+        : freeLifetime?.remaining && freeLifetime.remaining > 0
+          ? "FREE_LIFETIME" as const
+          : null;
+      return {
+        ...base,
+        availability: capacitySource ? "POST_CONTRACT_AVAILABLE" : "POST_CONTRACT_EXHAUSTED",
+        capacitySource: capacitySource ?? "EXHAUSTED",
+        canStartRecovery: Boolean(capacitySource),
+      };
     }
     if (subscription.status === SubscriptionProjectionStatus.FROZEN) {
       return { ...base, availability: "CONTRACT_FROZEN", capacitySource: null, canStartRecovery: false };
@@ -206,14 +234,14 @@ export class MerchantRecoveryCapacityReadService {
       return { ...base, availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false };
     }
 
-    if (promotional.remaining <= 0 &&
+    if (spendablePromotional.remaining <= 0 &&
       !(reconciledPlanMapping.kind === "PAID_METERED" && paidIncluded!.remaining > 0) &&
       purchased.available <= 0 &&
       !freeLifetime) {
       return { ...base, availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false };
     }
 
-    const capacitySource = promotional.remaining > 0
+    const capacitySource = spendablePromotional.remaining > 0
       ? "PROMOTIONAL"
       : reconciledPlanMapping.kind === "PAID_METERED" && paidIncluded!.remaining > 0
         ? "PAID_INCLUDED"

@@ -1,16 +1,20 @@
 import { useEffect, useState } from "react";
-import { useFetcher, useRevalidator } from "react-router";
+import { useFetcher } from "react-router";
+import StoreCategoryMappingSelector from "@/components/store-profile/StoreCategoryMappingSelector";
 
 type Category = {
   id: string;
   localizedDisplayName: string;
   localizedDescription: string;
+  mappings?: Array<{ id: string; localizedDisplayName: string }>;
 };
 type LocalizedCategory = Pick<Category, "id" | "localizedDisplayName" | "localizedDescription"> | null;
 type Profile = {
   activeCategory: LocalizedCategory;
   pendingCategory: LocalizedCategory;
   pendingSelectionGeneration: number;
+  activeMappingIds: string[];
+  pendingMappingIds: string[];
   pendingState: string;
   pendingTemplate: {
     id: string;
@@ -22,6 +26,25 @@ type Profile = {
 type SelectionResult =
   | { ok: true; pendingSelectionGeneration: number }
   | { ok: false; error: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "INVALID_INPUT" };
+
+function mappingIdsForCategory(
+  categoryId: string,
+  categories: Category[],
+  pendingCategoryId: string | null | undefined,
+  activeCategoryId: string | null | undefined,
+  pendingMappingIds: string[],
+  activeMappingIds: string[],
+): string[] {
+  const available = new Set(
+    categories.find((category) => category.id === categoryId)?.mappings?.map((mapping) => mapping.id) ?? [],
+  );
+  const candidates = categoryId === pendingCategoryId
+    ? pendingMappingIds
+    : categoryId === activeCategoryId
+      ? activeMappingIds
+      : [];
+  return candidates.filter((mappingId) => available.has(mappingId));
+}
 
 export default function StoreProfileSection({
   categories,
@@ -35,25 +58,74 @@ export default function StoreProfileSection({
   embedded?: boolean;
 }) {
   const fetcher = useFetcher<SelectionResult>();
-  const revalidator = useRevalidator();
-  const [selectedCategoryId, setSelectedCategoryId] = useState(
-    profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "",
+  const initialCategoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "";
+  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
+  const [selectedMappingIds, setSelectedMappingIds] = useState(() =>
+    mappingIdsForCategory(
+      initialCategoryId,
+      categories,
+      profile.pendingCategory?.id,
+      profile.activeCategory?.id,
+      profile.pendingMappingIds,
+      profile.activeMappingIds,
+    ),
   );
-  const generation = fetcher.data?.ok
+  const actionGeneration = fetcher.data?.ok
     ? fetcher.data.pendingSelectionGeneration
-    : profile.pendingSelectionGeneration;
+    : null;
+  const generation = Math.max(
+    profile.pendingSelectionGeneration,
+    actionGeneration ?? profile.pendingSelectionGeneration,
+  );
+  const waitingForLoader = actionGeneration !== null
+    && profile.pendingSelectionGeneration < actionGeneration;
   const selectionError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
-  const saving = fetcher.state !== "idle";
+  const saving = fetcher.state !== "idle" || waitingForLoader;
 
   useEffect(() => {
-    if (fetcher.data?.ok) revalidator.revalidate();
-  }, [fetcher.data, revalidator]);
+    const categoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "";
+    setSelectedCategoryId(categoryId);
+    setSelectedMappingIds(mappingIdsForCategory(
+      categoryId,
+      categories,
+      profile.pendingCategory?.id,
+      profile.activeCategory?.id,
+      profile.pendingMappingIds,
+      profile.activeMappingIds,
+    ));
+  }, [
+    profile.activeCategory?.id,
+    profile.pendingCategory?.id,
+    profile.activeMappingIds,
+    profile.pendingMappingIds,
+    categories,
+  ]);
 
-  useEffect(() => {
-    setSelectedCategoryId(
-      profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "",
-    );
-  }, [profile.activeCategory?.id, profile.pendingCategory?.id, categories]);
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
+  const persistedCategoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? "";
+  const persistedMappingIds = mappingIdsForCategory(
+    persistedCategoryId,
+    categories,
+    profile.pendingCategory?.id,
+    profile.activeCategory?.id,
+    profile.pendingMappingIds,
+    profile.activeMappingIds,
+  );
+  const selectedMappingSet = new Set(selectedMappingIds);
+  const hasUnsavedChanges = selectedCategoryId !== persistedCategoryId
+    || selectedMappingIds.length !== persistedMappingIds.length
+    || persistedMappingIds.some((mappingId) => !selectedMappingSet.has(mappingId));
+  const selectCategory = (categoryId: string) => {
+    setSelectedCategoryId(categoryId);
+    setSelectedMappingIds(mappingIdsForCategory(
+      categoryId,
+      categories,
+      profile.pendingCategory?.id,
+      profile.activeCategory?.id,
+      profile.pendingMappingIds,
+      profile.activeMappingIds,
+    ));
+  };
 
   return (
     <section
@@ -120,7 +192,7 @@ export default function StoreProfileSection({
                   id="settings-store-category"
                   name="categoryId"
                   value={selectedCategoryId}
-                  onChange={(event) => setSelectedCategoryId(event.currentTarget.value)}
+                  onChange={(event) => selectCategory(event.currentTarget.value)}
                   disabled={saving}
                 >
                   {categories.map((category) => (
@@ -130,7 +202,13 @@ export default function StoreProfileSection({
                   ))}
                 </select>
               </label>
-              <button type="submit" disabled={saving || !selectedCategoryId}>
+              <StoreCategoryMappingSelector
+                category={selectedCategory}
+                selectedMappingIds={selectedMappingIds}
+                onChange={setSelectedMappingIds}
+                disabled={saving}
+              />
+              <button type="submit" disabled={saving || !selectedCategoryId || !hasUnsavedChanges}>
                 {saving ? t("storeProfile.saving") : t("storeProfile.changeCategory")}
               </button>
             </fetcher.Form>
@@ -138,7 +216,9 @@ export default function StoreProfileSection({
             {selectionError ? (
               <p role="alert">{t(selectionError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
             ) : null}
-            {fetcher.data?.ok ? <p role="status">{t("storeProfile.saved")}</p> : null}
+            {fetcher.data?.ok && waitingForLoader ? (
+              <p role="status">{t("storeProfile.saved")}</p>
+            ) : null}
           </div>
         </details>
       ) : (

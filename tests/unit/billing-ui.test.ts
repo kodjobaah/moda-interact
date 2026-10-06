@@ -32,9 +32,11 @@ describe("canonical merchant billing UI", () => {
     expect(selectSource).toContain('target: "_top"');
   });
 
-  it("sends onboarding plan CTAs to Shopify plan selection", () => {
+  it("sends onboarding plan CTA to Shopify plan selection after category persistence", () => {
     expect(onboardingSource).not.toContain('href="/app/billing"');
-    expect(onboardingSource.match(/href="\/app\/billing\/select"/g)).toHaveLength(3);
+    expect(onboardingSource).not.toContain('href="/app/billing/select"');
+    expect(onboardingSource).toContain('navigate("/app/billing/select")');
+    expect(onboardingSource).toContain('action: "/app/store-profile/category"');
   });
 
   it("maps billing system messages to lifecycle-allowed destinations", () => {
@@ -42,6 +44,10 @@ describe("canonical merchant billing UI", () => {
     expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING", "FROZEN")).toBeNull();
     expect(getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED", "NO_CONTRACT")).toEqual({ href: "/app/billing/options", labelKey: "billing.viewPlans" });
     expect(getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED", "SUPPORT_ONLY")).toBeNull();
+    expect(getMerchantSystemMessageAction("BILLING_SUBSCRIPTION_ENDED", "POST_CONTRACT")).toEqual({
+      href: "/app/billing/options",
+      labelKey: "billing.subscribeAgain",
+    });
     expect(systemActionsSource).not.toContain('"/app/billing"');
   });
 
@@ -202,7 +208,11 @@ beforeEach(() => {
     session: { shop: "merchant.myshopify.com", locale: "en-GB" },
     redirect: hostedPricingRedirect,
   });
-  resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
+  resolveShopifyShop.mockResolvedValue({
+    id: "shop-1",
+    status: "ACTIVE",
+    onboardingCompleted: true,
+  });
   findShopSettings.mockResolvedValue(null);
   getSubscription.mockResolvedValue({ status: "ACTIVE" });
   getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED" });
@@ -315,7 +325,7 @@ describe("merchant billing UI", () => {
     expect(getMerchantBillingState).not.toHaveBeenCalled();
   });
 
-  it("fails closed for a scheduled cancellation before creating a top-up", async () => {
+  it("allows an eligible top-up while scheduled cancellation keeps the current provider contract active", async () => {
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getMerchantRecoveryCapacityState.mockResolvedValue({
       availability: "AVAILABLE",
@@ -329,24 +339,200 @@ describe("merchant billing UI", () => {
         pendingUpdate: null,
       },
     });
+    requestRecoveryCreditPack.mockResolvedValue({
+      status: "REQUESTED",
+      currentAmount: 0,
+      usageEvent: { shopifyReportState: "PENDING" },
+    });
 
-    await expect(billingAction({
-      request: new Request("https://example.test/app/billing/options", { method: "POST", body: new URLSearchParams() }),
-    } as never)).rejects.toThrow("Recovery credit packs are unavailable while Shopify billing is restricted");
+    const body = new URLSearchParams({
+      intent: "BUY_RECOVERY_CREDIT_PACK",
+      purchaseId: "purchase-1",
+      eventHandle: "bronze-top-up-free",
+    });
+    const result = await billingAction({
+      request: new Request("https://example.test/app/billing/options", { method: "POST", body }),
+    } as never);
+
+    expect(requestRecoveryCreditPack).toHaveBeenCalledWith(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "purchase-1",
+      "bronze-top-up-free",
+    );
+    expect(result).toEqual({
+      purchase: {
+        status: "REQUESTED",
+        currentAmount: 0,
+        usageReportState: "PENDING",
+      },
+    });
+  });
+
+  it("denies a post-contract top-up even if provider verification momentarily reports an active subscription", async () => {
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      lastProviderLifecycleState: "CANCELED",
+    });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "POST_CONTRACT_AVAILABLE",
+      canStartRecovery: true,
+    });
+    getMerchantShopifySubscriptionState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { cancelAtEndOfCycle: false, pendingUpdate: null },
+    });
+
+    const body = new URLSearchParams({
+      intent: "BUY_RECOVERY_CREDIT_PACK",
+      purchaseId: "purchase-post-contract",
+      eventHandle: "bronze-top-up-free",
+    });
+
+    await expect(
+      billingAction({
+        request: new Request("https://example.test/app/billing/options", { method: "POST", body }),
+      } as never),
+    ).rejects.toThrow("Recovery credit packs are unavailable while Shopify billing is restricted.");
     expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
   });
 
-  it("hides top-up while scheduled cancellation keeps Shopify plan management", () => {
-    const markup = renderBillingRoute({
-      subscription: {
-        ...activeFreeSubscription,
-        cancelAtPeriodEnd: true,
-        pendingPlanName: null,
-        pendingEffectiveAt: null,
+  it("keeps the scheduled-cancellation top-up CTA enabled when normal eligibility passes", () => {
+    useLoaderDataMock.mockReturnValue({
+      merchantUi: { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" },
+      commercial: {
+        status: "ACTIVE_SUBSCRIPTION",
+        subscription: {
+          planHandle: "free",
+          price: null,
+          billingPeriod: "EVERY_30_DAYS",
+          currentPeriodEnd: "2026-10-19T00:00:00.000Z",
+          cancelAtEndOfCycle: true,
+          pendingUpdate: null,
+        },
+        modaMapping: { id: "free-1", name: "Free", kind: "FREE" },
+        mappingStatus: "MAPPED",
+      },
+      currentContract: null,
+      capacity: {
+        availability: "AVAILABLE",
+        freeLifetime: { granted: 5, remaining: 5 },
+        promotional: { remaining: 0 },
+        purchased: { available: 0 },
+      },
+      topUp: {
+        billingPeriodPhase: "ACTIVE",
+        recoveryCreditOffers: [{
+          eventHandle: "bronze-top-up-free",
+          label: "Bronze",
+          cataloguePosition: 0,
+          creditsGranted: 1,
+          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] },
+          providerUsage: null,
+        }],
+        recoveryCreditOfferVerificationState: "VERIFIED",
+        purchasedRecoveryCredits: { available: 0 },
+        latestPurchase: null,
+        unresolvedPurchases: [],
+        purchaseEligible: true,
+      },
+      billingPeriodPhase: "ACTIVE",
+      lifecycleState: "ACTIVE",
+      verificationState: "ACTIVE_SUBSCRIPTION",
+      scheduledCancellation: true,
+      requestedSelection: null,
+      usageHistoryAvailable: false,
+      usageHistoryHref: "/app/usage",
+      purchaseHistoryAvailable: false,
+    } as never);
+
+    const markup = renderToStaticMarkup(createElement(BillingRoute));
+    const buyButton = markup.match(/<button[^>]*aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
+
+    expect(markup).toContain("subscription is scheduled to end");
+    expect(markup).toContain("top-ups normally available to it until then");
+    expect(buyButton).not.toContain("disabled");
+  });
+
+  it("loads verified ended subscriptions as post-contract without reading top-up offers", async () => {
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      lastProviderLifecycleState: "CANCELED",
+      plan: null,
+      observedShopifyPlanHandle: null,
+    });
+    getMerchantShopifySubscriptionState.mockResolvedValue({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "POST_CONTRACT_AVAILABLE",
+      capacitySource: "PURCHASED",
+      canStartRecovery: true,
+      freeLifetime: { granted: 5, committed: 1, reserved: 0, remaining: 4 },
+      promotional: { granted: 0, committed: 0, reserved: 0, remaining: 0 },
+      purchased: {
+        granted: 10,
+        committed: 2,
+        reserved: 1,
+        refunding: 0,
+        available: 7,
       },
     });
 
-    expect(markup).not.toContain("<form");
+    const data = await billingOptionsLoader({
+      request: new Request("https://example.test/app/billing/options"),
+    } as never);
+
+    expect(data.lifecycleState).toBe("POST_CONTRACT");
+    expect(data.capacity).toMatchObject({
+      availability: "POST_CONTRACT_AVAILABLE",
+      capacitySource: "PURCHASED",
+    });
+    expect(data.verificationState).toBe("NO_ACTIVE_SUBSCRIPTION");
+    expect(getMerchantBillingState).not.toHaveBeenCalled();
+  });
+
+  it("presents remaining durable credits with Subscribe again and no top-up action after contract end", () => {
+    useLoaderDataMock.mockReturnValue({
+      merchantUi: { locale: "en-GB", fallbackLocale: "en", timeZone: "UTC" },
+      commercial: { status: "NO_ACTIVE_SUBSCRIPTION", subscription: null },
+      currentContract: null,
+      capacity: {
+        availability: "POST_CONTRACT_AVAILABLE",
+        capacitySource: "PURCHASED",
+        canStartRecovery: true,
+        paidIncluded: null,
+        freeLifetime: { granted: 5, committed: 1, reserved: 0, remaining: 4 },
+        promotional: { granted: 0, committed: 0, reserved: 0, remaining: 0 },
+        purchased: {
+          granted: 10,
+          committed: 2,
+          reserved: 1,
+          refunding: 0,
+          available: 7,
+        },
+      },
+      topUp: null,
+      billingPeriodPhase: null,
+      lifecycleState: "POST_CONTRACT",
+      verificationState: "NO_ACTIVE_SUBSCRIPTION",
+      scheduledCancellation: false,
+      requestedSelection: null,
+      usageHistoryAvailable: false,
+      usageHistoryHref: "/app/usage",
+      purchaseHistoryAvailable: true,
+    } as never);
+
+    const markup = renderToStaticMarkup(createElement(BillingRoute));
+
+    expect(markup).toContain("No active subscription");
+    expect(markup).toContain("remaining purchased and lifetime Free recovery credits");
+    expect(markup).toContain("Subscribe again");
+    expect(markup).toContain(">4<");
+    expect(markup).toContain(">7<");
+    expect(markup).not.toContain("Add top-up");
+    expect(markup).not.toContain("BUY_RECOVERY_CREDIT_PACK");
   });
 
   it("hides top-up and plan management while capacity is frozen", () => {
@@ -379,13 +565,17 @@ describe("merchant billing UI", () => {
   });
 
   it.each([
-    ["ONBOARDING", false, { onboardingCompleted: false }, "NO_CONTRACT"],
-    ["ACTIVE", true, { onboardingCompleted: true }, "ACTIVE"],
-    ["NO_CONTRACT", true, { onboardingCompleted: true }, "NO_CONTRACT"],
-    ["FROZEN", true, { onboardingCompleted: true }, "FROZEN"],
-    ["BILLING_ATTENTION", true, { onboardingCompleted: true }, "UNMAPPED"],
-  ] as const)("derives purchase-history presentation for %s", async (_state, expected, settings, subscriptionStatus) => {
-    findShopSettings.mockResolvedValue(settings);
+    ["ONBOARDING", false, false, "NO_CONTRACT"],
+    ["ACTIVE", true, true, "ACTIVE"],
+    ["NO_CONTRACT", true, true, "NO_CONTRACT"],
+    ["FROZEN", true, true, "FROZEN"],
+    ["BILLING_ATTENTION", true, true, "UNMAPPED"],
+  ] as const)("derives purchase-history presentation for %s", async (_state, expected, onboardingCompleted, subscriptionStatus) => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "ACTIVE",
+      onboardingCompleted,
+    });
     getSubscriptionProjection.mockResolvedValue({ status: subscriptionStatus });
     if (_state === "ONBOARDING") {
       await expect(

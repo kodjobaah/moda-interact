@@ -58,13 +58,19 @@ export default function RecoveryOverview({
     ? "common.unavailable"
     : capacity.availability === "AVAILABLE"
       ? "overview.available"
-      : capacity?.availability === "EXHAUSTED"
-        ? "overview.exhausted"
-        : capacity?.availability === "CONTRACT_FROZEN"
-          ? "billing.frozenDescription"
-          : capacity?.availability === "CONTRACT_REQUIRED"
-            ? "billing.contractRequiredDescription"
-            : "billing.configurationUnavailableDescription";
+      : capacity.availability === "POST_CONTRACT_AVAILABLE"
+        ? "billing.postContractDescription"
+        : capacity.availability === "POST_CONTRACT_EXHAUSTED"
+          ? "billing.postContractExhaustedDescription"
+          : capacity.availability === "EXHAUSTED"
+            ? "overview.exhausted"
+            : capacity.availability === "CONTRACT_FROZEN"
+              ? "billing.frozenDescription"
+              : capacity.availability === "CONTRACT_REQUIRED"
+                ? "billing.contractRequiredDescription"
+                : "billing.configurationUnavailableDescription";
+  const postContract = capacity?.availability === "POST_CONTRACT_AVAILABLE" ||
+    capacity?.availability === "POST_CONTRACT_EXHAUSTED";
   const summary = overview?.summary;
   return (
     <main className="recovery-overview moda-page-shell moda-page-shell--wide" dir={i18n.direction}>
@@ -259,10 +265,12 @@ export default function RecoveryOverview({
         <p>{t("overview.capacityHint")}</p>
         <p>
           {t("billing.currentPlan")}:{" "}
-          {capacity?.reconciledPlanMapping?.name ||
-            (typeof subscription?.planName === "string"
-              ? subscription.planName
-              : t("common.unavailable"))}
+          {postContract
+            ? t("billing.noActiveSubscription")
+            : capacity?.reconciledPlanMapping?.name ||
+              (typeof subscription?.planName === "string"
+                ? subscription.planName
+                : t("common.unavailable"))}
         </p>
         <p role="status">{t(capacityKey)}</p>
         <dl className="recovery-overview__balances">
@@ -331,11 +339,12 @@ export default function RecoveryOverview({
           )}
         </dl>
         {!billingSetup &&
-          (merchantExperienceState === "NO_CONTRACT" ? (
+          (merchantExperienceState === "NO_CONTRACT" || merchantExperienceState === "POST_CONTRACT" ? (
             <MerchantPricingCatalogue
               merchantUi={merchantUi}
               pricingCatalogue={pricingCatalogue}
               showChoosePlanAction
+              choosePlanLabelKey={merchantExperienceState === "POST_CONTRACT" ? "billing.subscribeAgain" : undefined}
             />
           ) : (
             <Link to={`/app/billing/options?${new URLSearchParams(embed)}`}>

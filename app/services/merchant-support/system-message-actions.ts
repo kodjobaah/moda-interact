@@ -7,7 +7,7 @@ export const BILLING_OPTIONS_ROUTE = "/app/billing/options";
 
 export type MerchantSystemMessageAction = {
   href: string;
-  labelKey: "billing.viewPlans" | "billing.upgradePlan";
+  labelKey: "billing.viewPlans" | "billing.upgradePlan" | "billing.subscribeAgain";
 };
 
 export function getMerchantSystemMessageAction(
@@ -20,9 +20,15 @@ export function getMerchantSystemMessageAction(
   switch (parsed.data) {
     case "BILLING_FREE_ALLOWANCE_WARNING":
       return canAccessMerchantSurface(state, "PLAN_SELECT") ? { href: BILLING_SELECT_ROUTE, labelKey: "billing.viewPlans" } : null;
+    case "BILLING_SUBSCRIPTION_ENDED":
+      return canAccessMerchantSurface(state, "BILLING_OPTIONS")
+        ? {
+            href: BILLING_OPTIONS_ROUTE,
+            labelKey: state === "POST_CONTRACT" ? "billing.subscribeAgain" : "billing.viewPlans",
+          }
+        : null;
     case "BILLING_PLAN_UPGRADED":
     case "BILLING_PLAN_DOWNGRADE_SCHEDULED":
-    case "BILLING_SUBSCRIPTION_ENDED":
     case "BILLING_SAFETY_LIMIT_REACHED":
       return canAccessMerchantSurface(state, "BILLING_OPTIONS") ? { href: BILLING_OPTIONS_ROUTE, labelKey: "billing.viewPlans" } : null;
     default:

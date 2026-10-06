@@ -16,6 +16,10 @@ export default function LifecycleRestrictionBanner({ merchantUi, subscription, c
 
   if (capacity?.availability === "CONTRACT_FROZEN") {
     message = i18n.t("billing.frozenDescription");
+  } else if (capacity?.availability === "POST_CONTRACT_AVAILABLE") {
+    message = i18n.t("billing.postContractDescription");
+  } else if (capacity?.availability === "POST_CONTRACT_EXHAUSTED") {
+    message = i18n.t("billing.postContractExhaustedDescription");
   } else if (pendingPlan?.name && pendingPlan.effectiveAt) {
     message = i18n.t("billing.pendingChange", {
       plan: pendingPlan.name,

@@ -65,7 +65,9 @@ function durableLifecycleState(
     case SubscriptionProjectionStatus.FROZEN:
       return "FROZEN" as const;
     case SubscriptionProjectionStatus.NO_CONTRACT:
-      return "NO_ACTIVE_SUBSCRIPTION" as const;
+      return subscription.lastProviderLifecycleState === "CANCELED"
+        ? "POST_CONTRACT" as const
+        : "NO_ACTIVE_SUBSCRIPTION" as const;
     default:
       return "UNRESOLVED" as const;
   }
@@ -136,7 +138,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // resolution. Passing the commercial state explicitly prevents a second
     // Partner API request.
     let topUp = null;
-    if (commercial) {
+    if (commercial?.status === "ACTIVE_SUBSCRIPTION") {
       try {
         topUp = await billingService.getMerchantBillingState(
           shop.id,
@@ -245,17 +247,14 @@ export async function action({ request }: ActionFunctionArgs) {
     billingService.getMerchantRecoveryCapacityState(shop.id),
     billingService.getMerchantShopifySubscriptionState(shop.id),
   ]);
-  const scheduledCancellation = Boolean(
-    liveCommercial.status === "ACTIVE_SUBSCRIPTION" &&
-    liveCommercial.subscription.cancelAtEndOfCycle &&
-    !liveCommercial.subscription.pendingUpdate,
-  );
   if (
     capacity.availability === "CONTRACT_FROZEN" ||
     capacity.availability === "CONTRACT_REQUIRED" ||
+    capacity.availability === "POST_CONTRACT_AVAILABLE" ||
+    capacity.availability === "POST_CONTRACT_EXHAUSTED" ||
     subscription?.status === SubscriptionProjectionStatus.FROZEN ||
-    liveCommercial.status !== "ACTIVE_SUBSCRIPTION" ||
-    scheduledCancellation
+    subscription?.status === SubscriptionProjectionStatus.NO_CONTRACT ||
+    liveCommercial.status !== "ACTIVE_SUBSCRIPTION"
   ) {
     throw new Error(
       "Recovery credit packs are unavailable while Shopify billing is restricted.",
@@ -304,7 +303,6 @@ export default function BillingOptionsPage() {
           data.verificationState === "ACTIVE_SUBSCRIPTION" &&
           mappingStatus === "MAPPED" &&
           data.lifecycleState === "ACTIVE" &&
-          !data.scheduledCancellation &&
           data.topUp.purchaseEligible,
         offers: providerMappedCurrentContract
           ? data.topUp.recoveryCreditOffers
@@ -329,9 +327,16 @@ export default function BillingOptionsPage() {
         configured: false,
         purchaseEligible: false,
         offers: [],
-        offerVerificationState: "VERIFICATION_UNAVAILABLE",
-        freeLifetime: null,
-        purchasedCreditsAvailable: 0,
+        offerVerificationState: data.verificationState === "VERIFICATION_UNAVAILABLE"
+          ? "VERIFICATION_UNAVAILABLE"
+          : "VERIFIED",
+        freeLifetime: data.capacity?.freeLifetime
+          ? {
+              granted: data.capacity.freeLifetime.granted,
+              remaining: data.capacity.freeLifetime.remaining,
+            }
+          : null,
+        purchasedCreditsAvailable: data.capacity?.purchased.available ?? 0,
         latestPurchase: null,
         unresolvedPurchases: [],
       };
@@ -354,7 +359,9 @@ export default function BillingOptionsPage() {
         effectiveAt: providerSubscription.pendingUpdate.effectiveAt,
       }
     : null;
-  const initialView = data.requestedSelection ? "plans" : "topup";
+  const initialView = data.requestedSelection || data.lifecycleState === "POST_CONTRACT" || data.lifecycleState === "NO_ACTIVE_SUBSCRIPTION"
+    ? "plans"
+    : "topup";
 
   return (
     <s-page heading={i18n.t("billingCommerce.page.title")}>

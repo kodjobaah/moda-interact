@@ -15,25 +15,30 @@
 }
 
 .mi-billing-setup-progress {
-  display: flex;
-  gap: 5px;
-  padding-top: 7px;
+  display: grid;
+  gap: 7px;
+  padding-top: 8px;
 }
 
 .mi-billing-setup-progress span {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid rgba(36, 104, 74, 0.34);
   border-radius: 999px;
+  background: transparent;
+}
+
+.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"] span:first-child,
+.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"] span:nth-child(-n + 2),
+.mi-billing-setup-progress[data-phase="FINALIZING_SUBSCRIPTION"] span {
+  border-color: #24684a;
   background: #24684a;
-  animation: mi-billing-setup-pulse 1.2s ease-in-out infinite;
 }
 
-.mi-billing-setup-progress span:nth-child(2) {
-  animation-delay: 0.16s;
-}
-
-.mi-billing-setup-progress span:nth-child(3) {
-  animation-delay: 0.32s;
+.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"] span:first-child,
+.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"] span:nth-child(2),
+.mi-billing-setup-progress[data-phase="FINALIZING_SUBSCRIPTION"] span:last-child {
+  box-shadow: 0 0 0 4px rgba(36, 104, 74, 0.12);
 }
 
 .mi-billing-setup-copy h2 {
@@ -91,11 +96,6 @@
   margin-top: 16px;
   color: #64756d;
   font-size: 0.86rem;
-}
-
-@keyframes mi-billing-setup-pulse {
-  0%, 80%, 100% { opacity: 0.28; transform: translateY(0); }
-  40% { opacity: 1; transform: translateY(-3px); }
 }
 
 @media (max-width: 640px) {

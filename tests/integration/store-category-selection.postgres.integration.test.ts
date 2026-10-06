@@ -80,7 +80,7 @@ async function createPublishedShopPrompt(shopId: string) {
   });
   const configuration = await db.commerceAgentConfiguration.create({
     data: {
-      environment: "PRODUCTION",
+      environment: "TEST",
       scope: "SHOP",
       shopId,
       activePromptRevisionId: revision.id,
@@ -245,10 +245,10 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
     expect(afterConfigurations).toEqual(beforeConfigurations);
   }, 30_000);
 
-  it("reuses the pending DRAFT on reselection and leaves active category and prompt unchanged", async () => {
+  it("publishes active-shop category reselection immediately and advances the prompt pointer", async () => {
     const db = requireDatabase();
     const shopId = await createShop();
-    const { promptId, activeRevisionId } =
+    const { promptId, activeRevisionId, configuration } =
       await createPublishedShopPrompt(shopId);
     await db.commerceShopProfile.create({
       data: {
@@ -259,10 +259,42 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
     });
 
     const firstResult = await select(shopId, 0);
-    const originalDraft =
-      await db.commerceAgentPromptRevision.findUniqueOrThrow({
-        where: { id: firstResult.pendingPromptRevisionId },
-      });
+    const firstProfile = await db.commerceShopProfile.findUniqueOrThrow({
+      where: { shopId },
+    });
+    const firstConfiguration = await db.commerceAgentConfiguration.findUniqueOrThrow({
+      where: { id: configuration.id },
+    });
+    const firstPublished = await db.commerceAgentPromptRevision.findUniqueOrThrow({
+      where: { id: firstConfiguration.activePromptRevisionId ?? "" },
+    });
+
+    expect(firstResult).toMatchObject({
+      activeCategoryId: categoryId,
+      activePromptRevisionId: firstPublished.id,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectionGeneration: 1,
+    });
+    expect(firstPublished).toMatchObject({
+      promptId,
+      revisionNumber: 2,
+      status: "PUBLISHED",
+      promptText: canonicalPromptText,
+      sourceTemplateId: templateId,
+      sourceTemplateEditVersion: 7,
+      publishedAt: selectionTime,
+    });
+    expect(firstConfiguration.activePromptRevisionId).not.toBe(activeRevisionId);
+    expect(firstProfile).toMatchObject({
+      activeCategoryId: categoryId,
+      activeCategoryActivatedAt: selectionTime,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectionGeneration: 1,
+      pendingSelectedAt: null,
+    });
+
     await db.commercePromptTemplate.update({
       where: { id: templateId },
       data: {
@@ -270,52 +302,44 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
         editVersion: 8,
       },
     });
-
-    const secondResult = await select(
-      shopId,
-      1,
-      requireDatabase(),
-      new Date("2026-09-30T12:05:00.000Z"),
-    );
-    const profile = await db.commerceShopProfile.findUniqueOrThrow({
-      where: { shopId },
+    const secondTime = new Date("2026-09-30T12:05:00.000Z");
+    const secondResult = await select(shopId, 1, db, secondTime);
+    const secondProfile = await db.commerceShopProfile.findUniqueOrThrow({ where: { shopId } });
+    const secondConfiguration = await db.commerceAgentConfiguration.findUniqueOrThrow({
+      where: { id: configuration.id },
     });
-    const updatedDraft = await db.commerceAgentPromptRevision.findUniqueOrThrow(
-      {
-        where: { id: originalDraft.id },
-      },
-    );
-    const lineages = await db.commerceAgentPrompt.findMany({
-      where: { shopId, scope: "SHOP" },
+    const secondPublished = await db.commerceAgentPromptRevision.findUniqueOrThrow({
+      where: { id: secondConfiguration.activePromptRevisionId ?? "" },
     });
-    const configurations = await db.commerceAgentConfiguration.findMany({
-      where: { shopId, scope: "SHOP" },
+    const drafts = await db.commerceAgentPromptRevision.findMany({
+      where: { promptId, status: "DRAFT" },
     });
 
-    expect(secondResult).toEqual({
-      pendingCategoryId: categoryId,
-      pendingPromptRevisionId: originalDraft.id,
-      pendingSelectionGeneration: 2,
-    });
-    expect(profile).toMatchObject({
+    expect(secondResult).toMatchObject({
       activeCategoryId: categoryId,
-      activeCategoryActivatedAt: activeTime,
-      pendingCategoryId: categoryId,
-      pendingPromptRevisionId: originalDraft.id,
+      activePromptRevisionId: secondPublished.id,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
       pendingSelectionGeneration: 2,
-      pendingSelectedAt: new Date("2026-09-30T12:05:00.000Z"),
     });
-    expect(updatedDraft).toMatchObject({
-      id: originalDraft.id,
+    expect(secondPublished).toMatchObject({
       promptId,
+      revisionNumber: 3,
+      status: "PUBLISHED",
       promptText: "Updated canonical English instructions",
       sourceTemplateId: templateId,
       sourceTemplateEditVersion: 8,
-      editVersion: 2,
+      publishedAt: secondTime,
     });
-    expect(lineages).toHaveLength(1);
-    expect(configurations).toHaveLength(1);
-    expect(configurations[0]?.activePromptRevisionId).toBe(activeRevisionId);
+    expect(secondProfile).toMatchObject({
+      activeCategoryId: categoryId,
+      activeCategoryActivatedAt: secondTime,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectionGeneration: 2,
+      pendingSelectedAt: null,
+    });
+    expect(drafts).toHaveLength(0);
   }, 30_000);
 
   it("rejects a stale generation without changing the committed pending state", async () => {

@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createMerchantKnowledgeR2Client } from "../../app/services/merchant-knowledge/r2-client.server";
 import {
   loadMerchantKnowledgeR2Config,
@@ -81,6 +81,7 @@ const testConfig = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test");
   serviceMocks.database.$transaction.mockImplementation((callback) => callback(serviceMocks.transaction));
   serviceMocks.entitlement.mockResolvedValue({
     kind: "entitled",
@@ -105,6 +106,10 @@ beforeEach(() => {
   serviceMocks.headObject.mockResolvedValue({ contentLength: 32, contentType: "text/csv" });
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 it("persists a server-generated object key before signing one 600-second PUT", async () => {
   const result = await createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
@@ -125,7 +130,7 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     shopId: "shop-1",
     dataFormatId: "format-csv",
     status: "PENDING_UPLOAD",
-    objectKey: expect.stringMatching(/^merchant-knowledge\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/),
+    objectKey: expect.stringMatching(/^merchant-knowledge\/test\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/),
     originalFileName: "catalog.csv",
     uploadExpiresAt: new Date("2026-10-01T12:10:00.000Z"),
   });
@@ -145,6 +150,48 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
     maxUploadBytes: 1_000,
   });
+});
+
+it("uses the configured deployment environment as the R2 namespace", async () => {
+  vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "staging");
+
+  await createMerchantKnowledgeUploadIntent({
+    shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "CSV",
+    originalFileName: "catalog.csv",
+    contentType: "text/csv",
+    sizeBytes: 32,
+    database: serviceMocks.database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+    config: testConfig,
+  });
+
+  const created = serviceMocks.transaction.merchantKnowledgeUploadedAsset.create.mock.calls[0]?.[0];
+  expect(created.data.objectKey).toMatch(
+    /^merchant-knowledge\/staging\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/,
+  );
+});
+
+it("rejects an unsafe deployment environment before allocating an asset", async () => {
+  vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test/production");
+
+  await expect(createMerchantKnowledgeUploadIntent({
+    shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "CSV",
+    originalFileName: "catalog.csv",
+    contentType: "text/csv",
+    sizeBytes: 32,
+    database: serviceMocks.database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+    config: testConfig,
+  })).rejects.toThrow("MERCHANT_KNOWLEDGE_DEPLOYMENT_ENVIRONMENT_INVALID");
+
+  expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
+  expect(serviceMocks.signPut).not.toHaveBeenCalled();
 });
 
 it("includes the lowercase if-none-match header in the signed PUT request", async () => {

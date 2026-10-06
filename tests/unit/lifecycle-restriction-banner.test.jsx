@@ -28,10 +28,26 @@ describe("LifecycleRestrictionBanner", () => {
     );
 
     expect(html).toContain("Pending change to Basic");
-    expect(html).not.toContain("remains active until");
+    expect(html).not.toContain("scheduled to end");
   });
 
-  it("gives frozen state precedence and keeps contract-required state visible", () => {
+
+  it("keeps scheduled cancellation informational while top-ups remain available", () => {
+    const html = renderBanner(
+      {
+        status: "ACTIVE",
+        cancelAtEndOfCycle: true,
+        currentPeriodEnd: "2026-10-19T00:00:00.000Z",
+        pendingPlan: null,
+      },
+      { availability: "AVAILABLE" },
+    );
+
+    expect(html).toContain("subscription is scheduled to end");
+    expect(html).toContain("top-ups normally available to it until then");
+  });
+
+  it("gives frozen state precedence and keeps never-subscribed contract-required state visible", () => {
     expect(renderBanner(
       { status: "ACTIVE", cancelAtEndOfCycle: true, currentPeriodEnd: "2026-10-01T00:00:00.000Z" },
       { availability: "CONTRACT_FROZEN", canStartRecovery: false },
@@ -40,6 +56,18 @@ describe("LifecycleRestrictionBanner", () => {
     expect(renderBanner(
       { status: "NO_CONTRACT" },
       { availability: "CONTRACT_REQUIRED", canStartRecovery: false },
-    )).toContain("Your subscription has ended");
+    )).toContain("Choose a Free or paid plan");
+  });
+
+  it("distinguishes post-contract credits from post-contract exhaustion", () => {
+    expect(renderBanner(
+      { status: "NO_CONTRACT" },
+      { availability: "POST_CONTRACT_AVAILABLE", canStartRecovery: true },
+    )).toContain("remaining purchased and lifetime Free recovery credits");
+
+    expect(renderBanner(
+      { status: "NO_CONTRACT" },
+      { availability: "POST_CONTRACT_EXHAUSTED", canStartRecovery: false },
+    )).toContain("no purchased or lifetime Free recovery credits remain");
   });
 });

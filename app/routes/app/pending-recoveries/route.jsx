@@ -10,7 +10,7 @@ export const loader = async ({ request }) => {
   const { admin, session } = await authenticate.admin(request);
   const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
   assertActiveShop(shop, { route: "/app/pending-recoveries", capability: "read-recoveries", redirectTo: "/app/merchant-support" });
-  const subscription = await billingService.getSubscription(shop.id);
+  const subscription = await billingService.getSubscriptionProjection(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PENDING_RECOVERIES")) {
     return Response.json({

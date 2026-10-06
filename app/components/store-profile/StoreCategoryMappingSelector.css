@@ -1,0 +1,45 @@
+.moda-store-mapping-selector {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.moda-store-mapping-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #d8e3dc;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.moda-store-mapping-option input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.moda-store-mapping-option span {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.moda-store-mapping-selector--settings .moda-store-mapping-option:has(input:checked) {
+  border-color: #5d9577;
+  background: #edf4f0;
+}
+
+.moda-store-mapping-selector--onboarding .moda-store-mapping-option {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.moda-store-mapping-selector--onboarding .moda-store-mapping-option:has(input:checked) {
+  border-color: rgba(255, 255, 255, 0.52);
+  background: rgba(255, 255, 255, 0.16);
+}

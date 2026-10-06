@@ -89,6 +89,7 @@ beforeEach(() => {
   loadStoreProfile.mockResolvedValue({
     pendingCategory: { id: "category-home" },
     pendingSelectionGeneration: 3,
+    pendingMappingIds: ["mapping-pending"],
   });
   suggestStoreCategory.mockResolvedValue({ categoryId: "category-home", matchedMappingIds: ["mapping-home"] });
   readRecoveryOverview.mockResolvedValue({
@@ -124,6 +125,7 @@ describe("app home loader", () => {
       storeCategories: [{ id: "category-home", localizedDisplayName: "Home goods" }],
       pendingCategoryId: "category-home",
       pendingSelectionGeneration: 3,
+      pendingMappingIds: ["mapping-pending"],
       suggestedCategoryId: "category-home",
       suggestedMappingIds: ["mapping-home"],
     });
@@ -184,6 +186,7 @@ describe("app home loader", () => {
       activeCategory: null,
       pendingCategory: null,
       pendingSelectionGeneration: 0,
+      pendingMappingIds: [],
     });
 
     const result = await loader({
@@ -275,7 +278,7 @@ describe("app home loader", () => {
     expect(result).toMatchObject({
       merchantExperienceState: "ONBOARDING",
       billingSetup: {
-        phase: "FINALIZING_SUBSCRIPTION",
+        phase: "VERIFYING_SUBSCRIPTION",
         planHandle: "free",
         planName: "Free",
       },
@@ -310,6 +313,49 @@ describe("app home loader", () => {
     expect(findRecoveries).not.toHaveBeenCalled();
     expect(findBillingPeriods).not.toHaveBeenCalled();
     expect(findUsageEvents).not.toHaveBeenCalled();
+  });
+
+  it("keeps a previously subscribed merchant active in post-contract recovery mode", async () => {
+    findShopSettings.mockResolvedValue({ onboardingCompleted: true });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      plan: null,
+      observedShopifyPlanHandle: null,
+      pendingShopifyPlanHandle: null,
+      lastProviderLifecycleState: "CANCELED",
+    });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "POST_CONTRACT_AVAILABLE",
+      capacitySource: "PURCHASED",
+      canStartRecovery: true,
+      observedShopifyPlanHandle: null,
+      freeLifetime: { granted: 5, committed: 1, reserved: 0, remaining: 4 },
+      purchased: { granted: 10, committed: 2, reserved: 1, refunding: 0, available: 7 },
+    });
+    readActiveMerchantPricingCatalogue.mockResolvedValue([
+      { shopifyPlanHandle: "free", displayName: "Free" },
+    ]);
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      merchantExperienceState: "POST_CONTRACT",
+      subscription: { status: "NO_CONTRACT" },
+      pricingCatalogue: [{ shopifyPlanHandle: "free" }],
+      capacity: {
+        availability: "POST_CONTRACT_AVAILABLE",
+        capacitySource: "PURCHASED",
+        canStartRecovery: true,
+      },
+      pendingRecoveries: { available: true },
+    });
+    expect(readPendingRecoveries).toHaveBeenCalledWith({
+      shopId: "shop-1",
+      shopDomain: "merchant.myshopify.com",
+      page: 1,
+    });
   });
 
   it("preserves pending plan and scheduled cancellation precedence in dashboard data", async () => {
@@ -396,7 +442,7 @@ describe("app home loader", () => {
     expect(result).toMatchObject({
       merchantExperienceState: "BILLING_ATTENTION",
       billingSetup: {
-        phase: "FINALIZING_SUBSCRIPTION",
+        phase: "VERIFYING_SUBSCRIPTION",
         planName: "Free",
       },
       capacity: { availability: "CONFIGURATION_UNAVAILABLE" },

@@ -44,7 +44,7 @@ export const loader = async ({ request }) => {
     page: 1,
     pageSize: 1,
   });
-  const subscription = await billingService.getSubscription(shop.id);
+  const subscription = await billingService.getSubscriptionProjection(shop.id);
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,

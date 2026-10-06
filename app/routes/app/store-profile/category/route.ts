@@ -16,17 +16,26 @@ export async function action({ request }: ActionFunctionArgs) {
   });
 
   const form = await request.formData();
-  if ([...form.keys()].some((key) =>
-    !["categoryId", "expectedPendingSelectionGeneration"].includes(key) ||
-    form.getAll(key).length !== 1,
-  )) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+  const allowedKeys = new Set(["categoryId", "expectedPendingSelectionGeneration", "mappingId"]);
+  if ([...form.keys()].some((key) => !allowedKeys.has(key)))
+    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
 
-  const categoryId = form.get("categoryId");
-  const generationValue = form.get("expectedPendingSelectionGeneration");
+  const categoryValues = form.getAll("categoryId");
+  const generationValues = form.getAll("expectedPendingSelectionGeneration");
+  const mappingValues = form.getAll("mappingId");
+  if (categoryValues.length !== 1 || generationValues.length !== 1 || mappingValues.length > 256)
+    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+
+  const categoryId = categoryValues[0];
+  const generationValue = generationValues[0];
   const generation = typeof generationValue === "string" ? Number(generationValue) : NaN;
+  const mappingIds = mappingValues.filter((value): value is string => typeof value === "string");
   if (
     typeof categoryId !== "string" || !categoryId.trim() || categoryId.length > 128 ||
-    !Number.isSafeInteger(generation) || generation < 0
+    !Number.isSafeInteger(generation) || generation < 0 ||
+    mappingIds.length !== mappingValues.length ||
+    mappingIds.some((mappingId) => !mappingId.trim() || mappingId.length > 128) ||
+    new Set(mappingIds).size !== mappingIds.length
   ) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
 
   try {
@@ -34,6 +43,7 @@ export async function action({ request }: ActionFunctionArgs) {
       shopId: shop.id,
       categoryId,
       expectedPendingSelectionGeneration: generation,
+      selectedMappingIds: mappingIds,
     });
     return Response.json({ ok: true, ...selection }, {
       headers: { "Cache-Control": "no-store" },

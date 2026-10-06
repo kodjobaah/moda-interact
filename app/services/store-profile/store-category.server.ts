@@ -1,12 +1,17 @@
-import type { Prisma } from "@prisma/client";
+import { CommerceAgentPromptScope, type Prisma } from "@prisma/client";
 import db from "@/db.server";
 import {
   localizeStoreCategory,
   localizeStoreCategoryMapping,
   storeCategoryTranslationLocales,
 } from "./store-category-localization";
+import { readStoreCategoryPromptSourceContext } from "./store-category-prompt-provenance";
+import { resolveShopifyCommerceEnvironment } from "./store-category-activation.server";
 
-type CategoryReader = Pick<typeof db, "commercePromptTemplateCategory" | "commerceShopProfile">;
+type CategoryReader = Pick<
+  typeof db,
+  "commercePromptTemplateCategory" | "commerceShopProfile" | "commerceAgentConfiguration"
+>;
 
 type CategoryWithTranslations = {
   id: string;
@@ -68,18 +73,32 @@ export async function listSelectableStoreCategories(locale: string, client: Cate
 
 export async function loadStoreProfile(shopId: string, locale: string, client: CategoryReader = db) {
   const translationLocales = storeCategoryTranslationLocales(locale);
-  const profile = await client.commerceShopProfile.findUnique({
-    where: { shopId },
-    include: {
-      activeCategory: {
-        include: { translations: { where: { locale: { in: translationLocales } } } },
+  const environment = resolveShopifyCommerceEnvironment();
+  const [profile, configurations] = await Promise.all([
+    client.commerceShopProfile.findUnique({
+      where: { shopId },
+      include: {
+        activeCategory: {
+          include: { translations: { where: { locale: { in: translationLocales } } } },
+        },
+        pendingCategory: {
+          include: { translations: { where: { locale: { in: translationLocales } } } },
+        },
+        pendingPromptRevision: { include: { sourceTemplate: true } },
       },
-      pendingCategory: {
-        include: { translations: { where: { locale: { in: translationLocales } } } },
+    }),
+    client.commerceAgentConfiguration.findMany({
+      where: {
+        environment,
+        scope: CommerceAgentPromptScope.SHOP,
+        shopId,
       },
-      pendingPromptRevision: { include: { sourceTemplate: true } },
-    },
-  });
+      select: {
+        activePromptRevision: { select: { sourceContext: true } },
+      },
+      take: 2,
+    }),
+  ]);
   const categoryDto = (category: CategoryWithTranslations | null | undefined) =>
     category ? {
       id: category.id,
@@ -87,11 +106,25 @@ export async function loadStoreProfile(shopId: string, locale: string, client: C
       ...localizeStoreCategory(category, locale),
     } : null;
   const template = profile?.pendingPromptRevision?.sourceTemplate;
+  const pendingSourceContext = readStoreCategoryPromptSourceContext(
+    profile?.pendingPromptRevision?.sourceContext,
+  );
+  const activeSourceContext = configurations.length === 1
+    ? readStoreCategoryPromptSourceContext(configurations[0]?.activePromptRevision?.sourceContext)
+    : null;
 
   return {
     activeCategory: categoryDto(profile?.activeCategory),
     pendingCategory: categoryDto(profile?.pendingCategory),
     pendingSelectionGeneration: profile?.pendingSelectionGeneration ?? 0,
+    activeMappingIds:
+      activeSourceContext && activeSourceContext.categoryId === profile?.activeCategoryId
+        ? activeSourceContext.mappings.map((mapping) => mapping.mappingId)
+        : [],
+    pendingMappingIds:
+      pendingSourceContext && pendingSourceContext.categoryId === profile?.pendingCategoryId
+        ? pendingSourceContext.mappings.map((mapping) => mapping.mappingId)
+        : [],
     pendingState: profile?.pendingPromptRevisionId ? "PENDING_PUBLICATION" : "NONE",
     pendingTemplate: template ? {
       id: template.id,

@@ -28,9 +28,10 @@ describe("merchant billing setup state", () => {
     });
   });
 
-  it("shows finalizing state when Shopify has already confirmed the subscription", () => {
+  it("shows verifying state when Shopify evidence exists but the local plan is not safely mapped", () => {
     const subscription = {
       status: "UNMAPPED",
+      planId: null,
       observedShopifyPlanHandle: "free",
       pendingShopifyPlanHandle: null,
       providerSubscriptionId: "gid://shopify/AppSubscription/1",
@@ -42,11 +43,29 @@ describe("merchant billing setup state", () => {
     expect(buildMerchantBillingSetupState(subscription, [
       { shopifyPlanHandle: "free", displayName: "Free" },
     ])).toMatchObject({
-      phase: "FINALIZING_SUBSCRIPTION",
+      phase: "VERIFYING_SUBSCRIPTION",
       planHandle: "free",
       planName: "Free",
       currentPeriodStart: "2026-09-18T21:20:00.000Z",
       currentPeriodEnd: "2026-10-18T21:20:00.000Z",
+    });
+  });
+
+  it("shows finalizing state only after the local active subscription is mapped", () => {
+    const subscription = {
+      status: "ACTIVE",
+      planId: "plan-free",
+      observedShopifyPlanHandle: "free",
+      pendingShopifyPlanHandle: null,
+      providerSubscriptionId: "gid://shopify/AppSubscription/1",
+    };
+
+    expect(buildMerchantBillingSetupState(subscription, [
+      { shopifyPlanHandle: "free", displayName: "Free" },
+    ])).toMatchObject({
+      phase: "FINALIZING_SUBSCRIPTION",
+      planHandle: "free",
+      planName: "Free",
     });
   });
 

@@ -62,6 +62,8 @@ function createService(options: FixtureOptions = {}) {
     billingPeriodId: paidPeriod?.id ?? null,
     currentPeriodStart: paidPeriod?.periodStart ?? null,
     currentPeriodEnd: paidPeriod?.periodEnd ?? null,
+    lastProviderLifecycleState: null,
+    shop: { onboardingCompleted: true },
     plan,
     billingPeriod: paidPeriod,
     ...options.subscriptionOverrides,
@@ -204,25 +206,137 @@ describe("MerchantRecoveryCapacityReadService", () => {
     }
   });
 
-  it.each([
-    ["NO_CONTRACT", "CONTRACT_REQUIRED"],
-    ["FROZEN", "CONTRACT_FROZEN"],
-  ] as const)("blocks admission for %s while retaining balances", async (status, availability) => {
+  it("keeps never-subscribed NO_CONTRACT blocked while retaining informational balances", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
     const { service, findTopUpConfiguration } = createService({
       planKind: "PAID_METERED",
-      status,
+      status: "NO_CONTRACT",
       selection: activePromotion(),
     });
 
     const result = await service.getMerchantRecoveryCapacityState(shopId);
-    expect(result).toMatchObject({ availability, capacitySource: null, canStartRecovery: false });
+    expect(result).toMatchObject({
+      availability: "CONTRACT_REQUIRED",
+      capacitySource: null,
+      canStartRecovery: false,
+      topUpConfiguration: { enabled: false, creditsPerPack: null },
+    });
     expect(result.purchased.available).toBe(10);
     expect(result.promotional.remaining).toBe(6);
-    expect(result.paidIncluded?.remaining).toBe(status === "FROZEN" ? 21 : undefined);
+    expect(result.paidIncluded).toBeNull();
+    expect(findTopUpConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("keeps FROZEN blocked while retaining balances and active-plan top-up configuration", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
+    const { service, findTopUpConfiguration } = createService({
+      planKind: "PAID_METERED",
+      status: "FROZEN",
+      selection: activePromotion(),
+    });
+
+    const result = await service.getMerchantRecoveryCapacityState(shopId);
+    expect(result).toMatchObject({
+      availability: "CONTRACT_FROZEN",
+      capacitySource: null,
+      canStartRecovery: false,
+    });
+    expect(result.purchased.available).toBe(10);
+    expect(result.promotional.remaining).toBe(6);
+    expect(result.paidIncluded?.remaining).toBe(21);
     expect(findTopUpConfiguration).toHaveBeenCalledWith("growth");
     expect(findTopUpConfiguration).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses purchased durable credits after a verified subscription end", async () => {
+    const { service, findTopUpConfiguration } = createService({
+      status: "NO_CONTRACT",
+      selection: activePromotion(),
+      subscriptionOverrides: {
+        lastProviderLifecycleState: "CANCELED",
+        shop: { onboardingCompleted: true },
+      },
+    });
+
+    const result = await service.getMerchantRecoveryCapacityState(shopId);
+    expect(result).toMatchObject({
+      availability: "POST_CONTRACT_AVAILABLE",
+      capacitySource: "PURCHASED",
+      canStartRecovery: true,
+      promotional: { granted: 0, committed: 0, reserved: 0, remaining: 0 },
+      topUpConfiguration: { enabled: false, creditsPerPack: null },
+    });
+    expect(result.purchased.available).toBe(10);
+    expect(result.paidIncluded).toBeNull();
+    expect(findTopUpConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("falls back to lifetime-Free durable credits after a verified subscription end", async () => {
+    const { service } = createService({
+      status: "NO_CONTRACT",
+      purchased: {
+        grantedQuantity: 10,
+        committedQuantity: 5,
+        reservedQuantity: 5,
+        refundingQuantity: 0,
+      },
+      subscriptionOverrides: {
+        lastProviderLifecycleState: "CANCELED",
+        shop: { onboardingCompleted: true },
+      },
+    });
+
+    const result = await service.getMerchantRecoveryCapacityState(shopId);
+    expect(result).toMatchObject({
+      availability: "POST_CONTRACT_AVAILABLE",
+      capacitySource: "FREE_LIFETIME",
+      canStartRecovery: true,
+    });
+  });
+
+  it("reports post-contract exhaustion when no durable purchased/lifetime capacity remains", async () => {
+    const { service } = createService({
+      status: "NO_CONTRACT",
+      lifetime: { grantedQuantity: 0, committedQuantity: 0, reservedQuantity: 0 },
+      purchased: {
+        grantedQuantity: 0,
+        committedQuantity: 0,
+        reservedQuantity: 0,
+        refundingQuantity: 0,
+      },
+      selection: activePromotion(),
+      subscriptionOverrides: {
+        lastProviderLifecycleState: "CANCELED",
+        shop: { onboardingCompleted: true },
+      },
+    });
+
+    const result = await service.getMerchantRecoveryCapacityState(shopId);
+    expect(result).toMatchObject({
+      availability: "POST_CONTRACT_EXHAUSTED",
+      capacitySource: "EXHAUSTED",
+      canStartRecovery: false,
+      promotional: { remaining: 0 },
+    });
+  });
+
+  it("does not grant post-contract execution before onboarding completed", async () => {
+    const { service } = createService({
+      status: "NO_CONTRACT",
+      subscriptionOverrides: {
+        lastProviderLifecycleState: "CANCELED",
+        shop: { onboardingCompleted: false },
+      },
+    });
+
+    const result = await service.getMerchantRecoveryCapacityState(shopId);
+    expect(result).toMatchObject({
+      availability: "CONTRACT_REQUIRED",
+      capacitySource: null,
+      canStartRecovery: false,
+    });
   });
 
   it.each([
@@ -252,6 +366,7 @@ describe("MerchantRecoveryCapacityReadService", () => {
       where: { shopId },
       include: {
         plan: true,
+        shop: { select: { onboardingCompleted: true } },
         billingPeriod: {
           include: {
             entitlementCounters: {

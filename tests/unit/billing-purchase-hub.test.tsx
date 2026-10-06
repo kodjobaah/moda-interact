@@ -107,6 +107,34 @@ describe("BillingPurchaseHub", () => {
     expect(markup).not.toContain("Manage purchased credits");
   });
 
+
+  it("keeps eligible top-ups available during scheduled cancellation", () => {
+    const markup = render({
+      scheduledCancellation: true,
+      current: {
+        shopifyPlanHandle: "free",
+        mappedModaPlanName: "Free",
+        currentPeriodEnd: "2026-10-19T00:00:00.000Z",
+      },
+      topUpState: {
+        ...topUpState,
+        offers: [{
+          eventHandle: "bronze-top-up-free",
+          label: "Bronze",
+          cataloguePosition: 0,
+          creditsGranted: 1,
+          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] },
+          providerUsage: null,
+        }],
+      },
+    });
+
+    expect(markup).toContain("subscription is scheduled to end");
+    expect(markup).toContain("top-ups normally available to it until then");
+    const buyButton = markup.match(/<button[^>]*aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
+    expect(buyButton).not.toContain("disabled");
+  });
+
   it("renders one resolved offer with its selected handle", () => {
     const markup = render({
       topUpState: {

@@ -102,6 +102,7 @@ export const loader = async ({ request }) => {
       storeCategories,
       pendingCategoryId: storeProfile.pendingCategory?.id ?? null,
       pendingSelectionGeneration: storeProfile.pendingSelectionGeneration,
+      pendingMappingIds: storeProfile.pendingMappingIds,
       suggestedCategoryId: storeCategorySuggestion?.categoryId ?? null,
       suggestedMappingIds: storeCategorySuggestion?.matchedMappingIds ?? [],
     };
@@ -234,7 +235,9 @@ export default function Index() {
         storeCategories={data.storeCategories}
         pendingCategoryId={data.pendingCategoryId}
         pendingSelectionGeneration={data.pendingSelectionGeneration}
+        pendingMappingIds={data.pendingMappingIds}
         suggestedCategoryId={data.suggestedCategoryId}
+        suggestedMappingIds={data.suggestedMappingIds}
         resumeExistingSubscription={data.resumeExistingSubscription}
       />
     );

@@ -21,6 +21,14 @@ const inputFor = (state: string) => {
       shop: { ...activeShop, onboardingCompleted: false },
       subscription: { status: "NO_CONTRACT" },
     };
+  if (state === "POST_CONTRACT")
+    return {
+      shop: activeShop,
+      subscription: {
+        status: "NO_CONTRACT",
+        lastProviderLifecycleState: "CANCELED",
+      },
+    };
   const subscription = state === "ACTIVE" ? "ACTIVE" : state;
   return {
     shop: activeShop,
@@ -40,6 +48,24 @@ describe("merchant route access policy", () => {
         subscription: { status: "ACTIVE" },
       }),
     ).toBe("ONBOARDING");
+  });
+
+  it("distinguishes never-subscribed NO_CONTRACT from a verified ended subscription", () => {
+    expect(
+      resolveMerchantExperienceState({
+        shop: activeShop,
+        subscription: { status: "NO_CONTRACT", lastProviderLifecycleState: null },
+      }),
+    ).toBe("NO_CONTRACT");
+    expect(
+      resolveMerchantExperienceState({
+        shop: activeShop,
+        subscription: {
+          status: "NO_CONTRACT",
+          lastProviderLifecycleState: "CANCELED",
+        },
+      }),
+    ).toBe("POST_CONTRACT");
   });
 
   it("resolves missing and unmapped subscription states to billing attention", () => {
@@ -101,6 +127,16 @@ describe("merchant route access policy", () => {
         "SUPPORT",
         "PLAN_SELECT",
       ],
+      POST_CONTRACT: [
+        "HOME",
+        "USAGE",
+        "BILLING_OPTIONS",
+        "BILLING_PURCHASE_HISTORY",
+        "RECOVERY_HISTORY",
+        "SUPPORT",
+        "PLAN_SELECT",
+        "PENDING_RECOVERIES",
+      ],
       FROZEN: [
         "HOME",
         "USAGE",
@@ -134,6 +170,7 @@ describe("merchant route access policy", () => {
     ["SIGNED_OUT", "HOME", "/auth/login"],
     ["ONBOARDING", "USAGE", "/app"],
     ["NO_CONTRACT", "PROMOTIONS", "/app"],
+    ["POST_CONTRACT", "PROMOTIONS", "/app"],
     ["FROZEN", "PLAN_SELECT", "/app/billing/options"],
     ["FROZEN", "PROMOTIONS", "/app"],
     ["BILLING_ATTENTION", "PENDING_RECOVERIES", "/app"],
@@ -193,6 +230,15 @@ describe("merchant route access policy", () => {
     ],
     [
       "NO_CONTRACT",
+      [
+        "/app",
+        "/app/recoveries",
+        "/app/billing/options",
+        "/app/merchant-support",
+      ],
+    ],
+    [
+      "POST_CONTRACT",
       [
         "/app",
         "/app/recoveries",

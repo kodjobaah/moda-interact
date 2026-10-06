@@ -188,7 +188,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
     expect(asset).toMatchObject({
       shopId,
       status: "PENDING_UPLOAD",
-      objectKey: `merchant-knowledge/${shopId}.myshopify.com/${asset.id}/source.csv`,
+      objectKey: `merchant-knowledge/test/${shopId}.myshopify.com/${asset.id}/source.csv`,
       originalFileName: "catalog.csv",
       contentType: null,
       sizeBytes: null,

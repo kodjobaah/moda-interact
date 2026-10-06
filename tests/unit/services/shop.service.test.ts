@@ -14,6 +14,7 @@ const dbMock = {
   shop: {
     findUnique: vi.fn(),
     upsert: vi.fn(),
+    update: vi.fn(),
     updateMany: vi.fn(),
   },
   subscription: {
@@ -22,7 +23,9 @@ const dbMock = {
     updateMany: vi.fn(),
   },
   shopSettings: {
+    findUnique: vi.fn(),
     upsert: vi.fn(),
+    update: vi.fn(),
   },
   shopifyDiscountCatalogue: {
     upsert: vi.fn(),
@@ -59,20 +62,25 @@ beforeEach(() => {
   dbMock.$queryRaw.mockReset();
   dbMock.shop.findUnique.mockReset();
   dbMock.shop.upsert.mockReset();
+  dbMock.shop.update.mockReset();
   dbMock.shop.updateMany.mockReset();
   dbMock.subscription.updateMany.mockReset();
   dbMock.subscription.findUnique.mockReset();
   dbMock.subscription.upsert.mockReset();
+  dbMock.shopSettings.findUnique.mockReset();
   dbMock.shopSettings.upsert.mockReset();
+  dbMock.shopSettings.update.mockReset();
   dbMock.shopifyDiscountCatalogue.updateMany.mockReset();
   dbMock.shopifyDiscountCatalogue.upsert.mockReset();
   dbMock.shopifyDiscount.updateMany.mockReset();
   dbMock.$transaction.mockImplementation(async (callback) => callback(dbMock));
   dbMock.$queryRaw.mockResolvedValue([]);
   dbMock.shop.upsert.mockResolvedValue(shop);
+  dbMock.shop.update.mockResolvedValue(shop);
   dbMock.shopSettings.upsert.mockResolvedValue({
     shopId: shop.id,
   });
+  dbMock.shopSettings.update.mockResolvedValue({ shopId: shop.id });
   dbMock.subscription.upsert.mockResolvedValue({
     shopId: shop.id,
     status: "NO_CONTRACT",
@@ -285,7 +293,23 @@ describe("ShopService.beginReinstallReconciliation", () => {
 });
 
 describe("ShopService.resolveShopifyShop", () => {
-  it("creates an idempotent no-contract subscription projection", async () => {
+  it("creates the no-contract projection once and keeps repeated resolution read-only", async () => {
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        ...shop,
+        storeLocale: null,
+        defaultLanguageTag: null,
+        defaultTimeZone: null,
+        defaultCountryCode: null,
+      });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1" });
+    dbMock.shopSettings.findUnique.mockResolvedValue({
+      id: "settings-1",
+      defaultLanguageTag: null,
+      defaultTimeZone: null,
+      defaultCountryCode: null,
+    });
     const admin = adminFor({
       shopifyShopId: shop.shopifyShopId,
       myshopifyDomain: shop.domain,
@@ -302,8 +326,8 @@ describe("ShopService.resolveShopifyShop", () => {
       domain: shop.domain,
     });
 
-    expect(dbMock.subscription.upsert).toHaveBeenCalledTimes(2);
-    expect(dbMock.subscription.upsert).toHaveBeenLastCalledWith({
+    expect(dbMock.subscription.upsert).toHaveBeenCalledTimes(1);
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith({
       where: { shopId: shop.id },
       create: {
         shopId: shop.id,
@@ -322,15 +346,25 @@ describe("ShopService.resolveShopifyShop", () => {
       },
       update: {},
     });
+    expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it.each(["ACTIVE", "TRIALING"] as const)(
-    "does not reset an existing %s subscription projection",
+    "does not write an existing %s subscription projection during resolution",
     async (status) => {
-      dbMock.subscription.upsert.mockResolvedValue({
-        shopId: shop.id,
-        status,
-        planId: "plan-1",
+      dbMock.shop.findUnique.mockResolvedValue({
+        ...shop,
+        storeLocale: null,
+        defaultLanguageTag: null,
+        defaultTimeZone: null,
+        defaultCountryCode: null,
+      });
+      dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", status });
+      dbMock.shopSettings.findUnique.mockResolvedValue({
+        id: "settings-1",
+        defaultLanguageTag: null,
+        defaultTimeZone: null,
+        defaultCountryCode: null,
       });
       const admin = adminFor({
         shopifyShopId: shop.shopifyShopId,
@@ -343,12 +377,8 @@ describe("ShopService.resolveShopifyShop", () => {
         domain: shop.domain,
       });
 
-      expect(dbMock.subscription.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { shopId: shop.id },
-          update: {},
-        }),
-      );
+      expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+      expect(dbMock.$transaction).not.toHaveBeenCalled();
     },
   );
 
@@ -414,7 +444,21 @@ describe("ShopService.resolveShopifyShop", () => {
     expect(query).not.toContain("Session.locale");
   });
 
-  it("updates shared and compatibility context from Shopify on repeated resolution", async () => {
+  it("updates shared and compatibility context without touching the existing subscription", async () => {
+    dbMock.shop.findUnique.mockResolvedValue({
+      ...shop,
+      storeLocale: "en-GB",
+      defaultLanguageTag: "en-GB",
+      defaultTimeZone: "Europe/London",
+      defaultCountryCode: "GB",
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1" });
+    dbMock.shopSettings.findUnique.mockResolvedValue({
+      id: "settings-1",
+      defaultLanguageTag: "en-GB",
+      defaultTimeZone: "Europe/London",
+      defaultCountryCode: "GB",
+    });
     const admin = adminFor({
       shopifyShopId: shop.shopifyShopId,
       myshopifyDomain: shop.domain,
@@ -428,21 +472,25 @@ describe("ShopService.resolveShopifyShop", () => {
       domain: shop.domain,
     });
 
-    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
+    expect(dbMock.shop.update).toHaveBeenCalledWith({
+      where: { id: shop.id },
+      data: {
+        shopifyShopId: shop.shopifyShopId,
         storeLocale: "fr-CA",
         defaultLanguageTag: "fr-CA",
         defaultTimeZone: "America/Toronto",
         defaultCountryCode: "CA",
-      }),
-    }));
-    expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: {
+      },
+    });
+    expect(dbMock.shopSettings.update).toHaveBeenCalledWith({
+      where: { shopId: shop.id },
+      data: {
         defaultLanguageTag: "fr-CA",
         defaultTimeZone: "America/Toronto",
         defaultCountryCode: "CA",
       },
-    }));
+    });
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
 
   it("preserves a valid provider locale without requiring Moda translation coverage", async () => {

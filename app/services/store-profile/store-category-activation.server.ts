@@ -40,6 +40,88 @@ export function resolveShopifyCommerceEnvironment(): CommerceEnvironment {
   return environment;
 }
 
+export async function publishStoreCategoryPromptRevisionInTransaction(input: {
+  tx: Prisma.TransactionClient;
+  shopId: string;
+  categoryId: string;
+  promptRevisionId: string;
+  now: Date;
+}): Promise<{ categoryId: string; promptRevisionId: string }> {
+  const environment = resolveShopifyCommerceEnvironment();
+  const [category, revision] = await Promise.all([
+    input.tx.commercePromptTemplateCategory.findUnique({
+      where: { id: input.categoryId },
+      select: { id: true },
+    }),
+    input.tx.commerceAgentPromptRevision.findUnique({
+      where: { id: input.promptRevisionId },
+      include: { prompt: true },
+    }),
+  ]);
+  if (
+    !category ||
+    !revision ||
+    revision.status !== CommercePromptRevisionStatus.DRAFT ||
+    revision.prompt.scope !== CommerceAgentPromptScope.SHOP ||
+    revision.prompt.shopId !== input.shopId ||
+    !revision.sourceTemplateId ||
+    revision.sourceTemplateEditVersion === null ||
+    !revision.promptText.trim()
+  ) throw pendingStateConflict();
+
+  const configurations = await input.tx.commerceAgentConfiguration.findMany({
+    where: {
+      environment,
+      scope: CommerceAgentPromptScope.SHOP,
+      shopId: input.shopId,
+    },
+    select: { id: true },
+  });
+  if (configurations.length > 1) throw pendingStateConflict();
+
+  const contentHash = createHash("sha256")
+    .update(revision.promptText, "utf8")
+    .digest("hex");
+  const published = await input.tx.commerceAgentPromptRevision.updateMany({
+    where: {
+      id: revision.id,
+      promptId: revision.promptId,
+      status: CommercePromptRevisionStatus.DRAFT,
+    },
+    data: {
+      status: CommercePromptRevisionStatus.PUBLISHED,
+      contentHash,
+      publishedAt: input.now,
+    },
+  });
+  if (published.count !== 1) throw pendingStateConflict();
+
+  if (configurations[0]) {
+    await input.tx.commerceAgentConfiguration.update({
+      where: { id: configurations[0].id },
+      data: {
+        activePromptRevisionId: revision.id,
+        promptEditVersion: { increment: 1 },
+      },
+    });
+  } else {
+    await input.tx.commerceAgentConfiguration.create({
+      data: {
+        environment,
+        scope: CommerceAgentPromptScope.SHOP,
+        shopId: input.shopId,
+        activePromptRevisionId: revision.id,
+        promptEditVersion: 2,
+      },
+    });
+  }
+
+  return {
+    categoryId: category.id,
+    promptRevisionId: revision.id,
+  };
+}
+
 export async function activateInitialPendingStoreCategoryIfEligible(
   input: {
     shopId: string;
@@ -48,8 +130,6 @@ export async function activateInitialPendingStoreCategoryIfEligible(
   client: Pick<PrismaClient, "$transaction"> = db,
   now = new Date(),
 ): Promise<InitialStoreCategoryActivationResult> {
-  const environment = resolveShopifyCommerceEnvironment();
-
   return client.$transaction(async (tx) => {
     await tx.$queryRaw(Prisma.sql`
       SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${input.shopId} FOR UPDATE
@@ -92,73 +172,13 @@ export async function activateInitialPendingStoreCategoryIfEligible(
         input.expectedPendingSelectionGeneration !== profile.pendingSelectionGeneration)
     ) throw pendingStateConflict();
 
-    const [category, revision] = await Promise.all([
-      tx.commercePromptTemplateCategory.findUnique({
-        where: { id: profile.pendingCategoryId },
-        select: { id: true },
-      }),
-      tx.commerceAgentPromptRevision.findUnique({
-        where: { id: profile.pendingPromptRevisionId },
-        include: { prompt: true },
-      }),
-    ]);
-    if (
-      !category ||
-      !revision ||
-      revision.status !== CommercePromptRevisionStatus.DRAFT ||
-      revision.prompt.scope !== CommerceAgentPromptScope.SHOP ||
-      revision.prompt.shopId !== input.shopId ||
-      !revision.sourceTemplateId ||
-      revision.sourceTemplateEditVersion === null ||
-      !revision.promptText.trim()
-    ) throw pendingStateConflict();
-
-    const configurations = await tx.commerceAgentConfiguration.findMany({
-      where: {
-        environment,
-        scope: CommerceAgentPromptScope.SHOP,
-        shopId: input.shopId,
-      },
-      select: { id: true },
+    const publication = await publishStoreCategoryPromptRevisionInTransaction({
+      tx,
+      shopId: input.shopId,
+      categoryId: profile.pendingCategoryId,
+      promptRevisionId: profile.pendingPromptRevisionId,
+      now,
     });
-    if (configurations.length > 1) throw pendingStateConflict();
-
-    const contentHash = createHash("sha256")
-      .update(revision.promptText, "utf8")
-      .digest("hex");
-    const published = await tx.commerceAgentPromptRevision.updateMany({
-      where: {
-        id: revision.id,
-        promptId: revision.promptId,
-        status: CommercePromptRevisionStatus.DRAFT,
-      },
-      data: {
-        status: CommercePromptRevisionStatus.PUBLISHED,
-        contentHash,
-        publishedAt: now,
-      },
-    });
-    if (published.count !== 1) throw pendingStateConflict();
-
-    if (configurations[0]) {
-      await tx.commerceAgentConfiguration.update({
-        where: { id: configurations[0].id },
-        data: {
-          activePromptRevisionId: revision.id,
-          promptEditVersion: { increment: 1 },
-        },
-      });
-    } else {
-      await tx.commerceAgentConfiguration.create({
-        data: {
-          environment,
-          scope: CommerceAgentPromptScope.SHOP,
-          shopId: input.shopId,
-          activePromptRevisionId: revision.id,
-          promptEditVersion: 2,
-        },
-      });
-    }
 
     const promoted = await tx.commerceShopProfile.updateMany({
       where: {
@@ -170,7 +190,7 @@ export async function activateInitialPendingStoreCategoryIfEligible(
         pendingSelectedAt: profile.pendingSelectedAt,
       },
       data: {
-        activeCategoryId: category.id,
+        activeCategoryId: publication.categoryId,
         activeCategoryActivatedAt: now,
         pendingCategoryId: null,
         pendingPromptRevisionId: null,
@@ -181,8 +201,8 @@ export async function activateInitialPendingStoreCategoryIfEligible(
 
     return {
       kind: "ACTIVATED",
-      categoryId: category.id,
-      promptRevisionId: revision.id,
+      categoryId: publication.categoryId,
+      promptRevisionId: publication.promptRevisionId,
     };
   });
 }

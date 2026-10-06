@@ -18,12 +18,22 @@ describe("ARCH-007 billing translations", () => {
     "billing.paidCycleReconciling",
     "billing.freeCycleDraining",
     "billing.freeCycleReconciling",
+    "billing.contractRequiredDescription",
+    "billing.postContractDescription",
+    "billing.postContractExhaustedDescription",
+    "billing.noActiveSubscription",
+    "billing.subscribeAgain",
   ];
   const localizedPhaseKeys = new Set([
     "billing.paidCycleDraining",
     "billing.paidCycleReconciling",
     "billing.freeCycleDraining",
     "billing.freeCycleReconciling",
+    "billing.contractRequiredDescription",
+    "billing.postContractDescription",
+    "billing.postContractExhaustedDescription",
+    "billing.noActiveSubscription",
+    "billing.subscribeAgain",
   ]);
 
   it("defines every billing key in every locale catalogue", async () => {

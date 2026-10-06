@@ -10,8 +10,8 @@ void React;
  * @typedef {{ shopifyPlanHandle?: string, cataloguePosition: number, displayName: string, planKind: string, featured: boolean, localizedDescription: string, includedRecoveryCredits: number, allowancePeriod: string, billingPeriod: string, recurringAmountMinor: number, currency: string, highlights: PricingHighlight[] }} PricingPlan
  */
 
-/** @param {{ merchantUi: object, pricingCatalogue?: PricingPlan[], showChoosePlanAction?: boolean }} props */
-export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue, showChoosePlanAction }) {
+/** @param {{ merchantUi: object, pricingCatalogue?: PricingPlan[], showChoosePlanAction?: boolean, choosePlanLabelKey?: string }} props */
+export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue, showChoosePlanAction, choosePlanLabelKey = "onboarding.choosePlan" }) {
   const i18n = createMerchantI18n(merchantUi);
   const plans = pricingCatalogue ?? [];
 
@@ -50,7 +50,7 @@ export default function MerchantPricingCatalogue({ merchantUi, pricingCatalogue,
           );
         })}
       </div>
-      {showChoosePlanAction && <s-button href="/app/billing/select" variant="primary">{i18n.t("onboarding.choosePlan")}</s-button>}
+      {showChoosePlanAction && <s-button href="/app/billing/select" variant="primary">{i18n.t(choosePlanLabelKey)}</s-button>}
     </div>
   );
 }
@@ -77,4 +77,5 @@ MerchantPricingCatalogue.propTypes = {
     })).isRequired,
   })),
   showChoosePlanAction: PropTypes.bool,
+  choosePlanLabelKey: PropTypes.string,
 };

@@ -600,10 +600,19 @@ async function query(text, params = []) {
   return client.query(text, params);
 }
 
+let safeQuerySequence = 0;
+
 async function safeQuery(section, text, params = []) {
+  const savepoint = `billing_inspector_query_${++safeQuerySequence}`;
+  await query(`SAVEPOINT ${savepoint}`);
+
   try {
-    return (await query(text, params)).rows;
+    const result = await query(text, params);
+    await query(`RELEASE SAVEPOINT ${savepoint}`);
+    return result.rows;
   } catch (error) {
+    await query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+    await query(`RELEASE SAVEPOINT ${savepoint}`);
     dump.checks.push({
       level: "ERROR",
       message: `Query failed for ${section}`,

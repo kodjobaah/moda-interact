@@ -5,6 +5,7 @@ export const MERCHANT_EXPERIENCE_STATES = [
   "ONBOARDING",
   "ACTIVE",
   "NO_CONTRACT",
+  "POST_CONTRACT",
   "FROZEN",
   "BILLING_ATTENTION",
 ] as const;
@@ -36,6 +37,7 @@ type MerchantShop = {
 type MerchantSubscription =
   | {
       status?: string | null;
+      lastProviderLifecycleState?: string | null;
     }
   | null
   | undefined;
@@ -85,6 +87,16 @@ const surfaceMatrix: Record<
     "PLAN_SELECT",
     "RECOVERY_HISTORY",
   ],
+  POST_CONTRACT: [
+    "HOME",
+    "USAGE",
+    "BILLING_OPTIONS",
+    "BILLING_PURCHASE_HISTORY",
+    "SUPPORT",
+    "PLAN_SELECT",
+    "RECOVERY_HISTORY",
+    "PENDING_RECOVERIES",
+  ],
   FROZEN: [
     "HOME",
     "USAGE",
@@ -124,6 +136,7 @@ const navigationByState: Record<
     { id: "recoverySettings", href: "/app/recovery-settings" },
   ],
   NO_CONTRACT: historyNavigation(),
+  POST_CONTRACT: historyNavigation(),
   FROZEN: historyNavigation(),
   BILLING_ATTENTION: historyNavigation(),
 };
@@ -151,7 +164,9 @@ export function resolveMerchantExperienceState({
     case "TRIALING":
       return "ACTIVE";
     case "NO_CONTRACT":
-      return "NO_CONTRACT";
+      return subscription?.lastProviderLifecycleState === "CANCELED"
+        ? "POST_CONTRACT"
+        : "NO_CONTRACT";
     case "FROZEN":
       return "FROZEN";
     default:

@@ -1,5 +1,6 @@
 export type MerchantBillingSetupPhase =
   | "AWAITING_SHOPIFY_CONFIRMATION"
+  | "VERIFYING_SUBSCRIPTION"
   | "FINALIZING_SUBSCRIPTION";
 
 type BillingSetupProjection = {
@@ -7,6 +8,7 @@ type BillingSetupProjection = {
   observedShopifyPlanHandle?: string | null;
   pendingShopifyPlanHandle?: string | null;
   providerSubscriptionId?: string | null;
+  planId?: string | null;
   currentPeriodStart?: Date | string | null;
   currentPeriodEnd?: Date | string | null;
   lastSyncedAt?: Date | string | null;
@@ -61,15 +63,22 @@ export function buildMerchantBillingSetupState(
   const cataloguePlan = planHandle
     ? pricingCatalogue.find((plan) => plan.shopifyPlanHandle === planHandle)
     : null;
-  const providerConfirmed = Boolean(
+  const providerEvidence = Boolean(
     subscription?.providerSubscriptionId &&
     subscription?.observedShopifyPlanHandle,
   );
+  const mappedActiveSubscription = Boolean(
+    providerEvidence &&
+    subscription?.planId &&
+    (subscription?.status === "ACTIVE" || subscription?.status === "TRIALING"),
+  );
 
   return {
-    phase: providerConfirmed
+    phase: mappedActiveSubscription
       ? "FINALIZING_SUBSCRIPTION" as const
-      : "AWAITING_SHOPIFY_CONFIRMATION" as const,
+      : providerEvidence
+        ? "VERIFYING_SUBSCRIPTION" as const
+        : "AWAITING_SHOPIFY_CONFIRMATION" as const,
     planHandle,
     planName: cataloguePlan?.displayName?.trim() || planHandle,
     currentPeriodStart: iso(subscription?.currentPeriodStart),

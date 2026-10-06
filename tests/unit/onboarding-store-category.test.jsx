@@ -25,9 +25,25 @@ vi.mock("react-router", () => ({
 import Onboarding from "../../app/components/onboarding/Onboarding.jsx";
 
 const categories = [
-  { id: "first", localizedDisplayName: "First", localizedDescription: "First category" },
-  { id: "suggested", localizedDisplayName: "Suggested", localizedDescription: "Suggested category" },
-  { id: "pending", localizedDisplayName: "Pending", localizedDescription: "Pending category" },
+  { id: "first", localizedDisplayName: "First", localizedDescription: "First category", mappings: [] },
+  {
+    id: "suggested",
+    localizedDisplayName: "Suggested",
+    localizedDescription: "Suggested category",
+    mappings: [
+      { id: "suggested-a", localizedDisplayName: "Suggested A" },
+      { id: "suggested-b", localizedDisplayName: "Suggested B" },
+    ],
+  },
+  {
+    id: "pending",
+    localizedDisplayName: "Pending",
+    localizedDescription: "Pending category",
+    mappings: [
+      { id: "pending-a", localizedDisplayName: "Pending A" },
+      { id: "pending-b", localizedDisplayName: "Pending B" },
+    ],
+  },
 ];
 
 describe("onboarding Store Category selection", () => {
@@ -60,7 +76,9 @@ describe("onboarding Store Category selection", () => {
     storeCategories: categories,
     pendingCategoryId: "pending",
     pendingSelectionGeneration: 6,
+    pendingMappingIds: ["pending-b"],
     suggestedCategoryId: "suggested",
+    suggestedMappingIds: ["suggested-a"],
     ...overrides,
   });
 
@@ -75,10 +93,13 @@ describe("onboarding Store Category selection", () => {
       buttons[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(router.categoryFetcher.submit).toHaveBeenCalledTimes(2);
-    expect(router.categoryFetcher.submit).toHaveBeenCalledWith(
-      { categoryId: "pending", expectedPendingSelectionGeneration: "6" },
-      { method: "post", action: "/app/store-profile/category" },
-    );
+    const [submitted, options] = router.categoryFetcher.submit.mock.calls[0];
+    expect(Array.from(submitted.entries())).toEqual([
+      ["categoryId", "pending"],
+      ["expectedPendingSelectionGeneration", "6"],
+      ["mappingId", "pending-b"],
+    ]);
+    expect(options).toEqual({ method: "post", action: "/app/store-profile/category" });
     expect(router.navigate).not.toHaveBeenCalled();
 
     router.categoryFetcher.data = { ok: true, pendingSelectionGeneration: 7 };
@@ -94,10 +115,13 @@ describe("onboarding Store Category selection", () => {
     await act(async () => {
       button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    expect(router.categoryFetcher.submit).toHaveBeenCalledWith(
-      { categoryId: "pending", expectedPendingSelectionGeneration: "6" },
-      { method: "post", action: "/app/store-profile/category" },
-    );
+    const [submitted, options] = router.categoryFetcher.submit.mock.calls[0];
+    expect(Array.from(submitted.entries())).toEqual([
+      ["categoryId", "pending"],
+      ["expectedPendingSelectionGeneration", "6"],
+      ["mappingId", "pending-b"],
+    ]);
+    expect(options).toEqual({ method: "post", action: "/app/store-profile/category" });
 
     router.categoryFetcher.data = { ok: true, pendingSelectionGeneration: 7 };
     await act(async () => root.render(render({ resumeExistingSubscription: true })));
@@ -125,6 +149,38 @@ describe("onboarding Store Category selection", () => {
     );
     expect(router.categoryFetcher.submit).not.toHaveBeenCalled();
     expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+
+  it("preselects Shopify-suggested mappings and lets the merchant change the checkbox set", async () => {
+    await act(async () => root.render(render({
+      pendingCategoryId: null,
+      pendingMappingIds: [],
+      pendingSelectionGeneration: 0,
+    })));
+
+    expect(container.querySelector("#onboarding-store-category").value).toBe("suggested");
+    const checkboxes = [...container.querySelectorAll('input[type="checkbox"]')];
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes.map((input) => [input.value, input.checked])).toEqual([
+      ["suggested-a", true],
+      ["suggested-b", false],
+    ]);
+
+    await act(async () => {
+      checkboxes[1].click();
+    });
+    await act(async () => {
+      container.querySelector("s-button").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const [submitted] = router.categoryFetcher.submit.mock.calls[0];
+    expect(Array.from(submitted.entries())).toEqual([
+      ["categoryId", "suggested"],
+      ["expectedPendingSelectionGeneration", "0"],
+      ["mappingId", "suggested-a"],
+      ["mappingId", "suggested-b"],
+    ]);
   });
 
   it("disables both plan CTAs when no selectable category is available", async () => {

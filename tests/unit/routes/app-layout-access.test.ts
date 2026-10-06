@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
 const readMerchantSupportMessages = vi.fn();
-const findShopSettings = vi.fn();
-const getSubscription = vi.fn();
+const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
@@ -15,11 +14,8 @@ vi.mock("../../../app/services/shop/shop.service", () => ({
 vi.mock("../../../app/services/merchant-support/merchant-support.service", () => ({
   readMerchantSupportMessages,
 }));
-vi.mock("../../../app/db.server", () => ({
-  default: { shopSettings: { findUnique: findShopSettings } },
-}));
 vi.mock("../../../app/services/billing/billing.service", () => ({
-  billingService: { getSubscription },
+  billingService: { getSubscriptionProjection },
 }));
 
 const { loader } = await import("../../../app/routes/app/route");
@@ -45,8 +41,7 @@ beforeEach(() => {
     session: { shop: "merchant.myshopify.com", locale: "en-GB" },
   });
   readMerchantSupportMessages.mockResolvedValue({ unread: 2 });
-  findShopSettings.mockResolvedValue(null);
-  getSubscription.mockResolvedValue(null);
+  getSubscriptionProjection.mockResolvedValue(null);
 });
 
 describe("app layout access", () => {
@@ -61,7 +56,6 @@ describe("app layout access", () => {
 
       await expectRedirect(pathname, "/app/reinstalling");
       expect(readMerchantSupportMessages).not.toHaveBeenCalled();
-      expect(findShopSettings).not.toHaveBeenCalled();
     },
   );
 
@@ -70,7 +64,6 @@ describe("app layout access", () => {
 
     await expectRedirect("/app/promotions", "/app/merchant-support");
     expect(readMerchantSupportMessages).not.toHaveBeenCalled();
-    expect(findShopSettings).not.toHaveBeenCalled();
   });
 
   it("keeps pending reinstall merchant support reachable", async () => {
@@ -88,7 +81,6 @@ describe("app layout access", () => {
       page: 1,
       pageSize: 1,
     });
-    expect(findShopSettings).toHaveBeenCalledWith({ where: { shopId: "shop-1" } });
   });
 
   it("rejects unmarked uninstalled merchant support before app-shell reads", async () => {
@@ -96,18 +88,40 @@ describe("app layout access", () => {
 
     await expectRedirect("/app/merchant-support", "/auth/login");
     expect(readMerchantSupportMessages).not.toHaveBeenCalled();
-    expect(findShopSettings).not.toHaveBeenCalled();
   });
 
   it("allows active merchant app shell", async () => {
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "ACTIVE",
+      onboardingCompleted: true,
+    });
+    getSubscriptionProjection.mockResolvedValue({ status: "ACTIVE" });
 
-    await expect(loader(requestFor("/app"))).resolves.toMatchObject({ unreadMessages: 2 });
+    await expect(loader(requestFor("/app"))).resolves.toMatchObject({
+      unreadMessages: 2,
+      merchantExperienceState: "ACTIVE",
+    });
     expect(readMerchantSupportMessages).toHaveBeenCalledWith({
       shopId: "shop-1",
       page: 1,
       pageSize: 1,
     });
-    expect(findShopSettings).toHaveBeenCalledWith({ where: { shopId: "shop-1" } });
+  });
+
+  it("keeps a verified ended subscription in the merchant shell as post-contract", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "ACTIVE",
+      onboardingCompleted: true,
+    });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      lastProviderLifecycleState: "CANCELED",
+    });
+
+    await expect(loader(requestFor("/app"))).resolves.toMatchObject({
+      merchantExperienceState: "POST_CONTRACT",
+    });
   });
 });

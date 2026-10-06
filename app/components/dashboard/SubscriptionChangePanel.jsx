@@ -57,8 +57,8 @@ ProviderPlan.propTypes = {
   pending: PropTypes.bool,
 };
 
-/** @param {{ merchantUi: any, current: any, pending: any, requestedSelection?: any, providerVerificationState: string, managePlansHref?: string|null, managePlansAvailable: boolean }} props */
-export default function SubscriptionChangePanel({ merchantUi, current, pending, requestedSelection, providerVerificationState, managePlansHref, managePlansAvailable }) {
+/** @param {{ merchantUi: any, current: any, pending: any, requestedSelection?: any, providerVerificationState: string, managePlansHref?: string|null, managePlansAvailable: boolean, postContract?: boolean }} props */
+export default function SubscriptionChangePanel({ merchantUi, current, pending, requestedSelection, providerVerificationState, managePlansHref, managePlansAvailable, postContract = false }) {
   const i18n = createMerchantI18n(merchantUi);
   const hasCurrent = Boolean(current);
   return <section className="moda-billing-panel">
@@ -66,7 +66,7 @@ export default function SubscriptionChangePanel({ merchantUi, current, pending, 
     <h2>{i18n.t("billingCommerce.plans.title")}</h2>
     <p>{i18n.t("billingCommerce.plans.shopifyApproval")}</p>
     {providerVerificationState === "VERIFICATION_UNAVAILABLE" ? <p>{i18n.t("billing.verificationUnavailableDescription")}</p> : null}
-    {providerVerificationState === "NO_ACTIVE_SUBSCRIPTION" ? <p>{i18n.t("billing.viewPlans")}</p> : null}
+    {providerVerificationState === "NO_ACTIVE_SUBSCRIPTION" && !postContract ? <p>{i18n.t("billing.contractRequiredDescription")}</p> : null}
     {hasCurrent ? <div className="moda-plan-grid">
       <ProviderPlan i18n={i18n} plan={{ ...current }} current />
       {pending ? <ProviderPlan i18n={i18n} pending plan={pending} /> : null}
@@ -75,7 +75,7 @@ export default function SubscriptionChangePanel({ merchantUi, current, pending, 
     {current?.cancelAtEndOfCycle && !pending && current.currentPeriodEnd ? <p>{i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current.currentPeriodEnd) })}</p> : null}
     {requestedSelection ? <div className="moda-provider-plan-awaiting-confirmation"><strong>{requestedSelection.shopifyPlanHandle}</strong><span>{i18n.t("billingCommerce.plans.awaitingShopifyConfirmation")}</span></div> : null}
     {!hasCurrent && !["VERIFICATION_UNAVAILABLE", "NO_ACTIVE_SUBSCRIPTION"].includes(providerVerificationState) ? <p>{i18n.t("billing.configurationUnavailable")}</p> : null}
-    {managePlansAvailable && managePlansHref ? <div className="moda-plan-actions"><Link className="moda-action-button moda-action-button-primary" to={managePlansHref}>{hasCurrent ? i18n.t("billing.changePlan") : i18n.t("billing.viewPlans")}</Link></div> : null}
+    {managePlansAvailable && managePlansHref ? <div className="moda-plan-actions"><Link className="moda-action-button moda-action-button-primary" to={managePlansHref}>{postContract ? i18n.t("billing.subscribeAgain") : hasCurrent ? i18n.t("billing.changePlan") : i18n.t("billing.viewPlans")}</Link></div> : null}
   </section>;
 }
 
@@ -87,4 +87,5 @@ SubscriptionChangePanel.propTypes = {
   providerVerificationState: PropTypes.string.isRequired,
   managePlansHref: PropTypes.string,
   managePlansAvailable: PropTypes.bool.isRequired,
+  postContract: PropTypes.bool,
 };

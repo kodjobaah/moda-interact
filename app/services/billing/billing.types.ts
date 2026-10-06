@@ -209,6 +209,8 @@ export type MerchantRecoveryCapacityState = {
     | "AVAILABLE"
     | "EXHAUSTED"
     | "CONTRACT_REQUIRED"
+    | "POST_CONTRACT_AVAILABLE"
+    | "POST_CONTRACT_EXHAUSTED"
     | "CONTRACT_FROZEN"
     | "CONFIGURATION_UNAVAILABLE";
   capacitySource:

@@ -5,6 +5,7 @@ import { useFetcher, useNavigate } from "react-router";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
+import StoreCategoryMappingSelector from "../store-profile/StoreCategoryMappingSelector";
 import "./Onboarding.css";
 
 void React;
@@ -23,7 +24,9 @@ export default function Onboarding({
   storeCategories = [],
   pendingCategoryId,
   pendingSelectionGeneration = 0,
+  pendingMappingIds = [],
   suggestedCategoryId,
+  suggestedMappingIds = [],
   resumeExistingSubscription = false,
 }) {
   const i18n = createMerchantI18n(merchantUi);
@@ -35,7 +38,19 @@ export default function Onboarding({
     : storeCategories.some((category) => category.id === suggestedCategoryId)
       ? suggestedCategoryId
       : storeCategories[0]?.id ?? "";
+  const mappingIdsForCategory = (categoryId) => {
+    const available = new Set(
+      storeCategories.find((category) => category.id === categoryId)?.mappings?.map((mapping) => mapping.id) ?? [],
+    );
+    const candidates = categoryId === pendingCategoryId
+      ? pendingMappingIds
+      : categoryId === suggestedCategoryId
+        ? suggestedMappingIds
+        : [];
+    return candidates.filter((mappingId) => available.has(mappingId));
+  };
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
+  const [selectedMappingIds, setSelectedMappingIds] = useState(() => mappingIdsForCategory(initialCategoryId));
   const [currentGeneration, setCurrentGeneration] = useState(pendingSelectionGeneration);
   const categoryFetcher = useFetcher();
   const resumeFetcher = useFetcher();
@@ -93,11 +108,20 @@ export default function Onboarding({
 
   const choosePlan = () => {
     if (!selectedCategoryId || categorySaving) return;
-    categoryFetcher.submit({
-      categoryId: selectedCategoryId,
-      expectedPendingSelectionGeneration: String(currentGeneration),
-    }, { method: "post", action: "/app/store-profile/category" });
+    const form = new FormData();
+    form.set("categoryId", selectedCategoryId);
+    form.set("expectedPendingSelectionGeneration", String(currentGeneration));
+    for (const mappingId of selectedMappingIds) form.append("mappingId", mappingId);
+    categoryFetcher.submit(form, { method: "post", action: "/app/store-profile/category" });
   };
+
+  const selectCategory = (categoryId) => {
+    setSelectedCategoryId(categoryId);
+    setSelectedMappingIds(mappingIdsForCategory(categoryId));
+  };
+
+
+  const selectedCategory = storeCategories.find((category) => category.id === selectedCategoryId) ?? null;
 
   return (
     <s-page heading={t("onboarding.title")}>
@@ -116,7 +140,7 @@ export default function Onboarding({
               <select
                 id="onboarding-store-category"
                 value={selectedCategoryId}
-                onChange={(event) => setSelectedCategoryId(event.currentTarget.value)}
+                onChange={(event) => selectCategory(event.currentTarget.value)}
                 disabled={!storeCategories.length || categorySaving}
               >
                 {storeCategories.map((category) => (
@@ -125,10 +149,17 @@ export default function Onboarding({
                   </option>
                 ))}
               </select>
-              {storeCategories.find((category) => category.id === selectedCategoryId)?.localizedDescription ? (
-                <small>{storeCategories.find((category) => category.id === selectedCategoryId).localizedDescription}</small>
+              {selectedCategory?.localizedDescription ? (
+                <small>{selectedCategory.localizedDescription}</small>
               ) : null}
             </label>
+            <StoreCategoryMappingSelector
+              category={selectedCategory}
+              selectedMappingIds={selectedMappingIds}
+              onChange={setSelectedMappingIds}
+              disabled={categorySaving}
+              variant="onboarding"
+            />
             {!storeCategories.length ? (
               <p role="status">{t("storeProfile.configurationUnavailable")}</p>
             ) : null}
@@ -287,7 +318,9 @@ Onboarding.propTypes = {
   storeCategories: PropTypes.array,
   pendingCategoryId: PropTypes.string,
   pendingSelectionGeneration: PropTypes.number,
+  pendingMappingIds: PropTypes.arrayOf(PropTypes.string),
   suggestedCategoryId: PropTypes.string,
+  suggestedMappingIds: PropTypes.arrayOf(PropTypes.string),
   resumeExistingSubscription: PropTypes.bool,
   pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
     shopifyPlanHandle: PropTypes.string.isRequired,

@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { listSelectableStoreCategories } from "../../app/services/store-profile/store-category.server";
+import { listSelectableStoreCategories, loadStoreProfile } from "../../app/services/store-profile/store-category.server";
 import { selectPendingStoreCategory } from "../../app/services/store-profile/store-category-selection.server";
 
 type ProfileState = {
@@ -24,18 +25,28 @@ type MakeStoreOptions = {
   lineages?: Array<{ id: string }>;
   existingDraft?: DraftState | null;
   latestRevisionNumber?: number;
+  configurations?: Array<Record<string, unknown>>;
 };
 
-const makeStore = ({ profile = null, lineages = [], existingDraft = null, latestRevisionNumber = 0 }: MakeStoreOptions = {}) => {
+const makeStore = ({
+  profile = null,
+  lineages = [],
+  existingDraft = null,
+  latestRevisionNumber = 0,
+  configurations = [],
+}: MakeStoreOptions = {}) => {
   const state = {
     profile: profile ? { ...profile } : null,
     lineages: [...lineages],
     draft: existingDraft ? { ...existingDraft } : null,
     latestRevisionNumber,
+    configurations: configurations.map((configuration) => ({ ...configuration })),
     category: {
       id: "category-home",
       slug: "home-goods",
+      editVersion: 4,
       enabled: true,
+      defaultTemplateId: "template-home",
       defaultTemplate: {
         id: "template-home",
         key: "home-goods.default",
@@ -45,6 +56,10 @@ const makeStore = ({ profile = null, lineages = [], existingDraft = null, latest
         categoryId: "category-home",
         promptText: "Canonical English prompt\nSecond line.",
       },
+      taxonomyMappings: [
+        { id: "mapping-shoes", categoryId: "category-home", editVersion: 2, conditionKey: "shoes", weight: 2 },
+        { id: "mapping-handbags", categoryId: "category-home", editVersion: 3, conditionKey: "handbags", weight: 1 },
+      ],
     },
   };
   const tx = {
@@ -64,13 +79,33 @@ const makeStore = ({ profile = null, lineages = [], existingDraft = null, latest
         return state.profile;
       }),
       updateMany: vi.fn(async ({ where, data }) => {
-        if (!state.profile || state.profile.pendingSelectionGeneration !== where.pendingSelectionGeneration)
-          return { count: 0 };
+        if (
+          !state.profile ||
+          state.profile.pendingSelectionGeneration !== where.pendingSelectionGeneration ||
+          (Object.prototype.hasOwnProperty.call(where, "activeCategoryId") &&
+            state.profile.activeCategoryId !== where.activeCategoryId)
+        ) return { count: 0 };
+
+        const nextGeneration = data.pendingSelectionGeneration?.increment
+          ? state.profile.pendingSelectionGeneration + data.pendingSelectionGeneration.increment
+          : state.profile.pendingSelectionGeneration;
         Object.assign(state.profile, {
-          pendingCategoryId: data.pendingCategoryId,
-          pendingPromptRevisionId: data.pendingPromptRevisionId,
-          pendingSelectedAt: data.pendingSelectedAt,
-          pendingSelectionGeneration: state.profile.pendingSelectionGeneration + 1,
+          ...(Object.prototype.hasOwnProperty.call(data, "activeCategoryId")
+            ? { activeCategoryId: data.activeCategoryId }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "activeCategoryActivatedAt")
+            ? { activeCategoryActivatedAt: data.activeCategoryActivatedAt }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "pendingCategoryId")
+            ? { pendingCategoryId: data.pendingCategoryId }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "pendingPromptRevisionId")
+            ? { pendingPromptRevisionId: data.pendingPromptRevisionId }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "pendingSelectedAt")
+            ? { pendingSelectedAt: data.pendingSelectedAt }
+            : {}),
+          pendingSelectionGeneration: nextGeneration,
         });
         return { count: 1 };
       }),
@@ -87,7 +122,9 @@ const makeStore = ({ profile = null, lineages = [], existingDraft = null, latest
       }),
     },
     commerceAgentPromptRevision: {
-      findUnique: vi.fn(async () => state.draft),
+      findUnique: vi.fn(async () => state.draft
+        ? { ...state.draft, prompt: { scope: "SHOP", shopId: "shop-1" } }
+        : null),
       findFirst: vi.fn(async ({ where }) =>
         where.status ? state.draft : { revisionNumber: state.latestRevisionNumber },
       ),
@@ -100,28 +137,56 @@ const makeStore = ({ profile = null, lineages = [], existingDraft = null, latest
         const draft = state.draft;
         if (!draft) throw new Error("Expected pending DRAFT");
         Object.assign(draft, {
+          ...(Object.prototype.hasOwnProperty.call(data, "status") ? { status: data.status } : {}),
           promptText: data.promptText,
           sourceTemplateId: data.sourceTemplateId,
           sourceTemplateEditVersion: data.sourceTemplateEditVersion,
-          editVersion: draft.editVersion + 1,
+          sourceContext: data.sourceContext,
+          ...(Object.prototype.hasOwnProperty.call(data, "contentHash") ? { contentHash: data.contentHash } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "publishedAt") ? { publishedAt: data.publishedAt } : {}),
+          editVersion: data.editVersion?.increment ? draft.editVersion + data.editVersion.increment : draft.editVersion,
         });
         return { id: where.id, revisionNumber: draft.revisionNumber };
       }),
+      updateMany: vi.fn(async ({ data }) => {
+        if (!state.draft) return { count: 0 };
+        Object.assign(state.draft, data);
+        return { count: 1 };
+      }),
     },
     commerceAgentConfiguration: {
-      update: vi.fn(),
-      updateMany: vi.fn(),
+      findMany: vi.fn(async () => state.configurations),
+      update: vi.fn(async ({ data }) => {
+        if (!state.configurations[0]) throw new Error("Expected configuration");
+        Object.assign(state.configurations[0], {
+          activePromptRevisionId: data.activePromptRevisionId,
+          promptEditVersion: Number(state.configurations[0].promptEditVersion ?? 1) + 1,
+        });
+      }),
+      create: vi.fn(async ({ data }) => {
+        state.configurations.push({ id: "configuration-1", ...data });
+      }),
     },
   };
-  const client = { $transaction: vi.fn(async (callback) => callback(tx)) };
+  const client = {
+    commerceShopProfile: tx.commerceShopProfile,
+    commercePromptTemplateCategory: tx.commercePromptTemplateCategory,
+    $transaction: vi.fn(async (callback) => callback(tx)),
+  };
   return { client, tx, state };
 };
 
-const select = (client: unknown, generation = 0, now = new Date("2026-09-30T12:00:00.000Z")) =>
+const select = (
+  client: unknown,
+  generation = 0,
+  now = new Date("2026-09-30T12:00:00.000Z"),
+  selectedMappingIds: string[] = [],
+) =>
   selectPendingStoreCategory({
     shopId: "shop-1",
     categoryId: "category-home",
     expectedPendingSelectionGeneration: generation,
+    selectedMappingIds,
   }, client as never, now);
 
 describe("pending Store Category selection", () => {
@@ -155,6 +220,15 @@ describe("pending Store Category selection", () => {
         promptText: "Canonical English prompt\nSecond line.",
         sourceTemplateId: "template-home",
         sourceTemplateEditVersion: 7,
+        sourceContext: {
+          schemaVersion: 1,
+          kind: "STORE_CATEGORY_SELECTION",
+          categoryId: "category-home",
+          categoryEditVersion: 4,
+          templateId: "template-home",
+          templateEditVersion: 7,
+          mappings: [],
+        },
       },
       select: { id: true, revisionNumber: true },
     });
@@ -167,15 +241,16 @@ describe("pending Store Category selection", () => {
       activeCategoryActivatedAt: null,
     });
     expect(tx.commerceAgentConfiguration.update).not.toHaveBeenCalled();
-    expect(tx.commerceAgentConfiguration.updateMany).not.toHaveBeenCalled();
   });
 
-  it("repins the same pending DRAFT on repeat selection and increments its edit version", async () => {
+  it("publishes an already-active shop category change immediately from the Admin-authored template", async () => {
+    const activatedAt = new Date("2026-01-01T00:00:00.000Z");
+    const now = new Date("2026-09-30T12:00:00.000Z");
     const { client, tx, state } = makeStore({
       profile: {
         shopId: "shop-1",
         activeCategoryId: "active-category",
-        activeCategoryActivatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        activeCategoryActivatedAt: activatedAt,
         pendingCategoryId: "category-home",
         pendingPromptRevisionId: "draft-1",
         pendingSelectionGeneration: 4,
@@ -187,13 +262,24 @@ describe("pending Store Category selection", () => {
         revisionNumber: 8,
         status: "DRAFT",
         editVersion: 2,
+        promptText: "Old prompt",
+        sourceTemplateId: "template-home",
+        sourceTemplateEditVersion: 7,
       },
+      configurations: [{
+        id: "configuration-1",
+        activePromptRevisionId: "revision-old",
+        promptEditVersion: 4,
+      }],
     });
     state.category.defaultTemplate.promptText = "Updated canonical prompt";
     state.category.defaultTemplate.editVersion = 8;
 
-    await expect(select(client, 4)).resolves.toMatchObject({
-      pendingPromptRevisionId: "draft-1",
+    await expect(select(client, 4, now)).resolves.toEqual({
+      activeCategoryId: "category-home",
+      activePromptRevisionId: "draft-1",
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
       pendingSelectionGeneration: 5,
     });
 
@@ -202,19 +288,165 @@ describe("pending Store Category selection", () => {
     expect(tx.commerceAgentPromptRevision.update).toHaveBeenCalledWith({
       where: { id: "draft-1" },
       data: {
+        status: "PUBLISHED",
         promptText: "Updated canonical prompt",
         sourceTemplateId: "template-home",
         sourceTemplateEditVersion: 8,
+        sourceContext: {
+          schemaVersion: 1,
+          kind: "STORE_CATEGORY_SELECTION",
+          categoryId: "category-home",
+          categoryEditVersion: 4,
+          templateId: "template-home",
+          templateEditVersion: 8,
+          mappings: [],
+        },
+        contentHash: createHash("sha256").update("Updated canonical prompt", "utf8").digest("hex"),
+        publishedAt: now,
         editVersion: { increment: 1 },
       },
       select: { id: true, revisionNumber: true },
     });
-    expect(state.draft?.editVersion).toBe(3);
+    expect(state.draft).toMatchObject({
+      status: "PUBLISHED",
+      editVersion: 3,
+      promptText: "Updated canonical prompt",
+      publishedAt: now,
+    });
+    expect(state.configurations[0]).toMatchObject({
+      activePromptRevisionId: "draft-1",
+      promptEditVersion: 5,
+    });
     expect(state.profile).toMatchObject({
-      activeCategoryId: "active-category",
-      activeCategoryActivatedAt: new Date("2026-01-01T00:00:00.000Z"),
+      activeCategoryId: "category-home",
+      activeCategoryActivatedAt: now,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectedAt: null,
       pendingSelectionGeneration: 5,
     });
+  });
+
+  it("publishes mapping-only changes immediately for an active category", async () => {
+    const now = new Date("2026-09-30T13:00:00.000Z");
+    const { client, tx, state } = makeStore({
+      profile: {
+        shopId: "shop-1",
+        activeCategoryId: "category-home",
+        activeCategoryActivatedAt: new Date("2026-01-01T00:00:00.000Z"),
+        pendingCategoryId: null,
+        pendingPromptRevisionId: null,
+        pendingSelectedAt: null,
+        pendingSelectionGeneration: 2,
+      },
+      lineages: [{ id: "shop-prompt" }],
+      latestRevisionNumber: 5,
+      configurations: [{
+        id: "configuration-1",
+        activePromptRevisionId: "revision-old",
+        promptEditVersion: 7,
+      }],
+    });
+    state.category.defaultTemplate.promptText = [
+      "Base prompt.",
+      "{% if mappings.shoes %}Footwear guidance.{% endif %}",
+    ].join("\n");
+
+    await expect(select(client, 2, now, ["mapping-shoes"])).resolves.toEqual({
+      activeCategoryId: "category-home",
+      activePromptRevisionId: "draft-1",
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectionGeneration: 3,
+    });
+
+    expect(tx.commerceAgentPromptRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        revisionNumber: 6,
+        status: "PUBLISHED",
+        promptText: "Base prompt.\nFootwear guidance.",
+        publishedAt: now,
+        sourceContext: {
+          schemaVersion: 1,
+          kind: "STORE_CATEGORY_SELECTION",
+          categoryId: "category-home",
+          categoryEditVersion: 4,
+          templateId: "template-home",
+          templateEditVersion: 7,
+          mappings: [{
+            mappingId: "mapping-shoes",
+            mappingEditVersion: 2,
+            conditionKey: "shoes",
+          }],
+        },
+      }),
+      select: { id: true, revisionNumber: true },
+    });
+    expect(state.draft).toMatchObject({
+      status: "PUBLISHED",
+      promptText: "Base prompt.\nFootwear guidance.",
+    });
+    expect(state.profile).toMatchObject({
+      activeCategoryId: "category-home",
+      activeCategoryActivatedAt: now,
+      pendingCategoryId: null,
+      pendingPromptRevisionId: null,
+      pendingSelectedAt: null,
+      pendingSelectionGeneration: 3,
+    });
+    expect(state.configurations[0]).toMatchObject({
+      activePromptRevisionId: "draft-1",
+      promptEditVersion: 8,
+    });
+  });
+
+  it("renders selected mapping conditions and stores immutable mapping provenance", async () => {
+    const { client, tx, state } = makeStore({ latestRevisionNumber: 1 });
+    state.category.defaultTemplate.promptText = [
+      "Base prompt.",
+      "{% if mappings.shoes %}Footwear guidance.{% endif %}",
+      "{% if mappings.handbags %}Handbag guidance.{% endif %}",
+    ].join("\n");
+
+    await expect(select(
+      client,
+      0,
+      new Date("2026-09-30T12:00:00.000Z"),
+      ["mapping-shoes"],
+    )).resolves.toMatchObject({ pendingPromptRevisionId: "draft-1" });
+
+    expect(tx.commerceAgentPromptRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        promptText: "Base prompt.\nFootwear guidance.\n",
+        sourceContext: {
+          schemaVersion: 1,
+          kind: "STORE_CATEGORY_SELECTION",
+          categoryId: "category-home",
+          categoryEditVersion: 4,
+          templateId: "template-home",
+          templateEditVersion: 7,
+          mappings: [{
+            mappingId: "mapping-shoes",
+            mappingEditVersion: 2,
+            conditionKey: "shoes",
+          }],
+        },
+      }),
+      select: { id: true, revisionNumber: true },
+    });
+  });
+
+  it("rejects mapping selections that do not belong to the selected category contract", async () => {
+    const { client, tx } = makeStore();
+
+    await expect(select(
+      client,
+      0,
+      new Date("2026-09-30T12:00:00.000Z"),
+      ["mapping-foreign"],
+    )).rejects.toMatchObject({ code: "CATEGORY_UNAVAILABLE" });
+
+    expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
   });
 
   it("rejects a stale generation before reading or writing the category", async () => {
@@ -225,6 +457,20 @@ describe("pending Store Category selection", () => {
     await expect(select(client, 1)).rejects.toMatchObject({ code: "CONFLICT" });
     expect(tx.commercePromptTemplateCategory.findUnique).not.toHaveBeenCalled();
     expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when Admin changes the prepared category contract before the CAS transaction", async () => {
+    const { client, tx, state } = makeStore({
+      profile: { shopId: "shop-1", pendingSelectionGeneration: 0 },
+    });
+    client.$transaction = vi.fn(async (callback) => {
+      state.category.editVersion += 1;
+      return callback(tx);
+    });
+
+    await expect(select(client)).rejects.toMatchObject({ code: "CONFLICT" });
+    expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
+    expect(tx.commerceShopProfile.updateMany).not.toHaveBeenCalled();
   });
 
   it("does not overwrite an unrelated DRAFT when the profile has no pending pointer", async () => {
@@ -242,6 +488,55 @@ describe("pending Store Category selection", () => {
     await expect(select(client)).rejects.toMatchObject({ code: "CONFLICT" });
     expect(tx.commerceAgentPromptRevision.update).not.toHaveBeenCalled();
     expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Store Category profile mapping provenance", () => {
+  it("restores pending and active mapping selections from prompt revision sourceContext", async () => {
+    const category = {
+      id: "category-home",
+      slug: "home-goods",
+      displayName: "Home goods",
+      description: "Home products",
+      translations: [],
+    };
+    const sourceContext = {
+      schemaVersion: 1,
+      kind: "STORE_CATEGORY_SELECTION",
+      categoryId: "category-home",
+      categoryEditVersion: 4,
+      templateId: "template-home",
+      templateEditVersion: 7,
+      mappings: [{ mappingId: "mapping-shoes", mappingEditVersion: 2, conditionKey: "shoes" }],
+    };
+    const client = {
+      commerceShopProfile: {
+        findUnique: vi.fn(async () => ({
+          shopId: "shop-1",
+          activeCategoryId: "category-home",
+          pendingCategoryId: "category-home",
+          pendingPromptRevisionId: "draft-1",
+          pendingSelectionGeneration: 3,
+          activeCategory: category,
+          pendingCategory: category,
+          pendingPromptRevision: {
+            sourceContext,
+            sourceTemplateEditVersion: 7,
+            sourceTemplate: { id: "template-home", key: "home.default", displayName: "Home", editVersion: 7 },
+          },
+        })),
+      },
+      commerceAgentConfiguration: {
+        findMany: vi.fn(async () => [{ activePromptRevision: { sourceContext } }]),
+      },
+      commercePromptTemplateCategory: { findMany: vi.fn() },
+    } as never;
+
+    await expect(loadStoreProfile("shop-1", "en", client)).resolves.toMatchObject({
+      activeMappingIds: ["mapping-shoes"],
+      pendingMappingIds: ["mapping-shoes"],
+    });
   });
 });
 

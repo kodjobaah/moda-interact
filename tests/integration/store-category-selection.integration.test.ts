@@ -39,10 +39,15 @@ describe("Store Category selection action", () => {
     });
   });
 
-  it("scopes the shared transaction to the authenticated shop and accepts only category plus generation", async () => {
+  it("scopes the shared transaction to the authenticated shop and accepts bounded mapping selections", async () => {
     const request = new Request("https://app.example/app/store-profile/category", {
       method: "POST",
-      body: new URLSearchParams({ categoryId: "category-1", expectedPendingSelectionGeneration: "4" }),
+      body: new URLSearchParams([
+        ["categoryId", "category-1"],
+        ["expectedPendingSelectionGeneration", "4"],
+        ["mappingId", "mapping-shoes"],
+        ["mappingId", "mapping-handbags"],
+      ]),
     });
 
     const response = await action({ request } as never);
@@ -60,6 +65,7 @@ describe("Store Category selection action", () => {
       shopId: "shop-123",
       categoryId: "category-1",
       expectedPendingSelectionGeneration: 4,
+      selectedMappingIds: ["mapping-shoes", "mapping-handbags"],
     });
   });
 
@@ -72,6 +78,12 @@ describe("Store Category selection action", () => {
     new URLSearchParams({ categoryId: "category-1", expectedPendingSelectionGeneration: "0", templateId: "untrusted" }),
     new URLSearchParams({ categoryId: "category-1", expectedPendingSelectionGeneration: "-1" }),
     new URLSearchParams({ categoryId: "category-1", expectedPendingSelectionGeneration: "1.5" }),
+    new URLSearchParams([
+      ["categoryId", "category-1"],
+      ["expectedPendingSelectionGeneration", "0"],
+      ["mappingId", "mapping-1"],
+      ["mappingId", "mapping-1"],
+    ]),
   ])("rejects malformed or untrusted form fields", async (body) => {
     const response = await action({
       request: new Request("https://app.example/app/store-profile/category", { method: "POST", body }),
