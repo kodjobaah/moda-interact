@@ -90,7 +90,7 @@ beforeEach(() => {
     pendingCategory: { id: "category-home" },
     pendingSelectionGeneration: 3,
   });
-  suggestStoreCategory.mockResolvedValue("category-home");
+  suggestStoreCategory.mockResolvedValue({ categoryId: "category-home", matchedMappingIds: ["mapping-home"] });
   readRecoveryOverview.mockResolvedValue({
     summary: { started: 0 },
     preview: [],
@@ -125,6 +125,7 @@ describe("app home loader", () => {
       pendingCategoryId: "category-home",
       pendingSelectionGeneration: 3,
       suggestedCategoryId: "category-home",
+      suggestedMappingIds: ["mapping-home"],
     });
     expect(listSelectableStoreCategories).toHaveBeenCalledOnce();
     expect(loadStoreProfile).toHaveBeenCalledWith("shop-1", expect.any(String));
@@ -159,7 +160,48 @@ describe("app home loader", () => {
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
 
-  it("shows subscription setup instead of plan selection once durable Shopify evidence exists", async () => {
+
+  it("keeps Store Category selection visible before resuming an existing Shopify subscription", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
+    readActiveMerchantPricingCatalogue.mockResolvedValue([
+      { shopifyPlanHandle: "free", displayName: "Free" },
+    ]);
+    getSubscriptionProjection.mockResolvedValue({
+      status: "UNMAPPED",
+      observedShopifyPlanHandle: "free",
+      pendingShopifyPlanHandle: null,
+      providerSubscriptionId: "gid://shopify/AppSubscription/1",
+      currentPeriodStart: new Date("2026-09-18T21:20:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-18T21:20:00.000Z"),
+      lastSyncedAt: new Date("2026-09-18T21:45:40.710Z"),
+    });
+    loadStoreProfile.mockResolvedValue({
+      activeCategory: null,
+      pendingCategory: null,
+      pendingSelectionGeneration: 0,
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      merchantExperienceState: "ONBOARDING",
+      billingSetup: null,
+      resumeExistingSubscription: true,
+      pendingCategoryId: null,
+      pendingSelectionGeneration: 0,
+    });
+    expect(listSelectableStoreCategories).toHaveBeenCalledOnce();
+    expect(loadStoreProfile).toHaveBeenCalledWith("shop-1", expect.any(String));
+  });
+
+  it("keeps a pending Store Category on onboarding while durable Shopify evidence is resumed", async () => {
     resolveShopifyShop.mockResolvedValue({
       id: "shop-1",
       domain: "merchant.myshopify.com",
@@ -188,13 +230,10 @@ describe("app home loader", () => {
 
     expect(result).toMatchObject({
       merchantExperienceState: "ONBOARDING",
-      billingSetup: {
-        phase: "FINALIZING_SUBSCRIPTION",
-        planHandle: "free",
-        planName: "Free",
-        currentPeriodStart: "2026-09-18T21:20:00.000Z",
-        currentPeriodEnd: "2026-10-18T21:20:00.000Z",
-      },
+      billingSetup: null,
+      resumeExistingSubscription: true,
+      pendingCategoryId: "category-home",
+      pendingSelectionGeneration: 3,
       subscription: null,
     });
     expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
@@ -202,6 +241,47 @@ describe("app home loader", () => {
     expect(findRecoveries).not.toHaveBeenCalled();
     expect(findBillingPeriods).not.toHaveBeenCalled();
     expect(findUsageEvents).not.toHaveBeenCalled();
+  });
+
+  it("shows subscription setup only once Store Category activation has already completed", async () => {
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    });
+    readActiveMerchantPricingCatalogue.mockResolvedValue([
+      { shopifyPlanHandle: "free", displayName: "Free" },
+    ]);
+    getSubscriptionProjection.mockResolvedValue({
+      status: "UNMAPPED",
+      observedShopifyPlanHandle: "free",
+      pendingShopifyPlanHandle: null,
+      providerSubscriptionId: "gid://shopify/AppSubscription/1",
+      currentPeriodStart: new Date("2026-09-18T21:20:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-18T21:20:00.000Z"),
+      lastSyncedAt: new Date("2026-09-18T21:45:40.710Z"),
+    });
+    loadStoreProfile.mockResolvedValue({
+      activeCategory: { id: "category-home" },
+      pendingCategory: null,
+      pendingSelectionGeneration: 3,
+    });
+
+    const result = await loader({
+      request: new Request("https://example.test/app"),
+    });
+
+    expect(result).toMatchObject({
+      merchantExperienceState: "ONBOARDING",
+      billingSetup: {
+        phase: "FINALIZING_SUBSCRIPTION",
+        planHandle: "free",
+        planName: "Free",
+      },
+      resumeExistingSubscription: false,
+      subscription: null,
+    });
   });
 
   it("keeps a completed shop without an active plan on the merchant surface", async () => {

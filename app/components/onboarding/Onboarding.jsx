@@ -1,6 +1,6 @@
 // @ts-nocheck
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useFetcher, useNavigate } from "react-router";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
@@ -24,6 +24,7 @@ export default function Onboarding({
   pendingCategoryId,
   pendingSelectionGeneration = 0,
   suggestedCategoryId,
+  resumeExistingSubscription = false,
 }) {
   const i18n = createMerchantI18n(merchantUi);
   const t = (key, values) => i18n.t(key, values);
@@ -35,20 +36,66 @@ export default function Onboarding({
       ? suggestedCategoryId
       : storeCategories[0]?.id ?? "";
   const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
+  const [currentGeneration, setCurrentGeneration] = useState(pendingSelectionGeneration);
   const categoryFetcher = useFetcher();
+  const resumeFetcher = useFetcher();
   const navigate = useNavigate();
-  const categorySaving = categoryFetcher.state !== "idle";
-  const categoryError = categoryFetcher.data?.error;
+  const resumeRequestedGeneration = useRef(null);
+  const categorySaving = categoryFetcher.state !== "idle" || resumeFetcher.state !== "idle";
+  const categoryError = categoryFetcher.data?.error ?? resumeFetcher.data?.error;
 
   useEffect(() => {
-    if (categoryFetcher.data?.ok) navigate("/app/billing/select");
-  }, [categoryFetcher.data, navigate]);
+    if (
+      !resumeExistingSubscription ||
+      !pendingCategoryId ||
+      !Number.isSafeInteger(currentGeneration) ||
+      currentGeneration < 0 ||
+      categoryFetcher.state !== "idle" ||
+      resumeFetcher.state !== "idle" ||
+      resumeFetcher.data?.ok ||
+      resumeRequestedGeneration.current === currentGeneration
+    ) return;
+
+    resumeRequestedGeneration.current = currentGeneration;
+    resumeFetcher.submit({
+      expectedPendingSelectionGeneration: String(currentGeneration),
+    }, { method: "post", action: "/app/onboarding/resume" });
+  }, [
+    categoryFetcher.state,
+    currentGeneration,
+    pendingCategoryId,
+    resumeExistingSubscription,
+    resumeFetcher,
+    resumeFetcher.data,
+    resumeFetcher.state,
+  ]);
+
+  useEffect(() => {
+    if (!categoryFetcher.data?.ok) return;
+    const nextGeneration = categoryFetcher.data.pendingSelectionGeneration;
+    if (Number.isSafeInteger(nextGeneration)) setCurrentGeneration(nextGeneration);
+
+    if (!resumeExistingSubscription) {
+      navigate("/app/billing/select");
+      return;
+    }
+
+    if (resumeRequestedGeneration.current === nextGeneration) return;
+    resumeRequestedGeneration.current = nextGeneration;
+    resumeFetcher.submit({
+      expectedPendingSelectionGeneration: String(nextGeneration),
+    }, { method: "post", action: "/app/onboarding/resume" });
+  }, [categoryFetcher.data, navigate, resumeExistingSubscription, resumeFetcher]);
+
+  useEffect(() => {
+    if (resumeFetcher.data?.ok) navigate("/app");
+  }, [resumeFetcher.data, navigate]);
 
   const choosePlan = () => {
     if (!selectedCategoryId || categorySaving) return;
     categoryFetcher.submit({
       categoryId: selectedCategoryId,
-      expectedPendingSelectionGeneration: String(pendingSelectionGeneration),
+      expectedPendingSelectionGeneration: String(currentGeneration),
     }, { method: "post", action: "/app/store-profile/category" });
   };
 
@@ -241,6 +288,7 @@ Onboarding.propTypes = {
   pendingCategoryId: PropTypes.string,
   pendingSelectionGeneration: PropTypes.number,
   suggestedCategoryId: PropTypes.string,
+  resumeExistingSubscription: PropTypes.bool,
   pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
     shopifyPlanHandle: PropTypes.string.isRequired,
     displayName: PropTypes.string.isRequired,

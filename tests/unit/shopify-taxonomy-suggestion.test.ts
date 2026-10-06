@@ -33,25 +33,55 @@ describe("Shopify taxonomy category suggestion", () => {
     expect(SHOPIFY_TAXONOMY_PRODUCTS_QUERY).not.toContain("pageInfo");
   });
 
-  it("sums repeated taxonomy evidence and resolves equal scores by display order then id", () => {
+  it("returns the winning category together with its taxonomy evidence mappings", () => {
     const categories = [
       { id: "b", displayOrder: 1 },
       { id: "a", displayOrder: 2 },
       { id: "c", displayOrder: 1 },
     ];
     const mappings = [
-      { categoryId: "a", shopifyTaxonomyCategoryId: "tax-1", weight: 2 },
-      { categoryId: "b", shopifyTaxonomyCategoryId: "tax-2", weight: 2 },
-      { categoryId: "b", shopifyTaxonomyCategoryId: "tax-3", weight: 0 },
+      { id: "map-a-1", categoryId: "a", shopifyTaxonomyCategoryId: "tax-1", weight: 2 },
+      { id: "map-b-2", categoryId: "b", shopifyTaxonomyCategoryId: "tax-2", weight: 2 },
+      { id: "map-b-3", categoryId: "b", shopifyTaxonomyCategoryId: "tax-3", weight: 0 },
     ];
 
-    expect(scoreStoreCategorySuggestion(categories, ["tax-1", "tax-1", "tax-2", "tax-3"], mappings)).toBe("a");
-    expect(scoreStoreCategorySuggestion(categories, ["tax-1", "tax-2"], mappings)).toBe("b");
-    expect(scoreStoreCategorySuggestion(categories, ["unknown"], mappings)).toBe("b");
+    expect(scoreStoreCategorySuggestion(categories, ["tax-1", "tax-1", "tax-2", "tax-3"], mappings)).toEqual({
+      categoryId: "a",
+      matchedMappingIds: ["map-a-1"],
+    });
+    expect(scoreStoreCategorySuggestion(categories, ["tax-1", "tax-2"], mappings)).toEqual({
+      categoryId: "b",
+      matchedMappingIds: ["map-b-2"],
+    });
+    expect(scoreStoreCategorySuggestion(categories, ["unknown"], mappings)).toEqual({
+      categoryId: "b",
+      matchedMappingIds: [],
+    });
   });
 
-  it("falls back to the first selectable category when Shopify evidence fails", async () => {
+  it("orders matched mappings by weighted catalogue evidence then id", () => {
+    const categories = [{ id: "apparel", displayOrder: 0 }];
+    const mappings = [
+      { id: "shoes", categoryId: "apparel", shopifyTaxonomyCategoryId: "tax-shoes", weight: 1 },
+      { id: "bags", categoryId: "apparel", shopifyTaxonomyCategoryId: "tax-bags", weight: 2 },
+      { id: "hats", categoryId: "apparel", shopifyTaxonomyCategoryId: "tax-hats", weight: 1 },
+    ];
+
+    expect(scoreStoreCategorySuggestion(
+      categories,
+      ["tax-shoes", "tax-shoes", "tax-bags", "tax-hats"],
+      mappings,
+    )).toEqual({
+      categoryId: "apparel",
+      matchedMappingIds: ["bags", "shoes", "hats"],
+    });
+  });
+
+  it("falls back to the first selectable category with no mapping evidence when Shopify evidence fails", async () => {
     const admin = { graphql: vi.fn(async () => { throw new Error("offline"); }) };
-    await expect(suggestStoreCategory(admin, [{ id: "first" }, { id: "second" }])).resolves.toBe("first");
+    await expect(suggestStoreCategory(admin, [{ id: "first" }, { id: "second" }])).resolves.toEqual({
+      categoryId: "first",
+      matchedMappingIds: [],
+    });
   });
 });

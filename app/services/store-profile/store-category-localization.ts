@@ -1,44 +1,107 @@
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
-import { sourceCatalogues } from "@/i18n/catalogues.js";
+import {
+  resolveModaConfigurationLocale,
+  type ModaSupportedLanguageTag,
+} from "@modainteract/moda-interact-shared/internationalization";
 
 const logger = createLogger({
   serviceName: "moda-interact",
   environment: process.env.NODE_ENV ?? "development",
 });
-const reportedMissingKeys = new Set<string>();
-const catalogues = sourceCatalogues as Record<string, Record<string, unknown>>;
 
-export function storeCategoryKey(slug: string, field: "displayName" | "description") {
-  return `storeProfile.categories.${slug}.${field}`;
+const reportedMissingTranslations = new Set<string>();
+
+type CategoryTranslation = {
+  locale: string;
+  displayName: string;
+  description: string;
+};
+
+type MappingTranslation = {
+  locale: string;
+  displayName: string;
+};
+
+function reportMissingTranslation({
+  entity,
+  entityId,
+  locale,
+}: {
+  entity: "category" | "mapping";
+  entityId: string;
+  locale: string;
+}) {
+  const reportKey = `${entity}:${entityId}:${locale}`.slice(0, 192);
+  if (reportedMissingTranslations.size >= 64 || reportedMissingTranslations.has(reportKey)) return;
+  reportedMissingTranslations.add(reportKey);
+  logger.warn("store_profile.translation_missing", {
+    entity,
+    entityId: entityId.slice(0, 128),
+    locale: locale.slice(0, 32),
+  });
 }
 
-function catalogueFor(locale: string) {
-  return catalogues[locale] ?? catalogues[locale.split("-")[0]] ?? catalogues.en;
+export function resolveStoreCategoryLocale(locale: string | null | undefined): ModaSupportedLanguageTag {
+  return resolveModaConfigurationLocale(locale);
 }
 
-function localizedValue(slug: string, field: "displayName" | "description", locale: string, fallback: string) {
-  const key = storeCategoryKey(slug, field);
-  const value = catalogueFor(locale)?.[key];
-  if (typeof value === "string") return value;
+export function storeCategoryTranslationLocales(locale: string | null | undefined) {
+  const resolved = resolveStoreCategoryLocale(locale);
+  return resolved === "en" ? ["en"] : [resolved, "en"];
+}
 
-  const reportKey = `${locale}:${key}`.slice(0, 192);
-  if (reportedMissingKeys.size < 64 && !reportedMissingKeys.has(reportKey)) {
-    reportedMissingKeys.add(reportKey);
-    logger.warn("store_profile.category_translation_missing", {
-      locale: locale.slice(0, 32),
-      key: key.slice(0, 160),
-    });
-  }
-  const english = catalogues.en?.[key];
-  return typeof english === "string" ? english : fallback;
+function findTranslation<T extends { locale: string }>(translations: T[] | null | undefined, locale: string) {
+  return translations?.find((translation) => translation.locale === locale) ?? null;
 }
 
 export function localizeStoreCategory(
-  category: { slug: string; displayName: string; description: string },
-  locale: string,
+  category: {
+    id: string;
+    displayName: string;
+    description: string;
+    translations?: CategoryTranslation[] | null;
+  },
+  locale: string | null | undefined,
 ) {
+  const resolvedLocale = resolveStoreCategoryLocale(locale);
+  const localized = findTranslation(category.translations, resolvedLocale);
+  const english = findTranslation(category.translations, "en");
+
+  if (!localized) {
+    reportMissingTranslation({ entity: "category", entityId: category.id, locale: resolvedLocale });
+  }
+
   return {
-    localizedDisplayName: localizedValue(category.slug, "displayName", locale, category.displayName),
-    localizedDescription: localizedValue(category.slug, "description", locale, category.description),
+    localizedDisplayName: localized?.displayName ?? english?.displayName ?? category.displayName,
+    localizedDescription: localized?.description ?? english?.description ?? category.description,
+  };
+}
+
+export function localizeStoreCategoryMapping(
+  mapping: {
+    id: string;
+    conditionKey: string | null;
+    displayName: string | null;
+    taxonomyCategoryName?: string | null;
+    translations?: MappingTranslation[] | null;
+  },
+  locale: string | null | undefined,
+) {
+  const resolvedLocale = resolveStoreCategoryLocale(locale);
+  const localized = findTranslation(mapping.translations, resolvedLocale);
+  const english = findTranslation(mapping.translations, "en");
+
+  if (!localized) {
+    reportMissingTranslation({ entity: "mapping", entityId: mapping.id, locale: resolvedLocale });
+  }
+
+  return {
+    localizedDisplayName:
+      localized?.displayName
+      ?? english?.displayName
+      ?? mapping.displayName
+      ?? mapping.taxonomyCategoryName
+      ?? mapping.conditionKey
+      ?? "",
   };
 }

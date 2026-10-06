@@ -81,26 +81,29 @@ export const loader = async ({ request }) => {
     : null;
 
   /*
-   * A fresh install still sees onboarding. Once durable local subscription
-   * evidence exists, never send the merchant back to plan selection while the
-   * Shopify subscription is being confirmed/reconciled.
+   * Subscription evidence must not bypass the required initial Store Category
+   * selection. Once a category is already active/pending, the billing setup
+   * surface may take over while Shopify reconciliation finishes.
    */
   if (!shop.onboardingCompleted) {
     const [storeCategories, storeProfile] = await Promise.all([
       listSelectableStoreCategories(merchantUi.locale),
       loadStoreProfile(shop.id, merchantUi.locale),
     ]);
-    const suggestedCategoryId = await suggestStoreCategory(admin, storeCategories);
+    const storeCategorySuggestion = await suggestStoreCategory(admin, storeCategories);
+    const hasActiveStoreCategory = Boolean(storeProfile.activeCategory);
     return {
       merchantUi,
       merchantExperienceState: onboardingState,
       pricingCatalogue,
       subscription: null,
-      billingSetup,
+      billingSetup: hasActiveStoreCategory ? billingSetup : null,
+      resumeExistingSubscription: Boolean(billingSetup && !hasActiveStoreCategory),
       storeCategories,
       pendingCategoryId: storeProfile.pendingCategory?.id ?? null,
       pendingSelectionGeneration: storeProfile.pendingSelectionGeneration,
-      suggestedCategoryId,
+      suggestedCategoryId: storeCategorySuggestion?.categoryId ?? null,
+      suggestedMappingIds: storeCategorySuggestion?.matchedMappingIds ?? [],
     };
   }
 
@@ -232,6 +235,7 @@ export default function Index() {
         pendingCategoryId={data.pendingCategoryId}
         pendingSelectionGeneration={data.pendingSelectionGeneration}
         suggestedCategoryId={data.suggestedCategoryId}
+        resumeExistingSubscription={data.resumeExistingSubscription}
       />
     );
   }

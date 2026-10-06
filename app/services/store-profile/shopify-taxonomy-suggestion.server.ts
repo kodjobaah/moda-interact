@@ -12,9 +12,14 @@ export const SHOPIFY_TAXONOMY_PRODUCTS_QUERY = `query ModaStoreCategorySuggestio
 
 type Category = { id: string; displayOrder?: number };
 type TaxonomyMapping = {
+  id: string;
   categoryId: string;
   shopifyTaxonomyCategoryId: string;
   weight: number;
+};
+export type StoreCategorySuggestion = {
+  categoryId: string;
+  matchedMappingIds: string[];
 };
 type AdminGraphqlClient = {
   graphql(query: string): Promise<{
@@ -44,7 +49,7 @@ export function scoreStoreCategorySuggestion(
   categories: Category[],
   taxonomyCategoryIds: string[],
   mappings: TaxonomyMapping[],
-) {
+): StoreCategorySuggestion | null {
   if (!categories.length) return null;
   const selectableIds = new Set(categories.map((category) => category.id));
   const displayOrder = new Map(categories.map((category, index) => [
@@ -56,24 +61,44 @@ export function scoreStoreCategorySuggestion(
       .filter((mapping) => selectableIds.has(mapping.categoryId) && mapping.weight > 0)
       .map((mapping) => [mapping.shopifyTaxonomyCategoryId, mapping]),
   );
-  const scores = new Map<string, number>();
+  const categoryScores = new Map<string, number>();
+  const mappingScores = new Map<string, number>();
+
   for (const taxonomyId of taxonomyCategoryIds) {
     const mapping = mappingByTaxonomyId.get(taxonomyId);
-    if (mapping)
-      scores.set(mapping.categoryId, (scores.get(mapping.categoryId) ?? 0) + mapping.weight);
+    if (!mapping) continue;
+    categoryScores.set(
+      mapping.categoryId,
+      (categoryScores.get(mapping.categoryId) ?? 0) + mapping.weight,
+    );
+    mappingScores.set(mapping.id, (mappingScores.get(mapping.id) ?? 0) + mapping.weight);
   }
-  return [...categories].sort((left, right) =>
-    (scores.get(right.id) ?? 0) - (scores.get(left.id) ?? 0) ||
+
+  const winner = [...categories].sort((left, right) =>
+    (categoryScores.get(right.id) ?? 0) - (categoryScores.get(left.id) ?? 0) ||
     (displayOrder.get(left.id) ?? 0) - (displayOrder.get(right.id) ?? 0) ||
     left.id.localeCompare(right.id, "en"),
-  )[0].id;
+  )[0];
+
+  const matchedMappingIds = mappings
+    .filter((mapping) => mapping.categoryId === winner.id && (mappingScores.get(mapping.id) ?? 0) > 0)
+    .sort((left, right) =>
+      (mappingScores.get(right.id) ?? 0) - (mappingScores.get(left.id) ?? 0) ||
+      left.id.localeCompare(right.id, "en"),
+    )
+    .map((mapping) => mapping.id);
+
+  return {
+    categoryId: winner.id,
+    matchedMappingIds,
+  };
 }
 
 export async function suggestStoreCategory(
   admin: AdminGraphqlClient,
   categories: Category[],
   client: MappingReader = db,
-) {
+): Promise<StoreCategorySuggestion | null> {
   if (!categories.length) return null;
   try {
     const taxonomyCategoryIds = await readShopifyTaxonomyCategoryIds(admin);
@@ -82,11 +107,15 @@ export async function suggestStoreCategory(
         categoryId: { in: categories.map((category) => category.id) },
         shopifyTaxonomyCategoryId: { in: [...new Set(taxonomyCategoryIds)] },
         weight: { gt: 0 },
+        conditionKey: { not: null },
       },
-      select: { categoryId: true, shopifyTaxonomyCategoryId: true, weight: true },
+      select: { id: true, categoryId: true, shopifyTaxonomyCategoryId: true, weight: true },
     });
     return scoreStoreCategorySuggestion(categories, taxonomyCategoryIds, mappings);
   } catch {
-    return categories[0].id;
+    return {
+      categoryId: categories[0].id,
+      matchedMappingIds: [],
+    };
   }
 }

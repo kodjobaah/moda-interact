@@ -246,7 +246,7 @@ describe("pending Store Category selection", () => {
 });
 
 describe("selectable Store Category read model", () => {
-  it("filters invalid defaults while allowing Admin-authored slugs to fall back to database presentation", async () => {
+  it("reads merchant-facing category and mapping localization from PostgreSQL with English fallback", async () => {
     const template = {
       id: "template-home",
       key: "home-goods.default",
@@ -257,27 +257,95 @@ describe("selectable Store Category read model", () => {
       promptText: "Do not expose this prompt.",
     };
     const rows = [
-      { id: "late", slug: "home-goods", displayName: "Late", description: "Late", enabled: true, displayOrder: 5, defaultTemplateId: "late-template", defaultTemplate: { ...template, id: "late-template", categoryId: "late" } },
-      { id: "untranslated", slug: "not-localized", displayName: "Unknown", description: "Unknown", enabled: true, displayOrder: 0, defaultTemplateId: "unknown-template", defaultTemplate: { ...template, id: "unknown-template", categoryId: "untranslated" } },
-      { id: "disabled", slug: "home-goods", displayName: "Disabled", description: "Disabled", enabled: false, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: template },
-      { id: "missing-template", slug: "home-goods", displayName: "Missing", description: "Missing", enabled: true, displayOrder: 1, defaultTemplateId: null, defaultTemplate: null },
-      { id: "wrong-category", slug: "home-goods", displayName: "Wrong", description: "Wrong", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, categoryId: "other" } },
-      { id: "disabled-template", slug: "home-goods", displayName: "Disabled template", description: "Disabled template", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, enabled: false } },
-      { id: "blank-template", slug: "home-goods", displayName: "Blank", description: "Blank", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, promptText: "  \n" } },
-      { id: "b", slug: "home-goods", displayName: "B", description: "B", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, id: "template-b", categoryId: "b" } },
-      { id: "a", slug: "home-goods", displayName: "A", description: "A", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, id: "template-a", categoryId: "a" } },
+      {
+        id: "late",
+        slug: "late",
+        displayName: "Late canonical",
+        description: "Late canonical description",
+        enabled: true,
+        displayOrder: 5,
+        defaultTemplateId: "late-template",
+        defaultTemplate: { ...template, id: "late-template", categoryId: "late" },
+        translations: [{ locale: "en", displayName: "Late English", description: "Late English description" }],
+        taxonomyMappings: [],
+      },
+      {
+        id: "untranslated",
+        slug: "not-localized",
+        displayName: "Canonical fallback",
+        description: "Canonical fallback description",
+        enabled: true,
+        displayOrder: 0,
+        defaultTemplateId: "unknown-template",
+        defaultTemplate: { ...template, id: "unknown-template", categoryId: "untranslated" },
+        translations: [],
+        taxonomyMappings: [],
+      },
+      { id: "disabled", slug: "disabled", displayName: "Disabled", description: "Disabled", enabled: false, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: template, translations: [], taxonomyMappings: [] },
+      { id: "missing-template", slug: "missing", displayName: "Missing", description: "Missing", enabled: true, displayOrder: 1, defaultTemplateId: null, defaultTemplate: null, translations: [], taxonomyMappings: [] },
+      { id: "wrong-category", slug: "wrong", displayName: "Wrong", description: "Wrong", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, categoryId: "other" }, translations: [], taxonomyMappings: [] },
+      { id: "disabled-template", slug: "disabled-template", displayName: "Disabled template", description: "Disabled template", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, enabled: false }, translations: [], taxonomyMappings: [] },
+      { id: "blank-template", slug: "blank", displayName: "Blank", description: "Blank", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, promptText: "  \n" }, translations: [], taxonomyMappings: [] },
+      {
+        id: "b",
+        slug: "b",
+        displayName: "B canonical",
+        description: "B canonical description",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: { ...template, id: "template-b", categoryId: "b" },
+        translations: [{ locale: "en", displayName: "B English", description: "B English description" }],
+        taxonomyMappings: [],
+      },
+      {
+        id: "a",
+        slug: "a",
+        displayName: "A canonical",
+        description: "A canonical description",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: { ...template, id: "template-a", categoryId: "a" },
+        translations: [
+          { locale: "en", displayName: "Apparel", description: "English apparel description" },
+          { locale: "de", displayName: "Bekleidung", description: "Deutsche Beschreibung" },
+        ],
+        taxonomyMappings: [
+          {
+            id: "mapping-shoes",
+            conditionKey: "shoes",
+            displayName: "Footwear",
+            taxonomyCategoryName: "Shoes",
+            weight: 2,
+            translations: [
+              { locale: "en", displayName: "Footwear" },
+              { locale: "de", displayName: "Schuhe" },
+            ],
+          },
+          {
+            id: "mapping-unconfigured",
+            conditionKey: null,
+            displayName: "Ignored mapping",
+            taxonomyCategoryName: "Ignored",
+            weight: 1,
+            translations: [],
+          },
+        ],
+      },
     ];
     const findMany = vi.fn(async () => rows
       .filter((category) => category.enabled && category.defaultTemplateId !== null)
       .sort((left, right) => left.displayOrder - right.displayOrder || left.id.localeCompare(right.id)));
     const client = { commercePromptTemplateCategory: { findMany } } as never;
 
-    await expect(listSelectableStoreCategories("en", client)).resolves.toEqual([
+    await expect(listSelectableStoreCategories("de-DE", client)).resolves.toEqual([
       {
         id: "untranslated",
         slug: "not-localized",
-        localizedDisplayName: "Unknown",
-        localizedDescription: "Unknown",
+        localizedDisplayName: "Canonical fallback",
+        localizedDescription: "Canonical fallback description",
+        mappings: [],
         defaultTemplate: {
           id: "unknown-template",
           key: "home-goods.default",
@@ -287,9 +355,16 @@ describe("selectable Store Category read model", () => {
       },
       {
         id: "a",
-        slug: "home-goods",
-        localizedDisplayName: "Home goods",
-        localizedDescription: "Home, kitchen, decor and everyday household products.",
+        slug: "a",
+        localizedDisplayName: "Bekleidung",
+        localizedDescription: "Deutsche Beschreibung",
+        mappings: [
+          {
+            id: "mapping-shoes",
+            conditionKey: "shoes",
+            localizedDisplayName: "Schuhe",
+          },
+        ],
         defaultTemplate: {
           id: "template-a",
           key: "home-goods.default",
@@ -299,9 +374,10 @@ describe("selectable Store Category read model", () => {
       },
       {
         id: "b",
-        slug: "home-goods",
-        localizedDisplayName: "Home goods",
-        localizedDescription: "Home, kitchen, decor and everyday household products.",
+        slug: "b",
+        localizedDisplayName: "B English",
+        localizedDescription: "B English description",
+        mappings: [],
         defaultTemplate: {
           id: "template-b",
           key: "home-goods.default",
@@ -311,9 +387,10 @@ describe("selectable Store Category read model", () => {
       },
       {
         id: "late",
-        slug: "home-goods",
-        localizedDisplayName: "Home goods",
-        localizedDescription: "Home, kitchen, decor and everyday household products.",
+        slug: "late",
+        localizedDisplayName: "Late English",
+        localizedDescription: "Late English description",
+        mappings: [],
         defaultTemplate: {
           id: "late-template",
           key: "home-goods.default",
@@ -323,8 +400,14 @@ describe("selectable Store Category read model", () => {
       },
     ]);
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      include: expect.objectContaining({
+        translations: { where: { locale: { in: ["de", "en"] } } },
+        taxonomyMappings: expect.objectContaining({
+          where: { conditionKey: { not: null } },
+        }),
+      }),
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
     }));
-    expect(JSON.stringify(await listSelectableStoreCategories("en", client))).not.toContain("Do not expose this prompt.");
+    expect(JSON.stringify(await listSelectableStoreCategories("de-DE", client))).not.toContain("Do not expose this prompt.");
   });
 });

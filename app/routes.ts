@@ -48,6 +48,7 @@ export default [
   route("app/merchant-knowledge/upload-failure", "./routes/app/merchant-knowledge/upload-failure/route.ts"),
   route("app/merchant-knowledge/reprocess", "./routes/app/merchant-knowledge/reprocess/route.ts"),
   route("app/store-profile/category", "./routes/app/store-profile/category/route.ts"),
+  route("app/onboarding/resume", "./routes/app/onboarding/resume/route.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
   route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),

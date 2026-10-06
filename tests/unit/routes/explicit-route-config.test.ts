@@ -45,6 +45,12 @@ describe("explicit route configuration", () => {
     );
   });
 
+  it("registers the onboarding resume transition outside the app layout", () => {
+    expect(source).toContain(
+      'route("app/onboarding/resume", "./routes/app/onboarding/resume/route.ts"),',
+    );
+  });
+
   it("declares the restoration route as a standalone exact path", () => {
     expect(source).toContain('route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),');
   });
