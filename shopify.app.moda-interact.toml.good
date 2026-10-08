@@ -7,7 +7,7 @@ embedded = true
 handle = "moda-interact"
 
 [build]
-automatically_update_urls_on_dev = false
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2026-07"
@@ -15,11 +15,11 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks"
   topics = [
-  "orders/create",
-  "carts/create",
   "checkouts/create",
+  "checkouts/update",
+  "orders/create",
   "carts/update",
-  "checkouts/update"
+  "carts/create"
 ]
 
   [[webhooks.subscriptions]]
