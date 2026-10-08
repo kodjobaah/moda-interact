@@ -198,7 +198,7 @@ describe("merchant support resource route", () => {
     expect(revalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("returns compose validation failures without truncating the body", async () => {
+  it("returns a stable compose failure code without exposing service errors", async () => {
     composeMerchantMessage.mockRejectedValue(new Error("Body must contain at most 500 graphemes."));
     const form = new FormData();
     form.set("intent", "compose");
@@ -209,7 +209,20 @@ describe("merchant support resource route", () => {
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "Body must contain at most 500 graphemes." });
+    expect(await response.json()).toEqual({ errorCode: "SEND_FAILED" });
     expect(composeMerchantMessage).toHaveBeenCalledWith(expect.objectContaining({ body: "👩‍💻".repeat(501) }));
+  });
+
+  it("returns a stable unsupported-action code", async () => {
+    const form = new FormData();
+    form.set("intent", "unsupported");
+
+    const response = await action({
+      request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ errorCode: "UNSUPPORTED_ACTION" });
+    expect(composeMerchantMessage).not.toHaveBeenCalled();
   });
 });
