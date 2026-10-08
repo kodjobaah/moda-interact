@@ -11,7 +11,7 @@ import {
 import { billingService } from "@/services/billing/billing.service";
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { readMerchantSupportMessages } from "@/services/merchant-support/merchant-support.service";
-import { merchantUiContext } from "@/utils/merchant-i18n";
+import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import MerchantNavigation from "@/components/dashboard/MerchantNavigation";
 
 /** @param {{ request: Request }} args */
@@ -61,6 +61,7 @@ export const loader = async ({ request }) => {
 export default function App() {
   const { apiKey, unreadMessages, merchantUi, merchantExperienceState } =
     useLoaderData();
+  const i18n = createMerchantI18n(merchantUi);
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -68,7 +69,7 @@ export default function App() {
         <img
           className="brand-mark"
           src="/images/moda-interact-transparent-logo.jpg"
-          alt="Moda Interact logo"
+          alt={i18n.t("common.logoAlt")}
         />
       </div>
       <MerchantNavigation

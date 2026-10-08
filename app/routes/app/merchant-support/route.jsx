@@ -52,7 +52,7 @@ export async function action({ request }) {
   }
 
   if (intent !== "compose") {
-    return Response.json({ error: "Unsupported merchant support action." }, { status: 400 });
+    return Response.json({ errorCode: "UNSUPPORTED_ACTION" }, { status: 400 });
   }
 
   try {
@@ -61,8 +61,8 @@ export async function action({ request }) {
       body: String(formData.get("body") ?? ""),
       shopifyUserId: session.onlineAccessInfo?.associated_user?.id?.toString() ?? null,
     }));
-  } catch (error) {
-    return Response.json({ error: error instanceof Error ? error.message : "Unable to send message." }, { status: 400 });
+  } catch {
+    return Response.json({ errorCode: "SEND_FAILED" }, { status: 400 });
   }
 }
 
@@ -73,6 +73,11 @@ export default function MerchantSupport() {
   const i18n = createMerchantI18n(support.merchantUi);
   const [body, setBody] = useState("");
   const [validationError, setValidationError] = useState("");
+  const actionError = fetcher.data?.errorCode === "UNSUPPORTED_ACTION"
+    ? i18n.t("support.unsupportedAction")
+    : fetcher.data?.errorCode === "SEND_FAILED"
+      ? i18n.t("support.sendFailed")
+      : "";
   const messages = support.items ?? [];
   const graphemeCount = useMemo(() => countGraphemes(body), [body]);
   const unreadMessages = messages.filter((/** @type {any} */ message) => (
@@ -98,7 +103,7 @@ export default function MerchantSupport() {
     try {
       AuthoredSupportBodySchema.parse(body);
     } catch {
-      setValidationError("Message must contain between 1 and 500 graphemes.");
+      setValidationError(i18n.t("support.messageLengthError", { max: 500 }));
       return;
     }
     setValidationError("");
@@ -107,25 +112,28 @@ export default function MerchantSupport() {
   }
 
   return (
-    <s-page heading={i18n.t("dashboard.messagesSent")}>
+    <s-page heading={i18n.t("merchantNav.support")}>
       <div className="merchant-support-page moda-page-shell moda-page-shell--narrow">
-        <s-section heading="Support thread">
-          {messages.length === 0 ? <p>No messages yet.</p> : <ol className="merchant-support-thread">
+        <s-section heading={i18n.t("support.thread")}>
+          {messages.length === 0 ? <p>{i18n.t("support.empty")}</p> : <ol className="merchant-support-thread">
             {messages.map((/** @type {any} */ message) => <MessageCard key={message.id} message={message} i18n={i18n} merchantExperienceState={support.merchantExperienceState} />)}
           </ol>}
-          {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label="Support thread pages">
-            {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>Previous</Link> : <span aria-disabled="true">Previous</span>}
-            <span>Page {support.page} of {support.totalPages}</span>
-            {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>Next</Link> : <span aria-disabled="true">Next</span>}
+          {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label={i18n.t("support.paginationLabel")}>
+            {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>{i18n.t("support.previous")}</Link> : <span aria-disabled="true">{i18n.t("support.previous")}</span>}
+            <span>{i18n.t("support.page", {
+              page: i18n.formatNumber(support.page),
+              totalPages: i18n.formatNumber(support.totalPages),
+            })}</span>
+            {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>{i18n.t("support.next")}</Link> : <span aria-disabled="true">{i18n.t("support.next")}</span>}
           </nav> : null}
         </s-section>
-        <s-section heading="Contact Moda Support">
+        <s-section heading={i18n.t("support.contactHeading")}>
           <form className="merchant-support-compose" onSubmit={submitMessage} noValidate>
-            <label htmlFor="message-body">Message</label>
+            <label htmlFor="message-body">{i18n.t("support.messageLabel")}</label>
             <textarea id="message-body" value={body} onChange={(event) => setBody(event.target.value)} aria-describedby="message-count message-error" required />
-            <div id="message-count" aria-live="polite">{graphemeCount}/500</div>
-            {validationError || fetcher.data?.error ? <p id="message-error" role="alert">{validationError || fetcher.data.error}</p> : null}
-            <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? "Sending..." : "Send"}</button>
+            <div id="message-count" aria-live="polite">{i18n.formatNumber(graphemeCount)}/{i18n.formatNumber(500)}</div>
+            {validationError || actionError ? <p id="message-error" role="alert">{validationError || actionError}</p> : null}
+            <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? i18n.t("support.sending") : i18n.t("support.send")}</button>
           </form>
         </s-section>
       </div>
@@ -175,7 +183,7 @@ export async function markUnreadMessages({
 /** @param {{ message: any, i18n: any, merchantExperienceState: string }} props */
 function MessageCard({ message, i18n, merchantExperienceState }) {
   const isMerchant = message.kind === "MERCHANT";
-  const label = isMerchant ? "You" : message.kind === "SYSTEM" ? "System" : "Moda Support";
+  const label = isMerchant ? i18n.t("support.you") : message.kind === "SYSTEM" ? i18n.t("support.system") : i18n.t("support.modaSupport");
   const hasTranslation = message.isTranslated === true;
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
@@ -192,8 +200,8 @@ function MessageCard({ message, i18n, merchantExperienceState }) {
         <strong>{label}</strong>
         <time dateTime={message.createdAt}>{i18n.formatDateTime(message.createdAt)}</time>
       </div>
-      {unavailable ? <p role="status">{message.state === "FAILED" ? "Translation unavailable. Please try again later." : "Translation is processing."}</p> : <p dir="auto">{showOriginal ? message.originalBody : message.displayBody}</p>}
-      {hasTranslation ? <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "View translation" : "View original"}</button> : null}
+      {unavailable ? <p role="status">{message.state === "FAILED" ? i18n.t("support.translationUnavailable") : i18n.t("support.translationProcessing")}</p> : <p dir="auto">{showOriginal ? message.originalBody : message.displayBody}</p>}
+      {hasTranslation ? <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? i18n.t("support.viewTranslation") : i18n.t("support.viewOriginal")}</button> : null}
       {systemAction ? (
         <Link to={systemAction.href}>
           {i18n.t(systemAction.labelKey)}

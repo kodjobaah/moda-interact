@@ -56,6 +56,45 @@ describe("merchant UI internationalisation", () => {
     expect(rawCatalogues["zh-Hant"]["chart.recoveryDetails"]).not.toBe(rawCatalogues.en["chart.recoveryDetails"]);
   });
 
+  it("translates authenticated support copy and preserves manifest placeholders", () => {
+    const french = createMerchantI18n({ locale: "fr-FR" });
+
+    expect(french.t("common.logoAlt")).toBe("Logo de Moda Interact");
+    expect(french.t("support.thread")).toBe("Fil d’assistance");
+    expect(french.t("support.page", { page: 2, totalPages: 4 })).toBe("Page 2 sur 4");
+    expect(french.t("support.messageLengthError", { max: 500 })).toBe("Le message doit contenir entre 1 et 500 graphèmes.");
+    expect(rawCatalogues.fr["support.messageLengthError"]).toContain("{max}");
+    expect(rawCatalogues.fr["support.modaSupport"]).toBe("Moda Support");
+    expect(rawCatalogues["pt-BR"]["support.contactHeading"]).not.toBe(rawCatalogues["pt-PT"]["support.contactHeading"]);
+    expect(rawCatalogues["zh-Hans"]["common.logoAlt"]).not.toBe(rawCatalogues["zh-Hant"]["common.logoAlt"]);
+  });
+
+  it("keeps the exact English source strings from the support manifest", () => {
+    expect(rawCatalogues.en).toMatchObject({
+      "common.logoAlt": "Moda Interact logo",
+      "support.thread": "Support thread",
+      "support.empty": "No messages yet.",
+      "support.paginationLabel": "Support thread pages",
+      "support.previous": "Previous",
+      "support.next": "Next",
+      "support.page": "Page {page} of {totalPages}",
+      "support.contactHeading": "Contact Moda Support",
+      "support.messageLabel": "Message",
+      "support.messageLengthError": "Message must contain between 1 and {max} graphemes.",
+      "support.sending": "Sending...",
+      "support.send": "Send",
+      "support.you": "You",
+      "support.system": "System",
+      "support.modaSupport": "Moda Support",
+      "support.translationUnavailable": "Translation unavailable. Please try again later.",
+      "support.translationProcessing": "Translation is processing.",
+      "support.viewTranslation": "View translation",
+      "support.viewOriginal": "View original",
+      "support.sendFailed": "Unable to send message. Please try again.",
+      "support.unsupportedAction": "That support action is not available.",
+    });
+  });
+
   it("keeps Czech, Danish, and Finnish promotion copy semantic rather than English placeholders", () => {
     for (const locale of ["cs", "da", "fi"] as const) {
       for (const key of [
