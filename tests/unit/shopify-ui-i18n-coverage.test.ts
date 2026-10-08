@@ -37,7 +37,9 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
     ]) {
       expect(supportRouteSource).toContain(`i18n.t("${key}")`);
     }
-    expect(supportRouteSource).toContain('i18n.t("support.page", { page: support.page, totalPages: support.totalPages })');
+    expect(supportRouteSource).toContain('i18n.formatNumber(support.page)');
+    expect(supportRouteSource).toContain('i18n.formatNumber(support.totalPages)');
+    expect(supportRouteSource).toContain('{i18n.formatNumber(graphemeCount)}/{i18n.formatNumber(500)}');
     expect(supportRouteSource).toContain('i18n.t("support.messageLengthError", { max: 500 })');
     expect(supportRouteSource).toContain('<s-page heading={i18n.t("merchantNav.support")}>');
     expect(supportRouteSource).toContain('<p dir="auto">');

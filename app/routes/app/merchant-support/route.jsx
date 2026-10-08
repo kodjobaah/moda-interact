@@ -120,7 +120,10 @@ export default function MerchantSupport() {
           </ol>}
           {support.totalPages > 1 ? <nav className="merchant-support-pagination" aria-label={i18n.t("support.paginationLabel")}>
             {support.page > 1 ? <Link to={`/app/merchant-support?page=${support.page - 1}`}>{i18n.t("support.previous")}</Link> : <span aria-disabled="true">{i18n.t("support.previous")}</span>}
-            <span>{i18n.t("support.page", { page: support.page, totalPages: support.totalPages })}</span>
+            <span>{i18n.t("support.page", {
+              page: i18n.formatNumber(support.page),
+              totalPages: i18n.formatNumber(support.totalPages),
+            })}</span>
             {support.page < support.totalPages ? <Link to={`/app/merchant-support?page=${support.page + 1}`}>{i18n.t("support.next")}</Link> : <span aria-disabled="true">{i18n.t("support.next")}</span>}
           </nav> : null}
         </s-section>
@@ -128,7 +131,7 @@ export default function MerchantSupport() {
           <form className="merchant-support-compose" onSubmit={submitMessage} noValidate>
             <label htmlFor="message-body">{i18n.t("support.messageLabel")}</label>
             <textarea id="message-body" value={body} onChange={(event) => setBody(event.target.value)} aria-describedby="message-count message-error" required />
-            <div id="message-count" aria-live="polite">{graphemeCount}/500</div>
+            <div id="message-count" aria-live="polite">{i18n.formatNumber(graphemeCount)}/{i18n.formatNumber(500)}</div>
             {validationError || actionError ? <p id="message-error" role="alert">{validationError || actionError}</p> : null}
             <button type="submit" disabled={fetcher.state !== "idle"}>{fetcher.state === "submitting" ? i18n.t("support.sending") : i18n.t("support.send")}</button>
           </form>
