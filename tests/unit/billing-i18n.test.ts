@@ -6,6 +6,25 @@ import { createMerchantI18n } from "../../app/utils/merchant-i18n";
 const localeDirectory = new URL("../../app/i18n/locales/", import.meta.url);
 
 describe("ARCH-007 billing translations", () => {
+  const auditedLegacyBillingKeys = [
+    "billing.title",
+    "billing.currentPlan",
+    "billing.status",
+    "billing.freeAllowance",
+    "billing.lifetimeFreeAllowance",
+    "billing.paidIncludedAllowance",
+    "billing.paidUsage",
+    "billing.currentPeriod",
+    "billing.trialEnds",
+    "billing.cancelAtPeriodEnd",
+    "billing.viewPlans",
+    "billing.upgradePlan",
+    "billing.changePlan",
+    "billing.unknownPlan",
+    "billing.configurationUnavailable",
+    "billing.configurationUnavailableDescription",
+    "billingCommerce.promotionalCredits",
+  ];
   const taskKeys = [
     "billing.lifetimeFreeAllowance",
     "billing.paidIncludedAllowance",
@@ -48,6 +67,24 @@ describe("ARCH-007 billing translations", () => {
       expect(Object.keys(locale).filter((key) => key.startsWith("billing."))).toEqual(
         expect.arrayContaining(billingKeys),
       );
+    }
+  });
+
+  it("does not regress the audited legacy billing block to English placeholders", () => {
+    const english = catalogues.en as Record<string, string>;
+
+    for (const [locale, rawCatalogue] of Object.entries(catalogues)) {
+      if (locale === "en") continue;
+      const catalogue = rawCatalogue as Record<string, string>;
+      for (const key of auditedLegacyBillingKeys) {
+        expect(catalogue[key], `${locale}:${key}`).not.toBe(english[key]);
+      }
+    }
+
+    for (const locale of ["pt-BR", "pt-PT"] as const) {
+      const catalogue = catalogues[locale] as Record<string, string>;
+      expect(catalogue["onboarding.topups.description"]).not.toBe(english["onboarding.topups.description"]);
+      expect(catalogue["onboarding.cta.description"]).not.toBe(english["onboarding.cta.description"]);
     }
   });
 
