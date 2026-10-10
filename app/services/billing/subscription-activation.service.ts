@@ -295,7 +295,8 @@ export class SubscriptionActivationService {
       const counterConflict = periodCounter && (
         periodCounter.shopId !== shopId ||
         periodCounter.billingPeriodId !== billingPeriod!.id ||
-        periodCounter.grantedQuantity !== allowance
+        periodCounter.grantedQuantity !== allowance ||
+        periodCounter.currentAllowanceQuantity !== null
       );
       const lifetimeCounter = await transaction.shopEntitlementCounter.findUnique({
         where: { shopId_counter: { shopId, counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS } },
@@ -344,6 +345,7 @@ export class SubscriptionActivationService {
             billingPeriodId: committedPeriod.id,
             counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
             grantedQuantity: allowance!,
+            currentAllowanceQuantity: null,
           },
         });
       }

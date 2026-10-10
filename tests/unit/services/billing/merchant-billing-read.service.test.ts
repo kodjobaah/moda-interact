@@ -103,6 +103,7 @@ function createService(options: {
           billingPeriodId: "period-1",
           counter: "INCLUDED_RECOVERY_CREDITS",
           grantedQuantity: 100,
+          currentAllowanceQuantity: null,
           committedQuantity: 12,
           reservedQuantity: 8,
           forfeitedQuantity: 5,
@@ -130,8 +131,13 @@ function createService(options: {
         usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", adminLabel: "Credit pack", creditsGrantedPerUnit: 100 }],
       }
     : options.catalogue);
-  const findLatestPurchase = vi.fn().mockResolvedValue(options.latestPurchase ?? null);
-  const findUnresolvedPurchases = vi.fn().mockResolvedValue(options.unresolvedPurchases ?? []);
+  const findLatestPurchase = vi.fn().mockImplementation(async ({ where }: { where: { provider?: string } }) => {
+    const row = options.latestPurchase ?? null;
+    return row && (!where.provider || row.provider === where.provider) ? row : null;
+  });
+  const findUnresolvedPurchases = vi.fn().mockImplementation(async ({ where }: { where: { provider?: string } }) =>
+    (options.unresolvedPurchases ?? []).filter((row) => !where.provider || row.provider === where.provider),
+  );
   const database = {
     shop: {
       findUnique: vi.fn().mockResolvedValue(options.shop === undefined
@@ -297,18 +303,22 @@ describe("MerchantBillingReadService", () => {
     };
     const latestPurchase = {
       id: "purchase-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       creditsGranted: 100,
       currentAmount: 2,
       reservedAmount: 2,
       shopifyEventHandleSnapshot: "credit-pack-meter",
+      usageEventId: "usage-1",
       createdAt: new Date("2026-09-10T00:00:00.000Z"),
       activatedAt: null,
       usageEvent: { shopifyReportState: "REPORTED" },
     };
     const unresolvedPurchases = [{
       id: "purchase-1",
+      provider: "SHOPIFY",
       shopifyEventHandleSnapshot: "credit-pack-meter",
+      usageEventId: "usage-1",
       creditsGranted: 100,
       createdAt: latestPurchase.createdAt,
       usageEvent: { shopifyReportState: "REPORTED" },
@@ -331,4 +341,78 @@ describe("MerchantBillingReadService", () => {
       unresolvedPurchases: [{ eventHandle: "credit-pack-meter", usageReportState: "REPORTED" }],
     });
   });
+
+  it("isolates top-up summaries to Shopify purchases", async () => {
+    const { service, database } = createService();
+
+    await service.getMerchantBillingState(shopId);
+
+    expect(database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { shopId, provider: "SHOPIFY" },
+    }));
+    expect(database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { shopId, provider: "SHOPIFY", status: "REQUESTED" },
+    }));
+  });
+
+  it("excludes synthetic Woo latest and pending purchases from Shopify summaries", async () => {
+    const woo = {
+      id: "woo-purchase",
+      provider: "WOOCOMMERCE",
+      status: "REQUESTED",
+      creditsGranted: 50,
+      currentAmount: 50,
+      reservedAmount: 0,
+      shopifyEventHandleSnapshot: null,
+      usageEventId: null,
+      createdAt: new Date("2026-09-10T00:00:00.000Z"),
+      activatedAt: null,
+      usageEvent: null,
+    };
+    const { service } = createService({
+      latestPurchase: woo,
+      unresolvedPurchases: [woo],
+    });
+
+    const result = await service.getMerchantBillingState(shopId);
+
+    expect(result.latestPurchase).toBeNull();
+    expect(result.unresolvedPurchases).toEqual([]);
+  });
+
+  it("fails closed when a Shopify purchase summary is missing required evidence", async () => {
+    const { service } = createService({
+      latestPurchase: {
+        id: "purchase-invalid",
+        provider: "SHOPIFY",
+        status: "ACTIVE",
+        creditsGranted: 100,
+        currentAmount: 100,
+        reservedAmount: 0,
+        shopifyEventHandleSnapshot: null,
+        usageEventId: "usage-invalid",
+        createdAt: new Date("2026-09-10T00:00:00.000Z"),
+        activatedAt: new Date("2026-09-10T00:00:01.000Z"),
+        usageEvent: { shopifyReportState: "REPORTED" },
+      },
+    });
+
+    await expect(service.getMerchantBillingState(shopId)).rejects.toThrow(
+      "Shopify recovery credit purchase evidence is invalid.",
+    );
+  });
+
+  it("fails closed when a Shopify paid counter carries Woo current-allowance state", async () => {
+    const { service } = createService({
+      planKind: "PAID_METERED",
+      periodCounterOverrides: { currentAllowanceQuantity: 100 },
+      shop: { id: shopId, shopifyShopId: null },
+    });
+
+    const result = await service.getMerchantBillingState(shopId);
+
+    expect(result.paidIncluded).toBeNull();
+    expect(result.paidConfigurationUnavailable).toBe(true);
+  });
+
 });

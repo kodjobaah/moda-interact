@@ -15,6 +15,7 @@ const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
 const MAX_BATCH_SIZE = 20;
 const MAX_RETRIES = 3;
+const SHOPIFY_BILLING_PROVIDER = "SHOPIFY";
 const LIVE_REFUND_STATUSES = [
   RecoveryCreditRefundStatus.REQUESTED,
   RecoveryCreditRefundStatus.PROVIDER_ACTION_REQUIRED,
@@ -26,6 +27,7 @@ type Database = PrismaClient;
 type PurchaseRow = {
   id: string;
   shopId: string;
+  provider: string;
   status: RecoveryCreditPurchaseStatus;
   createdAt: Date;
   activatedAt: Date | null;
@@ -33,10 +35,10 @@ type PurchaseRow = {
   currentAmount: number;
   reservedAmount: number;
   version: number;
-  billingPeriodId: string;
-  shopifyPlanHandleSnapshot: string;
-  shopifyEventHandleSnapshot: string;
-  providerSubscriptionIdSnapshot: string;
+  billingPeriodId: string | null;
+  shopifyPlanHandleSnapshot: string | null;
+  shopifyEventHandleSnapshot: string | null;
+  providerSubscriptionIdSnapshot: string | null;
   plan?: { name: string; shopifyPlanHandle: string };
   providerPurchaseAmount: unknown;
   providerPurchaseCurrency: string | null;
@@ -51,6 +53,50 @@ type PurchaseRow = {
     providerActionKind: string | null;
   }>;
 };
+
+type ShopifyPurchaseRow = PurchaseRow & {
+  provider: "SHOPIFY";
+  billingPeriodId: string;
+  shopifyPlanHandleSnapshot: string;
+  shopifyEventHandleSnapshot: string;
+  providerSubscriptionIdSnapshot: string;
+};
+
+type ShopifyRefundPurchaseRow = ShopifyPurchaseRow & {
+  providerPurchaseCurrency: string;
+};
+
+function nonBlank(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function requireShopifyPurchaseEvidence<T extends PurchaseRow>(
+  purchase: T,
+): T & ShopifyPurchaseRow {
+  if (
+    purchase.provider !== SHOPIFY_BILLING_PROVIDER ||
+    !nonBlank(purchase.billingPeriodId) ||
+    !nonBlank(purchase.shopifyPlanHandleSnapshot) ||
+    !nonBlank(purchase.shopifyEventHandleSnapshot) ||
+    !nonBlank(purchase.providerSubscriptionIdSnapshot)
+  ) {
+    throw new Error("Shopify recovery credit purchase evidence is invalid.");
+  }
+  return purchase as T & ShopifyPurchaseRow;
+}
+
+function hasShopifyRefundEvidence(
+  purchase: PurchaseRow,
+): purchase is ShopifyRefundPurchaseRow {
+  return (
+    purchase.provider === SHOPIFY_BILLING_PROVIDER &&
+    nonBlank(purchase.billingPeriodId) &&
+    nonBlank(purchase.shopifyPlanHandleSnapshot) &&
+    nonBlank(purchase.shopifyEventHandleSnapshot) &&
+    nonBlank(purchase.providerSubscriptionIdSnapshot) &&
+    nonBlank(purchase.providerPurchaseCurrency)
+  );
+}
 
 export type PurchaseHistoryItem = {
   id: string;
@@ -179,7 +225,7 @@ function refundSummary(
 }
 
 function historyItem(
-  purchase: PurchaseRow,
+  purchase: ShopifyPurchaseRow,
   refundEligible: boolean | null = null,
   refundUnavailableReason: PurchaseHistoryItem["refundUnavailableReason"] = null,
 ): PurchaseHistoryItem {
@@ -297,6 +343,7 @@ export class RecoveryCreditPurchaseManagementService {
     const size = pageSize(input.pageSize);
     const where: Prisma.RecoveryCreditPurchaseWhereInput = {
       shopId: input.shopId,
+      provider: SHOPIFY_BILLING_PROVIDER,
       ...(input.status ? { status: input.status } : {}),
     };
     const findPurchases = (pageToRead: number) =>
@@ -308,6 +355,7 @@ export class RecoveryCreditPurchaseManagementService {
         include: {
           plan: { select: { name: true, shopifyPlanHandle: true } },
           refunds: {
+            where: { provider: SHOPIFY_BILLING_PROVIDER },
             orderBy: { createdAt: "desc" },
             select: {
               status: true,
@@ -336,17 +384,18 @@ export class RecoveryCreditPurchaseManagementService {
       total,
       purchases: await Promise.all(
         purchases.map(async (purchase) => {
+          const shopifyPurchase = requireShopifyPurchaseEvidence(purchase);
           if (
             !input.shopifyShopId ||
-            purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE
+            shopifyPurchase.status !== RecoveryCreditPurchaseStatus.ACTIVE
           ) {
-            return historyItem(purchase);
+            return historyItem(shopifyPurchase);
           }
 
           const providerAmount =
-            purchase.providerPurchaseAmount == null
+            shopifyPurchase.providerPurchaseAmount == null
               ? null
-              : Number(purchase.providerPurchaseAmount);
+              : Number(shopifyPurchase.providerPurchaseAmount);
           const zeroValueDevelopmentPurchase =
             providerAmount === 0 && input.shopifyPartnerDevelopment === true;
           const monetaryPurchase =
@@ -355,13 +404,13 @@ export class RecoveryCreditPurchaseManagementService {
             providerAmount > 0;
 
           if (!monetaryPurchase && !zeroValueDevelopmentPurchase) {
-            return historyItem(purchase, false, "ZERO_VALUE");
+            return historyItem(shopifyPurchase, false, "ZERO_VALUE");
           }
 
           const currentProviderContext =
-            await this.isCurrentProviderContext(purchase, input.shopifyShopId);
+            await this.isCurrentProviderContext(shopifyPurchase, input.shopifyShopId);
           return historyItem(
-            purchase,
+            shopifyPurchase,
             currentProviderContext,
             currentProviderContext ? null : "PROVIDER_CONTEXT",
           );
@@ -399,17 +448,24 @@ export class RecoveryCreditPurchaseManagementService {
         return await this.database.$transaction(
           async (transaction) => {
             const purchase =
-              await transaction.recoveryCreditPurchase.findUnique({
-                where: { id: input.purchaseId },
+              await transaction.recoveryCreditPurchase.findFirst({
+                where: {
+                  id: input.purchaseId,
+                  shopId: input.shopId,
+                  provider: SHOPIFY_BILLING_PROVIDER,
+                },
                 include: {
                   refunds: {
-                    where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                    where: {
+                      provider: SHOPIFY_BILLING_PROVIDER,
+                      status: { in: [...LIVE_REFUND_STATUSES] },
+                    },
                     orderBy: { createdAt: "desc" },
                     take: 1,
                   },
                 },
               });
-            if (!purchase || purchase.shopId !== input.shopId)
+            if (!purchase)
               return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
             const refund = purchase.refunds[0];
             if (
@@ -432,6 +488,7 @@ export class RecoveryCreditPurchaseManagementService {
                   where: {
                     id: refund.id,
                     purchaseId: purchase.id,
+                    provider: SHOPIFY_BILLING_PROVIDER,
                     version: refund.version,
                     status: RecoveryCreditRefundStatus.REQUESTED,
                     providerReference: null,
@@ -449,6 +506,7 @@ export class RecoveryCreditPurchaseManagementService {
                   where: {
                     id: purchase.id,
                     shopId: input.shopId,
+                    provider: SHOPIFY_BILLING_PROVIDER,
                     status: RecoveryCreditPurchaseStatus.WITHDRAWN,
                     version: purchase.version,
                     currentAmount: 0,
@@ -479,6 +537,7 @@ export class RecoveryCreditPurchaseManagementService {
                 where: {
                   id: refund.id,
                   purchaseId: purchase.id,
+                  provider: SHOPIFY_BILLING_PROVIDER,
                   version: refund.version,
                   status: RecoveryCreditRefundStatus.REQUESTED,
                   providerReference: null,
@@ -496,6 +555,7 @@ export class RecoveryCreditPurchaseManagementService {
                 where: {
                   id: purchase.id,
                   shopId: input.shopId,
+                  provider: SHOPIFY_BILLING_PROVIDER,
                   status: RecoveryCreditPurchaseStatus.WITHDRAWN,
                   version: purchase.version,
                   currentAmount: purchase.currentAmount,
@@ -563,19 +623,24 @@ export class RecoveryCreditPurchaseManagementService {
         return await this.database.$transaction(
           async (transaction) => {
             const purchase =
-              await transaction.recoveryCreditPurchase.findUnique({
-                where: { id: input.purchaseId },
+              await transaction.recoveryCreditPurchase.findFirst({
+                where: {
+                  id: input.purchaseId,
+                  shopId: input.shopId,
+                  provider: SHOPIFY_BILLING_PROVIDER,
+                },
                 include: {
                   refunds: {
-                    where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                    where: {
+                      provider: SHOPIFY_BILLING_PROVIDER,
+                      status: { in: [...LIVE_REFUND_STATUSES] },
+                    },
                     orderBy: { createdAt: "desc" },
                     take: 1,
                   },
                 },
               });
             if (!purchase)
-              return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
-            if (purchase.shopId !== input.shopId)
               return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
             const liveRefund = purchase.refunds[0];
             if (liveRefund) {
@@ -626,6 +691,15 @@ export class RecoveryCreditPurchaseManagementService {
               purchase.currentAmount - purchase.reservedAmount,
               0,
             );
+            if (!hasShopifyRefundEvidence(purchase)) {
+              return {
+                purchaseId: input.purchaseId,
+                code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT",
+                currentAmount: purchase.currentAmount,
+                reservedAmount: purchase.reservedAmount,
+                availableAmount,
+              };
+            }
             if (availableAmount < 1)
               return {
                 purchaseId: input.purchaseId,
@@ -688,6 +762,7 @@ export class RecoveryCreditPurchaseManagementService {
               data: {
                 shopId: input.shopId,
                 purchaseId: purchase.id,
+                provider: SHOPIFY_BILLING_PROVIDER,
                 source: "MERCHANT_UI",
                 requestedByShopifyUserId: input.shopifyUserId ?? null,
                 purchaseCreditsGrantedSnapshot: purchase.creditsGranted,
@@ -718,6 +793,7 @@ export class RecoveryCreditPurchaseManagementService {
                 where: {
                   id: purchase.id,
                   shopId: input.shopId,
+                  provider: SHOPIFY_BILLING_PROVIDER,
                   status: RecoveryCreditPurchaseStatus.ACTIVE,
                   version: purchase.version,
                   currentAmount: purchase.currentAmount,
@@ -759,8 +835,10 @@ export class RecoveryCreditPurchaseManagementService {
       } catch (error) {
         if (retryable(error) && attempt < MAX_RETRIES - 1) continue;
         if (isUniqueConflict(error)) {
-          const existing = await this.database.recoveryCreditRefund.findUnique({
+          const existing = await this.database.recoveryCreditRefund.findFirst({
             where: {
+              shopId: input.shopId,
+              provider: SHOPIFY_BILLING_PROVIDER,
               requestKey: requestKey(
                 input.shopId,
                 input.requestId,
@@ -771,7 +849,10 @@ export class RecoveryCreditPurchaseManagementService {
               purchase: {
                 include: {
                   refunds: {
-                    where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                    where: {
+                      provider: SHOPIFY_BILLING_PROVIDER,
+                      status: { in: [...LIVE_REFUND_STATUSES] },
+                    },
                     orderBy: { createdAt: "desc" },
                     take: 1,
                   },
@@ -779,16 +860,27 @@ export class RecoveryCreditPurchaseManagementService {
               },
             },
           });
-          if (existing?.purchase?.shopId === input.shopId) {
+          if (
+            existing?.provider === SHOPIFY_BILLING_PROVIDER &&
+            existing.purchase?.shopId === input.shopId &&
+            existing.purchase.provider === SHOPIFY_BILLING_PROVIDER
+          ) {
             return outcomeForPurchase(existing.purchase as PurchaseRow);
           }
 
           const purchase = await this.database.recoveryCreditPurchase.findFirst(
             {
-              where: { id: input.purchaseId, shopId: input.shopId },
+              where: {
+                id: input.purchaseId,
+                shopId: input.shopId,
+                provider: SHOPIFY_BILLING_PROVIDER,
+              },
               include: {
                 refunds: {
-                  where: { status: { in: [...LIVE_REFUND_STATUSES] } },
+                  where: {
+                    provider: SHOPIFY_BILLING_PROVIDER,
+                    status: { in: [...LIVE_REFUND_STATUSES] },
+                  },
                   orderBy: { createdAt: "desc" },
                   take: 1,
                 },

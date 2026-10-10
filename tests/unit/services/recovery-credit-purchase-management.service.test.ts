@@ -17,6 +17,7 @@ function purchase(
   return {
     id,
     shopId,
+    provider: "SHOPIFY",
     status,
     createdAt: date,
     activatedAt: date,
@@ -73,6 +74,14 @@ function database(purchases: any[]) {
   const transaction: any = {
     recoveryCreditPurchase: {
       findUnique: vi.fn(async ({ where }: any) => rows.get(where.id) ?? null),
+      findFirst: vi.fn(async ({ where }: any) => {
+        const row = rows.get(where.id);
+        return row &&
+          (!where.shopId || row.shopId === where.shopId) &&
+          (!where.provider || row.provider === where.provider)
+          ? row
+          : null;
+      }),
       updateMany: vi.fn(async ({ where, data }: any) => {
         const row = rows.get(where.id);
         if (
@@ -80,7 +89,8 @@ function database(purchases: any[]) {
           row.version !== where.version ||
           row.status !== where.status ||
           row.currentAmount !== where.currentAmount ||
-          row.reservedAmount !== where.reservedAmount
+          row.reservedAmount !== where.reservedAmount ||
+          (where.provider && row.provider !== where.provider)
         )
           return { count: 0 };
         Object.assign(row, {
@@ -114,6 +124,7 @@ function database(purchases: any[]) {
   };
   const matches = (row: any, where: any) =>
     row.shopId === where.shopId &&
+    (!where.provider || row.provider === where.provider) &&
     (!where.status || row.status === where.status);
   return {
     database: {
@@ -129,15 +140,20 @@ function database(purchases: any[]) {
         ),
         findFirst: vi.fn(async ({ where }: any) => {
           const row = rows.get(where.id);
-          return row?.shopId === where.shopId ? row : null;
+          return row?.shopId === where.shopId &&
+            (!where.provider || row.provider === where.provider)
+            ? row
+            : null;
         }),
       },
       recoveryCreditRefund: {
-        findUnique: vi.fn(async ({ where }: any) => {
+        findFirst: vi.fn(async ({ where }: any) => {
           const refund = refunds.get(where.requestKey);
-          return refund
-            ? { ...refund, purchase: rows.get(refund.purchaseId) }
-            : null;
+          if (!refund) return null;
+          const purchaseRow = rows.get(refund.purchaseId);
+          if (where.shopId && refund.shopId !== where.shopId) return null;
+          if (where.provider && refund.provider !== where.provider) return null;
+          return { ...refund, purchase: purchaseRow };
         }),
       },
       shop: {
@@ -157,6 +173,7 @@ function database(purchases: any[]) {
       $transaction: vi.fn(async (callback: any) => callback(transaction)),
     } as any,
     rows,
+    refunds,
     aggregate,
     transaction,
   };
@@ -175,8 +192,26 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(
       fixture.database.recoveryCreditPurchase.findMany,
     ).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { shopId: "shop-1" }, take: 50 }),
+      expect.objectContaining({ where: { shopId: "shop-1", provider: "SHOPIFY" }, take: 50 }),
     );
+  });
+
+  it("excludes Woo purchases from Shopify purchase history", async () => {
+    const shopify = purchase("shopify");
+    const woo = purchase("woo");
+    woo.provider = "WOOCOMMERCE";
+    woo.billingPeriodId = null;
+    woo.shopifyPlanHandleSnapshot = null;
+    woo.shopifyEventHandleSnapshot = null;
+    woo.providerSubscriptionIdSnapshot = null;
+    const fixture = database([shopify, woo]);
+
+    const result = await new RecoveryCreditPurchaseManagementService(
+      fixture.database,
+    ).listPurchaseHistory({ shopId: "shop-1" });
+
+    expect(result.total).toBe(1);
+    expect(result.purchases.map(({ id }) => id)).toEqual(["shopify"]);
   });
 
   it("marks zero-value purchases refundable only when Shopify proves a partner development store", async () => {
@@ -211,6 +246,17 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     });
   });
 
+  it("fails closed when a Shopify history row is missing required provider evidence", async () => {
+    const invalid = purchase("invalid");
+    invalid.shopifyEventHandleSnapshot = null;
+    const fixture = database([invalid]);
+
+    await expect(
+      new RecoveryCreditPurchaseManagementService(fixture.database)
+        .listPurchaseHistory({ shopId: "shop-1" }),
+    ).rejects.toThrow("Shopify recovery credit purchase evidence is invalid");
+  });
+
   it("filters status before pagination with one shared shop predicate", async () => {
     const fixture = database([
       purchase("purchase-5", "shop-1", "COMPLETED"),
@@ -237,7 +283,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     ).toBe(true);
     expect(active.purchases.map((row) => row.id)).not.toContain("other");
     expect(fixture.database.recoveryCreditPurchase.count).toHaveBeenCalledWith({
-      where: { shopId: "shop-1", status: RecoveryCreditPurchaseStatus.ACTIVE },
+      where: { shopId: "shop-1", provider: "SHOPIFY", status: RecoveryCreditPurchaseStatus.ACTIVE },
     });
     expect(
       fixture.database.recoveryCreditPurchase.findMany,
@@ -245,6 +291,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       expect.objectContaining({
         where: {
           shopId: "shop-1",
+          provider: "SHOPIFY",
           status: RecoveryCreditPurchaseStatus.ACTIVE,
         },
         take: 2,
@@ -254,11 +301,11 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     await service.listPurchaseHistory({ shopId: "shop-1" });
     expect(
       fixture.database.recoveryCreditPurchase.count,
-    ).toHaveBeenLastCalledWith({ where: { shopId: "shop-1" } });
+    ).toHaveBeenLastCalledWith({ where: { shopId: "shop-1", provider: "SHOPIFY" } });
     expect(
       fixture.database.recoveryCreditPurchase.findMany,
     ).toHaveBeenLastCalledWith(
-      expect.objectContaining({ where: { shopId: "shop-1" } }),
+      expect.objectContaining({ where: { shopId: "shop-1", provider: "SHOPIFY" } }),
     );
   });
 
@@ -285,7 +332,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       fixture.database.recoveryCreditPurchase.findMany,
     ).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { shopId: "shop-1", status: RecoveryCreditPurchaseStatus.ACTIVE },
+        where: { shopId: "shop-1", provider: "SHOPIFY", status: RecoveryCreditPurchaseStatus.ACTIVE },
         skip: 4,
         take: 2,
       }),
@@ -359,7 +406,12 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     ).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          provider: "SHOPIFY",
           availableAmountAtRequestSnapshot: 2,
+          billingPeriodIdSnapshot: "period-1",
+          providerSubscriptionIdSnapshot: "sub-1",
+          planHandleSnapshot: "growth",
+          eventHandleSnapshot: "pack-meter",
           source: "MERCHANT_UI",
         }),
       }),
@@ -580,6 +632,31 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     );
   });
 
+  it("treats a Woo purchase as unavailable to the Shopify refund flow", async () => {
+    const woo = purchase("one");
+    woo.provider = "WOOCOMMERCE";
+    woo.billingPeriodId = null;
+    woo.shopifyPlanHandleSnapshot = null;
+    woo.shopifyEventHandleSnapshot = null;
+    woo.providerSubscriptionIdSnapshot = null;
+    const fixture = database([woo]);
+    const provider = { getActiveSubscription: vi.fn() };
+
+    await expect(
+      new RecoveryCreditPurchaseManagementService(
+        fixture.database,
+        provider as any,
+      ).requestRefund({
+        shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
+        purchaseId: "one",
+        requestId: "request-woo",
+      }),
+    ).resolves.toEqual({ purchaseId: "one", code: "NOT_FOUND" });
+    expect(provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+  });
+
   it("denies cross-shop mutation without revealing whether the purchase exists", async () => {
     const fixture = database([purchase("one", "shop-2")]);
     const result = await new RecoveryCreditPurchaseManagementService(
@@ -699,13 +776,67 @@ describe("RecoveryCreditPurchaseManagementService", () => {
         requestId: "request-1",
       }),
     ).resolves.toMatchObject({ code: "REQUESTED", availableAmount: 2 });
-    expect(fixture.database.recoveryCreditRefund.findUnique).toHaveBeenCalled();
+    expect(fixture.database.recoveryCreditRefund.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ shopId: "shop-1", provider: "SHOPIFY" }),
+      }),
+    );
+  });
+
+  it("does not recover a P2002 race from a Woo refund or purchase", async () => {
+    const woo = purchase("woo");
+    woo.provider = "WOOCOMMERCE";
+    woo.billingPeriodId = null;
+    woo.shopifyPlanHandleSnapshot = null;
+    woo.shopifyEventHandleSnapshot = null;
+    woo.providerSubscriptionIdSnapshot = null;
+    const fixture = database([woo]);
+    const wooRefund = {
+      id: "woo-refund",
+      shopId: "shop-1",
+      purchaseId: "woo",
+      provider: "WOOCOMMERCE",
+      requestKey: "merchant-ui:recovery-credit-refund:shop-1:request-woo:woo",
+      status: "REQUESTED",
+      version: 0,
+      providerReference: null,
+      providerActionKind: null,
+      providerConfirmedAt: null,
+    };
+    fixture.refunds.set(wooRefund.requestKey, wooRefund);
+    fixture.database.$transaction = vi.fn().mockRejectedValue(
+      new (await import("@prisma/client")).Prisma.PrismaClientKnownRequestError(
+        "duplicate cross-provider refund",
+        { code: "P2002", clientVersion: "6" },
+      ),
+    );
+
+    await expect(
+      new RecoveryCreditPurchaseManagementService(fixture.database).requestRefund({
+        shopId: "shop-1",
+        shopifyShopId: "gid://shopify/Shop/1",
+        purchaseId: "woo",
+        requestId: "request-woo",
+      }),
+    ).rejects.toMatchObject({ code: "P2002" });
+
+    expect(fixture.database.recoveryCreditRefund.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ shopId: "shop-1", provider: "SHOPIFY" }),
+      }),
+    );
+    expect(fixture.database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "woo", shopId: "shop-1", provider: "SHOPIFY" },
+      }),
+    );
   });
 
   it("resolves a different-request live-refund uniqueness conflict from persisted purchase state", async () => {
     const fixture = database([purchase("one")]);
     const winningRefund = {
       id: "refund-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       version: 0,
       providerReference: null,
@@ -747,7 +878,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(
       fixture.database.recoveryCreditPurchase.findFirst,
     ).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: "one", shopId: "shop-1" } }),
+      expect.objectContaining({ where: { id: "one", shopId: "shop-1", provider: "SHOPIFY" } }),
     );
   });
 
@@ -782,10 +913,32 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     expect(fixture.database.$transaction).toHaveBeenCalledTimes(2);
   });
 
+  it("does not reactivate a Woo purchase or refund from the Shopify flow", async () => {
+    const woo = purchase("woo", "shop-1", "WITHDRAWN", 3, 1);
+    woo.provider = "WOOCOMMERCE";
+    woo.refunds.push({
+      id: "woo-refund",
+      provider: "WOOCOMMERCE",
+      status: "REQUESTED",
+      version: 0,
+      providerReference: null,
+      providerActionKind: null,
+      providerConfirmedAt: null,
+    });
+    const fixture = database([woo]);
+
+    await expect(
+      new RecoveryCreditPurchaseManagementService(fixture.database)
+        .reactivateRefund({ shopId: "shop-1", purchaseId: "woo" }),
+    ).resolves.toEqual({ purchaseId: "woo", code: "NOT_FOUND" });
+    expect(fixture.transaction.recoveryCreditRefund.updateMany).not.toHaveBeenCalled();
+  });
+
   it("reactivates a pre-provider refund and releases only its held available amount", async () => {
     const fixture = database([purchase("one", "shop-1", "WITHDRAWN", 3, 1)]);
     fixture.rows.get("one").refunds.push({
       id: "refund-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       version: 0,
       providerReference: null,
@@ -808,6 +961,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     const locked = database([purchase("locked", "shop-1", "WITHDRAWN", 2, 0)]);
     locked.rows.get("locked").refunds.push({
       id: "refund-1",
+      provider: "SHOPIFY",
       status: "PROVIDER_ACTION_REQUIRED",
       version: 0,
       providerReference: "ref",
@@ -826,6 +980,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     const empty = database([purchase("empty", "shop-1", "WITHDRAWN", 0, 0)]);
     empty.rows.get("empty").refunds.push({
       id: "refund-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       version: 0,
       providerReference: null,

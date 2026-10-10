@@ -140,6 +140,7 @@ export async function ensureMappedCurrentBillingPeriodProjection(
           committedQuantity: 0,
           reservedQuantity: 0,
           forfeitedQuantity: 0,
+          currentAllowanceQuantity: null,
         },
       });
     }
@@ -201,6 +202,7 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     !isSafeNonNegativeInteger(includedCounter.committedQuantity) ||
     !isSafeNonNegativeInteger(includedCounter.reservedQuantity) ||
     !isSafeNonNegativeInteger(includedCounter.forfeitedQuantity) ||
+    includedCounter.currentAllowanceQuantity !== null ||
     includedCounter.committedQuantity + includedCounter.reservedQuantity + includedCounter.forfeitedQuantity > expectedGrant
   )) {
     return {
@@ -238,6 +240,7 @@ export async function ensureMappedCurrentBillingPeriodProjection(
         committedQuantity: 0,
         reservedQuantity: 0,
         forfeitedQuantity: 0,
+        currentAllowanceQuantity: null,
       },
     });
     counterRepaired = true;

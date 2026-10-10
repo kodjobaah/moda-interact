@@ -98,6 +98,7 @@ describe("billing-period projection", () => {
         billingPeriodId: "period-created",
         counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
         grantedQuantity: 25,
+        currentAllowanceQuantity: null,
         committedQuantity: 0,
         reservedQuantity: 0,
         forfeitedQuantity: 0,
@@ -141,7 +142,11 @@ describe("billing-period projection", () => {
     expect(fixture.billingPeriod.update).toHaveBeenCalledTimes(1);
     expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledTimes(1);
     expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ billingPeriodId: "period-1", grantedQuantity: 25 }),
+      data: expect.objectContaining({
+        billingPeriodId: "period-1",
+        grantedQuantity: 25,
+        currentAllowanceQuantity: null,
+      }),
     });
   });
 
@@ -161,6 +166,58 @@ describe("billing-period projection", () => {
     const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
 
     expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "FREE_INCLUDED_COUNTER_PRESENT" });
+    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
+  });
+
+  it("accepts a Shopify paid counter only when current allowance remains unset", async () => {
+    const paidPeriod = existingPeriod({
+      planId: "paid-plan",
+      shopifyPlanHandleSnapshot: "growth-handle",
+      planNameSnapshot: "Growth",
+      planKindSnapshot: BillingPlanKind.PAID_METERED,
+      includedRecoveryCreditsGranted: 25,
+    });
+    const fixture = createTransaction(paidPeriod, {
+      shopId: "shop-1",
+      grantedQuantity: 25,
+      currentAllowanceQuantity: null,
+      committedQuantity: 10,
+      reservedQuantity: 5,
+      forfeitedQuantity: 0,
+    });
+
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(paidPlan),
+    );
+
+    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: false });
+    expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+  });
+
+  it("conflicts when Shopify paid counter contains provider-specific current allowance", async () => {
+    const paidPeriod = existingPeriod({
+      planId: "paid-plan",
+      shopifyPlanHandleSnapshot: "growth-handle",
+      planNameSnapshot: "Growth",
+      planKindSnapshot: BillingPlanKind.PAID_METERED,
+      includedRecoveryCreditsGranted: 25,
+    });
+    const fixture = createTransaction(paidPeriod, {
+      shopId: "shop-1",
+      grantedQuantity: 25,
+      currentAllowanceQuantity: 25,
+      committedQuantity: 10,
+      reservedQuantity: 5,
+      forfeitedQuantity: 0,
+    });
+
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(paidPlan),
+    );
+
+    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "PAID_COUNTER_MISMATCH" });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
   });
 

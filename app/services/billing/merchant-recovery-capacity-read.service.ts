@@ -161,6 +161,7 @@ export class MerchantRecoveryCapacityReadService {
       periodCounter.committedQuantity >= 0 &&
       periodCounter.reservedQuantity >= 0 &&
       periodCounter.forfeitedQuantity >= 0 &&
+      periodCounter.currentAllowanceQuantity === null &&
       periodCounter.committedQuantity + periodCounter.reservedQuantity + periodCounter.forfeitedQuantity <= periodCounter.grantedQuantity
       ? {
           billingPeriodId: paidPeriod.id,

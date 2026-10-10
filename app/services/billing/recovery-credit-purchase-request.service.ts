@@ -28,6 +28,7 @@ import {
 const RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION =
   "Recovery credit packs are temporarily unavailable while the current Shopify billing cycle is being confirmed.";
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
+const SHOPIFY_BILLING_PROVIDER = "SHOPIFY";
 
 function isSafeNonNegativeNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
@@ -111,7 +112,12 @@ export class RecoveryCreditPurchaseRequestService {
       include: { usageEvent: true },
     });
     if (existingPurchase) {
-      if (existingPurchase.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+      if (
+        existingPurchase.shopId !== shopId ||
+        existingPurchase.provider !== SHOPIFY_BILLING_PROVIDER
+      ) {
+        throw new Error("Recovery credit purchase belongs to another shop or billing provider.");
+      }
       return existingPurchase;
     }
 
@@ -213,13 +219,19 @@ export class RecoveryCreditPurchaseRequestService {
         include: { usageEvent: true },
       });
       if (existing) {
-        if (existing.shopId !== shopId) throw new Error("Recovery credit purchase belongs to another shop.");
+        if (
+          existing.shopId !== shopId ||
+          existing.provider !== SHOPIFY_BILLING_PROVIDER
+        ) {
+          throw new Error("Recovery credit purchase belongs to another shop or billing provider.");
+        }
         return existing;
       }
 
       const unresolved = await transaction.recoveryCreditPurchase.findFirst?.({
         where: {
           shopId,
+          provider: SHOPIFY_BILLING_PROVIDER,
           status: "REQUESTED",
           shopifyEventHandleSnapshot: eventHandle,
         },
@@ -264,6 +276,7 @@ export class RecoveryCreditPurchaseRequestService {
           idempotencyKey,
           sourceType: "RECOVERY_CREDIT_PURCHASE",
           sourceId: purchaseId,
+          provider: SHOPIFY_BILLING_PROVIDER,
           shopifyReportState: "PENDING",
           shopifyEventHandle: eventHandle,
           shopifyIdempotencyKey: createShopifyUsageIdempotencyKey(shopId, usageEventId),
@@ -274,6 +287,7 @@ export class RecoveryCreditPurchaseRequestService {
           id: purchaseId,
           shopId,
           planId: currentPlan.id,
+          provider: SHOPIFY_BILLING_PROVIDER,
           billingPeriodId: currentSubscription.billingPeriodId as string,
           shopifyPlanHandleSnapshot: currentPlan.shopifyPlanHandle,
           shopifyEventHandleSnapshot: eventHandle,
@@ -298,8 +312,11 @@ export class RecoveryCreditPurchaseRequestService {
           include: { usageEvent: true },
         });
         if (replay) {
-          if (replay.shopId !== shopId) {
-            throw new Error("Recovery credit purchase belongs to another shop.");
+          if (
+            replay.shopId !== shopId ||
+            replay.provider !== SHOPIFY_BILLING_PROVIDER
+          ) {
+            throw new Error("Recovery credit purchase belongs to another shop or billing provider.");
           }
           return replay;
         }

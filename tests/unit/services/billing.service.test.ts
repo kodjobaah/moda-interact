@@ -1980,6 +1980,8 @@ describe("BillingService subscription projection", () => {
   });
 
   it("schedules the next pre-close reconciliation for a pack-enabled Free cycle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
     const { database, state } = createDatabase({
       plan: {
         id: "free-1",
@@ -1994,11 +1996,15 @@ describe("BillingService subscription projection", () => {
       database as never,
     );
 
-    await service.syncSubscription("shop-1");
+    try {
+      await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({
-      nextReconcileAt: new Date(periodEnd.getTime() - 5 * 60 * 1000),
-    });
+      expect(state.current).toMatchObject({
+        nextReconcileAt: new Date(periodEnd.getTime() - 5 * 60 * 1000),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps pack-enabled Free activation retryable when Shopify omits a cycle", async () => {
@@ -2699,6 +2705,7 @@ describe("BillingService merchant billing state", () => {
         billingPeriodId: "period-1",
         counter: "INCLUDED_RECOVERY_CREDITS",
         grantedQuantity: 100,
+        currentAllowanceQuantity: null,
         committedQuantity: 12,
         reservedQuantity: 8,
         forfeitedQuantity: 5,
@@ -2805,6 +2812,7 @@ describe("BillingService merchant billing state", () => {
               billingPeriodId: "period-1",
               counter: "INCLUDED_RECOVERY_CREDITS",
               grantedQuantity: 100,
+              currentAllowanceQuantity: null,
               committedQuantity: 12,
               reservedQuantity: 8,
               forfeitedQuantity: 5,
@@ -3193,13 +3201,13 @@ describe("BillingService merchant billing state", () => {
       usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 0 } }) },
       recoveryCreditPurchase: {
         findFirst: vi.fn().mockResolvedValue({
-          id: "purchase-1", status: "REQUESTED", creditsGranted: 1, currentAmount: 0, reservedAmount: 0,
-          shopifyEventHandleSnapshot: "bronze-top-up-free", createdAt: new Date("2026-09-01T00:01:00.000Z"), activatedAt: null,
+          id: "purchase-1", provider: "SHOPIFY", status: "REQUESTED", creditsGranted: 1, currentAmount: 0, reservedAmount: 0,
+          shopifyEventHandleSnapshot: "bronze-top-up-free", usageEventId: "usage-1", createdAt: new Date("2026-09-01T00:01:00.000Z"), activatedAt: null,
           usageEvent: { shopifyReportState: "REPORTED" },
         }),
         findMany: vi.fn().mockResolvedValue([{
-          id: "purchase-1", status: "REQUESTED", creditsGranted: 1,
-          shopifyEventHandleSnapshot: "bronze-top-up-free", createdAt: new Date("2026-09-01T00:01:00.000Z"),
+          id: "purchase-1", provider: "SHOPIFY", status: "REQUESTED", creditsGranted: 1,
+          shopifyEventHandleSnapshot: "bronze-top-up-free", usageEventId: "usage-1", createdAt: new Date("2026-09-01T00:01:00.000Z"),
           usageEvent: { shopifyReportState: "REPORTED" },
         }]),
       },
@@ -3321,6 +3329,7 @@ function createRecoveryCapacityDatabase({
       shopId: "shop-1",
       billingPeriodId: "period-1",
       counter: "INCLUDED_RECOVERY_CREDITS",
+      currentAllowanceQuantity: null,
       ...periodCounter,
     }] : [],
     ...period,
@@ -3699,6 +3708,15 @@ describe("BillingService local recovery capacity", () => {
 });
 
 describe("BillingService recovery credit packs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
     it.each([
       ["ACTIVE", new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS - 1)],
       ["DRAINING", new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS)],
@@ -4187,6 +4205,7 @@ describe("BillingService recovery credit packs", () => {
     );
 
     expect(purchases.get("90909090-9090-4909-8909-909090909090")).toMatchObject({
+      provider: "SHOPIFY",
       providerSubscriptionIdSnapshot: expect.any(String),
       providerUsageQuantityBeforeSnapshot: 0.5,
       providerUsageCostBeforeSnapshot: "1.25",
@@ -4200,6 +4219,7 @@ describe("BillingService recovery credit packs", () => {
     purchases.set("previous-purchase", {
       id: "previous-purchase",
       shopId: "shop-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       shopifyEventHandleSnapshot: "credit-pack-meter",
       billingPeriodId: "old-period",
@@ -4255,6 +4275,7 @@ describe("BillingService recovery credit packs", () => {
 
     expect(usageEvents[0]).toMatchObject({
       shopId: "shop-1",
+      provider: "SHOPIFY",
       shopifyEventHandle: "credit-pack-meter",
       quantity: 1,
     });
@@ -4294,6 +4315,7 @@ describe("BillingService recovery credit packs", () => {
     const winningPurchase = {
       id: purchaseId,
       shopId: "shop-1",
+      provider: "SHOPIFY",
       status: "REQUESTED",
       creditsGranted: 100,
       usageEvent: winningUsageEvent,

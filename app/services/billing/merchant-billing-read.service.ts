@@ -28,6 +28,41 @@ type MerchantPricingPlanReader = Pick<
   "readMerchantPricingPlan"
 >;
 
+const SHOPIFY_BILLING_PROVIDER = "SHOPIFY";
+
+function nonBlank(value: string | null | undefined): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function requireShopifyPurchaseSummaryEvidence<
+  T extends {
+    provider: string;
+    shopifyEventHandleSnapshot: string | null;
+    usageEventId: string | null;
+    usageEvent: { shopifyReportState: string } | null;
+  },
+>(purchase: T): T & {
+  provider: "SHOPIFY";
+  shopifyEventHandleSnapshot: string;
+  usageEventId: string;
+  usageEvent: { shopifyReportState: string };
+} {
+  if (
+    purchase.provider !== SHOPIFY_BILLING_PROVIDER ||
+    !nonBlank(purchase.shopifyEventHandleSnapshot) ||
+    !nonBlank(purchase.usageEventId) ||
+    !purchase.usageEvent
+  ) {
+    throw new Error("Shopify recovery credit purchase evidence is invalid.");
+  }
+  return purchase as T & {
+    provider: "SHOPIFY";
+    shopifyEventHandleSnapshot: string;
+    usageEventId: string;
+    usageEvent: { shopifyReportState: string };
+  };
+}
+
 export class MerchantBillingReadService {
   constructor(
     private readonly provider: BillingProvider,
@@ -169,16 +204,26 @@ export class MerchantBillingReadService {
 
     const [latestPurchase, unresolvedPurchases] = await Promise.all([
       this.database.recoveryCreditPurchase?.findFirst?.({
-        where: { shopId },
+        where: { shopId, provider: SHOPIFY_BILLING_PROVIDER },
         orderBy: { createdAt: "desc" },
         include: { usageEvent: true },
       }) ?? Promise.resolve(null),
       this.database.recoveryCreditPurchase?.findMany?.({
-        where: { shopId, status: "REQUESTED" },
+        where: {
+          shopId,
+          provider: SHOPIFY_BILLING_PROVIDER,
+          status: "REQUESTED",
+        },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
         include: { usageEvent: true },
       }) ?? Promise.resolve([]),
     ]);
+    const latestShopifyPurchase = latestPurchase
+      ? requireShopifyPurchaseSummaryEvidence(latestPurchase)
+      : null;
+    const unresolvedShopifyPurchases = unresolvedPurchases.map(
+      requireShopifyPurchaseSummaryEvidence,
+    );
 
     const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
     const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
@@ -208,6 +253,7 @@ export class MerchantBillingReadService {
       isSafeNonNegativeInteger(periodCounter.committedQuantity) &&
       isSafeNonNegativeInteger(periodCounter.reservedQuantity) &&
       isSafeNonNegativeInteger(periodCounter.forfeitedQuantity) &&
+      periodCounter.currentAllowanceQuantity === null &&
       periodCounter.committedQuantity +
         periodCounter.reservedQuantity +
         periodCounter.forfeitedQuantity <= periodCounter.grantedQuantity,
@@ -277,28 +323,28 @@ export class MerchantBillingReadService {
       configured: recoveryCreditOffers.length > 0,
       purchaseEligible: recoveryCreditPackPurchaseEligible,
       unavailableReason,
-      latestPurchase: latestPurchase
+      latestPurchase: latestShopifyPurchase
         ? {
-            id: latestPurchase.id,
-            status: latestPurchase.status,
-            creditsGranted: latestPurchase.creditsGranted,
-            currentAmount: latestPurchase.currentAmount,
-            reservedAmount: latestPurchase.reservedAmount,
-            eventHandle: latestPurchase.shopifyEventHandleSnapshot,
+            id: latestShopifyPurchase.id,
+            status: latestShopifyPurchase.status,
+            creditsGranted: latestShopifyPurchase.creditsGranted,
+            currentAmount: latestShopifyPurchase.currentAmount,
+            reservedAmount: latestShopifyPurchase.reservedAmount,
+            eventHandle: latestShopifyPurchase.shopifyEventHandleSnapshot,
             label: recoveryCreditOffers.find(
-              (offer) => offer.eventHandle === latestPurchase.shopifyEventHandleSnapshot,
-            )?.label ?? latestPurchase.shopifyEventHandleSnapshot,
-            createdAt: latestPurchase.createdAt.toISOString(),
-            activatedAt: latestPurchase.activatedAt?.toISOString() ?? null,
-            usageReportState: latestPurchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
+              (offer) => offer.eventHandle === latestShopifyPurchase.shopifyEventHandleSnapshot,
+            )?.label ?? latestShopifyPurchase.shopifyEventHandleSnapshot,
+            createdAt: latestShopifyPurchase.createdAt.toISOString(),
+            activatedAt: latestShopifyPurchase.activatedAt?.toISOString() ?? null,
+            usageReportState: latestShopifyPurchase.usageEvent.shopifyReportState,
           }
         : null,
-      unresolvedPurchases: unresolvedPurchases.map((purchase) => ({
+      unresolvedPurchases: unresolvedShopifyPurchases.map((purchase) => ({
         id: purchase.id,
         eventHandle: purchase.shopifyEventHandleSnapshot,
         creditsGranted: purchase.creditsGranted,
         createdAt: purchase.createdAt.toISOString(),
-        usageReportState: purchase.usageEvent?.shopifyReportState ?? "UNKNOWN",
+        usageReportState: purchase.usageEvent.shopifyReportState,
       })),
       billingPeriodPhase,
     };

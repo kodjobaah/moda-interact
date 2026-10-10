@@ -98,6 +98,9 @@ function createPaidFinalisationHarness({
   const billingPeriodCreate = vi.fn().mockResolvedValue({ id: "period-1" });
   const periodCounterCreate = vi.fn().mockResolvedValue({});
   const lifetimeCounterCreate = vi.fn().mockResolvedValue({});
+  const normalizedPeriodCounter = periodCounter
+    ? { currentAllowanceQuantity: null, ...periodCounter }
+    : null;
   const queryRaw = vi.fn().mockResolvedValue([]);
   const transaction = {
     $queryRaw: queryRaw,
@@ -108,7 +111,7 @@ function createPaidFinalisationHarness({
       create: billingPeriodCreate,
     },
     billingPeriodEntitlementCounter: {
-      findUnique: vi.fn().mockResolvedValue(periodCounter),
+      findUnique: vi.fn().mockResolvedValue(normalizedPeriodCounter),
       create: periodCounterCreate,
     },
     shopEntitlementCounter: {
@@ -346,7 +349,10 @@ describe("SubscriptionActivationService", () => {
       }),
     });
     expect(harness.periodCounterCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({ grantedQuantity: 25 }),
+      data: expect.objectContaining({
+        grantedQuantity: 25,
+        currentAllowanceQuantity: null,
+      }),
     });
     expect(harness.lifetimeCounterCreate).toHaveBeenCalledWith({
       data: expect.objectContaining({ grantedQuantity: 5 }),
@@ -475,6 +481,39 @@ describe("SubscriptionActivationService", () => {
     expect(harness.lifetimeCounterCreate).not.toHaveBeenCalled();
     expect(existingPeriodCounter).toMatchObject({ committedQuantity: 7, reservedQuantity: 3 });
     expect(existingLifetimeCounter).toMatchObject({ committedQuantity: 4, reservedQuantity: 1 });
+  });
+
+  it("rejects provider-specific current allowance on an existing Shopify paid counter", async () => {
+    const harness = createPaidFinalisationHarness({
+      billingPeriod: {
+        id: "period-1",
+        status: "OPEN",
+        subscriptionId: "subscription-1",
+        planId: "paid-1",
+        shopifyPlanHandleSnapshot: "growth",
+        planNameSnapshot: "Growth",
+        planKindSnapshot: BillingPlanKind.PAID_METERED,
+        includedRecoveryCreditsGranted: 25,
+      },
+      periodCounter: {
+        shopId: "shop-1",
+        billingPeriodId: "period-1",
+        grantedQuantity: 25,
+        currentAllowanceQuantity: 25,
+        committedQuantity: 7,
+        reservedQuantity: 3,
+      },
+    });
+
+    await harness.finalize();
+
+    expect(harness.subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: SubscriptionProjectionStatus.SYNC_ERROR,
+        lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
+      }),
+    }));
+    expect(harness.periodCounterCreate).not.toHaveBeenCalled();
   });
 
   it("rejects closed periods, conflicting included grants, and invalid lifetime policy", async () => {

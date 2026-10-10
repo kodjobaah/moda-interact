@@ -164,12 +164,35 @@ describe("RecoveryCreditPurchaseRequestService", () => {
     expect(harness.transaction.$queryRaw).toHaveBeenCalledTimes(1);
     expect(harness.transaction.recoveryCreditPurchase.findFirst).toHaveBeenCalledTimes(1);
     expect(harness.usageEvents[0]).toMatchObject({
+      provider: "SHOPIFY",
       billingPeriodId: "period-1",
+      shopifyReportState: "PENDING",
       shopifyEventHandle: eventHandle,
       shopifyIdempotencyKey: expect.any(String),
     });
     expect(harness.usageEvents[0].shopifyIdempotencyKey).toBe(
       createShopifyUsageIdempotencyKey(shopId, String(harness.usageEvents[0].id)),
+    );
+    expect(harness.purchases.get(purchaseId)).toMatchObject({
+      provider: "SHOPIFY",
+      billingPeriodId: "period-1",
+      shopifyPlanHandleSnapshot: "growth",
+      shopifyEventHandleSnapshot: eventHandle,
+      providerSubscriptionIdSnapshot: expect.any(String),
+      providerUsageQuantityBeforeSnapshot: 0.5,
+      providerUsageCostBeforeSnapshot: "1.25",
+      providerUsageCostCurrencyBeforeSnapshot: "USD",
+      usageEventId: expect.any(String),
+    });
+    expect(harness.transaction.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          shopId,
+          provider: "SHOPIFY",
+          status: "REQUESTED",
+          shopifyEventHandleSnapshot: eventHandle,
+        }),
+      }),
     );
   });
 
@@ -240,13 +263,35 @@ describe("RecoveryCreditPurchaseRequestService", () => {
   });
 
   it("replays an existing purchase without provider or catalogue access", async () => {
-    const existingPurchase = { id: purchaseId, shopId, status: "REQUESTED" };
+    const existingPurchase = { id: purchaseId, shopId, provider: "SHOPIFY", status: "REQUESTED" };
     const harness = createHarness({ existingPurchase });
 
     await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
       .resolves.toBe(existingPurchase);
     expect(harness.provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
     expect(harness.catalogueReads).toBe(0);
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("does not replay a cross-provider purchase with the same ID", async () => {
+    const harness = createHarness({
+      existingPurchase: {
+        id: purchaseId,
+        shopId,
+        provider: "WOOCOMMERCE",
+        status: "REQUESTED",
+      },
+    });
+
+    await expect(
+      harness.service.requestRecoveryCreditPack(
+        shopId,
+        "BUY_RECOVERY_CREDIT_PACK",
+        purchaseId,
+        eventHandle,
+      ),
+    ).rejects.toThrow("another shop or billing provider");
+    expect(harness.provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
     expect(harness.database.$transaction).not.toHaveBeenCalled();
   });
 
@@ -269,7 +314,7 @@ describe("RecoveryCreditPurchaseRequestService", () => {
   });
 
   it("recovers a same-ID P2002 race by returning the winning purchase", async () => {
-    const winner = { id: purchaseId, shopId, status: "REQUESTED" };
+    const winner = { id: purchaseId, shopId, provider: "SHOPIFY", status: "REQUESTED" };
     const harness = createHarness({ transactionError: { code: "P2002" }, replayAfterUniqueError: winner });
 
     await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))

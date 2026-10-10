@@ -13,7 +13,7 @@ type FixtureOptions = {
   missingPeriod?: boolean;
   lifetime?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number } | null;
   purchased?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number; refundingQuantity: number } | null;
-  periodCounter?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number; forfeitedQuantity: number; shopId?: string; billingPeriodId?: string } | null;
+  periodCounter?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number; forfeitedQuantity: number; currentAllowanceQuantity?: number | null; shopId?: string; billingPeriodId?: string } | null;
   periodOverrides?: Record<string, unknown>;
   selection?: Record<string, unknown> | null;
   subscriptionOverrides?: Record<string, unknown>;
@@ -46,6 +46,7 @@ function createService(options: FixtureOptions = {}) {
               billingPeriodId: "period-1",
               counter: "INCLUDED_RECOVERY_CREDITS",
               grantedQuantity: 30,
+              currentAllowanceQuantity: null,
               committedQuantity: 4,
               reservedQuantity: 3,
               forfeitedQuantity: 2,
@@ -344,6 +345,7 @@ describe("MerchantRecoveryCapacityReadService", () => {
     ["missing counter", { periodCounter: null }],
     ["identity mismatch", { periodCounter: { grantedQuantity: 30, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2, billingPeriodId: "other-period" } }],
     ["invalid balances", { periodCounter: { grantedQuantity: 5, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 } }],
+    ["unexpected current allowance", { periodCounter: { grantedQuantity: 30, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2, currentAllowanceQuantity: 30 } }],
   ] as const)("fails closed for a paid projection with %s", async (_name, overrides) => {
     const { service } = createService({
       planKind: "PAID_METERED",
