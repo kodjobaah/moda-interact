@@ -1,11 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 
-const [appShellSource, supportRouteSource, navigationSource, routeConfigSource] = await Promise.all([
+const [
+  appShellSource,
+  supportRouteSource,
+  navigationSource,
+  routeConfigSource,
+  merchantKnowledgeSource,
+  recoverySettingsSource,
+  featurePreferencesSource,
+  reinstallingSource,
+] = await Promise.all([
   readFile(new URL("../../app/routes/app/route.jsx", import.meta.url), "utf8"),
   readFile(new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url), "utf8"),
   readFile(new URL("../../app/components/dashboard/MerchantNavigation.tsx", import.meta.url), "utf8"),
   readFile(new URL("../../app/routes.ts", import.meta.url), "utf8"),
+  readFile(new URL("../../app/components/settings/MerchantKnowledgeSection.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../../app/routes/app/recovery-settings/RecoverySettingsView.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../../app/components/settings/FeaturePreferences.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../../app/routes/app/reinstalling/route.jsx", import.meta.url), "utf8"),
 ]);
 
 describe("authenticated Shopify UI internationalisation coverage", () => {
@@ -79,4 +92,87 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
     }
     expect(supportRouteSource).not.toContain("error.message");
   });
+
+  it("localizes Merchant Knowledge, recovery context, feature copy, and reinstalling UI", () => {
+    for (const key of [
+      "merchantKnowledge.title",
+      "merchantKnowledge.description",
+      "merchantKnowledge.configurationUnavailable",
+      "merchantKnowledge.disabledNotice",
+      "merchantKnowledge.sourceCount",
+      "merchantKnowledge.addWebPage",
+      "merchantKnowledge.url",
+      "merchantKnowledge.noWebPageTypes",
+      "merchantKnowledge.empty",
+      "merchantKnowledge.noUrl",
+      "merchantKnowledge.processingNote",
+      "merchantKnowledge.activeContentUnits",
+      "merchantKnowledge.truncated",
+      "merchantKnowledge.lastProcessed",
+      "merchantKnowledge.status.processingPaused",
+      "merchantKnowledge.status.unavailableOnPlan",
+      "merchantKnowledge.status.sourceTypeUnavailable",
+      "merchantKnowledge.status.overSourceLimit",
+      "merchantKnowledge.status.ready",
+      "merchantKnowledge.status.failed",
+      "merchantKnowledge.status.superseded",
+      "merchantKnowledge.actions.moveUp",
+      "merchantKnowledge.actions.moveDown",
+      "merchantKnowledge.actions.delete",
+    ]) {
+      expect(merchantKnowledgeSource).toContain(`t("${key}"`);
+    }
+    expect(merchantKnowledgeSource).toContain('t("pending.activeStatus")');
+    expect(merchantKnowledgeSource).toContain('t("pending.refresh")');
+    expect(merchantKnowledgeSource).toContain('formatDateTime(source.revision.activeFetchedAt)');
+
+    for (const key of [
+      "recoverySettings.context.title",
+      "recoverySettings.context.description",
+      "merchantKnowledge.title",
+      "merchantKnowledge.sourceCount",
+    ]) {
+      expect(recoverySettingsSource).toContain(`i18n.t("${key}"`);
+    }
+    expect(recoverySettingsSource).toContain('formatDateTime={i18n.formatDateTime}');
+
+    expect(featurePreferencesSource).toContain('merchantFeatures.features.checkout_recovery.name');
+    expect(featurePreferencesSource).toContain('merchantFeatures.features.ai_conversations.name');
+    expect(featurePreferencesSource).toContain('merchantFeatures.features.product_search.name');
+    expect(featurePreferencesSource).toContain('merchantFeatures.features.order_support.name');
+    expect(featurePreferencesSource).toContain('merchant_knowledge: {');
+    expect(featurePreferencesSource).toContain('name: "merchantKnowledge.title"');
+
+    for (const key of [
+      "reinstalling.pendingTitle",
+      "reinstalling.pendingDescription",
+      "reinstalling.failedTitle",
+      "reinstalling.failedDescription",
+      "reinstalling.retry",
+      "reinstalling.contactSupport",
+    ]) {
+      expect(reinstallingSource).toContain(`i18n.t("${key}")`);
+    }
+    expect(reinstallingSource).toContain("merchantUiContext(shop, session)");
+
+    for (const literal of [
+      "Store & assistant context",
+      "Store classification and reference material used by the assistant.",
+      "Configure web pages the assistant can use as reference material.",
+      "Merchant Knowledge configuration is unavailable on the current plan.",
+      "No knowledge sources configured.",
+      "No URL recorded",
+      "This page updates automatically while the source is processing.",
+      "Move source up",
+      "Move source down",
+      "Restoring your Moda Interact account",
+      "We could not restore your Moda Interact account",
+      "Retry restoration or contact support if the problem continues.",
+    ]) {
+      expect(merchantKnowledgeSource).not.toContain(literal);
+      expect(recoverySettingsSource).not.toContain(literal);
+      expect(reinstallingSource).not.toContain(literal);
+    }
+  });
+
 });

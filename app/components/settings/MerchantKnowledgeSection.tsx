@@ -5,41 +5,36 @@ import MerchantKnowledgeUploadForm from "./MerchantKnowledgeUploadForm";
 
 type KnowledgeData = Awaited<ReturnType<typeof loader>>["merchantKnowledge"];
 type Translate = (key: string, values?: Record<string, string | number>) => string;
+type FormatDateTime = (value: string | Date | number) => string;
 
 type KnowledgeSource = KnowledgeData["sources"][number];
 type SourceStatusTone = "processing" | "ready" | "failed" | "paused" | "inactive";
 
-function merchantKnowledgeSourceStatus(source: KnowledgeSource): { label: string; tone: SourceStatusTone; detail?: string } {
+function merchantKnowledgeSourceStatus(source: KnowledgeSource, t: Translate): { label: string; tone: SourceStatusTone } {
   if (source.dormantReason === "MERCHANT_DISABLED") {
-    return { label: "Configured — processing paused", tone: "paused" };
+    return { label: t("merchantKnowledge.status.processingPaused"), tone: "paused" };
   }
   if (source.dormantReason === "NO_CURRENT_PLAN") {
-    return { label: "Configured — unavailable on current plan", tone: "inactive" };
+    return { label: t("merchantKnowledge.status.unavailableOnPlan"), tone: "inactive" };
   }
   if (source.dormantReason === "SOURCE_TYPE") {
-    return { label: "Configured — source type unavailable", tone: "inactive" };
+    return { label: t("merchantKnowledge.status.sourceTypeUnavailable"), tone: "inactive" };
   }
   if (source.dormantReason === "SOURCE_COUNT") {
-    return { label: "Configured — over current source limit", tone: "inactive" };
+    return { label: t("merchantKnowledge.status.overSourceLimit"), tone: "inactive" };
   }
 
   switch (source.revision?.status) {
     case "ACTIVE":
-      return { label: "Ready", tone: "ready" };
+      return { label: t("merchantKnowledge.status.ready"), tone: "ready" };
     case "FAILED":
-      return {
-        label: "Processing failed",
-        tone: "failed",
-        detail: source.revision.failureCode
-          ? source.revision.failureCode.replaceAll("_", " ").toLowerCase()
-          : undefined,
-      };
+      return { label: t("merchantKnowledge.status.failed"), tone: "failed" };
     case "SUPERSEDED":
-      return { label: "Superseded", tone: "inactive" };
+      return { label: t("merchantKnowledge.status.superseded"), tone: "inactive" };
     case "PROCESSING":
     case "PENDING":
     default:
-      return { label: "Processing", tone: "processing" };
+      return { label: t("pending.activeStatus"), tone: "processing" };
   }
 }
 
@@ -47,9 +42,11 @@ export default function MerchantKnowledgeSection({
   data,
   t,
   embedded = false,
+  formatDateTime,
 }: {
   data: KnowledgeData;
   t: Translate;
+  formatDateTime: FormatDateTime;
   embedded?: boolean;
 }) {
   const createFetcher = useFetcher();
@@ -104,34 +101,34 @@ export default function MerchantKnowledgeSection({
         ? "moda-merchant-knowledge-panel moda-recovery-embedded-panel"
         : "moda-recovery-panel moda-merchant-knowledge-panel"}
       aria-labelledby={embedded ? undefined : "merchant-knowledge-heading"}
-      aria-label={embedded ? "Merchant Knowledge" : undefined}
+      aria-label={embedded ? t("merchantKnowledge.title") : undefined}
     >
       {!embedded ? (
         <div className="moda-recovery-section-heading">
-          <h2 id="merchant-knowledge-heading">Merchant Knowledge</h2>
-          <p>Configure web pages the assistant can use as reference material.</p>
+          <h2 id="merchant-knowledge-heading">{t("merchantKnowledge.title")}</h2>
+          <p>{t("merchantKnowledge.description")}</p>
         </div>
       ) : null}
 
       {!data.planEntitled ? (
-          <p role="status">Merchant Knowledge configuration is unavailable on the current plan.</p>
+          <p role="status">{t("merchantKnowledge.configurationUnavailable")}</p>
       ) : (
         <>
           {!data.merchantEnabled ? (
             <p className="moda-recovery-inline-message" role="status">
-                Ingestion and retrieval are disabled until Merchant Knowledge is enabled in Conversation Features. Configured sources are retained.
+                {t("merchantKnowledge.disabledNotice")}
             </p>
           ) : null}
 
           <p className="moda-recovery-effective-value">
-              {data.configuredCount} of {data.maxKnowledgeSources} sources configured
+              {t("merchantKnowledge.sourceCount", { configured: data.configuredCount, max: data.maxKnowledgeSources })}
           </p>
 
           <div className="moda-merchant-knowledge-add-grid">
             {webCatalogue.length ? (
               <details className="moda-settings-disclosure moda-merchant-knowledge-add">
                 <summary>
-                  <span>Add web page</span>
+                  <span>{t("merchantKnowledge.addWebPage")}</span>
                   <small>
                     {purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}
                   </small>
@@ -148,11 +145,11 @@ export default function MerchantKnowledgeSection({
                   >
                     <input type="hidden" name="operation" value="create" />
                     <label className="moda-merchant-knowledge-field">
-                        Source name
+                        {t("merchantKnowledge.upload.sourceName")}
                       <input name="name" maxLength={160} required />
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        Purpose
+                        {t("merchantKnowledge.upload.purpose")}
                       <select name="purposeKey" value={selectedPurpose} onChange={(event) => setSelectedPurpose(event.currentTarget.value)} required>
                         {purposes.map((purpose) => (
                           <option key={purpose.key} value={purpose.key}>{t(`merchantKnowledge.purposes.${purpose.key}.label`)}</option>
@@ -160,28 +157,28 @@ export default function MerchantKnowledgeSection({
                       </select>
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        Data format
+                        {t("merchantKnowledge.upload.dataFormat")}
                       <input type="hidden" name="dataFormatKey" value={purposeType?.dataFormat.key ?? "WEB_PAGE"} />
                       <span className="moda-merchant-knowledge-readonly">{purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}</span>
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        URL
+                        {t("merchantKnowledge.url")}
                       <input name="url" type="url" maxLength={2048} placeholder="https://" required />
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        Language
+                        {t("merchantKnowledge.upload.language")}
                       <select name="languageTag" defaultValue={data.defaultLanguageTag} required>
                         {data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
                       </select>
                     </label>
                     <button className="moda-merchant-knowledge-primary-action" type="submit" disabled={busy || data.planEligibleSourceCount >= data.maxKnowledgeSources}>
-                        Add web page
+                        {t("merchantKnowledge.addWebPage")}
                     </button>
                   </form>
                 </div>
               </details>
             ) : (
-                <p role="status">No web page source types are available for this plan.</p>
+                <p role="status">{t("merchantKnowledge.noWebPageTypes")}</p>
             )}
 
             {uploadCatalogue.length ? (
@@ -208,45 +205,45 @@ export default function MerchantKnowledgeSection({
           </div>
 
           {!data.sources.length ? (
-              <p role="status">No knowledge sources configured.</p>
+              <p role="status">{t("merchantKnowledge.empty")}</p>
           ) : (
             <ol className="moda-recovery-behaviour-section moda-merchant-knowledge-source-list">
               {data.sources.map((source, index) => {
-                const status = merchantKnowledgeSourceStatus(source);
+                const status = merchantKnowledgeSourceStatus(source, t);
                 return (
                 <li key={source.id} className="moda-recovery-setting-row moda-merchant-knowledge-source-card">
                   <div className="moda-merchant-knowledge-source-copy">
                     <h3>{source.name}</h3>
                     <p>{t(`merchantKnowledge.purposes.${source.purposeKey}.label`)} · {t(`merchantKnowledge.dataFormats.${source.dataFormatKey}.label`)} · {source.languageTag}</p>
-                    <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? "No URL recorded"}</p>
+                    <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? t("merchantKnowledge.noUrl")}</p>
                     <p className={`moda-merchant-knowledge-source-status is-${status.tone}`}>
-                      <strong>{status.label}</strong>{status.detail ? ` · ${status.detail}` : ""}
+                      <strong>{status.label}</strong>
                     </p>
                     {status.tone === "processing" ? (
-                      <p className="moda-merchant-knowledge-processing-note">This page updates automatically while the source is processing.</p>
+                      <p className="moda-merchant-knowledge-processing-note">{t("merchantKnowledge.processingNote")}</p>
                     ) : null}
                     {source.revision?.activeContentUnits !== null && source.revision?.activeContentUnits !== undefined ? (
-                      <p>{source.revision.activeContentUnits} active content units{source.revision.activeTruncated ? " · truncated" : ""}</p>
+                      <p>{t("merchantKnowledge.activeContentUnits", { count: source.revision.activeContentUnits })}{source.revision.activeTruncated ? ` · ${t("merchantKnowledge.truncated")}` : ""}</p>
                     ) : null}
-                    {source.revision?.activeFetchedAt ? <p>Last processed {new Date(source.revision.activeFetchedAt).toLocaleString()}</p> : null}
+                    {source.revision?.activeFetchedAt ? <p>{t("merchantKnowledge.lastProcessed", { date: formatDateTime(source.revision.activeFetchedAt) })}</p> : null}
                   </div>
                   <div className="moda-recovery-setting-actions">
                     <button type="button" disabled={busy || index === 0} onClick={() => {
                       const ids = data.sources.map(({ id }) => id);
                       [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
                       reorderFetcher.submit({ sourceIds: JSON.stringify(ids) }, { method: "post", action: "/app/merchant-knowledge/reorder" });
-                    }} aria-label="Move source up" title="Move source up">↑</button>
+                    }} aria-label={t("merchantKnowledge.actions.moveUp")} title={t("merchantKnowledge.actions.moveUp")}>↑</button>
                     <button type="button" disabled={busy || index === data.sources.length - 1} onClick={() => {
                       const ids = data.sources.map(({ id }) => id);
                       [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]];
                       reorderFetcher.submit({ sourceIds: JSON.stringify(ids) }, { method: "post", action: "/app/merchant-knowledge/reorder" });
-                    }} aria-label="Move source down" title="Move source down">↓</button>
+                    }} aria-label={t("merchantKnowledge.actions.moveDown")} title={t("merchantKnowledge.actions.moveDown")}>↓</button>
                     <form action="/app/merchant-knowledge/refresh" method="post" onSubmit={(event) => {
                       event.preventDefault();
                       submit(refreshFetcher, event.currentTarget);
                     }}>
                       <input type="hidden" name="sourceId" value={source.id} />
-                      <button type="submit" disabled={busy || source.dataFormatKey !== "WEB_PAGE"}>Refresh</button>
+                      <button type="submit" disabled={busy || source.dataFormatKey !== "WEB_PAGE"}>{t("pending.refresh")}</button>
                     </form>
                     {source.dataFormatKey === "CSV" || source.dataFormatKey === "XLSX" ? (
                       <>
@@ -288,7 +285,7 @@ export default function MerchantKnowledgeSection({
                         <input type="hidden" name="operation" value="edit" />
                         <input type="hidden" name="sourceId" value={source.id} />
                         <label>{t("merchantKnowledge.upload.sourceName")}<input name="name" maxLength={160} defaultValue={source.name} required /></label>
-                        {source.dataFormatKey === "WEB_PAGE" ? <label>URL<input name="url" type="url" maxLength={2048} defaultValue={source.revision?.requestedUrl ?? ""} required /></label> : null}
+                        {source.dataFormatKey === "WEB_PAGE" ? <label>{t("merchantKnowledge.url")}<input name="url" type="url" maxLength={2048} defaultValue={source.revision?.requestedUrl ?? ""} required /></label> : null}
                         <label>{t("merchantKnowledge.upload.language")}<select name="languageTag" defaultValue={source.languageTag}>{data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label>
                         <button type="submit" disabled={busy || !source.currentlyPlanEntitled}>{t("merchantKnowledge.upload.save")}</button>
                       </form>
@@ -298,7 +295,7 @@ export default function MerchantKnowledgeSection({
                       submit(deleteFetcher, event.currentTarget);
                     }}>
                       <input type="hidden" name="sourceId" value={source.id} />
-                      <button type="submit" disabled={busy}>Delete</button>
+                      <button type="submit" disabled={busy}>{t("merchantKnowledge.actions.delete")}</button>
                     </form>
                   </div>
                 </li>

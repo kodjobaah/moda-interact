@@ -19,9 +19,11 @@ vi.mock("../../app/components/settings/SettingsForm", () => ({
 
 import FeaturePreferences from "../../app/components/settings/FeaturePreferences";
 import MerchantKnowledgeSection from "../../app/components/settings/MerchantKnowledgeSection";
+import { createMerchantI18n } from "../../app/utils/merchant-i18n";
 
 let root: Root;
 let host: HTMLDivElement;
+const englishI18n = createMerchantI18n({ locale: "en-GB", timeZone: "UTC" });
 
 const knowledge: Parameters<typeof MerchantKnowledgeSection>[0]["data"] = {
   planEntitled: true,
@@ -76,9 +78,9 @@ it("keeps source configuration available while OFF and uses only FeaturePreferen
             editable: true,
           }],
         }}
-        t={(key) => key}
+        t={englishI18n.t}
       />
-      <MerchantKnowledgeSection data={knowledge} t={(key) => key} />
+      <MerchantKnowledgeSection data={knowledge} t={englishI18n.t} formatDateTime={englishI18n.formatDateTime} />
     </Fragment>,
   ));
 
@@ -95,11 +97,51 @@ it("keeps source configuration available while OFF and uses only FeaturePreferen
   expect(host.querySelector('button[type="submit"]')?.hasAttribute("disabled")).toBe(false);
 });
 
+
+it("localizes known platform feature copy and preserves unknown dynamic feature fallback", async () => {
+  const french = createMerchantI18n({ locale: "fr-FR", timeZone: "Europe/Paris" });
+  await act(async () => root.render(
+    <FeaturePreferences
+      snapshot={{
+        revision: "revision-2",
+        features: [
+          {
+            id: "feature-products",
+            key: "product_search",
+            name: "Product Search",
+            description: "Search merchant products during customer conversations.",
+            enabled: true,
+            effective: true,
+            editable: true,
+          },
+          {
+            id: "feature-custom",
+            key: "custom_feature",
+            name: "Custom feature",
+            description: "Custom description.",
+            enabled: true,
+            effective: true,
+            editable: true,
+          },
+        ],
+      }}
+      t={french.t}
+    />,
+  ));
+
+  expect(host.textContent).toContain("Recherche de produits");
+  expect(host.textContent).toContain("Recherchez les produits de la boutique pendant les conversations avec les clients.");
+  expect(host.textContent).toContain("Custom feature");
+  expect(host.textContent).toContain("Custom description.");
+  expect(host.textContent).not.toContain("Product Search");
+});
+
 it("submits merchant knowledge forms with route paths instead of resolved absolute form actions", async () => {
   await act(async () => root.render(
     <MerchantKnowledgeSection
       data={{ ...knowledge, merchantEnabled: true, effectiveEnabled: true }}
-      t={(key) => key}
+      t={englishI18n.t}
+      formatDateTime={englishI18n.formatDateTime}
     />,
   ));
 
@@ -133,7 +175,10 @@ it("puts recovery behaviour first and progressively discloses lower-frequency co
   expect(features).toBeLessThan(context);
   expect(context).toBeLessThan(storeProfile);
   expect(storeProfile).toBeLessThan(merchantKnowledge);
-  expect(view).toContain("Store &amp; assistant context");
+  expect(view).toContain('i18n.t("recoverySettings.context.title")');
+  expect(view).toContain('i18n.t("recoverySettings.context.description")');
+  expect(view).toContain('i18n.t("merchantKnowledge.title")');
+  expect(view).toContain('i18n.t("merchantKnowledge.sourceCount"');
   expect(view).toContain("moda-recovery-context-disclosure");
   expect(view).toContain("<StoreProfileSection\n                  embedded");
   expect(view).toContain("<MerchantKnowledgeSection\n                  embedded");
@@ -194,7 +239,8 @@ it("presents pending revisions as Processing and auto-refreshes while work is ac
         }],
         sources: [processingSource],
       }}
-      t={(key) => key}
+      t={englishI18n.t}
+      formatDateTime={englishI18n.formatDateTime}
     />,
   ));
 

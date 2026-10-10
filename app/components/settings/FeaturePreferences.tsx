@@ -4,6 +4,41 @@ import type { loadFeaturePreferences } from "@/services/feature-preferences/feat
 
 type Snapshot = Awaited<ReturnType<typeof loadFeaturePreferences>>;
 
+const PLATFORM_FEATURE_COPY_KEYS: Record<string, { name: string; description: string }> = {
+  checkout_recovery: {
+    name: "merchantFeatures.features.checkout_recovery.name",
+    description: "merchantFeatures.features.checkout_recovery.description",
+  },
+  ai_conversations: {
+    name: "merchantFeatures.features.ai_conversations.name",
+    description: "merchantFeatures.features.ai_conversations.description",
+  },
+  product_search: {
+    name: "merchantFeatures.features.product_search.name",
+    description: "merchantFeatures.features.product_search.description",
+  },
+  order_support: {
+    name: "merchantFeatures.features.order_support.name",
+    description: "merchantFeatures.features.order_support.description",
+  },
+  merchant_knowledge: {
+    name: "merchantKnowledge.title",
+    description: "merchantKnowledge.description",
+  },
+};
+
+function localizedFeatureCopy(
+  t: (key: string) => string,
+  feature: Snapshot["features"][number],
+) {
+  const keys = PLATFORM_FEATURE_COPY_KEYS[feature.key];
+  if (!keys) return { name: feature.name, description: feature.description };
+  return {
+    name: t(keys.name),
+    description: t(keys.description),
+  };
+}
+
 export default function FeaturePreferences({
   snapshot,
   t,
@@ -57,6 +92,7 @@ export default function FeaturePreferences({
         >
           <div className="moda-recovery-feature-grid">
             {snapshot.features.map((feature) => {
+              const copy = localizedFeatureCopy(t, feature);
               const enabled = feature.editable
                 ? (values[feature.id] ?? feature.enabled)
                 : feature.effective;
@@ -74,8 +110,8 @@ export default function FeaturePreferences({
                       ✓
                     </span>
                     <span className="moda-recovery-feature-copy">
-                      <strong>{feature.name}</strong>
-                      {feature.description ? <p>{feature.description}</p> : null}
+                      <strong>{copy.name}</strong>
+                      {copy.description ? <p>{copy.description}</p> : null}
                       <small>
                         {t("merchantFeatures.required")} ·{" "}
                         {t("merchantFeatures.effectiveOn")}
@@ -107,8 +143,8 @@ export default function FeaturePreferences({
                     <span />
                   </span>
                   <span className="moda-recovery-feature-copy">
-                    <strong>{feature.name}</strong>
-                    {feature.description ? <p>{feature.description}</p> : null}
+                    <strong>{copy.name}</strong>
+                    {copy.description ? <p>{copy.description}</p> : null}
                     <small>
                       {t("merchantFeatures.optional")} ·{" "}
                       {t(

@@ -373,11 +373,9 @@ export default function RecoverySettingsView({
           <div className="moda-recovery-panel-heading moda-recovery-context-heading">
             <div>
               <h2 id="store-assistant-context-heading">
-                Store &amp; assistant context
+                {i18n.t("recoverySettings.context.title")}
               </h2>
-              <p>
-                Store classification and reference material used by the assistant.
-              </p>
+              <p>{i18n.t("recoverySettings.context.description")}</p>
             </div>
           </div>
 
@@ -403,10 +401,12 @@ export default function RecoverySettingsView({
 
             <details className="moda-settings-disclosure moda-recovery-context-disclosure">
               <summary>
-                <span>Merchant Knowledge</span>
+                <span>{i18n.t("merchantKnowledge.title")}</span>
                 <small>
-                  {data.merchantKnowledge.configuredCount} of{" "}
-                  {data.merchantKnowledge.maxKnowledgeSources} sources configured
+                  {i18n.t("merchantKnowledge.sourceCount", {
+                    configured: data.merchantKnowledge.configuredCount,
+                    max: data.merchantKnowledge.maxKnowledgeSources,
+                  })}
                 </small>
               </summary>
               <div className="moda-settings-disclosure-body moda-recovery-context-body">
@@ -414,6 +414,7 @@ export default function RecoverySettingsView({
                   embedded
                   data={data.merchantKnowledge}
                   t={i18n.t}
+                  formatDateTime={i18n.formatDateTime}
                 />
               </div>
             </details>

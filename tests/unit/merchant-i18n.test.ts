@@ -95,6 +95,19 @@ describe("merchant UI internationalisation", () => {
     });
   });
 
+  it("translates newly covered Recovery Settings and Merchant Knowledge copy", () => {
+    const french = createMerchantI18n({ locale: "fr-FR", timeZone: "Europe/Paris" });
+
+    expect(french.t("recoverySettings.context.title")).toBe("Contexte de la boutique et de l’assistant");
+    expect(french.t("merchantKnowledge.title")).toBe("Connaissances de la boutique");
+    expect(french.t("merchantKnowledge.sourceCount", { configured: 2, max: 5 })).toBe("2 sources configurées sur 5");
+    expect(french.t("merchantKnowledge.lastProcessed", { date: "10 oct. 14:30" })).toBe("Dernier traitement : 10 oct. 14:30");
+    expect(french.t("merchantFeatures.features.product_search.name")).toBe("Recherche de produits");
+    expect(french.t("reinstalling.retry")).toBe("Réessayer");
+    expect(rawCatalogues.fr["storeProfile.description"]).not.toContain("publication");
+    expect(rawCatalogues.fr["storeProfile.pendingPublication"]).toBe("En attente de la fin de la configuration");
+  });
+
   it("keeps Czech, Danish, and Finnish promotion copy semantic rather than English placeholders", () => {
     for (const locale of ["cs", "da", "fi"] as const) {
       for (const key of [
