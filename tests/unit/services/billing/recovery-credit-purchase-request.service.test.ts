@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { Prisma } from "@prisma/client";
+import {
+  MerchantPricingUsagePricingMode,
+  Prisma,
+  ShopPlatform,
+} from "@prisma/client";
 import { createShopifyUsageIdempotencyKey } from "@modainteract/moda-interact-shared/billing";
 
 import { BillingPlanResolutionService } from "../../../../app/services/billing/billing-plan-resolution.service";
@@ -41,7 +45,21 @@ function providerSubscription(overrides: Partial<ProviderSubscription> = {}): Pr
 
 function createHarness(options: {
   snapshots?: Array<{ activeSubscription: ProviderSubscription | null; latestLifecycleEvent: null | { id: string; eventType: "SUBSCRIPTION_FROZEN"; state: "FROZEN"; occurredAt: Date; cancelEffectiveOn: null; planHandle: string; billingPeriod: string } }>;
-  catalogueRead?: (call: number) => { shopifyPlanHandle: string; usageEvents: Array<{ cataloguePosition: number; eventHandle: string; adminLabel: string; creditsGrantedPerUnit: number }> } | null;
+  catalogueRead?: (call: number) => {
+    shopifyPlanHandle: string;
+    usageEvents: Array<{
+      id: string;
+      position: number;
+      eventHandle: string;
+      adminLabel: string;
+      creditsGrantedPerUnit: number;
+      pricingMode: MerchantPricingUsagePricingMode;
+      currency: string;
+      fixedUnitAmountMinor: number | null;
+      tiers: Array<{ position: number; upTo: number | null; amountPerUnitMinor: number; flatAmountMinor: number }>;
+    }>;
+  } | null;
+  shopPlatform?: ShopPlatform;
   existingPurchase?: Record<string, unknown> | null;
   unresolved?: Record<string, unknown> | null;
   transactionSubscription?: Record<string, unknown>;
@@ -104,14 +122,31 @@ function createHarness(options: {
   };
   const database = {
     recoveryCreditPurchase: { findUnique: purchaseFindUnique },
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: shopId, status: "ACTIVE", shopifyShopId: "shopify-shop-1" }) },
+    shop: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: shopId,
+        platform: options.shopPlatform ?? ShopPlatform.SHOPIFY,
+        status: "ACTIVE",
+        shopifyShopId: "shopify-shop-1",
+      }),
+    },
     subscription: requestSubscription,
     merchantPricingPlan: {
       findUnique: vi.fn(async () => {
         catalogueReads += 1;
         return options.catalogueRead?.(catalogueReads) ?? {
           shopifyPlanHandle: "growth",
-          usageEvents: [{ position: 0, eventHandle, adminLabel: "Credits", creditsGrantedPerUnit: 100 }],
+          usageEvents: [{
+            id: "usage-offer-1",
+            position: 0,
+            eventHandle,
+            adminLabel: "Credits",
+            creditsGrantedPerUnit: 100,
+            pricingMode: MerchantPricingUsagePricingMode.FIXED,
+            currency: "USD",
+            fixedUnitAmountMinor: 2500,
+            tiers: [],
+          }],
         };
       }),
     },
@@ -134,7 +169,15 @@ function createHarness(options: {
     }),
   };
   const planResolution = new BillingPlanResolutionService(database as never);
-  const service = new RecoveryCreditPurchaseRequestService(provider as unknown as BillingProvider, database as never, planResolution);
+  const billingOperationService = {
+    recordOneTimeChargeIntent: vi.fn().mockResolvedValue({ id: "operation-1" }),
+  };
+  const service = new RecoveryCreditPurchaseRequestService(
+    provider as unknown as BillingProvider,
+    database as never,
+    planResolution,
+    billingOperationService as never,
+  );
   return {
     service,
     provider,
@@ -144,6 +187,7 @@ function createHarness(options: {
     transactionOptions,
     usageEvents,
     purchases,
+    billingOperationService,
     get catalogueReads() { return catalogueReads; },
     get topLevelPurchaseReads() { return topLevelPurchaseReads; },
   };
@@ -191,6 +235,22 @@ describe("RecoveryCreditPurchaseRequestService", () => {
           provider: "SHOPIFY",
           status: "REQUESTED",
           shopifyEventHandleSnapshot: eventHandle,
+        }),
+      }),
+    );
+    expect(harness.billingOperationService.recordOneTimeChargeIntent).toHaveBeenCalledWith(
+      harness.transaction,
+      expect.objectContaining({
+        shopId,
+        purchaseId,
+        providerQuantityBefore: 0.5,
+        providerReference: harness.usageEvents[0].shopifyIdempotencyKey,
+        usageEvent: expect.objectContaining({
+          id: "usage-offer-1",
+          eventHandle,
+          pricingMode: MerchantPricingUsagePricingMode.FIXED,
+          currency: "USD",
+          fixedUnitAmountMinor: 2500,
         }),
       }),
     );
@@ -251,7 +311,17 @@ describe("RecoveryCreditPurchaseRequestService", () => {
   it("fails closed when the second catalogue read changes the granted credits", async () => {
     const harness = createHarness({ catalogueRead: (call) => ({
       shopifyPlanHandle: "growth",
-      usageEvents: [{ cataloguePosition: 0, eventHandle, adminLabel: "Credits", creditsGrantedPerUnit: call === 1 ? 100 : 200 }],
+      usageEvents: [{
+        id: "usage-offer-1",
+        position: 0,
+        eventHandle,
+        adminLabel: "Credits",
+        creditsGrantedPerUnit: call === 1 ? 100 : 200,
+        pricingMode: MerchantPricingUsagePricingMode.FIXED,
+        currency: "USD",
+        fixedUnitAmountMinor: 2500,
+        tiers: [],
+      }],
     }) });
 
     await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
@@ -302,6 +372,16 @@ describe("RecoveryCreditPurchaseRequestService", () => {
       .rejects.toThrow("already awaiting Shopify confirmation");
     expect(harness.transactionEvents.indexOf("subscription-lock")).toBeLessThan(harness.transactionEvents.indexOf("unresolved-lookup"));
     expect(harness.transaction.usageEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Woo-owned Shop before Shopify provider verification", async () => {
+    const harness = createHarness({ shopPlatform: ShopPlatform.WOOCOMMERCE });
+
+    await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
+      .rejects.toThrow("unavailable for this subscription");
+    expect(harness.provider.getSubscriptionLifecycleSnapshot).not.toHaveBeenCalled();
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+    expect(harness.billingOperationService.recordOneTimeChargeIntent).not.toHaveBeenCalled();
   });
 
   it("rejects invalid purchase IDs before provider verification", async () => {

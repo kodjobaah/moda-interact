@@ -42,6 +42,7 @@ import type {
   InitialFreeActivationToken,
 } from "./subscription-activation.service";
 import { RecoveryCreditPurchaseRequestService } from "./recovery-credit-purchase-request.service";
+import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import {
   defaultTranslationDispatch,
   SubscriptionEndedNotificationService,
@@ -65,6 +66,7 @@ export type {
 export class BillingService {
   private readonly planResolutionService: BillingPlanResolutionService;
   private readonly subscriptionReadService: SubscriptionReadService;
+  private readonly billingOperationService: ShopifyBillingOperationService;
   private readonly subscriptionActivationService: SubscriptionActivationService;
   private readonly hostedPlanChangeService: HostedPlanChangeService;
   private readonly recoveryCreditPurchaseRequestService: RecoveryCreditPurchaseRequestService;
@@ -81,15 +83,21 @@ export class BillingService {
   ) {
     this.planResolutionService = new BillingPlanResolutionService(database);
     this.subscriptionReadService = new SubscriptionReadService(provider, database);
+    this.billingOperationService = new ShopifyBillingOperationService(database);
     this.subscriptionActivationService = new SubscriptionActivationService(
       database,
       this.planResolutionService,
+      this.billingOperationService,
     );
-    this.hostedPlanChangeService = new HostedPlanChangeService(database);
+    this.hostedPlanChangeService = new HostedPlanChangeService(
+      database,
+      this.billingOperationService,
+    );
     this.recoveryCreditPurchaseRequestService = new RecoveryCreditPurchaseRequestService(
       provider,
       database,
       this.planResolutionService,
+      this.billingOperationService,
     );
     this.recoveryCapacityReadService = new MerchantRecoveryCapacityReadService(
       database,
@@ -110,6 +118,7 @@ export class BillingService {
       this.planResolutionService,
       this.subscriptionActivationService,
       subscriptionEndedNotificationService,
+      this.billingOperationService,
     );
   }
 

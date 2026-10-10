@@ -46,10 +46,18 @@ function createHarness({
     resolveOrMaterializeBillingPlan: vi.fn().mockResolvedValue({ kind: "READY", plan: resolvedPlan, materialized: false }),
     readRecoveryCreditTopUpConfiguration: vi.fn().mockResolvedValue({ enabled: topUpEnabled, creditsPerPack: topUpEnabled ? 100 : null }),
   };
+  const billingOperationService = {
+    recordInitialPaidIntent: vi.fn().mockResolvedValue({ id: "operation-1" }),
+  };
   return {
-    service: new SubscriptionActivationService(database as never, planResolutionService as never),
+    service: new SubscriptionActivationService(
+      database as never,
+      planResolutionService as never,
+      billingOperationService as never,
+    ),
     database,
     planResolutionService,
+    billingOperationService,
     state,
     subscription,
     transaction,
@@ -227,7 +235,9 @@ describe("SubscriptionActivationService", () => {
   });
 
   it("records Paid activation intent without finalizing the subscription", async () => {
-    const { service, state, subscription } = createHarness({ kind: BillingPlanKind.PAID_METERED });
+    const { service, state, subscription, transaction, billingOperationService } = createHarness({
+      kind: BillingPlanKind.PAID_METERED,
+    });
 
     const activation = await service.preparePaidActivation("shop-1", "free");
 
@@ -239,6 +249,12 @@ describe("SubscriptionActivationService", () => {
       pendingShopifyPlanHandle: "free",
     });
     expect(subscription.upsert).toHaveBeenCalledTimes(1);
+    expect(billingOperationService.recordInitialPaidIntent).toHaveBeenCalledWith(transaction, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      targetPlanHandle: "free",
+      lifecycleEventId: null,
+    });
   });
 
   it("leaves a stale guarded retry as a no-op", async () => {

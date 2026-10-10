@@ -13,6 +13,7 @@ import {
 
 import type { BillingPlanResolutionService } from "./billing-plan-resolution.service";
 import type { ProviderSubscription } from "./billing.types";
+import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
 import {
   lockInitialFreeActivationState,
@@ -69,6 +70,8 @@ export class SubscriptionActivationService {
   constructor(
     private readonly database: PrismaClient,
     private readonly planResolutionService: BillingPlanResolutionService,
+    private readonly billingOperationService: ShopifyBillingOperationService =
+      new ShopifyBillingOperationService(database),
   ) {}
 
   async prepareFreeActivation(
@@ -159,7 +162,12 @@ export class SubscriptionActivationService {
       await lockInitialFreeActivationState(transaction, shopId);
       const currentSubscription = await transaction.subscription.findUnique({
         where: { shopId },
-        select: { status: true, planId: true, observedShopifyPlanHandle: true },
+        select: {
+          status: true,
+          planId: true,
+          observedShopifyPlanHandle: true,
+          lastProviderLifecycleEventId: true,
+        },
       });
       const isInitialActivation = !currentSubscription ||
         (currentSubscription.status === SubscriptionProjectionStatus.NO_CONTRACT &&
@@ -175,6 +183,12 @@ export class SubscriptionActivationService {
       if (!subscription.id || !subscription.pendingPlanId || !subscription.pendingShopifyPlanHandle || !subscription.pendingEffectiveAt || !subscription.nextReconcileAt) {
         throw new Error("Initial Paid activation token was not persisted.");
       }
+      await this.billingOperationService.recordInitialPaidIntent(transaction, {
+        shopId,
+        subscriptionId: subscription.id,
+        targetPlanHandle: planHandle,
+        lifecycleEventId: currentSubscription?.lastProviderLifecycleEventId ?? null,
+      });
       return {
         plan,
         mode: "INITIAL",

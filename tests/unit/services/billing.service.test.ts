@@ -83,6 +83,9 @@ type MerchantPricingPlanFixture = {
   displayName: string;
   planKind: "FREE" | "PAID_METERED";
   isActive: boolean;
+  billingPeriod: "EVERY_30_DAYS";
+  recurringAmountMinor: number;
+  currency: string;
   includedRecoveryCredits: number;
   shopifyRecoveryUsageEventHandle: string | null;
   materializedAt: Date | null;
@@ -93,6 +96,53 @@ type BillingPlanCreateFixtureData = {
   features: { create: Array<{ featureId: string; enabled: boolean; configuration: unknown }> };
   [key: string]: unknown;
 };
+
+function createBillingOperationDelegate() {
+  let sequence = 0;
+  const rows: Array<Record<string, unknown>> = [];
+  const delegate = {
+    upsert: vi.fn(async ({ where, create }: { where: { shopId_requestKey: { shopId: string; requestKey: string } }; create: Record<string, unknown> }) => {
+      const key = where.shopId_requestKey;
+      const existing = rows.find((row) => row.shopId === key.shopId && row.requestKey === key.requestKey);
+      if (existing) return existing;
+      const row = {
+        id: `billing-operation-${++sequence}`,
+        ...create,
+        createdAt: new Date(1_700_000_000_000 + sequence),
+        updatedAt: new Date(1_700_000_000_000 + sequence),
+      };
+      rows.push(row);
+      return row;
+    }),
+    findUnique: vi.fn(async ({ where }: { where: { id: string } }) =>
+      rows.find((row) => row.id === where.id) ?? null),
+    findMany: vi.fn(async ({ where }: { where: Record<string, unknown> }) => rows.filter((row) => {
+      if (row.shopId !== where.shopId) return false;
+      const kind = where.kind as { in?: string[] } | string | undefined;
+      if (typeof kind === "string" && row.kind !== kind) return false;
+      if (kind && typeof kind === "object" && kind.in && !kind.in.includes(String(row.kind))) return false;
+      const state = where.state as { in?: string[] } | string | undefined;
+      if (typeof state === "string" && row.state !== state) return false;
+      if (state && typeof state === "object" && state.in && !state.in.includes(String(row.state))) return false;
+      if ("providerReference" in where && row.providerReference !== where.providerReference) return false;
+      return true;
+    })),
+    updateMany: vi.fn(async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      let count = 0;
+      for (const row of rows) {
+        if (row.id !== where.id) continue;
+        const state = where.state as { in?: string[] } | string | undefined;
+        if (typeof state === "string" && row.state !== state) continue;
+        if (state && typeof state === "object" && state.in && !state.in.includes(String(row.state))) continue;
+        if ("providerReference" in where && row.providerReference !== where.providerReference) continue;
+        Object.assign(row, data);
+        count += 1;
+      }
+      return { count };
+    }),
+  };
+  return { delegate, rows };
+}
 
 function createDatabase({
   plan = null,
@@ -171,15 +221,29 @@ function createDatabase({
   const shopSettings = {
     findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: false }),
   };
+  const billingOperation = createBillingOperationDelegate();
+  const shop = { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) };
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+    shop,
     subscription,
     billingPlan,
     merchantPricingPlan,
     billingPeriod,
     shopSettings,
     $queryRaw: vi.fn().mockResolvedValue([]),
-    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({ subscription, billingPlan, merchantPricingPlan, merchantKnowledgePurposeDataFormat, shopFeaturePreference, billingPeriod, billingPeriodEntitlementCounter, shopSettings, $queryRaw: database.$queryRaw })),
+    $transaction: vi.fn(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
+      shop,
+      subscription,
+      billingPlan,
+      merchantPricingPlan,
+      merchantKnowledgePurposeDataFormat,
+      shopFeaturePreference,
+      billingPeriod,
+      billingPeriodEntitlementCounter,
+      shopSettings,
+      billingOperation: billingOperation.delegate,
+      $queryRaw: database.$queryRaw,
+    })),
   };
   return { database, state, billingPeriod, billingPeriodEntitlementCounter, merchantKnowledgePurposeDataFormat, shopFeaturePreference };
 }
@@ -191,6 +255,9 @@ function createMerchantPricingPlanFixture(overrides: Partial<MerchantPricingPlan
     displayName: "Growth",
     planKind: "FREE",
     isActive: true,
+    billingPeriod: "EVERY_30_DAYS",
+    recurringAmountMinor: 0,
+    currency: "USD",
     includedRecoveryCredits: 0,
     shopifyRecoveryUsageEventHandle: null,
     materializedAt: null,
@@ -283,6 +350,7 @@ function createCurrentProjectionDatabase({
       return state.current;
     }),
   };
+  const billingOperation = createBillingOperationDelegate();
   const transaction = {
     $queryRaw: vi.fn().mockResolvedValue([]),
     subscription: subscriptionModel,
@@ -294,9 +362,10 @@ function createCurrentProjectionDatabase({
     billingPeriod,
     billingPeriodEntitlementCounter,
     shopSettings: { findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: true }) },
+    billingOperation: billingOperation.delegate,
   };
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: "gid://shop/1" }) },
     billingPlan: transaction.billingPlan,
     $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
   };
@@ -385,23 +454,33 @@ function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
       return { onboardingCompleted: state.onboardingCompleted };
     }),
   };
+  const billingOperation = createBillingOperationDelegate();
   const transaction = {
     $queryRaw: vi.fn().mockResolvedValue([]),
-    shop: { findUnique: vi.fn().mockImplementation(async () => ({ status: state.shopStatus })) },
+    shop: { findUnique: vi.fn().mockImplementation(async () => ({ platform: "SHOPIFY", status: state.shopStatus })) },
     subscription,
     shopSettings,
     billingPlan: { findUnique: vi.fn().mockResolvedValue(plan) },
     merchantPricingPlan: {
-      findUnique: vi.fn().mockResolvedValue(null),
+      findUnique: vi.fn().mockResolvedValue({
+        id: "mpp-growth",
+        shopifyPlanHandle: "growth",
+        planKind: "PAID_METERED",
+        isActive: true,
+        recurringAmountMinor: 1000,
+        currency: "USD",
+        billingPeriod: "EVERY_30_DAYS",
+      }),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
     billingPeriod,
     billingPeriodEntitlementCounter,
     shopEntitlementCounter,
     platformBillingPolicy: { findUnique: vi.fn().mockResolvedValue({ lifetimeFreeRecoveryAllowance: 5 }) },
+    billingOperation: billingOperation.delegate,
   };
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: "gid://shop/1" }) },
     billingPlan: transaction.billingPlan,
     $queryRaw: transaction.$queryRaw,
     $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
@@ -860,6 +939,7 @@ describe("BillingService subscription projection", () => {
           : [],
       }),
     };
+    const billingOperation = createBillingOperationDelegate();
     const database = {
       billingPlan: {
         findUnique: vi.fn().mockResolvedValue(freePlan),
@@ -869,7 +949,7 @@ describe("BillingService subscription projection", () => {
         findUnique: vi.fn().mockResolvedValue(null),
       },
       shop: {
-        findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }),
+        findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: "gid://shop/1" }),
       },
       subscription,
       shopSettings,
@@ -887,6 +967,7 @@ describe("BillingService subscription projection", () => {
         },
         billingPeriod,
         shopEntitlementCounter,
+        billingOperation: billingOperation.delegate,
         $queryRaw: database.$queryRaw,
       })),
     };
@@ -1716,12 +1797,14 @@ describe("BillingService subscription projection", () => {
       $queryRaw: persistenceQueryRaw,
       $executeRaw: vi.fn().mockResolvedValue(1),
     };
+    const billingOperation = createBillingOperationDelegate();
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: "gid://shop/1" }) },
       $transaction: vi.fn()
         .mockImplementationOnce(async (callback: (transaction: unknown) => Promise<unknown>) => callback({
           subscription,
           shopSettings: { findUnique: vi.fn().mockResolvedValue({ onboardingCompleted: true }) },
+          billingOperation: billingOperation.delegate,
           $queryRaw: vi.fn().mockResolvedValue([]),
         }))
         .mockImplementationOnce(async (callback: (transaction: unknown) => Promise<unknown>) => callback(persistenceTransaction)),
@@ -2234,6 +2317,8 @@ describe("BillingService hosted plan-change return", () => {
         currentPeriodEnd: null,
         trialEndsAt: null,
         cancelAtPeriodEnd: false,
+        providerSubscriptionId: "provider-1",
+        lastProviderLifecycleEventId: null,
         lastSyncedAt: null,
         lastSyncErrorCode: null,
         lastSyncErrorAt: null,
@@ -2265,6 +2350,7 @@ describe("BillingService hosted plan-change return", () => {
     ].map((name) => [name, Object.fromEntries([
       "create", "createMany", "update", "updateMany", "upsert", "delete", "deleteMany",
     ].map((method) => [method, vi.fn()]))]));
+    const billingOperation = createBillingOperationDelegate();
     const transaction = {
       $queryRaw: vi.fn().mockImplementation(async (query: { sql?: string }) => {
         lockQueries.push(query.sql ?? "");
@@ -2272,6 +2358,19 @@ describe("BillingService hosted plan-change return", () => {
       }),
       subscription,
       billingPlan,
+      shop: { findUnique: vi.fn().mockResolvedValue({ platform: "SHOPIFY" }) },
+      merchantPricingPlan: {
+        findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopifyPlanHandle: string } }) => ({
+          id: `mpp-${where.shopifyPlanHandle}`,
+          shopifyPlanHandle: where.shopifyPlanHandle,
+          planKind: where.shopifyPlanHandle === "free" ? "FREE" : "PAID_METERED",
+          isActive: true,
+          recurringAmountMinor: where.shopifyPlanHandle === "free" ? 0 : 1000,
+          currency: "USD",
+          billingPeriod: "EVERY_30_DAYS",
+        })),
+      },
+      billingOperation: billingOperation.delegate,
       ...protectedModels,
     };
     const database = {
@@ -2300,6 +2399,8 @@ describe("BillingService hosted plan-change return", () => {
       lastSyncedAt: (current.lastSyncedAt as Date | null) ?? null,
       lastSyncErrorCode: (current.lastSyncErrorCode as string | null) ?? null,
       lastSyncErrorAt: (current.lastSyncErrorAt as Date | null) ?? null,
+      providerSubscriptionId: (current.providerSubscriptionId as string | null) ?? null,
+      lastProviderLifecycleEventId: (current.lastProviderLifecycleEventId as string | null) ?? null,
     };
   }
 
@@ -2590,6 +2691,30 @@ describe("BillingService hosted plan-change return", () => {
   });
 });
 
+function merchantPricingUsageEventFixture({
+  id,
+  eventHandle,
+  creditsGrantedPerUnit,
+  position = 0,
+}: {
+  id: string;
+  eventHandle: string;
+  creditsGrantedPerUnit: number;
+  position?: number;
+}) {
+  return {
+    id,
+    position,
+    eventHandle,
+    adminLabel: eventHandle,
+    creditsGrantedPerUnit,
+    pricingMode: "FIXED" as const,
+    currency: "USD",
+    fixedUnitAmountMinor: 2500,
+    tiers: [],
+  };
+}
+
 function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unknown> = {}) {
   const purchases = new Map<string, Record<string, unknown>>();
   const usageEvents: Record<string, unknown>[] = [];
@@ -2620,11 +2745,27 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
   };
   const transactionSubscription = { ...subscriptionState };
   const merchantPricingPlan = {
+    id: "mpp-growth",
     shopifyPlanHandle: "growth",
-    usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+    planKind: "PAID_METERED",
+    recurringAmountMinor: 1000,
+    currency: "USD",
+    billingPeriod: "EVERY_30_DAYS",
+    usageEvents: [{
+      id: "usage-credit-pack",
+      position: 0,
+      eventHandle: "credit-pack-meter",
+      adminLabel: "Recovery credits",
+      creditsGrantedPerUnit: 100,
+      pricingMode: "FIXED",
+      currency: "USD",
+      fixedUnitAmountMinor: 2500,
+      tiers: [],
+    }],
   };
+  const billingOperation = createBillingOperationDelegate();
   const database = {
-    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+    shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
     subscription: {
       findUnique: vi.fn().mockResolvedValue(subscriptionState),
     },
@@ -2671,6 +2812,8 @@ function createRecoveryCreditPurchaseDatabase(planOverrides: Record<string, unkn
           return data;
         }),
       },
+      shop: { findUnique: vi.fn().mockResolvedValue({ platform: "SHOPIFY" }) },
+      billingOperation: billingOperation.delegate,
       shopEntitlementCounter,
       });
     }),
@@ -2724,7 +2867,7 @@ describe("BillingService merchant billing state", () => {
       },
     };
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: null }) },
       subscription: { findUnique: vi.fn().mockImplementation(async () => state.subscription) },
       shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
       usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }) },
@@ -2743,6 +2886,7 @@ describe("BillingService merchant billing state", () => {
         shop: {
           findUnique: vi.fn().mockResolvedValue({
             id: "shop-1",
+            platform: "SHOPIFY",
             shopifyShopId: null,
           }),
         },
@@ -2780,7 +2924,7 @@ describe("BillingService merchant billing state", () => {
 
   it("uses the current paid period counter and preserves lifetime Free capacity", async () => {
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: null }) },
       subscription: {
         findUnique: vi.fn().mockResolvedValue({
           id: "subscription-1",
@@ -2858,7 +3002,7 @@ describe("BillingService merchant billing state", () => {
 
   it("subtracts purchased refund holds from merchant available credits", async () => {
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: null }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", shopifyShopId: null }) },
       subscription: { findUnique: vi.fn().mockResolvedValue(null) },
       shopEntitlementCounter: {
         findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
@@ -2979,7 +3123,7 @@ describe("BillingService merchant billing state", () => {
         billingPeriod: period,
       };
       const database = {
-        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
         subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
         shopEntitlementCounter: {
           findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
@@ -3011,7 +3155,7 @@ describe("BillingService merchant billing state", () => {
       recoveryCreditPackEnabled: true,
       shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
     });
-    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
     const provider = topUpProvider(providerSubscription({
           planHandle: "growth",
           currentPeriodStart: new Date("2026-10-01T00:00:00.000Z"),
@@ -3048,7 +3192,7 @@ describe("BillingService merchant billing state", () => {
         recoveryCreditPackEnabled: true,
         shopifyRecoveryCreditPackEventHandle: "credit-pack-meter",
       });
-      fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+      fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
       const provider = { getActiveSubscription: vi.fn().mockRejectedValue(new Error("Shopify unavailable")) };
 
       try {
@@ -3070,7 +3214,7 @@ describe("BillingService merchant billing state", () => {
     const fixture = createValidPaidMerchantState();
     fixture.period.periodEnd = fixture.period.periodStart;
     fixture.state.subscription.currentPeriodEnd = fixture.period.periodEnd;
-    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
+    fixture.database.shop.findUnique.mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" });
     const provider = topUpProvider(providerSubscription({ currentPeriodEnd: fixture.period.periodEnd, usageEventHandles: ["credit-pack-meter"] }));
 
     const result = await new BillingService(provider, fixture.database as never).getMerchantBillingState("shop-1");
@@ -3109,7 +3253,7 @@ describe("BillingService merchant billing state", () => {
       entitlementCounters: [],
     };
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
       subscription: { findUnique: vi.fn().mockResolvedValue({
         id: "subscription-1",
         status: "ACTIVE",
@@ -3123,7 +3267,11 @@ describe("BillingService merchant billing state", () => {
       merchantPricingPlan: {
         findUnique: vi.fn().mockResolvedValue({
           shopifyPlanHandle: "free",
-          usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+          usageEvents: [merchantPricingUsageEventFixture({
+            id: "usage-credit-pack",
+            eventHandle: "credit-pack-meter",
+            creditsGrantedPerUnit: 100,
+          })],
         }),
       },
       shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
@@ -3185,7 +3333,7 @@ describe("BillingService merchant billing state", () => {
       status: "OPEN", includedRecoveryCreditsGranted: null, entitlementCounters: [],
     };
     const database = {
-      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+      shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
       subscription: { findUnique: vi.fn().mockResolvedValue({
         id: "subscription-1", status: "ACTIVE", billingPeriodId: "period-1",
         currentPeriodStart: periodStart, currentPeriodEnd: periodEnd, observedShopifyPlanHandle: "free", plan, billingPeriod: period,
@@ -3193,8 +3341,18 @@ describe("BillingService merchant billing state", () => {
       merchantPricingPlan: { findUnique: vi.fn().mockResolvedValue({
         shopifyPlanHandle: "free",
         usageEvents: [
-          { position: 0, eventHandle: "bronze-top-up-free", creditsGrantedPerUnit: 1 },
-          { position: 1, eventHandle: "silver-top-up", creditsGrantedPerUnit: 2 },
+          merchantPricingUsageEventFixture({
+            id: "usage-bronze",
+            eventHandle: "bronze-top-up-free",
+            creditsGrantedPerUnit: 1,
+            position: 0,
+          }),
+          merchantPricingUsageEventFixture({
+            id: "usage-silver",
+            eventHandle: "silver-top-up",
+            creditsGrantedPerUnit: 2,
+            position: 1,
+          }),
         ],
       }) },
       shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue(null) },
@@ -3266,12 +3424,16 @@ describe("BillingService merchant billing state", () => {
         observedShopifyPlanHandle: plan.shopifyPlanHandle, plan, billingPeriod: period,
       };
       const database = {
-        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
+        shop: { findUnique: vi.fn().mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shop/1" }) },
         subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
         merchantPricingPlan: {
           findUnique: vi.fn().mockResolvedValue({
             shopifyPlanHandle: plan.shopifyPlanHandle,
-            usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 }],
+            usageEvents: [merchantPricingUsageEventFixture({
+              id: "usage-credit-pack",
+              eventHandle: "credit-pack-meter",
+              creditsGrantedPerUnit: 100,
+            })],
           }),
         },
         shopEntitlementCounter: { findUnique: vi.fn().mockResolvedValue({ grantedQuantity: 20, committedQuantity: 3, reservedQuantity: 2 }) },
@@ -4244,8 +4406,18 @@ describe("BillingService recovery credit packs", () => {
     database.merchantPricingPlan.findUnique.mockResolvedValue({
       shopifyPlanHandle: "growth",
       usageEvents: [
-        { position: 0, eventHandle: "credit-pack-meter", creditsGrantedPerUnit: 100 },
-        { position: 1, eventHandle: "credit-pack-large", creditsGrantedPerUnit: 250 },
+        merchantPricingUsageEventFixture({
+          id: "usage-credit-pack",
+          eventHandle: "credit-pack-meter",
+          creditsGrantedPerUnit: 100,
+          position: 0,
+        }),
+        merchantPricingUsageEventFixture({
+          id: "usage-credit-pack-large",
+          eventHandle: "credit-pack-large",
+          creditsGrantedPerUnit: 250,
+          position: 1,
+        }),
       ],
     });
     const provider = topUpProvider(providerSubscription({

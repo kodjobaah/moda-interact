@@ -34,11 +34,15 @@ function createHarness({ current = null, pendingPlan = null }: {
     subscription,
     $transaction: vi.fn(async (callback: (value: typeof transaction) => Promise<unknown>) => callback(transaction)),
   };
+  const billingOperationService = {
+    recordHostedPlanChange: vi.fn().mockResolvedValue(null),
+  };
   return {
-    service: new HostedPlanChangeService(database as never),
+    service: new HostedPlanChangeService(database as never, billingOperationService as never),
     state,
     subscription,
     billingPlan,
+    billingOperationService,
     transaction,
   };
 }
@@ -62,6 +66,8 @@ function hostedFence(overrides: Record<string, unknown> = {}): HostedPlanVerific
     lastSyncedAt: date,
     lastSyncErrorCode: null,
     lastSyncErrorAt: null,
+    providerSubscriptionId: "gid://shopify/AppSubscription/1",
+    lastProviderLifecycleEventId: "gid://partners/SubscriptionStatus/1",
     ...overrides,
   };
 }
@@ -99,7 +105,7 @@ describe("HostedPlanChangeService", () => {
       nextReconcileAt: date,
     };
     const pendingPlan = pendingUpdate ? { id: "starter-id", active: true } : null;
-    const { service, state, subscription, billingPlan } = createHarness({ current, pendingPlan });
+    const { service, state, subscription, billingPlan, billingOperationService } = createHarness({ current, pendingPlan });
 
     const result = await service.recordHostedPlanChangeReturn({
       shopId: "shop-1",
@@ -111,10 +117,67 @@ describe("HostedPlanChangeService", () => {
     expect(result.result).toBe(expectedResult);
     expect(state.current?.planId).toBe("growth-id");
     expect(state.current?.billingPeriodId).toBe("period-1");
+    expect(billingOperationService.recordHostedPlanChange).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        shopId: "shop-1",
+        requestedPlanHandle,
+        result: expectedResult,
+        providerReference: "gid://shopify/AppSubscription/1",
+      }),
+    );
     if (expectedResult === "mismatch") {
       expect(subscription.update).not.toHaveBeenCalled();
       expect(billingPlan.findUnique).not.toHaveBeenCalled();
     }
+  });
+
+
+  it("passes scheduled-cancellation evidence to the operation ledger without changing mismatch presentation", async () => {
+    const current = { ...hostedFence(), status: "ACTIVE" };
+    const { service, subscription, billingOperationService } = createHarness({ current });
+
+    const result = await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "free",
+      state: activeState({ cancelAtEndOfCycle: true }),
+      verificationFence: hostedFence(),
+    });
+
+    expect(result.result).toBe("mismatch");
+    expect(subscription.update).not.toHaveBeenCalled();
+    expect(billingOperationService.recordHostedPlanChange).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        requestedPlanHandle: "free",
+        previousPlanHandle: "growth",
+        providerReference: "gid://shopify/AppSubscription/1",
+        result: "mismatch",
+        cancelAtEndOfCycle: true,
+      }),
+    );
+  });
+
+  it("uses the existing lifecycle event as the stable provider reference when the legacy subscription id is absent", async () => {
+    const current = {
+      ...hostedFence({ providerSubscriptionId: null }),
+      status: "ACTIVE",
+    };
+    const { service, billingOperationService } = createHarness({ current });
+
+    await service.recordHostedPlanChangeReturn({
+      shopId: "shop-1",
+      requestedPlanHandle: "free",
+      state: activeState({ cancelAtEndOfCycle: true }),
+      verificationFence: hostedFence({ providerSubscriptionId: null }),
+    });
+
+    expect(billingOperationService.recordHostedPlanChange).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        providerReference: "gid://partners/SubscriptionStatus/1",
+      }),
+    );
   });
 
   it("returns no_active without creating state when the fence and durable state are absent", async () => {

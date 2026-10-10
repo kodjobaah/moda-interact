@@ -4,6 +4,7 @@ import type { PrismaClient, Subscription } from "@prisma/client";
 import {
   BillingPeriodStatus,
   BillingPlanKind,
+  ShopPlatform,
   SubscriptionProjectionStatus,
 } from "@prisma/client";
 import {
@@ -23,6 +24,7 @@ import {
   type InitialFreeActivationToken,
 } from "./subscription-activation.service";
 import { lockInitialFreeActivationState } from "./subscription-locks";
+import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import {
   deriveLifecycleIdentity,
   SubscriptionEndedNotificationService,
@@ -37,6 +39,8 @@ export class SubscriptionSyncService {
     private readonly planResolutionService: BillingPlanResolutionService,
     private readonly subscriptionActivationService: SubscriptionActivationService,
     private readonly subscriptionEndedNotificationService: SubscriptionEndedNotificationService,
+    private readonly billingOperationService: ShopifyBillingOperationService =
+      new ShopifyBillingOperationService(database),
   ) {}
 
   async syncSubscription(
@@ -49,6 +53,10 @@ export class SubscriptionSyncService {
 
     if (!shop) {
       throw new Error(`Shop ${shopId} was not found`);
+    }
+
+    if (shop.platform !== ShopPlatform.SHOPIFY) {
+      throw new Error(`Shop ${shopId} is not a Shopify shop`);
     }
 
     if (!shop.shopifyShopId) {
@@ -96,6 +104,10 @@ export class SubscriptionSyncService {
           current.pendingEffectiveAt &&
           current.nextReconcileAt
         );
+
+        await this.billingOperationService.reconcileNoActiveSubscription(transaction, {
+          shopId,
+        });
 
         await transaction.subscription.upsert({
           where: { shopId },
@@ -200,6 +212,7 @@ export class SubscriptionSyncService {
           billingPeriodId: true,
           currentPeriodStart: true,
           currentPeriodEnd: true,
+          providerSubscriptionId: true,
         },
       });
       const subscriptionId = existingSubscription?.id ?? randomUUID();
@@ -218,7 +231,7 @@ export class SubscriptionSyncService {
         providerSubscription.planHandle === expectedInitialSelection.pendingShopifyPlanHandle,
       );
       if (initialPaidActivation) {
-        return this.subscriptionActivationService.finalizeInitialPaidActivation({
+        const finalized = await this.subscriptionActivationService.finalizeInitialPaidActivation({
           transaction,
           shopId,
           providerSubscription,
@@ -226,6 +239,18 @@ export class SubscriptionSyncService {
           existingSubscription: existingSubscription!,
           now,
         });
+        if (
+          finalized.status === SubscriptionProjectionStatus.ACTIVE ||
+          finalized.status === SubscriptionProjectionStatus.TRIALING
+        ) {
+          await this.billingOperationService.reconcileActiveSubscription(transaction, {
+            shopId,
+            providerPlanHandle: providerSubscription.planHandle,
+            providerReference: providerSubscription.providerSubscriptionId,
+            cancelAtEndOfCycle: providerSubscription.cancelAtPeriodEnd,
+          });
+        }
+        return finalized;
       }
       const pendingPlan = providerSubscription.pendingPlanHandle
         ? await transaction.billingPlan.findUnique({
@@ -327,7 +352,7 @@ export class SubscriptionSyncService {
       const projectedSyncErrorCode = projectionConflict
         ? "BILLING_PERIOD_PLAN_CONFLICT"
         : syncErrorCode;
-      return transaction.subscription.upsert({
+      const projectedSubscription = await transaction.subscription.upsert({
         where: { shopId },
         update: {
           planId: projectedPlanId,
@@ -368,6 +393,18 @@ export class SubscriptionSyncService {
           nextReconcileAt: preservedNextReconcileAt,
         },
       });
+      if (
+        projectedSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
+        projectedSubscription.status === SubscriptionProjectionStatus.TRIALING
+      ) {
+        await this.billingOperationService.reconcileActiveSubscription(transaction, {
+          shopId,
+          providerPlanHandle: providerSubscription.planHandle,
+          providerReference: providerSubscription.providerSubscriptionId,
+          cancelAtEndOfCycle: providerSubscription.cancelAtPeriodEnd,
+        });
+      }
+      return projectedSubscription;
     });
   }
 }

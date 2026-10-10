@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   BillingPeriodStatus,
   BillingPlanKind,
+  ShopPlatform,
   SubscriptionProjectionStatus,
 } from "@prisma/client";
 
@@ -54,7 +55,10 @@ function createSyncService({
     $queryRaw: vi.fn().mockResolvedValue([]),
     subscription: {
       findUnique: vi.fn().mockResolvedValue(currentSubscription),
-      upsert: vi.fn().mockResolvedValue({ id: "subscription-1" }),
+      upsert: vi.fn(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => ({
+        id: "subscription-1",
+        ...(currentSubscription ? update : create),
+      })),
     },
     billingPlan: {
       findUnique: vi.fn().mockResolvedValue(null),
@@ -72,7 +76,11 @@ function createSyncService({
   };
   const database = {
     shop: {
-      findUnique: vi.fn().mockResolvedValue({ id: "shop-1", shopifyShopId: "gid://shop/1" }),
+      findUnique: vi.fn().mockResolvedValue({
+        id: "shop-1",
+        platform: ShopPlatform.SHOPIFY,
+        shopifyShopId: "gid://shop/1",
+      }),
     },
     $transaction: vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => {
       const result = await callback(transaction);
@@ -88,12 +96,19 @@ function createSyncService({
     readRecoveryCreditTopUpConfiguration: vi.fn().mockResolvedValue(topUpConfiguration),
   };
   const subscriptionActivationService = {
-    finalizeInitialPaidActivation: vi.fn().mockResolvedValue({ id: "subscription-1" }),
+    finalizeInitialPaidActivation: vi.fn().mockResolvedValue({
+      id: "subscription-1",
+      status: SubscriptionProjectionStatus.ACTIVE,
+    }),
   };
   const subscriptionEndedNotificationService = {
     notifySubscriptionEnded: vi.fn().mockImplementation(async () => {
       expect(transactionCommitted).toBe(true);
     }),
+  };
+  const billingOperationService = {
+    reconcileActiveSubscription: vi.fn().mockResolvedValue(undefined),
+    reconcileNoActiveSubscription: vi.fn().mockResolvedValue(undefined),
   };
 
   return {
@@ -103,6 +118,7 @@ function createSyncService({
       planResolutionService as never,
       subscriptionActivationService as never,
       subscriptionEndedNotificationService as never,
+      billingOperationService as never,
     ),
     transaction,
     database,
@@ -110,10 +126,24 @@ function createSyncService({
     planResolutionService,
     subscriptionActivationService,
     subscriptionEndedNotificationService,
+    billingOperationService,
   };
 }
 
 describe("SubscriptionSyncService", () => {
+  it("rejects a Woo-owned Shop before Shopify provider access", async () => {
+    const harness = createSyncService();
+    harness.database.shop.findUnique.mockResolvedValueOnce({
+      id: "shop-1",
+      platform: ShopPlatform.WOOCOMMERCE,
+      shopifyShopId: null,
+    });
+
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toThrow("not a Shopify shop");
+    expect(harness.provider.getActiveSubscription).not.toHaveBeenCalled();
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a stale no-contract token without writing", async () => {
     const currentSubscription = {
       id: "subscription-current",
@@ -144,7 +174,12 @@ describe("SubscriptionSyncService", () => {
   });
 
   it("commits no-contract projection before notifying an ended subscription", async () => {
-    const { service, transaction, subscriptionEndedNotificationService } = createSyncService({
+    const {
+      service,
+      transaction,
+      subscriptionEndedNotificationService,
+      billingOperationService,
+    } = createSyncService({
       currentSubscription: {
         id: "subscription-1",
         status: SubscriptionProjectionStatus.ACTIVE,
@@ -175,10 +210,14 @@ describe("SubscriptionSyncService", () => {
       "shop-1",
       expect.objectContaining({ lifecycleIdentity: "provider:provider-1" }),
     );
+    expect(billingOperationService.reconcileNoActiveSubscription).toHaveBeenCalledWith(
+      transaction,
+      { shopId: "shop-1" },
+    );
   });
 
   it("uses raw BillingPeriod upsert for an unmapped provider plan", async () => {
-    const { service, transaction } = createSyncService({
+    const { service, transaction, billingOperationService } = createSyncService({
       providerSubscription: activeProviderSubscription(),
     });
 
@@ -198,6 +237,7 @@ describe("SubscriptionSyncService", () => {
         lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE",
       }),
     }));
+    expect(billingOperationService.reconcileActiveSubscription).not.toHaveBeenCalled();
   });
 
   it("uses mapped projection helper path for a valid operational plan", async () => {
@@ -209,7 +249,7 @@ describe("SubscriptionSyncService", () => {
       shopifyPlanHandle: "growth",
       includedRecoveryConversationAllowance: null,
     };
-    const { service, transaction } = createSyncService({
+    const { service, transaction, billingOperationService } = createSyncService({
       providerSubscription: activeProviderSubscription(),
       resolution: { kind: "READY", plan, materialized: false },
     });
@@ -223,6 +263,15 @@ describe("SubscriptionSyncService", () => {
       }),
     }));
     expect(transaction.billingPeriod.upsert).not.toHaveBeenCalled();
+    expect(billingOperationService.reconcileActiveSubscription).toHaveBeenCalledWith(
+      transaction,
+      {
+        shopId: "shop-1",
+        providerPlanHandle: "growth",
+        providerReference: "provider-1",
+        cancelAtEndOfCycle: false,
+      },
+    );
   });
 
   it("suppresses ordinary period projection while preserving initial Paid intent", async () => {
@@ -275,7 +324,13 @@ describe("SubscriptionSyncService", () => {
       nextReconcileAt: periodStart,
       planKind: BillingPlanKind.PAID_METERED,
     };
-    const { service, transaction, database, subscriptionActivationService } = createSyncService({
+    const {
+      service,
+      transaction,
+      database,
+      subscriptionActivationService,
+      billingOperationService,
+    } = createSyncService({
       providerSubscription: activeProviderSubscription(),
       currentSubscription: {
         id: "subscription-1",
@@ -303,5 +358,14 @@ describe("SubscriptionSyncService", () => {
       existingSubscription: expect.objectContaining({ id: "subscription-1" }),
     }));
     expect(transaction.subscription.upsert).not.toHaveBeenCalled();
+    expect(billingOperationService.reconcileActiveSubscription).toHaveBeenCalledWith(
+      transaction,
+      {
+        shopId: "shop-1",
+        providerPlanHandle: "growth",
+        providerReference: "provider-1",
+        cancelAtEndOfCycle: false,
+      },
+    );
   });
 });

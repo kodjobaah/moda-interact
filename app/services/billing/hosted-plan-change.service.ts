@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
 import { lockInitialFreeActivationState } from "./subscription-locks";
 import type { MerchantShopifySubscriptionState } from "./billing.types";
+import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 
 export type HostedPlanChangeReturnResult =
   | "current"
@@ -28,6 +29,8 @@ export type HostedPlanVerificationFence = {
   lastSyncedAt: Date | null;
   lastSyncErrorCode: string | null;
   lastSyncErrorAt: Date | null;
+  providerSubscriptionId: string | null;
+  lastProviderLifecycleEventId: string | null;
 };
 
 type HostedPlanVerificationFenceSource = HostedPlanVerificationFence | null;
@@ -57,11 +60,17 @@ function sameHostedPlanVerificationFence(
     sameFenceDate(left.nextReconcileAt, right.nextReconcileAt) &&
     sameFenceDate(left.lastSyncedAt, right.lastSyncedAt) &&
     left.lastSyncErrorCode === right.lastSyncErrorCode &&
-    sameFenceDate(left.lastSyncErrorAt, right.lastSyncErrorAt);
+    sameFenceDate(left.lastSyncErrorAt, right.lastSyncErrorAt) &&
+    left.providerSubscriptionId === right.providerSubscriptionId &&
+    left.lastProviderLifecycleEventId === right.lastProviderLifecycleEventId;
 }
 
 export class HostedPlanChangeService {
-  constructor(private readonly database: PrismaClient) {}
+  constructor(
+    private readonly database: PrismaClient,
+    private readonly billingOperationService: ShopifyBillingOperationService =
+      new ShopifyBillingOperationService(database),
+  ) {}
 
   async getHostedPlanVerificationFence(
     shopId: string,
@@ -86,6 +95,8 @@ export class HostedPlanChangeService {
         lastSyncedAt: true,
         lastSyncErrorCode: true,
         lastSyncErrorAt: true,
+        providerSubscriptionId: true,
+        lastProviderLifecycleEventId: true,
       },
     });
     return subscription;
@@ -125,6 +136,8 @@ export class HostedPlanChangeService {
           lastSyncedAt: true,
           lastSyncErrorCode: true,
           lastSyncErrorAt: true,
+          providerSubscriptionId: true,
+          lastProviderLifecycleEventId: true,
         },
       });
 
@@ -134,6 +147,19 @@ export class HostedPlanChangeService {
 
       if (state.status === "NO_ACTIVE_SUBSCRIPTION") {
         if (!current) return { result: "no_active", subscriptionId: null, nextReconcileAt: null };
+        await this.billingOperationService.recordHostedPlanChange(transaction, {
+          shopId,
+          requestedPlanHandle,
+          previousPlanHandle: current.observedShopifyPlanHandle,
+          providerReference: current.providerSubscriptionId ?? current.lastProviderLifecycleEventId,
+          result: "no_active",
+          cancelAtEndOfCycle: false,
+          providerCurrentPeriodStart: null,
+          providerCurrentPeriodEnd: null,
+          providerPendingEffectiveAt: null,
+          previousCurrentPeriodEnd: current.currentPeriodEnd,
+          subscriptionId: current.id,
+        });
         const nextReconcileAt = now;
         const updated = await transaction.subscription.update({
           where: { shopId },
@@ -152,8 +178,26 @@ export class HostedPlanChangeService {
           ? "pending"
           : "mismatch";
 
-      if (result === "mismatch" || !current) {
-        return { result, subscriptionId: current?.id ?? null, nextReconcileAt: current?.nextReconcileAt ?? null };
+      if (!current) {
+        return { result, subscriptionId: null, nextReconcileAt: null };
+      }
+
+      await this.billingOperationService.recordHostedPlanChange(transaction, {
+        shopId,
+        requestedPlanHandle,
+        previousPlanHandle: current.observedShopifyPlanHandle,
+        providerReference: current.providerSubscriptionId ?? current.lastProviderLifecycleEventId,
+        result,
+        cancelAtEndOfCycle: provider.cancelAtEndOfCycle,
+        providerCurrentPeriodStart: provider.currentPeriodStart,
+        providerCurrentPeriodEnd: provider.currentPeriodEnd,
+        providerPendingEffectiveAt: provider.pendingUpdate?.effectiveAt ?? null,
+        previousCurrentPeriodEnd: current.currentPeriodEnd,
+        subscriptionId: current.id,
+      });
+
+      if (result === "mismatch") {
+        return { result, subscriptionId: current.id, nextReconcileAt: current.nextReconcileAt };
       }
 
       const nextReconcileAt = result === "pending"
@@ -219,6 +263,8 @@ export class HostedPlanChangeService {
           lastSyncedAt: true,
           lastSyncErrorCode: true,
           lastSyncErrorAt: true,
+          providerSubscriptionId: true,
+          lastProviderLifecycleEventId: true,
         },
       });
       if (!sameHostedPlanVerificationFence(current, verificationFence)) return null;

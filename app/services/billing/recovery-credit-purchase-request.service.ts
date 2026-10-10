@@ -4,6 +4,7 @@ import {
   BillingPeriodStatus,
   BillingPlanKind,
   Prisma,
+  ShopPlatform,
   ShopStatus,
   SubscriptionProjectionStatus,
   type PrismaClient,
@@ -19,6 +20,7 @@ import type {
   ProviderSubscriptionLifecycleSnapshot,
 } from "./billing.types";
 import { BillingPlanResolutionService } from "./billing-plan-resolution.service";
+import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import {
   deriveBillingPeriodPhase,
   hasDurableBillingPeriod,
@@ -32,6 +34,10 @@ const SHOPIFY_BILLING_PROVIDER = "SHOPIFY";
 
 function isSafeNonNegativeNumber(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function hasUsageEventId<T extends object>(event: T): event is T & { id: string } {
+  return "id" in event && typeof event.id === "string" && event.id.trim().length > 0;
 }
 
 function assertPurchaseId(purchaseId: string): void {
@@ -96,6 +102,8 @@ export class RecoveryCreditPurchaseRequestService {
     private readonly provider: BillingProvider,
     private readonly database: PrismaClient,
     private readonly planResolutionService: BillingPlanResolutionService,
+    private readonly billingOperationService: ShopifyBillingOperationService =
+      new ShopifyBillingOperationService(database),
   ) {}
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string, eventHandle: string) {
@@ -128,7 +136,14 @@ export class RecoveryCreditPurchaseRequestService {
         include: { plan: true, billingPeriod: true },
       }),
     ]);
-    if (shop?.status !== ShopStatus.ACTIVE || !shop.shopifyShopId || !subscription?.plan || (subscription.status !== SubscriptionProjectionStatus.ACTIVE && subscription.status !== SubscriptionProjectionStatus.TRIALING)) {
+    if (
+      shop?.platform !== ShopPlatform.SHOPIFY ||
+      shop.status !== ShopStatus.ACTIVE ||
+      !shop.shopifyShopId ||
+      !subscription?.plan ||
+      (subscription.status !== SubscriptionProjectionStatus.ACTIVE &&
+        subscription.status !== SubscriptionProjectionStatus.TRIALING)
+    ) {
       throw new Error("Recovery credit packs are unavailable for this subscription.");
     }
 
@@ -162,7 +177,7 @@ export class RecoveryCreditPurchaseRequestService {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
     const merchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
-    const selectedEvent = merchantPricingPlan?.usageEvents.find((event: { eventHandle: string }) => event.eventHandle === eventHandle);
+    const selectedEvent = merchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
     let providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
     if (!merchantPricingPlan || !selectedEvent || !providerPackMeter || !providerSubscription.usageEventHandles.includes(eventHandle)) {
       throw new Error("The selected recovery credit offer could not be verified with Shopify.");
@@ -199,8 +214,12 @@ export class RecoveryCreditPurchaseRequestService {
       currentPeriodEnd: providerSubscription.currentPeriodEnd,
     });
     const currentMerchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
-    const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event: { eventHandle: string }) => event.eventHandle === eventHandle);
-    if (!currentSelectedEvent || currentSelectedEvent.creditsGrantedPerUnit !== creditsGranted) {
+    const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
+    if (
+      !currentSelectedEvent ||
+      currentSelectedEvent.creditsGrantedPerUnit !== creditsGranted ||
+      !hasUsageEventId(currentSelectedEvent)
+    ) {
       throw new Error("Recovery credit pack configuration changed during purchase request.");
     }
 
@@ -282,7 +301,7 @@ export class RecoveryCreditPurchaseRequestService {
           shopifyIdempotencyKey: createShopifyUsageIdempotencyKey(shopId, usageEventId),
         },
       });
-      return transaction.recoveryCreditPurchase.create({
+      const purchase = await transaction.recoveryCreditPurchase.create({
         data: {
           id: purchaseId,
           shopId,
@@ -304,6 +323,14 @@ export class RecoveryCreditPurchaseRequestService {
         },
         include: { usageEvent: true },
       });
+      await this.billingOperationService.recordOneTimeChargeIntent(transaction, {
+        shopId,
+        purchaseId: purchase.id,
+        usageEvent: currentSelectedEvent,
+        providerQuantityBefore: providerBeforeEvidence.quantity,
+        providerReference: usageEvent.shopifyIdempotencyKey!,
+      });
+      return purchase;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (isPrismaUniqueConstraintError(error)) {

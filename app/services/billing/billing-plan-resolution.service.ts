@@ -215,12 +215,28 @@ export class BillingPlanResolutionService {
       });
       return plan
         ? {
+            id: plan.id,
             shopifyPlanHandle: plan.shopifyPlanHandle,
-            usageEvents: plan.usageEvents.map((event: { position: number; eventHandle: string; adminLabel: string; creditsGrantedPerUnit: number }) => ({
+            planKind: plan.planKind,
+            recurringAmountMinor: plan.recurringAmountMinor,
+            currency: plan.currency,
+            billingPeriod: plan.billingPeriod,
+            usageEvents: plan.usageEvents.map((event) => ({
+              id: event.id,
               cataloguePosition: event.position,
+              position: event.position,
               eventHandle: event.eventHandle,
               adminLabel: event.adminLabel,
               creditsGrantedPerUnit: event.creditsGrantedPerUnit,
+              pricingMode: event.pricingMode,
+              currency: event.currency,
+              fixedUnitAmountMinor: event.fixedUnitAmountMinor,
+              tiers: event.tiers.map((tier) => ({
+                position: tier.position,
+                upTo: tier.upTo,
+                amountPerUnitMinor: tier.amountPerUnitMinor,
+                flatAmountMinor: tier.flatAmountMinor,
+              })),
             })),
           }
         : null;
