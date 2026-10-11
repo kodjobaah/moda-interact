@@ -160,6 +160,43 @@ describe("BillingPurchaseHub", () => {
 
 
 
+  it("renders the configured total pack charge instead of the provider's zero tier price", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [
+          { eventHandle: "bronze", label: "Bronze", cataloguePosition: 0, creditsGranted: 1, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00", amount: "0.00" }] }, quotedPackPrice: { amountMinor: 12000, currency: "USD" } },
+          { eventHandle: "silver", label: "Silver", cataloguePosition: 1, creditsGranted: 2, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00", amount: "0.00" }] }, quotedPackPrice: { amountMinor: 13000, currency: "USD" } },
+          { eventHandle: "gold", label: "Gold", cataloguePosition: 2, creditsGranted: 3, providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00", amount: "0.00" }] }, quotedPackPrice: { amountMinor: 15000, currency: "USD" } },
+        ],
+      },
+    });
+
+    expect(markup).toContain("120.00");
+    expect(markup).toContain("130.00");
+    expect(markup).toContain("150.00");
+    expect(markup).not.toContain("0.00 per conversation");
+    expect(markup).not.toContain("per conversation");
+  });
+
+  it("does not mistake an unavailable quote for a free top-up", () => {
+    const markup = render({
+      topUpState: {
+        ...topUpState,
+        offers: [{
+          eventHandle: "unquoted",
+          label: "Unquoted pack",
+          cataloguePosition: 0,
+          creditsGranted: 5,
+          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] },
+          quotedPackPrice: null,
+        }],
+      },
+    });
+    expect(markup).not.toContain("$0.00");
+    expect(markup).not.toContain("per conversation");
+  });
+
   it("disables only the offer with an unresolved purchase", () => {
     const markup = render({
       topUpState: {

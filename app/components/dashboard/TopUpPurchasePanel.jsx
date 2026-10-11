@@ -76,10 +76,14 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       <div><strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong><p>{i18n.t("billingCommerce.topup.billingNote")}</p></div>
     </div>
     {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : <div className="moda-topup-grid">{offers.map((offer) => {
-      const tier = offer.providerPrice?.tiers?.[0];
-      const providerAmount = tier?.amountPerUnit ?? tier?.amount;
-      const providerPrice = providerAmount && offer.providerPrice?.currency
-        ? i18n.formatMoney(Number(providerAmount), offer.providerPrice.currency)
+      const quote = offer.quotedPackPrice;
+      const currency = quote?.currency;
+      const amountMinor = quote?.amountMinor;
+      const currencyDigits = currency && /^[A-Z]{3}$/.test(currency)
+        ? new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits
+        : null;
+      const packPrice = Number.isSafeInteger(amountMinor) && amountMinor > 0 && typeof currencyDigits === "number"
+        ? i18n.formatMoney(amountMinor / (10 ** currencyDigits), currency)
         : null;
       const unresolvedPurchase = unresolvedByEventHandle.get(offer.eventHandle);
       const reportState = unresolvedPurchase?.usageReportState;
@@ -87,7 +91,7 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
       return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
         <div className="moda-topup-pack-label">{offer.label}</div>
         <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
-        {providerPrice ? <p>{providerPrice} {i18n.t("billingCommerce.perConversation")}</p> : null}
+        {packPrice ? <p>{packPrice}</p> : null}
         <form method="post" onSubmit={(event) => {
           event.preventDefault();
 
@@ -156,7 +160,7 @@ TopUpPurchasePanel.propTypes = {
   topUpState: PropTypes.shape({
     configured: PropTypes.bool.isRequired,
     purchaseEligible: PropTypes.bool.isRequired,
-    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, label: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }).isRequired, providerUsage: PropTypes.object })),
+    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, label: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }), providerUsage: PropTypes.object, quotedPackPrice: PropTypes.shape({ amountMinor: PropTypes.number.isRequired, currency: PropTypes.string.isRequired }) })),
     offerVerificationState: PropTypes.string.isRequired,
     freeLifetime: PropTypes.shape({ granted: PropTypes.number.isRequired, remaining: PropTypes.number.isRequired }),
     purchasedCreditsAvailable: PropTypes.number.isRequired,

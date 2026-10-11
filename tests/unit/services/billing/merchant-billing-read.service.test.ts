@@ -249,6 +249,83 @@ describe("MerchantBillingReadService", () => {
     expect(database.billingPlan.findUnique).not.toHaveBeenCalled();
   });
 
+  it("quotes fixed top-up packs from the catalogue, not zero-valued Shopify provider tiers", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
+    const packs = [
+      { eventHandle: "bronze-top-up-free", creditsGranted: 1, amountMinor: 12000 },
+      { eventHandle: "silver-top-up", creditsGranted: 2, amountMinor: 13000 },
+      { eventHandle: "gold-top-up", creditsGranted: 3, amountMinor: 15000 },
+    ];
+    const provider = {
+      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
+        usageItems: packs.map(({ eventHandle }, index) => ({
+          handle: eventHandle,
+          description: eventHandle,
+          price: {
+            kind: "TIERED" as const,
+            active: true,
+            currency: "USD",
+            tiersMode: "VOLUME",
+            tiers: [{ upTo: null, amountPerUnit: "0.00", amount: "0.00" }],
+          },
+          usage: { quantity: index, costAmount: "0.00", costCurrency: "USD" },
+        })),
+        usageEventHandles: packs.map(({ eventHandle }) => eventHandle),
+      })),
+    };
+    const catalogue = {
+      shopifyPlanHandle: "free",
+      usageEvents: packs.map(({ eventHandle, creditsGranted, amountMinor }, position) => ({
+        id: `event-${position}`,
+        position,
+        eventHandle,
+        adminLabel: eventHandle,
+        creditsGrantedPerUnit: creditsGranted,
+        pricingMode: "FIXED",
+        fixedUnitAmountMinor: amountMinor,
+        currency: "USD",
+        tiers: [],
+      })),
+    };
+    const { service } = createService({ provider, catalogue });
+
+    const result = await service.getMerchantBillingState(shopId);
+    expect(result.recoveryCreditOffers.map(({ eventHandle, quotedPackPrice }) => ({ eventHandle, quotedPackPrice }))).toEqual([
+      { eventHandle: "bronze-top-up-free", quotedPackPrice: { amountMinor: 12000, currency: "USD" } },
+      { eventHandle: "silver-top-up", quotedPackPrice: { amountMinor: 13000, currency: "USD" } },
+      { eventHandle: "gold-top-up", quotedPackPrice: { amountMinor: 15000, currency: "USD" } },
+    ]);
+    expect(result.recoveryCreditPackPurchaseEligible).toBe(true);
+  });
+
+  it("uses the existing graduated quote rule for a tiered top-up", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
+    const { service } = createService({
+      catalogue: {
+        shopifyPlanHandle: "free",
+        usageEvents: [{
+          id: "graduated-event",
+          position: 0,
+          eventHandle: "credit-pack-meter",
+          adminLabel: "Credit pack",
+          creditsGrantedPerUnit: 100,
+          pricingMode: "GRADUATED",
+          fixedUnitAmountMinor: null,
+          currency: "USD",
+          tiers: [
+            { position: 0, upTo: 2, amountPerUnitMinor: 1000, flatAmountMinor: 0 },
+            { position: 1, upTo: null, amountPerUnitMinor: 800, flatAmountMinor: 0 },
+          ],
+        }],
+      },
+    });
+
+    const result = await service.getMerchantBillingState(shopId);
+    expect(result.recoveryCreditOffers[0].quotedPackPrice).toEqual({ amountMinor: 800, currency: "USD" });
+  });
+
   it("performs one provider read without SHOPIFY-003 plan mapping reads when no snapshot is supplied", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));

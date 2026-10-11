@@ -82,6 +82,8 @@ export interface RecoveryCreditOffer {
   creditsGranted: number;
   providerPrice: ProviderUsageItem["price"];
   providerUsage: ProviderUsageItem["usage"];
+  // Price of one top-up pack, quoted from the catalogue rule used by billing.
+  quotedPackPrice?: { amountMinor: number; currency: string } | null;
 }
 
 export type RecoveryCreditOfferVerificationState = "VERIFIED" | "VERIFICATION_UNAVAILABLE";

@@ -22,6 +22,7 @@ import {
 } from "./billing-period-projection";
 import type { BillingPlanResolutionService } from "./billing-plan-resolution.service";
 import { resolveCurrentRecoveryCreditOffers } from "../merchant-pricing/merchant-pricing.server.js";
+import { calculateShopifyUsageEventQuoteMinor } from "./shopify-billing-operation.service";
 
 type MerchantPricingPlanReader = Pick<
   BillingPlanResolutionService,
@@ -177,7 +178,26 @@ export class MerchantBillingReadService {
         if (providerSubscription) {
           const merchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
           const resolved = resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan });
-          recoveryCreditOffers = resolved.offers;
+          recoveryCreditOffers = resolved.offers.map((offer: import("./billing.types").RecoveryCreditOffer) => {
+            const event = merchantPricingPlan?.usageEvents.find((item) => item.eventHandle === offer.eventHandle);
+            const providerQuantityBefore = event?.pricingMode === "FIXED"
+              ? 0
+              : (offer.providerUsage?.quantity ?? Number.NaN);
+            // Quote from the same configured usage-event pricing rule used when
+            // recording the Shopify ONE_TIME_CHARGE operation, never from the
+            // first provider tier (which may be a zero-value development tier).
+            const amountMinor = event && "id" in event && typeof event.id === "string" &&
+              /^[A-Z]{3}$/.test(event.currency) && Array.isArray(event.tiers) &&
+              Number.isFinite(providerQuantityBefore) && providerQuantityBefore >= 0
+              ? calculateShopifyUsageEventQuoteMinor(event, providerQuantityBefore)
+              : null;
+            return {
+              ...offer,
+              quotedPackPrice: event && amountMinor !== null && amountMinor > 0
+                ? { amountMinor, currency: event.currency }
+                : null,
+            };
+          });
           recoveryCreditOfferDiagnostics = resolved.diagnostics;
           recoveryCreditPackPurchaseEligible = recoveryCreditOffers.length > 0;
         }
