@@ -244,7 +244,6 @@ describe("RecoveryCreditPurchaseRequestService", () => {
         shopId,
         purchaseId,
         providerQuantityBefore: 0.5,
-        providerReference: harness.usageEvents[0].shopifyIdempotencyKey,
         usageEvent: expect.objectContaining({
           id: "usage-offer-1",
           eventHandle,

@@ -359,7 +359,6 @@ export class ShopifyBillingOperationService {
       purchaseId: string;
       usageEvent: ShopifyUsageEventQuote;
       providerQuantityBefore: number;
-      providerReference: string;
     },
   ): Promise<BillingOperation> {
     await this.assertShopifyShop(transaction, input.shopId);
@@ -367,11 +366,9 @@ export class ShopifyBillingOperationService {
       input.usageEvent,
       input.providerQuantityBefore,
     );
-    const providerReference = nonBlank(input.providerReference);
     if (
       quotedAmountMinor === null ||
-      !/^[A-Z]{3}$/.test(input.usageEvent.currency) ||
-      !providerReference
+      !/^[A-Z]{3}$/.test(input.usageEvent.currency)
     ) {
       throw new Error("Shopify one-time charge operation quote is unavailable.");
     }
@@ -394,7 +391,7 @@ export class ShopifyBillingOperationService {
       quotedCurrency: input.usageEvent.currency,
       quotedBillingPeriod: null,
       recoveryCreditPurchaseId: input.purchaseId,
-      providerReference,
+      providerReference: null,
     });
   }
 
@@ -452,8 +449,12 @@ export class ShopifyBillingOperationService {
         operation.kind === BillingOperationKind.PLAN_SWITCH &&
         operation.merchantPricingPlanId === currentPlan.id,
       );
-      if (switches.length === 1) {
-        await this.confirmOperation(transaction, switches[0], null);
+      if (
+        switches.length === 1 &&
+        providerReference &&
+        switches[0].providerReference === providerReference
+      ) {
+        await this.confirmOperation(transaction, switches[0], providerReference);
       }
     }
 

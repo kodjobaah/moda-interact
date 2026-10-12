@@ -283,7 +283,7 @@ describe("ShopifyBillingOperationService", () => {
     expect(harness.operations[0].state).toBe(BillingOperationState.CONFIRMED);
   });
 
-  it("confirms an unambiguous switch without rewriting its write-once provider reference", async () => {
+  it("leaves a switch unresolved when the observed provider reference differs", async () => {
     const harness = operationHarness();
     const operation = await harness.service.recordHostedPlanChange(harness.transaction as never, {
       shopId: "shop-1",
@@ -307,7 +307,7 @@ describe("ShopifyBillingOperationService", () => {
     });
 
     expect(harness.operations.find((candidate) => candidate.id === operation?.id)).toMatchObject({
-      state: BillingOperationState.CONFIRMED,
+      state: BillingOperationState.AWAITING_CONFIRMATION,
       providerReference: "gid://shopify/AppSubscription/original",
     });
   });
@@ -388,7 +388,6 @@ describe("ShopifyBillingOperationService", () => {
       shopId: "shop-1",
       purchaseId: "purchase-1",
       providerQuantityBefore: 2,
-      providerReference: "moda:shopify-usage:purchase-1",
       usageEvent: {
         id: "usage-bronze",
         pricingMode: MerchantPricingUsagePricingMode.FIXED,
@@ -405,7 +404,7 @@ describe("ShopifyBillingOperationService", () => {
       recoveryCreditPurchaseId: "purchase-1",
       quotedAmountMinor: 2500,
       quotedCurrency: "USD",
-      providerReference: "moda:shopify-usage:purchase-1",
+      providerReference: null,
     });
   });
 
@@ -415,7 +414,6 @@ describe("ShopifyBillingOperationService", () => {
       shopId: "shop-1",
       purchaseId: "purchase-1",
       providerQuantityBefore: 0,
-      providerReference: "moda:shopify-usage:purchase-1",
       usageEvent: {
         id: "usage-free",
         pricingMode: MerchantPricingUsagePricingMode.FIXED,
