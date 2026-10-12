@@ -382,7 +382,7 @@ export class ShopifyBillingOperationService {
     return this.ensureOperation(transaction, {
       shopId: input.shopId,
       kind: BillingOperationKind.ONE_TIME_CHARGE,
-      state: BillingOperationState.AWAITING_CONFIRMATION,
+      state: BillingOperationState.INITIATING,
       requestKey,
       requestFingerprint,
       merchantPricingPlanId: null,

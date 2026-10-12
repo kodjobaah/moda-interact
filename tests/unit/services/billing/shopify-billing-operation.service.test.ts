@@ -399,7 +399,7 @@ describe("ShopifyBillingOperationService", () => {
 
     expect(operation).toMatchObject({
       kind: BillingOperationKind.ONE_TIME_CHARGE,
-      state: BillingOperationState.AWAITING_CONFIRMATION,
+      state: BillingOperationState.INITIATING,
       merchantPricingUsageEventId: "usage-bronze",
       recoveryCreditPurchaseId: "purchase-1",
       quotedAmountMinor: 2500,
