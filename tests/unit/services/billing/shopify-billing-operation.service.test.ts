@@ -11,6 +11,7 @@ import {
 
 import {
   calculateShopifyUsageEventQuoteMinor,
+  shopifyRecurringRequestFingerprint,
   ShopifyBillingOperationService,
 } from "../../../../app/services/billing/shopify-billing-operation.service";
 
@@ -315,7 +316,7 @@ describe("ShopifyBillingOperationService", () => {
   it("does not fabricate a paid switch reference when Shopify exposes no stable billing reference", async () => {
     const harness = operationHarness();
 
-    await expect(harness.service.recordHostedPlanChange(harness.transaction as never, {
+    const input = {
       shopId: "shop-1",
       requestedPlanHandle: "scale",
       previousPlanHandle: "growth",
@@ -327,9 +328,229 @@ describe("ShopifyBillingOperationService", () => {
       providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
       previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
       subscriptionId: "subscription-1",
-    })).resolves.toBeNull();
+    } as const;
 
-    expect(harness.operations).toHaveLength(0);
+    const operation = await harness.service.recordHostedPlanChange(harness.transaction as never, input);
+
+    expect(operation).toMatchObject({
+      kind: BillingOperationKind.PLAN_SWITCH,
+      state: BillingOperationState.AWAITING_CONFIRMATION,
+      providerReference: null,
+    });
+    expect(harness.operations).toHaveLength(1);
+    expect(await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      ...input,
+      providerReference: "gid://shopify/AppSubscription/late",
+    })).toMatchObject({
+      id: operation?.id,
+      state: BillingOperationState.AWAITING_CONFIRMATION,
+      providerReference: "gid://shopify/AppSubscription/late",
+    });
+    expect(harness.operations).toHaveLength(1);
+  });
+
+  it("keeps recurring fingerprints independent of provider-reference availability", () => {
+    const input = {
+      kind: BillingOperationKind.PLAN_SWITCH,
+      shopId: "shop-1",
+      merchantPricingPlanId: "pricing-scale",
+      quotedAmountMinor: 9900,
+      quotedCurrency: "USD",
+      quotedBillingPeriod: MerchantPricingBillingPeriod.EVERY_30_DAYS,
+    } as const;
+    const withProviderReference = {
+      ...input,
+      providerReference: "gid://shopify/AppSubscription/late",
+    };
+
+    expect(shopifyRecurringRequestFingerprint(input)).toEqual(
+      shopifyRecurringRequestFingerprint(withProviderReference),
+    );
+  });
+
+  it("confirms a uniquely matched paid switch without provider evidence and attaches a later reference", async () => {
+    const harness = operationHarness();
+    const operation = await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "scale",
+      previousPlanHandle: "growth",
+      providerReference: null,
+      result: "pending",
+      cancelAtEndOfCycle: false,
+      providerCurrentPeriodStart: "2026-10-01T00:00:00.000Z",
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    });
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "scale",
+      providerReference: null,
+      cancelAtEndOfCycle: false,
+    });
+
+    expect(harness.operations[0]).toMatchObject({
+      id: operation?.id,
+      state: BillingOperationState.CONFIRMED,
+      providerReference: null,
+    });
+    expect(await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "scale",
+      previousPlanHandle: "growth",
+      providerReference: "gid://shopify/AppSubscription/late",
+      result: "pending",
+      cancelAtEndOfCycle: false,
+      providerCurrentPeriodStart: "2026-10-01T00:00:00.000Z",
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    })).toMatchObject({
+      id: operation?.id,
+      state: BillingOperationState.CONFIRMED,
+      providerReference: "gid://shopify/AppSubscription/late",
+    });
+    await expect(harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "scale",
+      previousPlanHandle: "growth",
+      providerReference: "gid://shopify/AppSubscription/conflict",
+      result: "pending",
+      cancelAtEndOfCycle: false,
+      providerCurrentPeriodStart: "2026-10-01T00:00:00.000Z",
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    })).rejects.toThrow("provider reference conflict");
+  });
+
+  it("leaves paid switch reconciliation unresolved when multiple operations match", async () => {
+    const harness = operationHarness();
+    for (const end of ["2026-10-31T00:00:00.000Z", "2026-11-30T00:00:00.000Z"]) {
+      await harness.service.recordHostedPlanChange(harness.transaction as never, {
+        shopId: "shop-1",
+        requestedPlanHandle: "scale",
+        previousPlanHandle: "growth",
+        providerReference: null,
+        result: "pending",
+        cancelAtEndOfCycle: false,
+        providerCurrentPeriodStart: null,
+        providerCurrentPeriodEnd: end,
+        providerPendingEffectiveAt: end,
+        previousCurrentPeriodEnd: new Date(end),
+        subscriptionId: "subscription-1",
+      });
+    }
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "scale",
+      providerReference: null,
+      cancelAtEndOfCycle: false,
+    });
+
+    expect(harness.operations).toHaveLength(2);
+    expect(harness.operations.every((operation) =>
+      operation.state === BillingOperationState.AWAITING_CONFIRMATION,
+    )).toBe(true);
+  });
+
+  it("uses an exact provider reference to disambiguate same-plan switches", async () => {
+    const harness = operationHarness();
+    for (const [boundary, providerReference] of [
+      ["2026-10-31T00:00:00.000Z", "gid://shopify/AppSubscription/1"],
+      ["2026-11-30T00:00:00.000Z", "gid://shopify/AppSubscription/2"],
+    ]) {
+      await harness.service.recordHostedPlanChange(harness.transaction as never, {
+        shopId: "shop-1",
+        requestedPlanHandle: "scale",
+        previousPlanHandle: "growth",
+        providerReference,
+        result: "pending",
+        cancelAtEndOfCycle: false,
+        providerCurrentPeriodStart: null,
+        providerCurrentPeriodEnd: boundary,
+        providerPendingEffectiveAt: boundary,
+        previousCurrentPeriodEnd: new Date(boundary),
+        subscriptionId: "subscription-1",
+      });
+    }
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "scale",
+      providerReference: "gid://shopify/AppSubscription/2",
+      cancelAtEndOfCycle: false,
+    });
+
+    expect(harness.operations.map((operation) => operation.state)).toEqual([
+      BillingOperationState.AWAITING_CONFIRMATION,
+      BillingOperationState.CONFIRMED,
+    ]);
+  });
+
+  it("preserves a previously attached provider reference when confirming without new evidence", async () => {
+    const harness = operationHarness();
+    const operation = await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "scale",
+      previousPlanHandle: "growth",
+      providerReference: "gid://shopify/AppSubscription/1",
+      result: "pending",
+      cancelAtEndOfCycle: false,
+      providerCurrentPeriodStart: null,
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    });
+    const confirmed = await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "scale",
+      previousPlanHandle: "growth",
+      providerReference: null,
+      result: "current",
+      cancelAtEndOfCycle: false,
+      providerCurrentPeriodStart: null,
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: "2026-10-31T00:00:00.000Z",
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    });
+
+    expect(confirmed).toMatchObject({
+      id: operation?.id,
+      state: BillingOperationState.CONFIRMED,
+      providerReference: "gid://shopify/AppSubscription/1",
+    });
+  });
+
+  it("records and uniquely confirms cancellation without a stable provider reference", async () => {
+    const harness = operationHarness();
+    const operation = await harness.service.recordHostedPlanChange(harness.transaction as never, {
+      shopId: "shop-1",
+      requestedPlanHandle: "free",
+      previousPlanHandle: "growth",
+      providerReference: null,
+      result: "mismatch",
+      cancelAtEndOfCycle: true,
+      providerCurrentPeriodStart: null,
+      providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+      providerPendingEffectiveAt: null,
+      previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+      subscriptionId: "subscription-1",
+    });
+
+    expect(operation).toMatchObject({
+      kind: BillingOperationKind.CANCEL,
+      state: BillingOperationState.CONFIRMED,
+      providerReference: null,
+    });
+    expect(harness.operations).toHaveLength(1);
   });
 
   it("records cancellation from trusted scheduled-cancel evidence without changing the hosted result classification", async () => {
