@@ -166,7 +166,6 @@ export class SubscriptionActivationService {
           status: true,
           planId: true,
           observedShopifyPlanHandle: true,
-          lastProviderLifecycleEventId: true,
         },
       });
       const isInitialActivation = !currentSubscription ||
@@ -187,7 +186,6 @@ export class SubscriptionActivationService {
         shopId,
         subscriptionId: subscription.id,
         targetPlanHandle: planHandle,
-        lifecycleEventId: currentSubscription?.lastProviderLifecycleEventId ?? null,
       });
       return {
         plan,

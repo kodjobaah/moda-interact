@@ -144,17 +144,20 @@ function operationHarness() {
 }
 
 describe("ShopifyBillingOperationService", () => {
-  it("creates one deterministic Shop-owned initial subscription operation and reuses it", async () => {
+  it("reuses initial subscription command identity when lifecycle evidence changes", async () => {
     const harness = operationHarness();
-    const input = {
+    const first = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      targetPlanHandle: "growth",
+      lifecycleEventId: "lifecycle-first",
+    });
+    const replay = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
       shopId: "shop-1",
       subscriptionId: "subscription-1",
       targetPlanHandle: "growth",
       lifecycleEventId: null,
-    };
-
-    const first = await harness.service.recordInitialPaidIntent(harness.transaction as never, input);
-    const replay = await harness.service.recordInitialPaidIntent(harness.transaction as never, input);
+    });
 
     expect(replay.id).toBe(first.id);
     expect(harness.operations).toHaveLength(1);
@@ -426,6 +429,126 @@ describe("ShopifyBillingOperationService", () => {
       previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
       subscriptionId: "subscription-1",
     })).rejects.toThrow("provider reference conflict");
+  });
+
+  it.each([
+    [BillingOperationKind.SUBSCRIPTION_CREATE, "growth"],
+    [BillingOperationKind.PLAN_SWITCH, "scale"],
+    [BillingOperationKind.CANCEL, "free"],
+  ])("enriches a confirmed %s through normal subscription reconciliation", async (kind, planHandle) => {
+    const harness = operationHarness();
+    let operation: BillingOperation;
+    if (kind === BillingOperationKind.SUBSCRIPTION_CREATE) {
+      operation = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+        shopId: "shop-1",
+        subscriptionId: "subscription-1",
+        targetPlanHandle: planHandle,
+        lifecycleEventId: null,
+      });
+      await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+        shopId: "shop-1",
+        providerPlanHandle: planHandle,
+        providerReference: null,
+        cancelAtEndOfCycle: false,
+      });
+    } else {
+      const recorded = await harness.service.recordHostedPlanChange(harness.transaction as never, {
+        shopId: "shop-1",
+        requestedPlanHandle: planHandle,
+        previousPlanHandle: "growth",
+        providerReference: null,
+        result: kind === BillingOperationKind.PLAN_SWITCH ? "current" : "mismatch",
+        cancelAtEndOfCycle: kind === BillingOperationKind.CANCEL,
+        providerCurrentPeriodStart: null,
+        providerCurrentPeriodEnd: "2026-10-31T00:00:00.000Z",
+        providerPendingEffectiveAt: null,
+        previousCurrentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+        subscriptionId: "subscription-1",
+      });
+      operation = recorded!;
+    }
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: kind === BillingOperationKind.CANCEL ? "growth" : planHandle,
+      providerReference: "gid://shopify/AppSubscription/enriched",
+      cancelAtEndOfCycle: kind === BillingOperationKind.CANCEL,
+    });
+
+    expect(operation).toMatchObject({
+      state: BillingOperationState.CONFIRMED,
+      providerReference: "gid://shopify/AppSubscription/enriched",
+    });
+  });
+
+  it("does not enrich confirmed-null operations when multiple confirmed outcomes match", async () => {
+    const harness = operationHarness();
+    const first = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      targetPlanHandle: "growth",
+      lifecycleEventId: "lifecycle-1",
+    });
+    const second = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-2",
+      targetPlanHandle: "growth",
+      lifecycleEventId: "lifecycle-2",
+    });
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: null,
+      cancelAtEndOfCycle: false,
+    });
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: "gid://shopify/AppSubscription/ambiguous",
+      cancelAtEndOfCycle: false,
+    });
+
+    expect(first.providerReference).toBeNull();
+    expect(second.providerReference).toBeNull();
+  });
+
+  it("does not enrich a confirmed-null operation while an open matching command remains", async () => {
+    const harness = operationHarness();
+    const confirmed = await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-1",
+      targetPlanHandle: "growth",
+      lifecycleEventId: "lifecycle-confirmed",
+    });
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: null,
+      cancelAtEndOfCycle: false,
+    });
+    await harness.service.recordInitialPaidIntent(harness.transaction as never, {
+      shopId: "shop-1",
+      subscriptionId: "subscription-2",
+      targetPlanHandle: "growth",
+      lifecycleEventId: "lifecycle-open",
+    });
+
+    await harness.service.reconcileActiveSubscription(harness.transaction as never, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: "gid://shopify/AppSubscription/open-ambiguous",
+      cancelAtEndOfCycle: false,
+    });
+
+    expect(confirmed).toMatchObject({
+      state: BillingOperationState.CONFIRMED,
+      providerReference: null,
+    });
+    expect(harness.operations[1]).toMatchObject({
+      state: BillingOperationState.INITIATING,
+      providerReference: null,
+    });
   });
 
   it("leaves paid switch reconciliation unresolved when multiple operations match", async () => {

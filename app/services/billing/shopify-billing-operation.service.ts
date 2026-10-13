@@ -186,14 +186,13 @@ export class ShopifyBillingOperationService {
       shopId: string;
       subscriptionId: string;
       targetPlanHandle: string;
-      lifecycleEventId: string | null;
+      lifecycleEventId?: string | null;
     },
   ): Promise<BillingOperation> {
     await this.assertShopifyShop(transaction, input.shopId);
     const quote = await this.requirePaidPlanQuote(transaction, input.targetPlanHandle);
     const requestKey = operationRequestKey(BillingOperationKind.SUBSCRIPTION_CREATE, [
       input.subscriptionId,
-      input.lifecycleEventId ?? "initial",
       quote.id,
     ]);
     const requestFingerprint = shopifyRecurringRequestFingerprint({
@@ -412,6 +411,64 @@ export class ShopifyBillingOperationService {
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
+    const confirmedWithoutReference = providerReference
+      ? await transaction.billingOperation.findMany({
+          where: {
+            shopId: input.shopId,
+            state: BillingOperationState.CONFIRMED,
+            providerReference: null,
+            kind: {
+              in: [
+                BillingOperationKind.SUBSCRIPTION_CREATE,
+                BillingOperationKind.PLAN_SWITCH,
+                BillingOperationKind.CANCEL,
+              ],
+            },
+          },
+        })
+      : [];
+    const confirmedWithReference = providerReference
+      ? await transaction.billingOperation.findMany({
+          where: {
+            shopId: input.shopId,
+            state: BillingOperationState.CONFIRMED,
+            providerReference,
+            kind: {
+              in: [
+                BillingOperationKind.SUBSCRIPTION_CREATE,
+                BillingOperationKind.PLAN_SWITCH,
+                BillingOperationKind.CANCEL,
+              ],
+            },
+          },
+        })
+      : [];
+
+    const enrichConfirmedReference = async (
+      kind: RecurringOperationKind,
+      planId?: string,
+    ): Promise<void> => {
+      if (!providerReference) return;
+      const matchesOutcome = (operation: BillingOperation) =>
+        operation.kind === kind && (planId === undefined || operation.merchantPricingPlanId === planId);
+      const confirmedNull = confirmedWithoutReference.filter(matchesOutcome);
+      const confirmedExact = confirmedWithReference.filter(matchesOutcome);
+      const openCandidates = operations.filter(matchesOutcome);
+      if (confirmedNull.length !== 1 || confirmedExact.length !== 0 || openCandidates.length !== 0) return;
+
+      await transaction.billingOperation.updateMany({
+        where: {
+          id: confirmedNull[0]!.id,
+          state: BillingOperationState.CONFIRMED,
+          providerReference: null,
+        },
+        data: { providerReference },
+      });
+      const updated = await this.requireOperation(transaction, confirmedNull[0]!.id);
+      if (updated.state !== BillingOperationState.CONFIRMED || updated.providerReference !== providerReference) {
+        throw new Error("Shopify billing operation provider reference conflict.");
+      }
+    };
 
     if (currentPlan) {
       const createsForPlan = operations.filter((operation) =>
@@ -422,14 +479,24 @@ export class ShopifyBillingOperationService {
         ? createsForPlan.filter((operation) => operation.providerReference === providerReference)
         : createsForPlan;
       const unresolvedCreates = createsForPlan.filter((operation) => operation.providerReference === null);
+      const confirmedNullCreates = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const confirmedExactCreates = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
       const matchingCreate = exactCreates.length === 1
         ? exactCreates[0]
-        : exactCreates.length === 0 && unresolvedCreates.length === 1
+        : exactCreates.length === 0 && unresolvedCreates.length === 1 &&
+          confirmedNullCreates.length === 0 && confirmedExactCreates.length === 0
           ? unresolvedCreates[0]
           : null;
       if (matchingCreate) {
         await this.confirmOperation(transaction, matchingCreate, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.SUBSCRIPTION_CREATE, currentPlan.id);
 
       const switches = operations.filter((operation) =>
         operation.kind === BillingOperationKind.PLAN_SWITCH &&
@@ -439,14 +506,24 @@ export class ShopifyBillingOperationService {
         ? switches.filter((operation) => operation.providerReference === providerReference)
         : switches;
       const unresolvedSwitches = switches.filter((operation) => operation.providerReference === null);
+      const confirmedNullSwitches = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.PLAN_SWITCH &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const confirmedExactSwitches = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.PLAN_SWITCH &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
       const matchingSwitch = exactSwitches.length === 1
         ? exactSwitches[0]
-        : exactSwitches.length === 0 && unresolvedSwitches.length === 1
+        : exactSwitches.length === 0 && unresolvedSwitches.length === 1 &&
+          confirmedNullSwitches.length === 0 && confirmedExactSwitches.length === 0
           ? unresolvedSwitches[0]
           : null;
       if (matchingSwitch) {
         await this.confirmOperation(transaction, matchingSwitch, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.PLAN_SWITCH, currentPlan.id);
     }
 
     if (input.cancelAtEndOfCycle) {
@@ -457,14 +534,22 @@ export class ShopifyBillingOperationService {
         ? cancellations.filter((operation) => operation.providerReference === providerReference)
         : cancellations;
       const unresolvedCancellations = cancellations.filter((operation) => operation.providerReference === null);
+      const confirmedNullCancellations = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.CANCEL,
+      );
+      const confirmedExactCancellations = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.CANCEL,
+      );
       const matchingCancellation = exactCancellations.length === 1
         ? exactCancellations[0]
-        : exactCancellations.length === 0 && unresolvedCancellations.length === 1
+        : exactCancellations.length === 0 && unresolvedCancellations.length === 1 &&
+          confirmedNullCancellations.length === 0 && confirmedExactCancellations.length === 0
           ? unresolvedCancellations[0]
           : null;
       if (matchingCancellation) {
         await this.confirmOperation(transaction, matchingCancellation, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.CANCEL);
     }
   }
 
