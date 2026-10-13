@@ -253,7 +253,6 @@ describe("SubscriptionActivationService", () => {
       shopId: "shop-1",
       subscriptionId: "subscription-1",
       targetPlanHandle: "free",
-      lifecycleEventId: null,
     });
   });
 

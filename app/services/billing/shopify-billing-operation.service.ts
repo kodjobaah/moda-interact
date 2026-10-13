@@ -66,7 +66,6 @@ function operationRequestKey(kind: BillingOperationKind, fields: readonly string
 export function shopifyRecurringRequestFingerprint(input: {
   kind: RecurringOperationKind;
   shopId: string;
-  providerReference?: string | null;
   merchantPricingPlanId?: string | null;
   quotedAmountMinor?: number | null;
   quotedCurrency?: string | null;
@@ -94,12 +93,6 @@ export function shopifyRecurringRequestFingerprint(input: {
       input.quotedCurrency,
       input.quotedBillingPeriod,
     );
-  }
-  if (input.kind !== BillingOperationKind.SUBSCRIPTION_CREATE) {
-    const providerReference = nonBlank(input.providerReference);
-    if (!providerReference) throw new TypeError("Shopify provider reference is required.");
-    assertCanonicalField(providerReference);
-    fields.splice(3, 0, providerReference);
   }
   return createHash("sha256").update(`${fields.join("\n")}\n`, "utf8").digest();
 }
@@ -193,14 +186,13 @@ export class ShopifyBillingOperationService {
       shopId: string;
       subscriptionId: string;
       targetPlanHandle: string;
-      lifecycleEventId: string | null;
+      lifecycleEventId?: string | null;
     },
   ): Promise<BillingOperation> {
     await this.assertShopifyShop(transaction, input.shopId);
     const quote = await this.requirePaidPlanQuote(transaction, input.targetPlanHandle);
     const requestKey = operationRequestKey(BillingOperationKind.SUBSCRIPTION_CREATE, [
       input.subscriptionId,
-      input.lifecycleEventId ?? "initial",
       quote.id,
     ]);
     const requestFingerprint = shopifyRecurringRequestFingerprint({
@@ -268,17 +260,15 @@ export class ShopifyBillingOperationService {
 
     if (target.planKind === MerchantPricingPlanKind.FREE) {
       if (
-        !providerReference ||
         !input.previousPlanHandle ||
         input.previousPlanHandle === input.requestedPlanHandle ||
         (input.result !== "no_active" && !input.cancelAtEndOfCycle)
       ) return null;
       const kind = BillingOperationKind.CANCEL;
-      const requestKey = operationRequestKey(kind, [providerReference, input.previousPlanHandle, boundary]);
+      const requestKey = operationRequestKey(kind, [input.subscriptionId, input.previousPlanHandle, boundary]);
       const requestFingerprint = shopifyRecurringRequestFingerprint({
         kind,
         shopId: input.shopId,
-        providerReference,
       });
       const operation = await this.ensureOperation(transaction, {
         shopId: input.shopId,
@@ -311,7 +301,7 @@ export class ShopifyBillingOperationService {
       input.previousPlanHandle === input.requestedPlanHandle
     ) return null;
 
-    if (!providerReference || !input.previousPlanHandle) return null;
+    if (!input.previousPlanHandle) return null;
 
     const kind = BillingOperationKind.PLAN_SWITCH;
     const requestKey = operationRequestKey(kind, [
@@ -319,12 +309,10 @@ export class ShopifyBillingOperationService {
       input.previousPlanHandle,
       target.id,
       boundary,
-      providerReference,
     ]);
     const requestFingerprint = shopifyRecurringRequestFingerprint({
       kind,
       shopId: input.shopId,
-      providerReference,
       merchantPricingPlanId: target.id,
       quotedAmountMinor: target.recurringAmountMinor,
       quotedCurrency: target.currency,
@@ -359,7 +347,6 @@ export class ShopifyBillingOperationService {
       purchaseId: string;
       usageEvent: ShopifyUsageEventQuote;
       providerQuantityBefore: number;
-      providerReference: string;
     },
   ): Promise<BillingOperation> {
     await this.assertShopifyShop(transaction, input.shopId);
@@ -367,11 +354,9 @@ export class ShopifyBillingOperationService {
       input.usageEvent,
       input.providerQuantityBefore,
     );
-    const providerReference = nonBlank(input.providerReference);
     if (
       quotedAmountMinor === null ||
-      !/^[A-Z]{3}$/.test(input.usageEvent.currency) ||
-      !providerReference
+      !/^[A-Z]{3}$/.test(input.usageEvent.currency)
     ) {
       throw new Error("Shopify one-time charge operation quote is unavailable.");
     }
@@ -385,7 +370,7 @@ export class ShopifyBillingOperationService {
     return this.ensureOperation(transaction, {
       shopId: input.shopId,
       kind: BillingOperationKind.ONE_TIME_CHARGE,
-      state: BillingOperationState.AWAITING_CONFIRMATION,
+      state: BillingOperationState.INITIATING,
       requestKey,
       requestFingerprint,
       merchantPricingPlanId: null,
@@ -394,7 +379,7 @@ export class ShopifyBillingOperationService {
       quotedCurrency: input.usageEvent.currency,
       quotedBillingPeriod: null,
       recoveryCreditPurchaseId: input.purchaseId,
-      providerReference,
+      providerReference: null,
     });
   }
 
@@ -426,44 +411,145 @@ export class ShopifyBillingOperationService {
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
+    const confirmedWithoutReference = providerReference
+      ? await transaction.billingOperation.findMany({
+          where: {
+            shopId: input.shopId,
+            state: BillingOperationState.CONFIRMED,
+            providerReference: null,
+            kind: {
+              in: [
+                BillingOperationKind.SUBSCRIPTION_CREATE,
+                BillingOperationKind.PLAN_SWITCH,
+                BillingOperationKind.CANCEL,
+              ],
+            },
+          },
+        })
+      : [];
+    const confirmedWithReference = providerReference
+      ? await transaction.billingOperation.findMany({
+          where: {
+            shopId: input.shopId,
+            state: BillingOperationState.CONFIRMED,
+            providerReference,
+            kind: {
+              in: [
+                BillingOperationKind.SUBSCRIPTION_CREATE,
+                BillingOperationKind.PLAN_SWITCH,
+                BillingOperationKind.CANCEL,
+              ],
+            },
+          },
+        })
+      : [];
+
+    const enrichConfirmedReference = async (
+      kind: RecurringOperationKind,
+      planId?: string,
+    ): Promise<void> => {
+      if (!providerReference) return;
+      const matchesOutcome = (operation: BillingOperation) =>
+        operation.kind === kind && (planId === undefined || operation.merchantPricingPlanId === planId);
+      const confirmedNull = confirmedWithoutReference.filter(matchesOutcome);
+      const confirmedExact = confirmedWithReference.filter(matchesOutcome);
+      const openCandidates = operations.filter(matchesOutcome);
+      if (confirmedNull.length !== 1 || confirmedExact.length !== 0 || openCandidates.length !== 0) return;
+
+      await transaction.billingOperation.updateMany({
+        where: {
+          id: confirmedNull[0]!.id,
+          state: BillingOperationState.CONFIRMED,
+          providerReference: null,
+        },
+        data: { providerReference },
+      });
+      const updated = await this.requireOperation(transaction, confirmedNull[0]!.id);
+      if (updated.state !== BillingOperationState.CONFIRMED || updated.providerReference !== providerReference) {
+        throw new Error("Shopify billing operation provider reference conflict.");
+      }
+    };
 
     if (currentPlan) {
-      if (providerReference) {
-        const exactCreates = operations.filter((operation) =>
-          operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
-          operation.merchantPricingPlanId === currentPlan.id &&
-          operation.providerReference === providerReference,
-        );
-        if (exactCreates.length === 1) {
-          await this.confirmOperation(transaction, exactCreates[0], providerReference);
-        } else if (exactCreates.length === 0) {
-          const unresolvedCreates = operations.filter((operation) =>
-            operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
-            operation.merchantPricingPlanId === currentPlan.id &&
-            operation.providerReference === null,
-          );
-          if (unresolvedCreates.length === 1) {
-            await this.confirmOperation(transaction, unresolvedCreates[0], providerReference);
-          }
-        }
+      const createsForPlan = operations.filter((operation) =>
+        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const exactCreates = providerReference
+        ? createsForPlan.filter((operation) => operation.providerReference === providerReference)
+        : createsForPlan;
+      const unresolvedCreates = createsForPlan.filter((operation) => operation.providerReference === null);
+      const confirmedNullCreates = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const confirmedExactCreates = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const matchingCreate = exactCreates.length === 1
+        ? exactCreates[0]
+        : exactCreates.length === 0 && unresolvedCreates.length === 1 &&
+          confirmedNullCreates.length === 0 && confirmedExactCreates.length === 0
+          ? unresolvedCreates[0]
+          : null;
+      if (matchingCreate) {
+        await this.confirmOperation(transaction, matchingCreate, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.SUBSCRIPTION_CREATE, currentPlan.id);
 
       const switches = operations.filter((operation) =>
         operation.kind === BillingOperationKind.PLAN_SWITCH &&
         operation.merchantPricingPlanId === currentPlan.id,
       );
-      if (switches.length === 1) {
-        await this.confirmOperation(transaction, switches[0], null);
+      const exactSwitches = providerReference
+        ? switches.filter((operation) => operation.providerReference === providerReference)
+        : switches;
+      const unresolvedSwitches = switches.filter((operation) => operation.providerReference === null);
+      const confirmedNullSwitches = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.PLAN_SWITCH &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const confirmedExactSwitches = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.PLAN_SWITCH &&
+        operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const matchingSwitch = exactSwitches.length === 1
+        ? exactSwitches[0]
+        : exactSwitches.length === 0 && unresolvedSwitches.length === 1 &&
+          confirmedNullSwitches.length === 0 && confirmedExactSwitches.length === 0
+          ? unresolvedSwitches[0]
+          : null;
+      if (matchingSwitch) {
+        await this.confirmOperation(transaction, matchingSwitch, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.PLAN_SWITCH, currentPlan.id);
     }
 
     if (input.cancelAtEndOfCycle) {
       const cancellations = operations.filter((operation) =>
         operation.kind === BillingOperationKind.CANCEL,
       );
-      if (cancellations.length === 1) {
-        await this.confirmOperation(transaction, cancellations[0], null);
+      const exactCancellations = providerReference
+        ? cancellations.filter((operation) => operation.providerReference === providerReference)
+        : cancellations;
+      const unresolvedCancellations = cancellations.filter((operation) => operation.providerReference === null);
+      const confirmedNullCancellations = confirmedWithoutReference.filter((operation) =>
+        operation.kind === BillingOperationKind.CANCEL,
+      );
+      const confirmedExactCancellations = confirmedWithReference.filter((operation) =>
+        operation.kind === BillingOperationKind.CANCEL,
+      );
+      const matchingCancellation = exactCancellations.length === 1
+        ? exactCancellations[0]
+        : exactCancellations.length === 0 && unresolvedCancellations.length === 1 &&
+          confirmedNullCancellations.length === 0 && confirmedExactCancellations.length === 0
+          ? unresolvedCancellations[0]
+          : null;
+      if (matchingCancellation) {
+        await this.confirmOperation(transaction, matchingCancellation, providerReference);
       }
+      await enrichConfirmedReference(BillingOperationKind.CANCEL);
     }
   }
 
@@ -543,7 +629,7 @@ export class ShopifyBillingOperationService {
       providerReference: string | null;
     },
   ): Promise<BillingOperation> {
-    const operation = await transaction.billingOperation.upsert({
+    let operation = await transaction.billingOperation.upsert({
       where: {
         shopId_requestKey: {
           shopId: input.shopId,
@@ -588,22 +674,21 @@ export class ShopifyBillingOperationService {
     ) {
       throw new Error("Shopify billing operation provider reference conflict.");
     }
-    if (
-      input.state === BillingOperationState.CONFIRMED &&
-      input.providerReference
-    ) {
+    if (input.state === BillingOperationState.CONFIRMED) {
       return this.confirmOperation(transaction, operation, input.providerReference);
+    }
+    if (input.providerReference && operation.providerReference === null) {
+      operation = await this.attachProviderReference(transaction, operation, input.providerReference);
     }
     if (
       input.state === BillingOperationState.AWAITING_CONFIRMATION &&
-      operation.state === BillingOperationState.INITIATING &&
-      input.providerReference
+      operation.state === BillingOperationState.INITIATING
     ) {
       await transaction.billingOperation.updateMany({
         where: {
           id: operation.id,
           state: BillingOperationState.INITIATING,
-          providerReference: input.providerReference,
+          providerReference: operation.providerReference,
         },
         data: { state: BillingOperationState.AWAITING_CONFIRMATION, lastErrorCode: null },
       });
@@ -617,12 +702,10 @@ export class ShopifyBillingOperationService {
     operation: BillingOperation,
     trustedProviderReference: string | null,
   ): Promise<BillingOperation> {
-    const providerReference = operation.providerReference ?? nonBlank(trustedProviderReference);
-    if (!providerReference) return operation;
+    const providerReference = nonBlank(trustedProviderReference);
     if (
       operation.providerReference &&
       trustedProviderReference &&
-      operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
       operation.providerReference !== trustedProviderReference
     ) {
       throw new Error("Shopify billing operation provider reference conflict.");
@@ -631,22 +714,38 @@ export class ShopifyBillingOperationService {
     await transaction.billingOperation.updateMany({
       where: {
         id: operation.id,
-        state: { in: [...OPEN_OPERATION_STATES] },
+        state: { in: [...OPEN_OPERATION_STATES, BillingOperationState.CONFIRMED] },
         ...(operation.providerReference
           ? { providerReference: operation.providerReference }
           : { providerReference: null }),
       },
       data: {
         state: BillingOperationState.CONFIRMED,
-        providerReference,
+        providerReference: providerReference ?? operation.providerReference,
         lastErrorCode: null,
       },
     });
     const confirmed = await this.requireOperation(transaction, operation.id);
-    if (confirmed.providerReference !== providerReference) {
+    if (providerReference && confirmed.providerReference !== providerReference) {
       throw new Error("Shopify billing operation provider reference conflict.");
     }
     return confirmed;
+  }
+
+  private async attachProviderReference(
+    transaction: BillingOperationTransaction,
+    operation: BillingOperation,
+    providerReference: string,
+  ): Promise<BillingOperation> {
+    await transaction.billingOperation.updateMany({
+      where: { id: operation.id, providerReference: null },
+      data: { providerReference },
+    });
+    const updated = await this.requireOperation(transaction, operation.id);
+    if (updated.providerReference !== providerReference) {
+      throw new Error("Shopify billing operation provider reference conflict.");
+    }
+    return updated;
   }
 
   private async requireOperation(

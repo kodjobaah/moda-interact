@@ -328,7 +328,6 @@ export class RecoveryCreditPurchaseRequestService {
         purchaseId: purchase.id,
         usageEvent: currentSelectedEvent,
         providerQuantityBefore: providerBeforeEvidence.quantity,
-        providerReference: usageEvent.shopifyIdempotencyKey!,
       });
       return purchase;
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

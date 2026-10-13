@@ -158,7 +158,7 @@ describe("HostedPlanChangeService", () => {
     );
   });
 
-  it("uses the existing lifecycle event as the stable provider reference when the legacy subscription id is absent", async () => {
+  it("does not use a lifecycle event ID as a provider billing reference", async () => {
     const current = {
       ...hostedFence({ providerSubscriptionId: null }),
       status: "ACTIVE",
@@ -175,7 +175,7 @@ describe("HostedPlanChangeService", () => {
     expect(billingOperationService.recordHostedPlanChange).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
-        providerReference: "gid://partners/SubscriptionStatus/1",
+        providerReference: null,
       }),
     );
   });
