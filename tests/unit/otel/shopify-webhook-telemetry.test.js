@@ -15,7 +15,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   OTEL_WEBHOOK_METRIC_DURATION,
   OTEL_WEBHOOK_METRIC_INGRESS,
-  OTEL_WEBHOOK_METER_NAME,
   OTEL_WEBHOOK_SPAN_NAME,
 } from "../../../app/services/otel/otel.constants";
 import {

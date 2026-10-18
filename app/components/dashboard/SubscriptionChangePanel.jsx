@@ -1,5 +1,6 @@
-import React from "react";
 import PropTypes from "prop-types";
+/* eslint react/jsx-uses-react: "error" */
+import React from "react";
 import { Link } from "react-router";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
@@ -81,7 +82,7 @@ export default function SubscriptionChangePanel({ merchantUi, current, pending, 
 
 SubscriptionChangePanel.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
-  current: PropTypes.shape({ shopifyPlanHandle: PropTypes.string.isRequired, mappedModaPlanName: PropTypes.string, price: PropTypes.shape({ amount: PropTypes.string.isRequired, currency: PropTypes.string }), interval: PropTypes.string, cancelAtEndOfCycle: PropTypes.bool.isRequired }),
+  current: PropTypes.shape({ shopifyPlanHandle: PropTypes.string.isRequired, mappedModaPlanName: PropTypes.string, price: PropTypes.shape({ amount: PropTypes.string.isRequired, currency: PropTypes.string }), interval: PropTypes.string, cancelAtEndOfCycle: PropTypes.bool.isRequired, currentPeriodEnd: PropTypes.string }),
   pending: PropTypes.shape({ shopifyPlanHandle: PropTypes.string.isRequired, mappedModaPlanName: PropTypes.string, price: PropTypes.shape({ amount: PropTypes.string.isRequired, currency: PropTypes.string }).isRequired, effectiveAt: PropTypes.string }),
   requestedSelection: PropTypes.shape({ shopifyPlanHandle: PropTypes.string.isRequired }),
   providerVerificationState: PropTypes.string.isRequired,

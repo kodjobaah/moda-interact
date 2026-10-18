@@ -1,3 +1,4 @@
+import process from "node:process";
 import { useRouteError } from "react-router";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";

@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 /** @type {typeof globalThis & { prismaGlobal?: PrismaClient }} */
-const globalForPrisma = globalThis;
+const globalForPrisma = global;
 
 if (process.env.NODE_ENV !== "production") {
   if (!globalForPrisma.prismaGlobal) {

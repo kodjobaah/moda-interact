@@ -531,6 +531,6 @@ function nullableString(value: unknown): string | null {
   return value;
 }
 
-function isRecord(value: unknown): value is Record<string, any> {
+function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }

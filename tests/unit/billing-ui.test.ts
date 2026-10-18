@@ -191,18 +191,6 @@ const renderBillingRoute = (overrides: Record<string, unknown> = {}) => {
   return renderToStaticMarkup(createElement(BillingRoute));
 };
 
-const activeFreeSubscription = {
-  status: "ACTIVE",
-  plan: { kind: "FREE", name: "Free" },
-  observedShopifyPlanHandle: "free",
-  currentPeriodStart: null,
-  currentPeriodEnd: null,
-  trialEndsAt: null,
-  cancelAtPeriodEnd: false,
-  pendingPlan: null,
-  pendingEffectiveAt: null,
-};
-
 beforeEach(() => {
   vi.clearAllMocks();
   authenticateAdmin.mockResolvedValue({

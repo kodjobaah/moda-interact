@@ -240,7 +240,7 @@ export default function PrivacyPolicy() {
 
       <p>
         Customers of a Shopify merchant should normally contact that merchant
-        first regarding information processed through the merchant's store. We
+        first regarding information processed through the merchant&apos;s store. We
         will assist merchants with valid privacy requests where required.
       </p>
 
@@ -249,7 +249,7 @@ export default function PrivacyPolicy() {
       <p>
         Moda Interact supports privacy requests received through Shopify,
         including requests relating to access to or deletion of merchant and
-        customer data, in accordance with Shopify's requirements and applicable
+        customer data, in accordance with Shopify&apos;s requirements and applicable
         law.
       </p>
 
