@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+/* eslint react/jsx-uses-react: "error" */
 import React from "react";
 import { describe, expect, it } from "vitest";
 import LifecycleRestrictionBanner from "../../app/components/dashboard/LifecycleRestrictionBanner";

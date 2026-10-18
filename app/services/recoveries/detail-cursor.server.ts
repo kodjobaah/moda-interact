@@ -8,7 +8,10 @@ export type DetailBoundary = { at: string; id: string };
 export type DetailNavigation = { direction: "first" | "latest" | "next" | "previous"; boundary: DetailBoundary | null };
 
 export function validDetailId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= 255 && !/[\u0000-\u001f\u007f]/u.test(value);
+  return typeof value === "string" && value.length > 0 && value.length <= 255 && !Array.from(value).some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+  });
 }
 
 // Binding prevents accidental cross-resource cursor reuse; it is not authorization.

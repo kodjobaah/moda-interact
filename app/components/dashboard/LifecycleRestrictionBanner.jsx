@@ -1,5 +1,6 @@
-import React from "react";
 import PropTypes from "prop-types";
+/* eslint react/jsx-uses-react: "error" */
+import React from "react";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 /** @param {{ merchantUi: any, subscription: any, capacity: any }} props */
