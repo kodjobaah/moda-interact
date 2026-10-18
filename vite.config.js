@@ -72,4 +72,16 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
 
+  // React Router's Vite Environment API builds the Node SSR bundle separately.
+  // Shopify OAuth configuration is resolved before SDK construction using
+  // top-level await; Node supports this syntax but the default browser target
+  // does not. Keep the existing browser target unchanged.
+  environments: {
+    ssr: {
+      build: {
+        target: "esnext",
+      },
+    },
+  },
+
 });

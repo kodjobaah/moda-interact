@@ -1,11 +1,16 @@
 import { beforeEach, expect, it, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ entitlement: vi.fn() }));
+const mocks = vi.hoisted(() => ({ entitlement: vi.fn(), requireR2: vi.fn() }));
 
 vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-entitlement.server", () => ({
   loadCurrentMerchantKnowledgeEntitlement: mocks.entitlement,
 }));
 vi.mock("../../app/db.server", () => ({ default: {} }));
+vi.mock("../../app/services/platform-configuration/composition.server", () => ({
+  createDefaultShopifyPlatformConfigurationService: () => ({
+    requireMerchantKnowledgeR2Configuration: mocks.requireR2,
+  }),
+}));
 
 import { loadMerchantKnowledge } from "../../app/services/merchant-knowledge/merchant-knowledge.server";
 
@@ -70,6 +75,7 @@ function database(
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.entitlement.mockResolvedValue({ kind: "entitled", configuration });
+  mocks.requireR2.mockResolvedValue({ version: 1, maxUploadBytes: 987 });
 });
 
 it("limits the catalogue to supported WEB_PAGE pairs and filters source types before the cap", async () => {
@@ -87,13 +93,14 @@ it("limits the catalogue to supported WEB_PAGE pairs and filters source types be
     expect.objectContaining({
       where: {
         purpose: { active: true },
-        dataFormat: { active: true, key: "WEB_PAGE", inputKind: "REMOTE_URL" },
+        dataFormat: { active: true, inputKind: { in: ["REMOTE_URL", "UPLOAD"] } },
       },
     }),
   );
   expect(result.catalogue.map(({ dataFormat }) => dataFormat.key)).toEqual(["WEB_PAGE"]);
   expect(result).toMatchObject({
     planEntitled: true,
+    maxUploadBytes: 987,
     merchantEnabled: false,
     effectiveEnabled: false,
     configuredCount: 2,
@@ -153,4 +160,10 @@ it("uses the shared Shop language tag as the default", async () => {
     select: { defaultLanguageTag: true },
   });
   expect(result.defaultLanguageTag).toBe("en");
+});
+it("shows zero upload capacity if the sealed R2 policy is unavailable", async () => {
+  mocks.requireR2.mockRejectedValueOnce(new Error("MISSING"));
+  const result = await loadMerchantKnowledge("shop-1", database([]) as never);
+  expect(result.maxUploadBytes).toBe(0);
+  expect(mocks.requireR2).toHaveBeenCalledOnce();
 });
