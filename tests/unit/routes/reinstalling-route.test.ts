@@ -14,6 +14,7 @@ const enqueueBillingSubscriptionReconcileBestEffort = vi.fn();
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
+  apiKey: "database-public-key",
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: {
@@ -96,6 +97,7 @@ describe("reinstalling route", () => {
     await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).resolves.toMatchObject({
       state: "stopped",
       nextReconcileAt: null,
+      apiKey: "database-public-key",
     });
   });
 

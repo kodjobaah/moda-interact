@@ -7,6 +7,7 @@ const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
+  apiKey: "database-public-key",
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
@@ -75,6 +76,7 @@ describe("app layout access", () => {
 
     await expect(loader(requestFor("/app/merchant-support?shopId=other-shop"))).resolves.toMatchObject({
       unreadMessages: 2,
+      apiKey: "database-public-key",
     });
     expect(readMerchantSupportMessages).toHaveBeenCalledWith({
       shopId: "shop-1",

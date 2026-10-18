@@ -35,6 +35,7 @@ const r2Config: MerchantKnowledgeR2Config = {
   accessKeyId: "test-access",
   secretAccessKey: "test-secret",
   maxUploadBytes: 1_000_000,
+  maxXlsxUncompressedBytes: 2_000_000,
   region: "auto",
 };
 

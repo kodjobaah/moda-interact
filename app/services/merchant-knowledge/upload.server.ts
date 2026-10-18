@@ -22,7 +22,8 @@ import {
   type MerchantKnowledgeTransaction,
 } from "./merchant-knowledge.server";
 import { createMerchantKnowledgeR2Client, type MerchantKnowledgeR2Client } from "./r2-client.server";
-import { loadMerchantKnowledgeR2Config, type MerchantKnowledgeR2Config } from "./r2-config.server";
+import { r2ClientConfigFromSnapshot, type MerchantKnowledgeR2Config } from "./r2-config.server";
+import { createDefaultShopifyPlatformConfigurationService } from "../platform-configuration/composition.server";
 
 type Database = Pick<PrismaClient,
   "$transaction" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat"
@@ -89,13 +90,17 @@ function normalizeError(error: unknown): never {
   throw error;
 }
 
-function dependencies(input: {
+async function dependencies(input: {
   database?: Database;
   r2?: MerchantKnowledgeR2Client;
   config?: MerchantKnowledgeR2Config;
   queue?: Queue;
 }) {
-  const config = input.config ?? loadMerchantKnowledgeR2Config();
+  // Never merge database policy with legacy environment credentials.
+  // The caller may inject one complete snapshot for isolated tests.
+  const config = input.config ?? r2ClientConfigFromSnapshot(
+    await createDefaultShopifyPlatformConfigurationService().requireMerchantKnowledgeR2Configuration(),
+  );
   return {
     database: input.database ?? db,
     config,
@@ -131,7 +136,7 @@ export async function createMerchantKnowledgeUploadIntent(input: {
   config?: MerchantKnowledgeR2Config;
   now?: () => Date;
 }) {
-  const deps = dependencies(input);
+  const deps = await dependencies(input);
   const shopDomain = parseShopDomain(input.shopDomain);
   const deploymentEnvironment = merchantKnowledgeStorageEnvironment();
   const purposeKey = parsePurpose(input.purposeKey);
@@ -228,7 +233,7 @@ export async function finalizeMerchantKnowledgeUpload(input: {
   queue?: Queue;
   now?: () => Date;
 }) {
-  const deps = dependencies(input);
+  const deps = await dependencies(input);
   const assetId = typeof input.assetId === "string" && input.assetId.length <= 128 ? input.assetId : "";
   const purposeKey = parsePurpose(input.purposeKey);
   const name = parseFileName(input.name, 160);

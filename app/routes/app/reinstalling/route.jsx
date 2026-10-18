@@ -1,7 +1,7 @@
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { Form, Link, redirect, useLoaderData, useRouteError } from "react-router";
-import { authenticate } from "@/shopify.server";
+import { authenticate, apiKey } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
@@ -18,8 +18,7 @@ export async function loader(/** @type {import("react-router").LoaderFunctionArg
 
   const subscription = await shopService.getReinstallSubscription(shop.id);
   return {
-    // eslint-disable-next-line no-undef
-    apiKey: process.env.SHOPIFY_API_KEY || "",
+    apiKey,
     state: subscription?.nextReconcileAt ? "pending" : "stopped",
     nextReconcileAt: subscription?.nextReconcileAt?.toISOString() ?? null,
     merchantUi: merchantUiContext(shop, session),

@@ -1,8 +1,7 @@
-/* global process */
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { authenticate } from "@/shopify.server";
+import { authenticate, apiKey } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import {
   assertActiveShop,
@@ -51,7 +50,7 @@ export const loader = async ({ request }) => {
   });
 
   return {
-    apiKey: process.env.SHOPIFY_API_KEY || "",
+    apiKey,
     unreadMessages: support.unread,
     merchantUi: merchantUiContext(shop, session),
     merchantExperienceState,

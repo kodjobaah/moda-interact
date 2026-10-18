@@ -1,60 +1,23 @@
-export interface MerchantKnowledgeR2Config {
-  endpoint: string;
-  bucket: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  maxUploadBytes: number;
-  region: "auto";
-}
+import type { MerchantKnowledgeR2Configuration } from "../platform-configuration/contracts.server";
 
-export class MerchantKnowledgeR2ConfigurationError extends Error {
-  constructor() {
-    super("MERCHANT_KNOWLEDGE_R2_CONFIGURATION_INVALID");
-    this.name = "MerchantKnowledgeR2ConfigurationError";
-  }
-}
+/** The six fields in a single immutable SHOPIFY-001 operation snapshot. */
+export type MerchantKnowledgeR2Config = Readonly<Pick<
+  MerchantKnowledgeR2Configuration,
+  "endpoint" | "bucket" | "accessKeyId" | "secretAccessKey" |
+  "maxUploadBytes" | "maxXlsxUncompressedBytes"
+> & { region: "auto" }>;
 
-export function loadMerchantKnowledgeR2Config(
-  environment: NodeJS.ProcessEnv = process.env,
+/** The SHOPIFY-001 reader has already enforced the complete, sealed R2 contract. */
+export function r2ClientConfigFromSnapshot(
+  snapshot: MerchantKnowledgeR2Configuration,
 ): MerchantKnowledgeR2Config {
-  const endpointValue = environment.MERCHANT_KNOWLEDGE_R2_ENDPOINT?.trim();
-  const bucket = environment.MERCHANT_KNOWLEDGE_R2_BUCKET?.trim();
-  const accessKeyId = environment.MERCHANT_KNOWLEDGE_R2_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = environment.MERCHANT_KNOWLEDGE_R2_SECRET_ACCESS_KEY?.trim();
-  const maxUploadBytesValue = environment.MERCHANT_KNOWLEDGE_MAX_UPLOAD_BYTES?.trim();
-
-  if (!endpointValue || !bucket || !accessKeyId || !secretAccessKey || !maxUploadBytesValue) {
-    throw new MerchantKnowledgeR2ConfigurationError();
-  }
-
-  let endpoint: URL;
-  try {
-    endpoint = new URL(endpointValue);
-  } catch {
-    throw new MerchantKnowledgeR2ConfigurationError();
-  }
-
-  if (
-    endpoint.protocol !== "https:" ||
-    !endpoint.hostname ||
-    endpoint.username ||
-    endpoint.password ||
-    !/^\d+$/.test(maxUploadBytesValue)
-  ) {
-    throw new MerchantKnowledgeR2ConfigurationError();
-  }
-
-  const maxUploadBytes = Number(maxUploadBytesValue);
-  if (!Number.isSafeInteger(maxUploadBytes) || maxUploadBytes <= 0) {
-    throw new MerchantKnowledgeR2ConfigurationError();
-  }
-
-  return {
-    endpoint: endpoint.toString(),
-    bucket,
-    accessKeyId,
-    secretAccessKey,
-    maxUploadBytes,
-    region: "auto",
-  };
+  return Object.freeze({
+    endpoint: snapshot.endpoint,
+    bucket: snapshot.bucket,
+    accessKeyId: snapshot.accessKeyId,
+    secretAccessKey: snapshot.secretAccessKey,
+    maxUploadBytes: snapshot.maxUploadBytes,
+    maxXlsxUncompressedBytes: snapshot.maxXlsxUncompressedBytes,
+    region: "auto" as const,
+  });
 }

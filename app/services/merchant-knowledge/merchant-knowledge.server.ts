@@ -12,7 +12,7 @@ import {
 import db from "@/db.server";
 import { loadCurrentMerchantKnowledgeEntitlement } from "./merchant-knowledge-entitlement.server";
 import { enqueueMerchantKnowledgeRevisionBestEffort } from "./merchant-knowledge-queue.server";
-import { loadMerchantKnowledgeR2Config } from "./r2-config.server";
+import { createDefaultShopifyPlatformConfigurationService } from "../platform-configuration/composition.server";
 
 type Database = Pick<PrismaClient, "$transaction" | "merchantKnowledgePurpose" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision" | "subscription" | "feature" | "shopFeaturePreference" | "shop">;
 export type MerchantKnowledgeTransaction = Prisma.TransactionClient;
@@ -184,18 +184,19 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
     : 0;
   const withinCount = new Set(typeEligible.slice(0, maxKnowledgeSources).map(({ id }) => id));
 
+  // This is presentation metadata, never a source of credentials for a signing
+  // operation. Missing R2 configuration disables the displayed upload limit.
+  const maxUploadBytes = await createDefaultShopifyPlatformConfigurationService()
+    .requireMerchantKnowledgeR2Configuration()
+    .then((snapshot) => snapshot.maxUploadBytes)
+    .catch(() => 0);
+
   return {
     planEntitled,
     merchantEnabled: activation.merchantEnabled,
     effectiveEnabled: planEntitled && activation.merchantEnabled,
     maxKnowledgeSources,
-    maxUploadBytes: (() => {
-      try {
-        return loadMerchantKnowledgeR2Config().maxUploadBytes;
-      } catch {
-        return 0;
-      }
-    })(),
+    maxUploadBytes,
     configuredCount: sources.length,
     planEligibleSourceCount: typeEligible.length,
     defaultLanguageTag: resolveModaConfigurationLocale(shop?.defaultLanguageTag),
