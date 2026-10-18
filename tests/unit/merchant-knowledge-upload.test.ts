@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createMerchantKnowledgeR2Client } from "../../app/services/merchant-knowledge/r2-client.server";
-import {
-  loadMerchantKnowledgeR2Config,
-  MerchantKnowledgeR2ConfigurationError,
-} from "../../app/services/merchant-knowledge/r2-config.server";
+import { r2ClientConfigFromSnapshot } from "../../app/services/merchant-knowledge/r2-config.server";
 
 const serviceMocks = vi.hoisted(() => ({
   database: { $transaction: vi.fn() },
@@ -17,9 +14,15 @@ const serviceMocks = vi.hoisted(() => ({
   entitlement: vi.fn(),
   signPut: vi.fn(),
   headObject: vi.fn(),
+  requireR2: vi.fn(),
 }));
 
 vi.mock("../../app/db.server", () => ({ default: serviceMocks.database }));
+vi.mock("../../app/services/platform-configuration/composition.server", () => ({
+  createDefaultShopifyPlatformConfigurationService: () => ({
+    requireMerchantKnowledgeR2Configuration: serviceMocks.requireR2,
+  }),
+}));
 vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-entitlement.server", () => ({
   loadCurrentMerchantKnowledgeEntitlement: serviceMocks.entitlement,
 }));
@@ -40,34 +43,28 @@ import {
   finalizeMerchantKnowledgeUpload,
 } from "../../app/services/merchant-knowledge/upload.server";
 
-const validEnvironment: NodeJS.ProcessEnv = {
-  MERCHANT_KNOWLEDGE_R2_ENDPOINT: "https://account.r2.cloudflarestorage.com",
-  MERCHANT_KNOWLEDGE_R2_BUCKET: "merchant-knowledge",
-  MERCHANT_KNOWLEDGE_R2_ACCESS_KEY_ID: "access-key",
-  MERCHANT_KNOWLEDGE_R2_SECRET_ACCESS_KEY: "secret-key",
-  MERCHANT_KNOWLEDGE_MAX_UPLOAD_BYTES: "10485760",
-};
-
-it("loads the exact private R2 contract with the automatic region", () => {
-  expect(loadMerchantKnowledgeR2Config(validEnvironment)).toEqual({
-    endpoint: "https://account.r2.cloudflarestorage.com/",
+it("adapts one validated six-field sealed policy snapshot for the R2 client", () => {
+  const snapshot = Object.freeze({
+    version: 8,
+    endpoint: "https://" + "a".repeat(32) + ".r2.cloudflarestorage.com",
     bucket: "merchant-knowledge",
     accessKeyId: "access-key",
     secretAccessKey: "secret-key",
     maxUploadBytes: 10_485_760,
+    maxXlsxUncompressedBytes: 20_971_520,
+  });
+  const client = r2ClientConfigFromSnapshot(snapshot);
+  expect(client).toEqual({
+    endpoint: snapshot.endpoint,
+    bucket: snapshot.bucket,
+    accessKeyId: snapshot.accessKeyId,
+    secretAccessKey: snapshot.secretAccessKey,
+    maxUploadBytes: snapshot.maxUploadBytes,
+    maxXlsxUncompressedBytes: snapshot.maxXlsxUncompressedBytes,
     region: "auto",
   });
-});
-
-it.each([
-  ["missing endpoint", { ...validEnvironment, MERCHANT_KNOWLEDGE_R2_ENDPOINT: undefined }],
-  ["non-HTTPS endpoint", { ...validEnvironment, MERCHANT_KNOWLEDGE_R2_ENDPOINT: "http://r2.example" }],
-  ["empty bucket", { ...validEnvironment, MERCHANT_KNOWLEDGE_R2_BUCKET: " " }],
-  ["empty credentials", { ...validEnvironment, MERCHANT_KNOWLEDGE_R2_ACCESS_KEY_ID: " " }],
-  ["invalid upload limit", { ...validEnvironment, MERCHANT_KNOWLEDGE_MAX_UPLOAD_BYTES: "1.5" }],
-  ["unsafe upload limit", { ...validEnvironment, MERCHANT_KNOWLEDGE_MAX_UPLOAD_BYTES: "9007199254740992" }],
-])("rejects %s", (_description, environment) => {
-  expect(() => loadMerchantKnowledgeR2Config(environment)).toThrow(MerchantKnowledgeR2ConfigurationError);
+  expect(Object.isFrozen(client)).toBe(true);
+  expect(client).not.toHaveProperty("version");
 });
 
 const testConfig = {
@@ -76,6 +73,7 @@ const testConfig = {
   accessKeyId: "access",
   secretAccessKey: "secret",
   maxUploadBytes: 1_000,
+  maxXlsxUncompressedBytes: 2_000,
   region: "auto" as const,
 };
 
@@ -104,6 +102,7 @@ beforeEach(() => {
   serviceMocks.transaction.merchantKnowledgeUploadedAsset.create.mockResolvedValue({});
   serviceMocks.signPut.mockResolvedValue("https://r2.example/signed-put");
   serviceMocks.headObject.mockResolvedValue({ contentLength: 32, contentType: "text/csv" });
+  serviceMocks.requireR2.mockResolvedValue({ version: 1, ...testConfig });
 });
 
 afterEach(() => {
@@ -150,6 +149,46 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     requiredHeaders: { "Content-Type": "text/csv", "If-None-Match": "*" },
     maxUploadBytes: 1_000,
   });
+});
+
+it("reads one current sealed R2 policy per intent and never mixes environment credentials", async () => {
+  vi.stubEnv("MERCHANT_KNOWLEDGE_R2_BUCKET", "stale-legacy-bucket");
+  serviceMocks.requireR2.mockResolvedValueOnce({
+    version: 9, ...testConfig, bucket: "database-bucket", maxUploadBytes: 1234,
+  });
+  const result = await createMerchantKnowledgeUploadIntent({
+    shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "CSV",
+    originalFileName: "catalog.csv",
+    contentType: "text/csv",
+    sizeBytes: 32,
+    database: serviceMocks.database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+  });
+  expect(serviceMocks.requireR2).toHaveBeenCalledTimes(1);
+  expect(serviceMocks.signPut).toHaveBeenCalledWith(expect.objectContaining({ bucket: "database-bucket" }));
+  expect(result).toMatchObject({ maxUploadBytes: 1234 });
+  expect(JSON.stringify(result)).not.toContain("secret");
+  expect(JSON.stringify(result)).not.toContain("access");
+});
+
+it("fails closed before creating upload intents when R2 config is revoked", async () => {
+  serviceMocks.requireR2.mockRejectedValueOnce(new Error("DISABLED"));
+  await expect(createMerchantKnowledgeUploadIntent({
+    shopId: "shop-1",
+    shopDomain: "eugene-bdx7mzhn.myshopify.com",
+    purposeKey: "PRODUCT_INFORMATION",
+    dataFormatKey: "CSV",
+    originalFileName: "catalog.csv",
+    contentType: "text/csv",
+    sizeBytes: 32,
+    database: serviceMocks.database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+  })).rejects.toThrow("DISABLED");
+  expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
+  expect(serviceMocks.signPut).not.toHaveBeenCalled();
 });
 
 it("uses the configured deployment environment as the R2 namespace", async () => {
@@ -276,4 +315,31 @@ it("rejects cross-shop asset finalization before contacting R2", async () => {
     now: () => new Date("2026-10-01T12:01:00.000Z"),
   })).rejects.toMatchObject({ code: "DENIED" });
   expect(serviceMocks.headObject).not.toHaveBeenCalled();
+});
+it("does not finalise an in-flight object against a newly selected bucket", async () => {
+  serviceMocks.requireR2.mockResolvedValueOnce({ version: 4, ...testConfig, bucket: "new-bucket" });
+  serviceMocks.transaction.merchantKnowledgeUploadedAsset.findUnique.mockResolvedValue({
+    id: "asset-1", shopId: "shop-1", dataFormatId: "format-csv",
+    status: "PENDING_UPLOAD", objectKey: "merchant-knowledge/test/shop-1/asset-1/source.csv",
+    uploadExpiresAt: new Date("2026-10-01T12:10:00.000Z"),
+    dataFormat: { key: "CSV", inputKind: "UPLOAD", active: true, acceptedContentTypes: ["text/csv"] },
+  });
+  const database = {
+    ...serviceMocks.database,
+    merchantKnowledgeUploadedAsset: serviceMocks.transaction.merchantKnowledgeUploadedAsset,
+  };
+  serviceMocks.headObject.mockRejectedValue(new Error("object is only in old bucket"));
+  await expect(finalizeMerchantKnowledgeUpload({
+    shopId: "shop-1", assetId: "asset-1", purposeKey: "PRODUCT_INFORMATION",
+    name: "Catalog", languageTag: "en", sizeBytes: 32,
+    sha256: "a".repeat(64), contentType: "text/csv",
+    database: database as never,
+    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
+    now: () => new Date("2026-10-01T12:01:00.000Z"),
+  })).rejects.toMatchObject({ code: "UPLOAD_OBJECT_NOT_FOUND" });
+  expect(serviceMocks.requireR2).toHaveBeenCalledTimes(1);
+  expect(serviceMocks.headObject).toHaveBeenCalledWith({
+    bucket: "new-bucket", key: "merchant-knowledge/test/shop-1/asset-1/source.csv",
+  });
+  expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
 });

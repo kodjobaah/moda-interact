@@ -1,3 +1,5 @@
+import { createDefaultShopifyPlatformConfigurationService } from "../../platform-configuration/composition.server";
+import type { ShopifyPlatformConfigurationService } from "../../platform-configuration/contracts.server";
 import type {
   BillingProvider,
   GetActiveSubscriptionInput,
@@ -65,30 +67,23 @@ const lifecycleEventTypes: ProviderSubscriptionLifecycleEventType[] = [
   "SUBSCRIPTION_UNFROZEN",
 ];
 
+const DEFAULT_PARTNER_API_VERSION = "2026-07";
+
+type PartnerCredentialReader = Pick<ShopifyPlatformConfigurationService, "requireShopifyPartnerCredentials">;
+
 export class ShopifyBillingProvider
   implements BillingProvider {
+  constructor(private readonly configuration: PartnerCredentialReader = createDefaultShopifyPlatformConfigurationService()) {}
 
   async getActiveSubscription({
     shopifyShopId,
   }: GetActiveSubscriptionInput): Promise<ProviderSubscription | null> {
 
-    const orgId =
-      process.env.SHOPIFY_PARTNER_ORG_ID;
-
-    const accessToken =
-      process.env.SHOPIFY_PARTNER_ACCESS_TOKEN;
-
-    const appId =
-      process.env.SHOPIFY_APP_ID;
-
-    if (!orgId || !accessToken || !appId) {
-      throw new Error(
-        "Shopify Partner API configuration is missing",
-      );
-    }
+    const { organizationId: orgId, accessToken, appId, apiVersion = DEFAULT_PARTNER_API_VERSION } =
+      await this.configuration.requireShopifyPartnerCredentials();
 
     const response = await fetch(
-      `https://partners.shopify.com/${orgId}/api/2026-07/graphql.json`,
+      `https://partners.shopify.com/${orgId}/api/${apiVersion}/graphql.json`,
       {
         method: "POST",
 
@@ -169,7 +164,7 @@ export class ShopifyBillingProvider
     if (result.errors?.length) {
       throw new Error(
         result.errors
-          .map((error) => error.message)
+          .map((error) => error.message.replaceAll(accessToken, "[REDACTED]"))
           .join(", "),
       );
     }
@@ -305,18 +300,13 @@ export class ShopifyBillingProvider
   async getSubscriptionLifecycleSnapshot({
     shopifyShopId,
   }: GetActiveSubscriptionInput): Promise<ProviderSubscriptionLifecycleSnapshot> {
-    const orgId = process.env.SHOPIFY_PARTNER_ORG_ID;
-    const accessToken = process.env.SHOPIFY_PARTNER_ACCESS_TOKEN;
-    const appId = process.env.SHOPIFY_APP_ID;
-
-    if (!orgId || !accessToken || !appId) {
-      throw new Error("Shopify Partner API configuration is missing");
-    }
+    const { organizationId: orgId, accessToken, appId, apiVersion = DEFAULT_PARTNER_API_VERSION } =
+      await this.configuration.requireShopifyPartnerCredentials();
 
     const occurredAtMax = new Date();
     const occurredAtMin = new Date(occurredAtMax.getTime() - 365 * 24 * 60 * 60 * 1000);
     const response = await fetch(
-      `https://partners.shopify.com/${orgId}/api/2026-07/graphql.json`,
+      `https://partners.shopify.com/${orgId}/api/${apiVersion}/graphql.json`,
       {
         method: "POST",
         headers: {
@@ -410,7 +400,7 @@ export class ShopifyBillingProvider
     }
     const result = await response.json() as ShopifyLifecycleSnapshotResponse;
     if (result.errors?.length) {
-      throw new Error(result.errors.map((error) => error.message).join(", "));
+      throw new Error(result.errors.map((error) => error.message.replaceAll(accessToken, "[REDACTED]")).join(", "));
     }
     if (!result.data || !Object.prototype.hasOwnProperty.call(result.data, "activeSubscription") ||
       !result.data.events || !Array.isArray(result.data.events.edges)) {
