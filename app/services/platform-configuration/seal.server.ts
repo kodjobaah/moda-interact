@@ -71,8 +71,8 @@ export function unsealPlatformConfiguration(input: {
       envelope,
       aad: platformConfigurationAAD(input.environment, input.key, input.version),
     });
-  } catch {
-    return configurationFailure(input.key, "UNSEAL_FAILED");
+  } catch (error) {
+    return configurationFailure(input.key, "UNSEAL_FAILED"+(error instanceof Error ? ": " + error.message : ""));
   }
   try {
     return JSON.parse(plaintext) as unknown;
