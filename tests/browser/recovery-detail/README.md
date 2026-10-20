@@ -8,6 +8,17 @@ Run from the implementation worktree with the workspace Node environment:
 
 Open `http://127.0.0.1:4179/app/recoveries?from=2026-09-01&to=2026-09-20&status=all&q=Ada&pageSize=25&shop=fixture.myshopify.com`.
 
+For ARCH-040 visual verification, open any synthetic recovery, e.g. `/app/recoveries/basket-1`, and append:
+
+- `?handover=ai`: AI control, open customer window, saved line items and Recovery Context.
+- `?handover=human-open`: HUMAN control; the free-text composer appears **below** the transcript.
+- `?handover=human-closed`: closed window; the approved recovery template appears **below** the transcript.
+- `?handover=follow-up-used`: no follow-up send control.
+- `?handover=suspended`: suspended HUMAN composer, with Resume AI still available.
+- `?handover=terminal`: completed recovery; no actionable composer or misleading takeover invitation.
+
+Review at desktop and narrow embedded widths (1024px, 390px, 320px). These are presentation fixtures only: mutation actions are intentionally not wired to a mock provider or a real database. Actual ownership and send permissions are validated separately at the server boundary. The sample product names and prices are never loaded by production code.
+
 The fixture renders production list/detail components, CSS and locale catalogues in a React Router data router. It supplies synthetic data (125 messages, nine recovery rows) and a 350ms resource delay. No Shopify, Meta or database requests occur. Its simple numeric fixture cursors are not production cursors; actual authorization and cursor readers are covered by the route/reader unit suites. These screenshots do not certify deployed Shopify embedding.
 
 Observed in Chromium on 2026-09-20:

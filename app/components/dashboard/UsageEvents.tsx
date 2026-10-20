@@ -34,8 +34,13 @@ export default function UsageEvents({
       if (history.periodCursor)
         params.set("periodCursor", history.periodCursor);
     }
-    for (const [key, value] of Object.entries(changes))
-      value ? params.set(key, value) : params.delete(key);
+    for (const [key, value] of Object.entries(changes)) {
+      if (value) {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+    }
     return `/app/usage?${params}`;
   };
   const paging = history?.usagePagination;

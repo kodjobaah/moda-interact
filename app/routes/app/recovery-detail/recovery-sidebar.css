@@ -1,0 +1,31 @@
+.recovery-detail__sidebar { display: grid; align-content: start; gap: 12px; }
+.recovery-detail__sidebar > * { width: 100%; }
+.recovery-detail__basket { padding: 16px 18px; }
+.recovery-detail__basket summary { cursor: pointer; }
+.recovery-detail__basket summary h2 { display: inline; }
+.recovery-detail__basket-total { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.recovery-detail__basket-total span { font-size: 12px; color: #60736a; }
+.recovery-detail__basket-list { padding: 0; margin: 10px 0 0; list-style: none; }
+.recovery-detail__basket-list li { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid #e3eae6; }
+.recovery-detail__basket-list p { font-size: 12px; }
+.recovery-detail__basket-price { display: flex; flex-direction: column; text-align: end; }
+.recovery-detail__basket-price span { color: #60736a; font-size: 11px; }
+.recovery-detail__activity h2 { margin-bottom: 14px; }
+.recovery-detail__timeline { list-style: none; margin: 0; padding: 0; }
+.recovery-detail__timeline li { position: relative; display: grid; gap: 3px; margin: 0 0 0 5px; padding: 0 0 16px 18px; border-inline-start: 1px solid #d3dfd8; }
+.recovery-detail__timeline li::before { content: ""; position: absolute; inset-inline-start: -5px; top: 5px; width: 9px; height: 9px; background: #6b9c84; border-radius: 50%; }
+.recovery-detail__timeline li:last-child { padding-bottom: 3px; border-color: transparent; }
+.recovery-detail__timeline strong, .recovery-detail__follow-up-state strong { font-size: 12px; }
+.recovery-detail__timeline span, .recovery-detail__follow-up-state span { font-size: 12px; color: #60736a; }
+.recovery-detail__follow-up-state { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; padding-top: 12px; margin-top: 10px; border-top: 1px solid #e1e8e4; }
+.recovery-detail__related-card { padding: 14px 18px; }
+.recovery-detail__related-card summary { cursor: pointer; }
+.recovery-detail__related-card summary h2 { display: inline; font-size: 14px; }
+.recovery-detail__related-card > div { margin-top: 12px; }
+.recovery-detail__related { padding: 0; list-style: none; }
+.recovery-detail__related li { padding: 10px 0; border-bottom: 1px solid #e4e9e6; }
+.recovery-detail__related-card .recovery-detail__paging { margin-bottom: 0; }
+@media (max-width: 960px) {
+  .recovery-detail__sidebar { order: -1; }
+  .recovery-detail__basket-list li { flex-wrap: wrap; }
+}

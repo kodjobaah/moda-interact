@@ -328,6 +328,14 @@ shopify app dev
 
 Shopify CLI starts the local React Router application and exposes it to the configured development store through a development tunnel.
 
+To use a cloudflared quick tunnel instead of the default Shopify tunnel:
+
+```bash
+npm run shopify:dev:cloud
+```
+
+This requires the `cloudflared` CLI to be installed and available on your `PATH`.
+
 ## Database workflow
 
 The database schema and migration history are owned by `moda-interact-database`.

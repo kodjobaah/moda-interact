@@ -29,6 +29,7 @@ export type DetailData = {
   state: "ready" | "error" | "unavailable";
   messages: Section<Messages>;
   related: Section<Related>;
+  templates: Array<{ id: string; name: string; language: string }>;
 };
 export function recoveryDetailUrl(
   id: string,

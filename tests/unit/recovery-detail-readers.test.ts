@@ -32,6 +32,14 @@ describe("recovery detail ownership and projection", () => {
     expect(dto?.milestones).not.toHaveProperty("cancelledAt");
     expect(query.mock.calls[0][0].text).toContain('c."shopId" = r."shopId"');
   });
+  it("projects initial outreach only from persisted send timestamps and keeps saved basket fields", async () => {
+    const row = { ...owned, initialSentAt: date, lineItems: [{ title: "Saved product", variantTitle: "Large", quantity: 2, price: "12.34" }] };
+    const dto = await readRecoveryDetail(input, queued([row]).db);
+    expect(dto?.initialOutreachSentAt).toBe(date.toISOString());
+    expect(dto?.basket.items[0]).toMatchObject({ title: "Saved product", variant: "Large", quantity: 2, unitPrice: "12.34" });
+    const absent = await readRecoveryDetail(input, queued([{ ...row, initialSentAt: null }]).db);
+    expect(absent?.initialOutreachSentAt).toBeNull();
+  });
   it("handles unknown money, guests and no conversation without extra reads", async () => {
     const row={...owned,customerId:null,conversationId:null,totalPrice:null,currency:null};
     expect((await readRecoveryDetail(input,queued([row]).db))?.value).toEqual({amount:null,currency:null,incomplete:true});
@@ -64,16 +72,29 @@ describe("message pagination",()=>{
   it("takes 51, returns 50 and obtains constant-query edge cursors",async()=>{
     const {db,query}=queued([owned],Array.from({length:51},(_,i)=>msg(i+1)),[{before:false,after:true}]);
     const page=await readRecoveryMessages(input,db);expect(page?.items).toHaveLength(50);expect(page?.previousCursor).toBeNull();expect(page?.nextCursor).toBeTruthy();
-    expect(query).toHaveBeenCalledTimes(3); const sql=query.mock.calls[1][0];expect(sql.text).toContain('LIMIT 51');expect(sql.text).not.toMatch(/JOIN|OFFSET/);expect(sql.values).toEqual([owned.conversationId]);
+    expect(query).toHaveBeenCalledTimes(3); const sql=query.mock.calls[1][0];expect(sql.text).toContain('UNION ALL');expect(sql.text).not.toMatch(/JOIN|OFFSET/);
+    expect(sql.text).toContain('cmd."outboundMessageId" IS NULL');
+    expect(sql.values).toEqual([owned.conversationId,input.shopId,owned.conversationId]);
     expect(parseDetailNavigation(scope,{cursor:page?.nextCursor}).boundary).toEqual({at:date.toISOString(),id:"m-0050"});
   });
   it("first/next/previous/latest traverse >100 tied messages without duplicates",async()=>{
     const all=Array.from({length:125},(_,i)=>msg(i+1));
     const query=vi.fn(async (sql:Prisma.Sql)=>{
       if(sql.text.includes('LEFT JOIN')) return [owned];
-      if(sql.text.includes('SELECT EXISTS')) return [{before:all.some(m=>m.id < String(sql.values[2])),after:all.some(m=>m.id > String(sql.values[5]))}];
-      let rows=all.filter(m=>sql.values.length===1 || (sql.text.includes(') < (') ? m.id < String(sql.values[2]) : m.id > String(sql.values[2])));
-      if(sql.text.includes('DESC')) rows=rows.slice().reverse(); return rows.slice(0,51);
+      if(sql.text.includes('AS "before"')) return [{before:all.some(m=>m.id < String(sql.values[2])),after:all.some(m=>m.id > String(sql.values[9]))}];
+      // Parse the outer message-page ordering: the moderation subquery also has
+      // an ORDER BY ... DESC, which must not reverse ordinary message pages.
+      const pageOrder = /ORDER BY\s+"createdAt"\s+(ASC|DESC),\s+"id"\s+\1\s+LIMIT\s+51\s*$/u.exec(sql.text);
+      if (!pageOrder) throw new Error("Expected outer message-page ordering");
+      const keyset = /\(m\."createdAt",\s*m\."id"\)\s*([<>])\s*\(/u.exec(sql.text);
+      const boundaryId = keyset ? sql.values.at(-1) : null;
+      const rows = all.filter((message) => {
+        if (!keyset) return true;
+        if (typeof boundaryId !== "string") throw new Error("Missing bound pagination key");
+        return keyset[1] === "<" ? message.id < boundaryId : message.id > boundaryId;
+      });
+      if (pageOrder[1] === "DESC") rows.reverse();
+      return rows.slice(0, 51);
     });
     const db={$queryRaw:query} as RecoveryDetailDatabase;
     const first=(await readRecoveryMessages(input,db))!;
@@ -89,8 +110,51 @@ describe("message pagination",()=>{
   });
   it("parameterizes hostile key values and never derives authorization from a cursor",()=>{
     const id="x'; DROP TABLE t; --";
-    const sql=recoveryMessagePageSql("owned",{direction:"next",boundary:{at:date.toISOString(),id}});
-    expect(sql.text).not.toContain(id);expect(sql.values).toContain(id);expect(sql.text).toContain('("createdAt", "id") >');
+    const sql=recoveryMessagePageSql("shop-a","owned",{direction:"next",boundary:{at:date.toISOString(),id}});
+    expect(sql.text).not.toContain(id);expect(sql.values).toContain(id);
+    expect(sql.text).toContain('(m."createdAt", m."id") >');
+    expect(sql.text).toContain('(cmd."createdAt", cmd."id") >');
+  });
+});
+
+describe("merchant commands without provider messages", () => {
+  const missingProviderMessage = (): RecoveryMessageRow => ({
+    ...msg(2), id: "failed-command", createdAt: new Date("2026-10-20T12:14:00.000Z"),
+    direction: "OUTBOUND", senderType: "HUMAN", status: null,
+    contentType: "TEXT", content: "The unsent merchant reply", commandOnly: true,
+    commandKind: "HUMAN_TEXT", humanCommandState: "FAILED",
+    sentAt: null, deliveredAt: null, readAt: null,
+  });
+
+  it("includes the attempted reply and its terminal command status without claiming a provider receipt", async () => {
+    const row = missingProviderMessage();
+    const { db, query } = queued([owned], [msg(1), row], [{ before: false, after: false }]);
+    const page = await readRecoveryMessages(input, db);
+    expect(page?.items).toHaveLength(2);
+    expect(page?.items[1]).toMatchObject({
+      id: row.id, sender: "HUMAN", direction: "OUTBOUND",
+      content: { text: "The unsent merchant reply" },
+      delivery: { status: null, commandState: "FAILED", sentAt: null },
+    });
+    expect(query.mock.calls[1][0].text).toContain('cmd."outboundMessageId" IS NULL');
+    expect(query.mock.calls[1][0].text).toContain('cmd."shopId"=');
+    const edges = query.mock.calls[2][0];
+    expect(edges.text).toContain('"MerchantConversationSendCommand"');
+    expect(edges.text).toContain('"outboundMessageId" IS NULL');
+    expect(edges.values).toContain(input.shopId);
+  });
+
+  it("preserves moderation cancellation and uncertainty without inventing delivery", () => {
+    expect(recoveryMessageDto({ ...missingProviderMessage(), humanCommandState: "CANCELLED" })
+      .delivery?.commandState).toBe("CANCELLED");
+    expect(recoveryMessageDto({ ...missingProviderMessage(), humanCommandState: "UNKNOWN" })
+      .delivery?.commandState).toBe("UNKNOWN");
+    const template = recoveryMessageDto({ ...missingProviderMessage(), contentType: "UNSUPPORTED",
+      content: null, commandKind: "RECOVERY_FOLLOW_UP_TEMPLATE", templateName: "cart_reminder" });
+    expect(template.content.templateName).toBe("cart_reminder");
+    expect(template.content.text).toBeNull();
+    expect(recoveryMessageDto({ ...missingProviderMessage(), humanCommandState: "UNRECOGNIZED" })
+      .delivery?.commandState).toBeNull();
   });
 });
 
@@ -100,6 +164,25 @@ describe("message content and delivery",()=>{
   });
   it.each(["PENDING","SENT","DELIVERED","READ","FAILED"])("retains outbound %s and only recorded timestamps",status=>{
     const dto=recoveryMessageDto({...msg(1),direction:"OUTBOUND",status,sentAt:null});expect(dto.delivery?.status).toBe(status);expect(dto.delivery?.sentAt).toBeNull();
+  });
+  it("marks only a HUMAN PENDING message with a linked UNKNOWN command as unconfirmed", () => {
+    const human = { ...msg(1), direction: "OUTBOUND", senderType: "HUMAN", status: "PENDING", humanCommandState: "UNKNOWN" };
+    const dto = recoveryMessageDto(human);
+    expect(dto.delivery?.status).toBe("PENDING");
+    expect(dto.delivery?.unconfirmed).toBe(true);
+    for (const row of [
+      { ...human, status: "SENT" }, { ...human, status: "DELIVERED" },
+      { ...human, senderType: "AUTOMATION" }, { ...human, humanCommandState: "FAILED" },
+      { ...human, humanCommandState: null },
+    ]) expect(recoveryMessageDto(row).delivery?.unconfirmed).toBeUndefined();
+  });
+  it("reads command state only through a same-conversation, unique outbound-message link", () => {
+    const sql = recoveryMessagePageSql("shop-a", "owned", { direction: "latest", boundary: null });
+    expect(sql.text).toContain('cmd."outboundMessageId"=m."id"');
+    expect(sql.text).toContain('cmd."conversationId"=m."conversationId"');
+    expect(sql.text).toContain('cmd."state"::text');
+    expect(sql.text).toContain("m.\"senderType\"='HUMAN'");
+    expect(sql.values).toEqual(["owned", "shop-a", "owned"]);
   });
   it.each(["PENDING","REJECTED","FAILED","NOT_REQUIRED",null])("hides unsuccessful audio text for %s",transcriptionStatus=>{
     expect(recoveryMessageDto({...msg(1),contentType:"AUDIO",transcriptionStatus}).content.text).toBeNull();

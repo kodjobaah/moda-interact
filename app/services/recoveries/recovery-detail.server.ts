@@ -2,6 +2,7 @@ import { CheckoutRecoveryStatus, Prisma } from "@prisma/client";
 import prisma from "../../db.server";
 import { detailCursor, detailCursorScope, InvalidRecoveryDetailQuery, parseDetailNavigation, validDetailId, type DetailBoundary } from "./detail-cursor.server";
 import { recoveryMessageDto, type RecoveryMessageRow } from "./detail-message";
+import { projectRecoveryBasket } from "./recovery-basket";
 
 export type RecoveryDetailDatabase = { $queryRaw<T>(query: Prisma.Sql): Promise<T> };
 type Identity = { shopId: string; recoveryId: string };
@@ -9,7 +10,13 @@ type PageInput = Identity & { cursor?: unknown; window?: unknown };
 type OwnedRecovery = {
   id: string; customerId: string | null; conversationId: string | null;
   firstName: string | null; lastName: string | null; email: string | null;
-  status: string; totalPrice: Prisma.Decimal | null; currency: string | null;
+  status: string; totalPrice: Prisma.Decimal | null; currency: string | null; lineItems?: unknown;
+  controlMode?: string | null; controlRevision?: number | null; lastCustomerInboundAt?: Date | null;
+  humanRestriction?: string | null; followUpUsed?: boolean | null; followUpInitiator?: string | null;
+  initialSentAt?: Date | null; followUpRecipient?: string | null; followUpAvailable?: boolean | null;
+  approvedTemplateCount?: bigint | number | null;
+  latestCommandId?: string | null; latestCommandState?: string | null;
+  latestCommandKind?: string | null; latestCommandModeration?: string | null;
   detectedAt: Date; messageSentAt: Date | null; engagedAt: Date | null;
   completedAt: Date | null; expiredAt: Date | null;
 };
@@ -28,11 +35,35 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
   if (!validDetailId(shopId) || !validDetailId(recoveryId)) return null;
   const rows = await db.$queryRaw<OwnedRecovery[]>(Prisma.sql`
     SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId",
-      c."firstName", c."lastName", c."email", r."status", r."totalPrice", r."currency",
+      c."firstName", c."lastName", c."email", r."status", r."totalPrice", r."currency", r."lineItems",
+      v."controlMode"::text AS "controlMode", v."controlRevision",
+      restriction."status"::text AS "humanRestriction",
+      (SELECT MAX(m."createdAt") FROM "whatsapp"."ConversationMessage" m
+        WHERE m."conversationId"=v."id" AND m."direction"='INBOUND'
+          AND m."senderType"='CUSTOMER') AS "lastCustomerInboundAt",
+      initial."sentAt" AS "initialSentAt", initial."recipient" AS "followUpRecipient",
+      CASE WHEN follow."id" IS NULL THEN FALSE ELSE (follow."initiationKey" IS NOT NULL
+        OR follow."outboundMessageId" IS NOT NULL OR follow."status" <> 'PENDING') END AS "followUpUsed",
+      follow."initiatedBy"::text AS "followUpInitiator",
+      (initial."sentAt" IS NOT NULL AND (follow."id" IS NULL OR
+        (follow."initiationKey" IS NULL AND follow."status"='PENDING' AND follow."outboundMessageId" IS NULL))) AS "followUpAvailable",
+      (SELECT COUNT(*) FROM "whatsapp"."WhatsAppTemplateVariant" template
+        WHERE template."shopId"=r."shopId" AND template."purpose"='checkout-recovery'
+          AND template."status"='APPROVED' AND template."enabled"=TRUE) AS "approvedTemplateCount",
+      recent."id" AS "latestCommandId", recent."state"::text AS "latestCommandState",
+      recent."kind"::text AS "latestCommandKind",
+      (SELECT a."decision"::text FROM "whatsapp"."ConversationModerationAssessment" a
+        WHERE a."merchantSendCommandId"=recent."id" ORDER BY a."createdAt" DESC LIMIT 1) AS "latestCommandModeration",
       r."detectedAt", r."messageSentAt", r."engagedAt", r."completedAt", r."expiredAt"
     FROM "commerce"."CheckoutRecovery" r
     LEFT JOIN "commerce"."Customer" c ON c."id" = r."customerId" AND c."shopId" = r."shopId"
     LEFT JOIN "whatsapp"."Conversation" v ON v."checkoutRecoveryId" = r."id"
+      AND v."type"='RECOVERY' AND (v."shopId" IS NULL OR v."shopId"=r."shopId")
+    LEFT JOIN "commerce"."ShopHumanMessagingRestriction" restriction ON restriction."shopId"=r."shopId"
+    LEFT JOIN "commerce"."RecoveryOutreachAttempt" initial ON initial."checkoutRecoveryId"=r."id" AND initial."sequence"=1
+    LEFT JOIN "commerce"."RecoveryOutreachAttempt" follow ON follow."checkoutRecoveryId"=r."id" AND follow."sequence"=2
+    LEFT JOIN LATERAL (SELECT "id", "kind", "state" FROM "whatsapp"."MerchantConversationSendCommand"
+      WHERE "conversationId"=v."id" AND "shopId"=r."shopId" ORDER BY "createdAt" DESC, "id" DESC LIMIT 1) recent ON true
     WHERE r."shopId" = ${shopId} AND r."id" = ${recoveryId} LIMIT 1`);
   return rows[0] ?? null;
 }
@@ -47,6 +78,21 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
     id: row.id, status: statusDto(row.status), value: valueDto(row),
     customer: row.customerId ? { firstName: row.firstName, lastName: row.lastName, email: row.email } : null,
     hasConversation: row.conversationId !== null,
+    // Both timestamps are persisted; neither is inferred from current Shopify cart data.
+    initialOutreachSentAt: row.initialSentAt?.toISOString() ?? null,
+    basket: projectRecoveryBasket(row.lineItems, row.currency, row.totalPrice?.toString() ?? null),
+    conversation: row.conversationId ? {
+      id: row.conversationId, controlMode: row.controlMode === "HUMAN" ? "HUMAN" as const : "AI" as const,
+      controlRevision: row.controlRevision ?? 0,
+      lastInboundAt: row.lastCustomerInboundAt?.toISOString() ?? null,
+      windowExpiresAt: row.lastCustomerInboundAt ? new Date(row.lastCustomerInboundAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null,
+      followUp: { used: row.followUpUsed ?? false, initiatedBy: row.followUpInitiator ?? null,
+        eligible: !!row.followUpAvailable, hasApprovedTemplate: Number(row.approvedTemplateCount ?? 0) > 0 },
+      humanMessagingStatus: row.humanRestriction === "SUSPENDED" ? "SUSPENDED" as const : "ACTIVE" as const,
+      latestCommand: row.latestCommandId ? { commandId: row.latestCommandId,
+        state: row.latestCommandState ?? "UNKNOWN", kind: row.latestCommandKind ?? "HUMAN_TEXT",
+        moderation: row.latestCommandModeration ?? "PENDING" } : null,
+    } : null,
     milestones: { detectedAt: row.detectedAt.toISOString(), messageSentAt: row.messageSentAt?.toISOString() ?? null,
       engagedAt: row.engagedAt?.toISOString() ?? null, completedAt: row.completedAt?.toISOString() ?? null,
       expiredAt: row.expiredAt?.toISOString() ?? null },
@@ -54,17 +100,43 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
 }
 
 // Exported for actual-query EXPLAIN validation. These builders are not authorized readers.
-export function recoveryMessagePageSql(conversationId: string, navigation: ReturnType<typeof parseDetailNavigation>) {
+// Read both provider-visible messages and merchant attempts which failed (or are
+// waiting) before any provider message existed. Each arm is bounded to 51 rows;
+// linked commands are excluded so no merchant reply can appear twice.
+export function recoveryMessagePageSql(shopId: string, conversationId: string, navigation: ReturnType<typeof parseDetailNavigation>) {
   const descending = navigation.direction === "latest" || navigation.direction === "previous";
   const key = navigation.boundary;
   const comparison = descending ? Prisma.sql`<` : Prisma.sql`>`;
-  return Prisma.sql`SELECT "id", "createdAt", "direction", "senderType", "status", "contentType", "content",
-    "transcriptionStatus", "sentAt", "deliveredAt", "readAt"
-    FROM "whatsapp"."ConversationMessage"
-    WHERE "conversationId" = ${conversationId}
-    ${key ? Prisma.sql`AND ("createdAt", "id") ${comparison} (${new Date(key.at)}::timestamp, ${key.id})` : Prisma.empty}
-    ORDER BY "createdAt" ${descending ? Prisma.sql`DESC` : Prisma.sql`ASC`}, "id" ${descending ? Prisma.sql`DESC` : Prisma.sql`ASC`}
-    LIMIT 51`;
+  const order = descending ? Prisma.sql`DESC` : Prisma.sql`ASC`;
+  return Prisma.sql`SELECT * FROM (
+      (SELECT m."id", m."createdAt", m."direction"::text AS "direction", m."senderType"::text AS "senderType",
+        m."status"::text AS "status", m."contentType"::text AS "contentType", m."content",
+        m."transcriptionStatus"::text AS "transcriptionStatus", m."sentAt", m."deliveredAt", m."readAt",
+        (SELECT a."decision"::text FROM "whatsapp"."ConversationModerationAssessment" a
+          WHERE a."conversationMessageId"=m."id" ORDER BY a."createdAt" DESC LIMIT 1) AS "moderationDecision",
+        CASE WHEN m."senderType"='HUMAN' AND m."direction"='OUTBOUND' AND m."status"='PENDING'
+          THEN (SELECT cmd."state"::text FROM "whatsapp"."MerchantConversationSendCommand" cmd
+            WHERE cmd."outboundMessageId"=m."id" AND cmd."conversationId"=m."conversationId")
+          ELSE NULL END AS "humanCommandState",
+        FALSE AS "commandOnly", NULL::text AS "commandKind", NULL::text AS "templateName"
+      FROM "whatsapp"."ConversationMessage" m
+      WHERE m."conversationId"=${conversationId}
+      ${key ? Prisma.sql`AND (m."createdAt", m."id") ${comparison} (${new Date(key.at)}::timestamp, ${key.id})` : Prisma.empty}
+      ORDER BY m."createdAt" ${order}, m."id" ${order} LIMIT 51)
+    UNION ALL
+      (SELECT cmd."id", cmd."createdAt" AT TIME ZONE 'UTC' AS "createdAt",
+        'OUTBOUND'::text AS "direction", 'HUMAN'::text AS "senderType", NULL::text AS "status",
+        CASE WHEN cmd."kind"='HUMAN_TEXT' THEN 'TEXT' ELSE 'UNSUPPORTED' END::text AS "contentType",
+        cmd."textBody" AS "content", 'NOT_REQUIRED'::text AS "transcriptionStatus",
+        NULL::timestamp AS "sentAt", NULL::timestamp AS "deliveredAt", NULL::timestamp AS "readAt",
+        NULL::text AS "moderationDecision", cmd."state"::text AS "humanCommandState",
+        TRUE AS "commandOnly", cmd."kind"::text AS "commandKind", cmd."templateName"
+      FROM "whatsapp"."MerchantConversationSendCommand" cmd
+      WHERE cmd."shopId"=${shopId} AND cmd."conversationId"=${conversationId} AND cmd."outboundMessageId" IS NULL
+      ${key ? Prisma.sql`AND (cmd."createdAt", cmd."id") ${comparison} (${new Date(key.at)}::timestamptz, ${key.id})` : Prisma.empty}
+      ORDER BY cmd."createdAt" ${order}, cmd."id" ${order} LIMIT 51)
+    ) thread
+    ORDER BY "createdAt" ${order}, "id" ${order} LIMIT 51`;
 }
 
 export async function readRecoveryMessages(input: PageInput, db: RecoveryDetailDatabase = prisma) {
@@ -74,16 +146,27 @@ export async function readRecoveryMessages(input: PageInput, db: RecoveryDetailD
   const owned = await ownedRecovery(db, input);
   if (!owned) return null;
   if (!owned.conversationId) return emptyPage<ReturnType<typeof recoveryMessageDto>>();
-  const fetched = await db.$queryRaw<RecoveryMessageRow[]>(recoveryMessagePageSql(owned.conversationId, nav));
+  const fetched = await db.$queryRaw<RecoveryMessageRow[]>(recoveryMessagePageSql(input.shopId, owned.conversationId, nav));
   const rows = fetched.slice(0, 50);
   if (nav.direction === "latest" || nav.direction === "previous") rows.reverse();
   if (!rows.length) return emptyPage<ReturnType<typeof recoveryMessageDto>>();
   const first = boundary(rows[0].id, rows[0].createdAt), last = boundary(rows[rows.length - 1].id, rows[rows.length - 1].createdAt);
+  // Both event types participate in the same cursor; a failed preflight remains
+  // navigable even after subsequent messages arrive.
   const [edges] = await db.$queryRaw<{ before: boolean; after: boolean }[]>(Prisma.sql`
-    SELECT EXISTS (SELECT 1 FROM "whatsapp"."ConversationMessage" WHERE "conversationId" = ${owned.conversationId}
-      AND ("createdAt", "id") < (${new Date(first.at)}::timestamp, ${first.id})) AS "before",
-    EXISTS (SELECT 1 FROM "whatsapp"."ConversationMessage" WHERE "conversationId" = ${owned.conversationId}
-      AND ("createdAt", "id") > (${new Date(last.at)}::timestamp, ${last.id})) AS "after"`);
+    SELECT (
+      EXISTS (SELECT 1 FROM "whatsapp"."ConversationMessage" WHERE "conversationId" = ${owned.conversationId}
+        AND ("createdAt", "id") < (${new Date(first.at)}::timestamp, ${first.id})) OR
+      EXISTS (SELECT 1 FROM "whatsapp"."MerchantConversationSendCommand" WHERE "shopId" = ${input.shopId} AND "conversationId" = ${owned.conversationId}
+        AND "outboundMessageId" IS NULL
+        AND ("createdAt", "id") < (${new Date(first.at)}::timestamptz, ${first.id}))
+    ) AS "before", (
+      EXISTS (SELECT 1 FROM "whatsapp"."ConversationMessage" WHERE "conversationId" = ${owned.conversationId}
+        AND ("createdAt", "id") > (${new Date(last.at)}::timestamp, ${last.id})) OR
+      EXISTS (SELECT 1 FROM "whatsapp"."MerchantConversationSendCommand" WHERE "shopId" = ${input.shopId} AND "conversationId" = ${owned.conversationId}
+        AND "outboundMessageId" IS NULL
+        AND ("createdAt", "id") > (${new Date(last.at)}::timestamptz, ${last.id}))
+    ) AS "after"`);
   return { items: rows.map(recoveryMessageDto), previousCursor: edges.before ? detailCursor(scope, "previous", first) : null,
     nextCursor: edges.after ? detailCursor(scope, "next", last) : null };
 }

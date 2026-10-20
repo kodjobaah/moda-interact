@@ -10,6 +10,7 @@ import {
   readRecoveryMessages,
   readRelatedRecoveries,
 } from "../../../services/recoveries/recovery-detail.server";
+import { readApprovedRecoveryTemplates } from "../../../services/recoveries/recovery-human-commands.server";
 import { InvalidRecoveryDetailQuery } from "../../../services/recoveries/detail-cursor.server";
 import type { DetailData, Section } from "./state";
 
@@ -47,6 +48,7 @@ export async function loadRecoveryDetail({
     embed,
     filters: { from, to, status, q, pageSize, cursor },
     detail: null,
+    templates: [],
     state: "ready",
     messages: { state: "ready", page: null },
     related: { state: "ready", page: null },
@@ -66,6 +68,10 @@ export async function loadRecoveryDetail({
     section(() => readRecoveryMessages(identity)),
     section(() => readRelatedRecoveries(identity)),
   ]);
+  if (result.detail.conversation) {
+    try { result.templates = await readApprovedRecoveryTemplates(shopId); }
+    catch { result.templates = []; } // History stays readable even if template catalogue is unavailable.
+  }
   return data(result);
 }
 export async function loadRecoverySection(
