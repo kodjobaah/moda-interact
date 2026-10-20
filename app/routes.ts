@@ -38,6 +38,9 @@ export default [
 
   route("app/recoveries/:recoveryId/messages", "./routes/app/recovery-detail/messages.ts"),
   route("app/recoveries/:recoveryId/related", "./routes/app/recovery-detail/related.ts"),
+  route("app/recoveries/:recoveryId/control", "./routes/app/recovery-detail/control.ts"),
+  route("app/recoveries/:recoveryId/commands", "./routes/app/recovery-detail/commands.ts"),
+  route("app/recoveries/:recoveryId/commands/:commandId", "./routes/app/recovery-detail/command-status.ts"),
   route("app/settings-save", "./routes/app/settings-save/route.ts"),
   route("app/merchant-knowledge/source", "./routes/app/merchant-knowledge/source/route.ts"),
   route("app/merchant-knowledge/reorder", "./routes/app/merchant-knowledge/reorder/route.ts"),

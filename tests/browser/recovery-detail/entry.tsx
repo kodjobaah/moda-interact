@@ -9,6 +9,7 @@ import {
   useRevalidator,
 } from "react-router";
 import RecoveryDetail from "../../../app/routes/app/recovery-detail/RecoveryDetail";
+import { projectRecoveryBasket } from "../../../app/services/recoveries/recovery-basket";
 import RecoveryList from "../../../app/routes/app/recoveries/RecoveryList";
 import type {
   DetailData,
@@ -48,6 +49,7 @@ const rows = Array.from({ length: 9 }, (_, i) => ({
 }));
 const messages: Messages["items"] = Array.from({ length: 125 }, (_, i) => ({
   id: `message-${i + 1}`,
+  moderation: null,
   createdAt: new Date(Date.UTC(2026, 8, 19, 23, 30 + i)).toISOString(),
   direction: i % 2 ? "OUTBOUND" : "INBOUND",
   sender: (["CUSTOMER", "AGENT", "AUTOMATION", "HUMAN", null] as const)[i % 5],
@@ -156,6 +158,11 @@ const router = createBrowserRouter([
         loader: ({ request, params }) => {
           const id = params.recoveryId!;
           const no = id === "empty";
+          const handover = new URL(request.url).searchParams.get("handover") ?? "ai";
+          const terminal = handover === "terminal";
+          const suspended = handover === "suspended";
+          const human = ["human-open", "human-closed", "follow-up-used", "suspended"].includes(handover);
+          const closedWindow = ["human-closed", "follow-up-used", "suspended"].includes(handover);
           return {
             merchantUi,
             embed,
@@ -171,13 +178,29 @@ const router = createBrowserRouter([
                       lastName: "Lovelace",
                       email: "ada@example.test",
                     },
-                    status: "ENGAGED",
+                    status: terminal ? "COMPLETED" : "ENGAGED",
                     value: {
                       amount: "134.50",
                       currency: "GBP",
                       incomplete: false,
                     },
                     hasConversation: !no,
+                    basket: projectRecoveryBasket([
+                      { title: "Blue shirt", variantTitle: "Large", quantity: 2, price: "29.75" },
+                      { title: "Black trousers", variantTitle: "Medium", quantity: 1, price: "75.00" },
+                    ], "GBP", "134.50"),
+                    initialOutreachSentAt: "2026-09-19T23:31:00.000Z",
+                    conversation: no ? null : {
+                      id: `fixture-conversation-${id}`,
+                      controlMode: human ? "HUMAN" as const : "AI" as const,
+                      controlRevision: 2,
+                      lastInboundAt: "2026-09-19T23:33:00.000Z",
+                      windowExpiresAt: closedWindow ? "2000-01-01T00:00:00.000Z" : "2099-01-01T00:00:00.000Z",
+                      followUp: { used: handover === "follow-up-used", initiatedBy: null,
+                        eligible: handover !== "follow-up-used", hasApprovedTemplate: true },
+                      humanMessagingStatus: suspended ? "SUSPENDED" as const : "ACTIVE" as const,
+                      latestCommand: null,
+                    },
                     milestones: {
                       detectedAt: "2026-09-19T23:30:00.000Z",
                       messageSentAt: "2026-09-19T23:31:00.000Z",
@@ -186,6 +209,7 @@ const router = createBrowserRouter([
                       expiredAt: null,
                     },
                   },
+            templates: [{ id: "fixture-approved-template", name: "Approved recovery reminder", language: "en" }],
             messages: {
               state: "ready",
               page: no

@@ -57,6 +57,8 @@ const detail = {
   status: "COMPLETED",
   value: { amount: "100.25", currency: "GBP", incomplete: false },
   hasConversation: true,
+  conversation: null,
+  basket: { items: [], currency: "GBP", recoveryTotal: "100.25", unavailableReason: "missing" },
   milestones: {
     detectedAt: "2026-09-10T23:30:00.000Z",
     messageSentAt: null,
@@ -224,6 +226,7 @@ it("renders sender, audio, unknown, receipt, RTL and merchant-local date semanti
         createdAt: detail.milestones.detectedAt,
         direction: "INBOUND",
         sender: "CUSTOMER",
+        moderation: null,
         content: {
           type: "TEXT",
           text: "مرحبا <img src=x>",
@@ -236,6 +239,7 @@ it("renders sender, audio, unknown, receipt, RTL and merchant-local date semanti
         createdAt: detail.milestones.detectedAt,
         direction: "OUTBOUND",
         sender: "AUTOMATION",
+        moderation: null,
         content: { type: "AUDIO", text: null, transcriptionStatus: "REJECTED" },
         delivery: {
           status: "READ",
@@ -249,6 +253,7 @@ it("renders sender, audio, unknown, receipt, RTL and merchant-local date semanti
         createdAt: detail.milestones.detectedAt,
         direction: null,
         sender: null,
+        moderation: null,
         content: { type: "UNSUPPORTED", text: null, transcriptionStatus: null },
         delivery: null,
       },
