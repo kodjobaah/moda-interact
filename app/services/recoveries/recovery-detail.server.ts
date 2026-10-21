@@ -3,6 +3,7 @@ import prisma from "../../db.server";
 import { detailCursor, detailCursorScope, InvalidRecoveryDetailQuery, parseDetailNavigation, validDetailId, type DetailBoundary } from "./detail-cursor.server";
 import { recoveryMessageDto, type RecoveryMessageRow } from "./detail-message";
 import { projectRecoveryBasket } from "./recovery-basket";
+import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
 
 export type RecoveryDetailDatabase = { $queryRaw<T>(query: Prisma.Sql): Promise<T> };
 type Identity = { shopId: string; recoveryId: string };
@@ -13,7 +14,8 @@ type OwnedRecovery = {
   status: string; totalPrice: Prisma.Decimal | null; currency: string | null; lineItems?: unknown;
   controlMode?: string | null; controlRevision?: number | null; lastCustomerInboundAt?: Date | null;
   humanRestriction?: string | null; followUpUsed?: boolean | null; followUpInitiator?: string | null;
-  initialSentAt?: Date | null; followUpRecipient?: string | null; followUpAvailable?: boolean | null;
+  initialSentAt?: Date | null; followUpDueAt?: Date | null;
+  followUpRecipient?: string | null; followUpAvailable?: boolean | null;
   approvedTemplateCount?: bigint | number | null;
   latestCommandId?: string | null; latestCommandState?: string | null;
   latestCommandKind?: string | null; latestCommandModeration?: string | null;
@@ -23,6 +25,7 @@ type OwnedRecovery = {
 type RelatedRow = Pick<OwnedRecovery, "id" | "status" | "totalPrice" | "currency" | "detectedAt">;
 
 const emptyPage = <T>() => ({ items: [] as T[], previousCursor: null as string | null, nextCursor: null as string | null });
+function terminalRecovery(status: string) { return ["COMPLETED", "CANCELLED", "EXPIRED"].includes(status); }
 function statusDto(value: string) {
   return Object.values(CheckoutRecoveryStatus).includes(value as CheckoutRecoveryStatus) ? value as CheckoutRecoveryStatus : null;
 }
@@ -31,22 +34,28 @@ function valueDto(row: RelatedRow) {
 }
 function boundary(id: string, date: Date): DetailBoundary { return { id, at: date.toISOString() }; }
 
-async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }: Identity): Promise<OwnedRecovery | null> {
+async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }: Identity, now = new Date()): Promise<OwnedRecovery | null> {
   if (!validDetailId(shopId) || !validDetailId(recoveryId)) return null;
   const rows = await db.$queryRaw<OwnedRecovery[]>(Prisma.sql`
     SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId",
       c."firstName", c."lastName", c."email", r."status", r."totalPrice", r."currency", r."lineItems",
       v."controlMode"::text AS "controlMode", v."controlRevision",
       restriction."status"::text AS "humanRestriction",
-      (SELECT MAX(m."createdAt") FROM "whatsapp"."ConversationMessage" m
+      (SELECT m."createdAt" FROM "whatsapp"."ConversationMessage" m
         WHERE m."conversationId"=v."id" AND m."direction"='INBOUND'
-          AND m."senderType"='CUSTOMER') AS "lastCustomerInboundAt",
-      initial."sentAt" AS "initialSentAt", initial."recipient" AS "followUpRecipient",
+          AND m."senderType"='CUSTOMER' AND m."providerMessageId" IS NOT NULL
+          AND initial."sentAt" IS NOT NULL AND m."createdAt" >= initial."sentAt"
+          AND m."createdAt" <= ${now}::timestamp
+        ORDER BY m."createdAt" DESC, m."id" DESC LIMIT 1) AS "lastCustomerInboundAt",
+      initial."sentAt" AS "initialSentAt", initial."followUpDueAt" AS "followUpDueAt",
+      initial."recipient" AS "followUpRecipient",
       CASE WHEN follow."id" IS NULL THEN FALSE ELSE (follow."initiationKey" IS NOT NULL
-        OR follow."outboundMessageId" IS NOT NULL OR follow."status" <> 'PENDING') END AS "followUpUsed",
+        OR follow."claimedAt" IS NOT NULL OR follow."outboundMessageId" IS NOT NULL
+        OR follow."status" <> 'PENDING') END AS "followUpUsed",
       follow."initiatedBy"::text AS "followUpInitiator",
       (initial."sentAt" IS NOT NULL AND (follow."id" IS NULL OR
-        (follow."initiationKey" IS NULL AND follow."status"='PENDING' AND follow."outboundMessageId" IS NULL))) AS "followUpAvailable",
+        (follow."initiationKey" IS NULL AND follow."claimedAt" IS NULL
+          AND follow."status"='PENDING' AND follow."outboundMessageId" IS NULL))) AS "followUpAvailable",
       (SELECT COUNT(*) FROM "whatsapp"."WhatsAppTemplateVariant" template
         WHERE template."shopId"=r."shopId" AND template."purpose"='checkout-recovery'
           AND template."status"='APPROVED' AND template."enabled"=TRUE) AS "approvedTemplateCount",
@@ -72,8 +81,14 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
  * Never pass a browser-provided shopId. All three entry points independently resolve ownership.
  */
 export async function readRecoveryDetail(input: Identity, db: RecoveryDetailDatabase = prisma) {
-  const row = await ownedRecovery(db, input);
+  const now = new Date();
+  const row = await ownedRecovery(db, input, now);
   if (!row) return null;
+  const window = customerServiceWindow(row.initialSentAt, row.lastCustomerInboundAt, now);
+  const followUpEligible = !!row.followUpAvailable && !window.open &&
+    configuredFollowUpIsDue(row.initialSentAt, row.followUpDueAt, now) &&
+    !terminalRecovery(row.status) && row.humanRestriction !== "SUSPENDED" &&
+    !!row.followUpRecipient && /^\+?[0-9]{7,20}$/.test(row.followUpRecipient);
   return {
     id: row.id, status: statusDto(row.status), value: valueDto(row),
     customer: row.customerId ? { firstName: row.firstName, lastName: row.lastName, email: row.email } : null,
@@ -84,10 +99,10 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
     conversation: row.conversationId ? {
       id: row.conversationId, controlMode: row.controlMode === "HUMAN" ? "HUMAN" as const : "AI" as const,
       controlRevision: row.controlRevision ?? 0,
-      lastInboundAt: row.lastCustomerInboundAt?.toISOString() ?? null,
-      windowExpiresAt: row.lastCustomerInboundAt ? new Date(row.lastCustomerInboundAt.getTime() + 24 * 60 * 60 * 1000).toISOString() : null,
+      lastInboundAt: window.lastInboundAt?.toISOString() ?? null,
+      windowExpiresAt: window.expiresAt?.toISOString() ?? null,
       followUp: { used: row.followUpUsed ?? false, initiatedBy: row.followUpInitiator ?? null,
-        eligible: !!row.followUpAvailable, hasApprovedTemplate: Number(row.approvedTemplateCount ?? 0) > 0 },
+        eligible: followUpEligible, hasApprovedTemplate: Number(row.approvedTemplateCount ?? 0) > 0 },
       humanMessagingStatus: row.humanRestriction === "SUSPENDED" ? "SUSPENDED" as const : "ACTIVE" as const,
       latestCommand: row.latestCommandId ? { commandId: row.latestCommandId,
         state: row.latestCommandState ?? "UNKNOWN", kind: row.latestCommandKind ?? "HUMAN_TEXT",

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { loadRecoveryDetailSeed } from "../helpers/recovery-detail-seed.mjs";
 import { execFileSync } from "node:child_process";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 vi.mock("../../app/db.server", () => ({ default: {} }));
 import { readRecoveryDetail, readRecoveryMessages, readRelatedRecoveries, recoveryMessagePageSql, type RecoveryDetailDatabase } from "../../app/services/recoveries/recovery-detail.server";
@@ -22,7 +22,9 @@ describe("recovery detail ownership and projection", () => {
   it.each(["missing", "foreign"])("returns the same null for %s records and never reads messages", async () => {
     for (const reader of [readRecoveryDetail, readRecoveryMessages, readRelatedRecoveries]) {
       const {db,query}=queued([]); expect(await reader(input,db)).toBeNull(); expect(query).toHaveBeenCalledTimes(1);
-      const sql=query.mock.calls[0][0]; expect(sql.text).toContain('r."shopId" = $1 AND r."id" = $2'); expect(sql.values).toEqual([input.shopId,input.recoveryId]);
+      const sql=query.mock.calls[0][0]; expect(sql.text).toContain('r."shopId" = $2 AND r."id" = $3');
+      expect(sql.values[0]).toBeInstanceOf(Date);
+      expect(sql.values.slice(1)).toEqual([input.shopId,input.recoveryId]);
     }
   });
   it("does not expose internal recovery, provider, or unowned customer fields", async () => {
@@ -256,5 +258,112 @@ describe("database-owned psql recovery fixture loading", () => {
     await expect(loadRecoveryDetailSeed({ query }, source + "\n\\include other.sql\n")).rejects.toThrow("Unsupported psql directive");
     await expect(loadRecoveryDetailSeed({ query }, "SELECT 1;")).rejects.toThrow("Expected recovery seed");
     expect(query).not.toHaveBeenCalled();
+  });
+});
+
+
+afterEach(() => vi.useRealTimers());
+
+describe("ARCH-040-SHOPIFY-005 trusted Recovery Detail advisories", () => {
+  const sent = new Date("2026-10-20T10:00:00.000Z");
+  const now = new Date("2026-10-20T12:00:00.000Z");
+  const due = new Date("2026-10-20T10:15:00.000Z");
+  const base = { ...owned, initialSentAt: sent, followUpDueAt: due, followUpAvailable: true,
+    followUpRecipient: "+447700900001", followUpUsed: false, approvedTemplateCount: 1,
+    humanRestriction: null, lastCustomerInboundAt: null, controlMode: "HUMAN" };
+  function read(row: object = base) { return readRecoveryDetail(input, queued([row]).db); }
+  function clock(value = now) { vi.useFakeTimers(); vi.setSystemTime(value); }
+
+  it("bounds the read query to provider-verified CUSTOMER messages since the initial send and no later than now", async () => {
+    clock();
+    const { db, query } = queued([base]);
+    await readRecoveryDetail(input, db);
+    const sql = query.mock.calls[0][0];
+    expect(sql.text).toContain("m.\"direction\"='INBOUND'");
+    expect(sql.text).toContain("m.\"senderType\"='CUSTOMER'");
+    expect(sql.text).toContain('m."providerMessageId" IS NOT NULL');
+    expect(sql.text).toContain('m."createdAt" >= initial."sentAt"');
+    expect(sql.text).toContain('m."createdAt" <= $1::timestamp');
+    expect(sql.text).toContain('ORDER BY m."createdAt" DESC, m."id" DESC LIMIT 1');
+    expect(sql.text).toContain('initial."followUpDueAt" AS "followUpDueAt"');
+    expect(sql.text).toContain('follow."claimedAt" IS NULL');
+    expect(sql.values).toEqual([now, input.shopId, input.recoveryId]);
+  });
+
+  it("shows only the latest verified bounded inbound timestamp and rolls 24h from that reply", async () => {
+    clock();
+    const lastInbound = new Date(now.getTime() - 5_000);
+    const detail = await read({ ...base, lastCustomerInboundAt: lastInbound });
+    expect(detail?.conversation?.lastInboundAt).toBe(lastInbound.toISOString());
+    expect(detail?.conversation?.windowExpiresAt).toBe(new Date(lastInbound.getTime() + 86_400_000).toISOString());
+    expect(detail?.conversation?.followUp.eligible).toBe(false);
+    for (const untrusted of [new Date(sent.getTime() - 1), new Date(now.getTime() + 1)]) {
+      const denied = await read({ ...base, lastCustomerInboundAt: untrusted });
+      expect(denied?.conversation?.lastInboundAt).toBeNull();
+      expect(denied?.conversation?.windowExpiresAt).toBeNull();
+    }
+    const absent = await read({ ...base, initialSentAt: null, lastCustomerInboundAt: lastInbound });
+    expect(absent?.conversation?.lastInboundAt).toBeNull();
+    expect(absent?.conversation?.followUp.eligible).toBe(false);
+  });
+
+  it("closes the window at exact expiry so an already-due configured follow-up is advisory eligible", async () => {
+    const oldInbound = new Date("2026-10-18T12:00:00.000Z");
+    const oldSent = new Date("2026-10-18T10:00:00.000Z");
+    // The configured follow-up must already be due when the 24-hour window expires.
+    const dueAfterInitialSend = new Date(oldSent.getTime() + 15 * 60_000);
+    const row = { ...base, initialSentAt: oldSent, followUpDueAt: dueAfterInitialSend,
+      lastCustomerInboundAt: oldInbound };
+    clock(new Date(oldInbound.getTime() + 86_400_000 - 1));
+    const open = await read(row);
+    expect(open?.conversation?.followUp.eligible).toBe(false);
+    clock(new Date(oldInbound.getTime() + 86_400_000));
+    const expired = await read(row);
+    expect(expired?.conversation?.followUp.eligible).toBe(true);
+  });
+
+  it.each([
+    ["15m already due", 15, 30, true],
+    ["60m future", 60, 30, false],
+    ["60m exact due", 60, 60, true],
+    ["48h future", 48 * 60, 30, false],
+    ["48h due", 48 * 60, 48 * 60, true],
+  ])("uses the configured persisted deadline for %s", async (_, delay, elapsed, eligible) => {
+    const start = new Date("2026-10-15T10:00:00.000Z");
+    clock(new Date(start.getTime() + (elapsed as number) * 60_000));
+    const result = await read({ ...base, initialSentAt: start,
+      followUpDueAt: new Date(start.getTime() + (delay as number) * 60_000) });
+    expect(result?.conversation?.followUp.eligible).toBe(eligible);
+  });
+
+  it("fails closed for unscheduled/disabled and initial-unsent outreach", async () => {
+    clock();
+    for (const row of [
+      { ...base, followUpDueAt: null },
+      { ...base, initialSentAt: null },
+      { ...base, followUpAvailable: false, followUpUsed: true },
+    ]) {
+      const result = await read(row);
+      expect(result?.conversation?.followUp.eligible).toBe(false);
+    }
+  });
+
+  it("never offers a follow-up for terminal, suspended or invalid-recipient recovery", async () => {
+    clock();
+    for (const row of [
+      { ...base, status: "COMPLETED" },
+      { ...base, status: "CANCELLED" },
+      { ...base, status: "EXPIRED" },
+      { ...base, humanRestriction: "SUSPENDED" },
+      { ...base, followUpRecipient: "not-a-number" },
+    ]) {
+      expect((await read(row))?.conversation?.followUp.eligible).toBe(false);
+    }
+  });
+
+  it("preserves approved-template availability as a separate advisory field", async () => {
+    clock();
+    const result = await read({ ...base, approvedTemplateCount: 0 });
+    expect(result?.conversation?.followUp).toMatchObject({ eligible: true, hasApprovedTemplate: false });
   });
 });

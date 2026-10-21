@@ -2,10 +2,10 @@ import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import prisma from "../../db.server";
+import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
 
 const logger = createLogger({ serviceName: "moda-interact", environment: process.env.NODE_ENV ?? "development" });
 const terminal = new Set(["COMPLETED", "CANCELLED", "EXPIRED"]);
-const CUSTOMER_WINDOW_MS = 86_400_000;
 
 export type CurrentControl = { controlMode: "AI" | "HUMAN"; controlRevision: number };
 export class RecoveryCommandError extends Error {
@@ -166,6 +166,8 @@ export async function admitRecoveryHumanSend(
       return { commandId: existing.id, conversationId: conversation.id, state: existing.state, kind: existing.kind,
         controlRevision: input.expectedControlRevision, replay: true };
     }
+    // Freeze eligibility time once, after replay lookup and under the shop/conversation locks.
+    const now = new Date();
     if (terminal.has(context.recovery.status)) return refused("terminal_recovery");
     await assertMerchantEnabled(tx, shopId);
     await assertRestriction(tx, shopId);
@@ -175,7 +177,7 @@ export async function admitRecoveryHumanSend(
     if (conversation.controlMode !== "HUMAN") return refused("not_human_controlled");
     const initial = await tx.recoveryOutreachAttempt.findUnique({
       where: { checkoutRecoveryId_sequence: { checkoutRecoveryId: recoveryId, sequence: 1 } },
-      select: { id: true, recipient: true, sentAt: true, configuredOfferMode: true,
+      select: { id: true, recipient: true, sentAt: true, followUpDueAt: true, configuredOfferMode: true,
         fixedShopifyDiscountId: true, offerSnapshot: true },
     });
     if (!initial?.recipient || !/^\+?[0-9]{7,20}$/.test(initial.recipient)) return refused("recipient_unavailable");
@@ -183,18 +185,21 @@ export async function admitRecoveryHumanSend(
       where: { shopId_recipient: { shopId, recipient: initial.recipient } },
       select: { suppressUntil: true },
     });
-    if (suppress?.suppressUntil && suppress.suppressUntil > new Date()) return refused("recipient_unavailable");
-    const inbound = await tx.conversationMessage.findFirst({
-      where: { conversationId: conversation.id, direction: "INBOUND", senderType: "CUSTOMER" },
+    if (suppress?.suppressUntil && suppress.suppressUntil > now) return refused("recipient_unavailable");
+    const inbound = initial.sentAt ? await tx.conversationMessage.findFirst({
+      where: { conversationId: conversation.id, direction: "INBOUND", senderType: "CUSTOMER",
+        providerMessageId: { not: null }, createdAt: { gte: initial.sentAt, lte: now } },
       select: { createdAt: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-    });
-    const windowOpen = Boolean(inbound && Date.now() < inbound.createdAt.getTime() + CUSTOMER_WINDOW_MS);
+    }) : null;
+    const windowOpen = customerServiceWindow(initial.sentAt, inbound?.createdAt, now).open;
     let attemptId: string | null = null;
     let template: { providerTemplateName: string; providerLanguageCode: string } | null = null;
     if (input.kind === "HUMAN_TEXT") {
       if (!windowOpen) return refused("service_window_closed");
     } else {
-      if (windowOpen || !initial.sentAt) return refused("follow_up_unavailable");
+      if (windowOpen || !configuredFollowUpIsDue(initial.sentAt, initial.followUpDueAt, now)) {
+        return refused("follow_up_unavailable");
+      }
       const variant = await tx.whatsAppTemplateVariant.findFirst({
         where: { id: input.templateVariantId, shopId, purpose: "checkout-recovery", status: "APPROVED", enabled: true },
         select: { providerTemplateName: true, providerLanguageCode: true },
@@ -205,7 +210,7 @@ export async function admitRecoveryHumanSend(
       // claim is committed atomically with the command; no provider work runs here.
       let follow = await tx.recoveryOutreachAttempt.findUnique({
         where: { checkoutRecoveryId_sequence: { checkoutRecoveryId: recoveryId, sequence: 2 } },
-        select: { id: true, status: true, initiationKey: true, outboundMessageId: true },
+        select: { id: true, status: true, initiationKey: true, claimedAt: true, outboundMessageId: true },
       });
       if (!follow) {
         const created = await tx.recoveryOutreachAttempt.create({
@@ -216,13 +221,15 @@ export async function admitRecoveryHumanSend(
             offerSnapshot: initial.offerSnapshot === null ? Prisma.JsonNull : initial.offerSnapshot as Prisma.InputJsonValue },
           select: { id: true },
         });
-        follow = { id: created.id, status: "PENDING", initiationKey: null, outboundMessageId: null };
+        follow = { id: created.id, status: "PENDING", initiationKey: null, claimedAt: null, outboundMessageId: null };
       }
-      if (follow.status !== "PENDING" || follow.initiationKey || follow.outboundMessageId) return refused("follow_up_unavailable");
+      if (follow.status !== "PENDING" || follow.initiationKey || follow.claimedAt || follow.outboundMessageId) {
+        return refused("follow_up_unavailable");
+      }
       const claimed = await tx.recoveryOutreachAttempt.updateMany({
-        where: { id: follow.id, status: "PENDING", initiationKey: null, outboundMessageId: null },
+        where: { id: follow.id, status: "PENDING", initiationKey: null, claimedAt: null, outboundMessageId: null },
         data: { initiatedBy: "HUMAN", initiationKey: input.idempotencyKey,
-          claimedAt: new Date(), trigger: "POST_WINDOW_FOLLOW_UP" },
+          claimedAt: now, trigger: "POST_WINDOW_FOLLOW_UP" },
       });
       if (claimed.count !== 1) return refused("follow_up_unavailable");
       attemptId = follow.id;

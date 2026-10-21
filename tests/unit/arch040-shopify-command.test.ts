@@ -1,11 +1,12 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 vi.mock("../../app/db.server", () => ({ default: {} }));
 const { changeRecoveryControl, admitRecoveryHumanSend, humanSendPayloadHash } =
   await import("../../app/services/recoveries/recovery-human-commands.server");
 
 function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: number; suspended?: boolean;
-  inbound?: boolean; existing?: boolean; secondClaimed?: boolean; templateApproved?: boolean }) {
+  inbound?: boolean; inboundAt?: Date | null; sentAt?: Date | null; followUpDueAt?: Date | null;
+  existing?: boolean; secondClaimed?: boolean; secondClaimedAt?: Date | null; templateApproved?: boolean }) {
   const options = { owned: true, mode: "HUMAN", revision: 1, suspended: false, inbound: true,
     existing: false, secondClaimed: false, templateApproved: true, ...input };
   const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision };
@@ -30,14 +31,18 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
     },
     recoveryOutreachAttempt: { findUnique: vi.fn(async (query: { where: { checkoutRecoveryId_sequence?: { sequence: number } } }) =>
       query.where.checkoutRecoveryId_sequence?.sequence === 2
-        ? { id: "attempt-2", status: "PENDING", initiationKey: options.secondClaimed ? "prior-claim" : null, outboundMessageId: null }
-        : { id: "attempt-1", recipient: "+447700900001", sentAt: new Date("2026-10-17"),
+        ? { id: "attempt-2", status: "PENDING", initiationKey: options.secondClaimed ? "prior-claim" : null,
+          claimedAt: options.secondClaimedAt ?? null, outboundMessageId: null }
+        : { id: "attempt-1", recipient: "+447700900001",
+          sentAt: options.sentAt === undefined ? new Date("2026-10-17T00:00:00.000Z") : options.sentAt,
+          followUpDueAt: options.followUpDueAt === undefined ? new Date("2026-10-17T01:00:00.000Z") : options.followUpDueAt,
           configuredOfferMode: "NONE", fixedShopifyDiscountId: null, offerSnapshot: null }),
       create: vi.fn(async () => ({ id: "attempt-2" })), updateMany: vi.fn(async () => ({ count: 1 })) },
     whatsAppTemplateVariant: { findFirst: vi.fn(async () => options.templateApproved
       ? { providerTemplateName: "recovery_reminder", providerLanguageCode: "en" } : null) },
     whatsAppRecipientReachability: { findUnique: vi.fn(async () => null) },
-    conversationMessage: { findFirst: vi.fn(async () => options.inbound ? { createdAt: new Date(Date.now() - 60_000) } : null) },
+    conversationMessage: { findFirst: vi.fn(async () => options.inbound
+      ? { createdAt: options.inboundAt ?? new Date(Date.now() - 60_000) } : null) },
   };
   const db = { $transaction: vi.fn(async (fn: (arg: typeof tx) => Promise<unknown>) => fn(tx)) } as unknown as PrismaClient;
   return { tx, db };
@@ -45,6 +50,9 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
 const sendInput = { kind: "HUMAN_TEXT" as const, expectedControlRevision: 1,
   idempotencyKey: "send-12345678", textBody: "Hello" };
 const error = (code: string) => expect.objectContaining({ code });
+const templateInput = { kind: "RECOVERY_FOLLOW_UP_TEMPLATE" as const, templateVariantId: "variant-1",
+  expectedControlRevision: 1, idempotencyKey: "template-send-01" };
+afterEach(() => vi.useRealTimers());
 
 describe("ARCH-040 Shopify human commands", () => {
   it("uses recovery ownership even if a conversation is known", async () => {
@@ -147,5 +155,139 @@ describe("ARCH-040 Shopify human commands", () => {
       expectedControlRevision: 1,
     }, denied.db)).rejects.toMatchObject({ code: "template_not_allowed" });
     expect(denied.tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("ARCH-040-SHOPIFY-005 verified service-window admission", () => {
+  const initialSent = new Date("2026-10-20T10:00:00.000Z");
+  const clock = new Date("2026-10-20T12:00:00.000Z");
+  function at(time: Date) { vi.useFakeTimers(); vi.setSystemTime(time); }
+
+  it("selects only provider-verified CUSTOMER inbound since initial send, bounded by the transaction clock", async () => {
+    at(clock);
+    const inboundAt = new Date(clock.getTime() - 60_000);
+    const { db, tx } = fixture({ sentAt: initialSent, inboundAt });
+    await admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db);
+    expect(tx.conversationMessage.findFirst).toHaveBeenCalledWith({
+      where: { conversationId: "conversation-1", direction: "INBOUND", senderType: "CUSTOMER",
+        providerMessageId: { not: null }, createdAt: { gte: initialSent, lte: clock } },
+      select: { createdAt: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    expect(tx.whatsAppRecipientReachability.findUnique).toHaveBeenCalledTimes(1);
+    expect(tx.merchantConversationSendCommand.create).toHaveBeenCalledTimes(1);
+  });
+
+  it("denies free text without a sent initial outreach even when an inbound mock exists", async () => {
+    at(clock);
+    const { db, tx } = fixture({ sentAt: null, inboundAt: clock });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
+      .rejects.toMatchObject(error("service_window_closed"));
+    expect(tx.conversationMessage.findFirst).not.toHaveBeenCalled();
+    expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["just before expiry", 86_400_000 - 1, true],
+    ["at expiry", 86_400_000, false],
+    ["after expiry", 86_400_000 + 1, false],
+  ])("%s uses the exact rolling 24h window", async (_, elapsed, allowed) => {
+    const inboundAt = new Date(initialSent.getTime() + 60_000);
+    at(new Date(inboundAt.getTime() + (elapsed as number)));
+    const { db, tx } = fixture({ sentAt: initialSent, inboundAt });
+    if (allowed) {
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
+        .resolves.toMatchObject({ replay: false });
+    } else {
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
+        .rejects.toMatchObject(error("service_window_closed"));
+      expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it("a more recent verified inbound resets the window, not control mode or sequence 2", async () => {
+    at(clock);
+    const recent = new Date(clock.getTime() - 60_000);
+    const { db, tx } = fixture({ sentAt: new Date(clock.getTime() - 4 * 86_400_000), inboundAt: recent });
+    await admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db);
+    expect(tx.conversation.updateMany).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.create).not.toHaveBeenCalled();
+    expect(tx.conversationMessage.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    }));
+  });
+
+  it.each([
+    ["pre-initial", new Date(initialSent.getTime() - 1)],
+    ["future", new Date(clock.getTime() + 1)],
+  ])("%s inbound cannot authorize free text", async (_, inboundAt) => {
+    at(clock);
+    const { db, tx } = fixture({ sentAt: initialSent, inboundAt });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
+      .rejects.toMatchObject(error("service_window_closed"));
+    expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["15 minutes already due", 15, 30, true],
+    ["60 minutes not due", 60, 30, false],
+    ["60 minutes exactly due", 60, 60, true],
+    ["48 hours not due", 48 * 60, 30, false],
+    ["48 hours due", 48 * 60, 48 * 60, true],
+  ])("template follows persisted %s instead of an extra 24h delay", async (_, delayMinutes, elapsedMinutes, allow) => {
+    const sentAt = new Date("2026-10-15T10:00:00.000Z");
+    const due = new Date(sentAt.getTime() + (delayMinutes as number) * 60_000);
+    at(new Date(sentAt.getTime() + (elapsedMinutes as number) * 60_000));
+    const { db, tx } = fixture({ inbound: false, sentAt, followUpDueAt: due });
+    if (allow) {
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+        .resolves.toMatchObject({ replay: false });
+      expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledTimes(1);
+    } else {
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+        .rejects.toMatchObject(error("follow_up_unavailable"));
+      expect(tx.recoveryOutreachAttempt.create).not.toHaveBeenCalled();
+      expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    ["disabled or unscheduled", null, initialSent],
+    ["initial not sent", new Date(initialSent.getTime() + 60_000), null],
+  ])("rejects %s follow-up even if there was no customer reply", async (_, due, sentAt) => {
+    at(clock);
+    const { db, tx } = fixture({ inbound: false, sentAt, followUpDueAt: due });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+      .rejects.toMatchObject(error("follow_up_unavailable"));
+    expect(tx.whatsAppTemplateVariant.findFirst).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("the verified window blocks the template even after the configured due time", async () => {
+    at(clock);
+    const { db, tx } = fixture({ sentAt: initialSent, followUpDueAt: new Date(initialSent.getTime() + 15 * 60_000),
+      inboundAt: new Date(clock.getTime() - 60_000) });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+      .rejects.toMatchObject(error("follow_up_unavailable"));
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("already claimed sequence 2 is unavailable even when the configured deadline has passed", async () => {
+    at(clock);
+    const { db, tx } = fixture({ inbound: false, sentAt: initialSent,
+      followUpDueAt: new Date(initialSent.getTime() + 15 * 60_000), secondClaimedAt: initialSent });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+      .rejects.toMatchObject(error("follow_up_unavailable"));
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("replay is returned before new eligibility checks, even after the service window closes", async () => {
+    at(clock);
+    const { db, tx } = fixture({ existing: true, inbound: false, sentAt: null, followUpDueAt: null });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
+      .resolves.toMatchObject({ replay: true, commandId: "command-1" });
+    expect(tx.recoveryOutreachAttempt.findUnique).not.toHaveBeenCalled();
+    expect(tx.conversationMessage.findFirst).not.toHaveBeenCalled();
   });
 });
