@@ -71,8 +71,9 @@ export function unsealPlatformConfiguration(input: {
       envelope,
       aad: platformConfigurationAAD(input.environment, input.key, input.version),
     });
-  } catch (error) {
-    return configurationFailure(input.key, "UNSEAL_FAILED"+(error instanceof Error ? ": " + error.message : ""));
+  } catch {
+    // Never expose decryption-provider diagnostics through configuration errors.
+    return configurationFailure(input.key, "UNSEAL_FAILED");
   }
   try {
     return JSON.parse(plaintext) as unknown;
