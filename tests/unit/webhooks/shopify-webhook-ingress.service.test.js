@@ -265,7 +265,7 @@ describe("shopify webhook ingress", () => {
     );
   });
 
-  it("publishes checkout update events without basket payload", async () => {
+  it("publishes validated checkout.updated v3 lookup context without basket payload", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
@@ -273,7 +273,9 @@ describe("shopify webhook ingress", () => {
         topic: "CHECKOUTS_UPDATE",
         payload: {
           token: "checkout-token-1",
-          cart_token: "ignored",
+          cart_token: "cart-token-1",
+          created_at: "2021-12-31T19:00:00-05:00",
+          abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
           line_items: [{ title: "ignored" }],
         },
       }),
@@ -284,15 +286,79 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
-          schemaVersion: 2,
+          schemaVersion: 3,
           eventType: "checkout.updated",
+          deliveryId: "delivery-1",
+          eventId: "event-1",
+          receiptId: expect.any(String),
+          tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
           orderingKey: "shop_1:checkout-token-1",
           payload: {
             checkoutToken: "checkout-token-1",
+            cartToken: "cart-token-1",
+            checkoutCreatedAt: "2022-01-01T00:00:00.000Z",
+            abandonedCheckoutUrl: "https://shop.example/checkout/1?key=abc",
           },
         }),
       }),
     );
+  });
+
+  it("accepts a token-only v3 update without inventing lookup hints", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(checkoutInput({
+      topic: "CHECKOUTS_UPDATE",
+      payload: { token: "checkout-token-1", line_items: [] },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        schemaVersion: 3,
+        eventType: "checkout.updated",
+        orderingKey: "shop_1:checkout-token-1",
+        payload: { checkoutToken: "checkout-token-1" },
+      }),
+    });
+  });
+
+  it("accepts a v3 update with malformed optional lookup hints, preserving valid fields", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(checkoutInput({
+      topic: "CHECKOUTS_UPDATE",
+      payload: {
+        token: "checkout-token-1",
+        cart_token: "cart-token-1",
+        created_at: "invalid",
+        abandoned_checkout_url: "not-a-url",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        schemaVersion: 3,
+        payload: { checkoutToken: "checkout-token-1", cartToken: "cart-token-1" },
+      }),
+    });
+  });
+
+  it("rejects checkout.updated without a token even when a URL is present", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+
+    const response = await ingestShopifyWebhook(checkoutInput({
+      topic: "CHECKOUTS_UPDATE",
+      payload: {
+        cart_token: "cart-token-1",
+        created_at: "2024-01-01T00:00:00Z",
+        abandoned_checkout_url: "https://shop.example/checkout/1",
+      },
+    }));
+
+    expect(response.status).toBe(400);
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
   });
 
   it("emits updated buyer context without changing checkout ordering", async () => {
@@ -351,6 +417,7 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
+          schemaVersion: 2,
           eventType: "order.completed",
           orderingKey: "shop_1:gid://shopify/Order/456",
           payload: expect.objectContaining({
@@ -443,6 +510,7 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyCartActivityEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
+          schemaVersion: 2,
           eventType: "cart.activity",
           orderingKey: "cart:6:shop_1:12:cart-token-1",
           tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },

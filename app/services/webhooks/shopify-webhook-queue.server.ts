@@ -6,9 +6,10 @@ import {
   type ShopifyDiscountSyncJob,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
+  type ShopifyCheckoutUpdatedEventV3,
   type ShopifyCartActivityEventV2,
   type ShopifyOrderCompletedEventV2,
-  type ShopifyRecoveryEventV2,
+  type ShopifyRecoveryEvent,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   createShopifyWebhookJobId,
@@ -55,13 +56,13 @@ export type ShopifyWebhookPublicationResult = {
 };
 
 let checkoutQueue: Queue<
-  ShopifyRecoveryEventV2,
+  ShopifyRecoveryEvent,
   void,
   ShopifyWebhookQueueJobName
 > | null = null;
 
 let orderQueue: Queue<
-  ShopifyRecoveryEventV2,
+  ShopifyRecoveryEvent,
   void,
   ShopifyWebhookQueueJobName
 > | null = null;
@@ -208,7 +209,7 @@ export function createTenantReadableJobId(
 }
 
 async function findExistingJobId(
-  queue: Queue<ShopifyRecoveryEventV2, void, ShopifyWebhookQueueJobName>,
+  queue: Queue<ShopifyRecoveryEvent, void, ShopifyWebhookQueueJobName>,
   newJobId: string,
   legacyJobId: string,
 ): Promise<string | null> {
@@ -220,9 +221,9 @@ async function findExistingJobId(
 }
 
 async function addJobWithTimeout(
-  queue: Queue<ShopifyRecoveryEventV2, void, ShopifyWebhookQueueJobName>,
+  queue: Queue<ShopifyRecoveryEvent, void, ShopifyWebhookQueueJobName>,
   jobName: ShopifyWebhookQueueJobName,
-  event: ShopifyRecoveryEventV2,
+  event: ShopifyRecoveryEvent,
   options: {
     jobId: string;
     delay?: number;
@@ -298,7 +299,7 @@ export async function publishShopifyCheckoutCreatedEvent(input: {
 }
 
 export async function publishShopifyCheckoutUpdatedEvent(input: {
-  event: ShopifyCheckoutUpdatedEventV2;
+  event: ShopifyCheckoutUpdatedEventV2 | ShopifyCheckoutUpdatedEventV3;
 }): Promise<ShopifyWebhookPublicationResult> {
   const queue = getCheckoutQueue();
   const legacyJobId = createShopifyWebhookJobId(

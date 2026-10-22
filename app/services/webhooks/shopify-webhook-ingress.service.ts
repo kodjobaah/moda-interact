@@ -1,17 +1,18 @@
 import db from "../../db.server";
 import {
   SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
+  SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V3,
   SHOPIFY_RECOVERY_EVENT_TYPES_V2,
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   ShopifyCheckoutCreatedEventV2Schema,
-  ShopifyCheckoutUpdatedEventV2Schema,
+  ShopifyCheckoutUpdatedEventV3Schema,
   ShopifyCartActivityEventV2Schema,
   ShopifyOrderCompletedEventV2Schema,
   createShopifyPendingRecoveryOrderingKey,
   createShopifyOrderCorrelationOrderingKey,
   createShopifyCartActivityOrderingKey,
   type CheckoutCreatedPayloadV2,
-  type CheckoutUpdatedPayloadV2,
+  type CheckoutUpdatedPayloadV3,
   type OrderCompletedPayloadV2,
   type ShopifyCartActivityPayloadV2,
 } from "@modainteract/moda-interact-shared/shopify";
@@ -67,10 +68,10 @@ type SupportedWebhookPlan =
       queue: typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.queueName;
       normalize: (
         payload: Record<string, unknown>,
-      ) => CheckoutUpdatedPayloadV2 | null;
+      ) => CheckoutUpdatedPayloadV3 | null;
       buildOrderingKey: (
         shopId: string,
-        payload: CheckoutUpdatedPayloadV2,
+        payload: CheckoutUpdatedPayloadV3,
       ) => string;
     }
   | {
@@ -254,18 +255,23 @@ export async function ingestShopifyWebhook(
         return new Response(null, { status: 400 });
       }
 
-      const event = buildShopifyEventEnvelope({
-        requestId,
-        metadata,
-        shop,
-        eventType: plan.eventType,
-        orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
-        payload: normalizedPayload,
-        internationalContext: normalizeShopifyInternationalContext(input.payload),
-      });
+      // Only checkout.updated advances to v3; the shared envelope builder
+      // continues to produce unchanged v2 events for other Shopify topics.
+      const event = {
+        ...buildShopifyEventEnvelope({
+          requestId,
+          metadata,
+          shop,
+          eventType: plan.eventType,
+          orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
+          payload: normalizedPayload,
+          internationalContext: normalizeShopifyInternationalContext(input.payload),
+        }),
+        schemaVersion: SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V3,
+      };
 
       publication = await publishShopifyCheckoutUpdatedEvent({
-        event: ShopifyCheckoutUpdatedEventV2Schema.parse(event),
+        event: ShopifyCheckoutUpdatedEventV3Schema.parse(event),
       });
     } else if (!publication) {
       if (plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED) {
@@ -366,7 +372,7 @@ function buildShopifyEventEnvelope({
   payload:
     | ShopifyCartActivityPayloadV2
     | CheckoutCreatedPayloadV2
-    | CheckoutUpdatedPayloadV2
+    | CheckoutUpdatedPayloadV3
     | OrderCompletedPayloadV2;
   internationalContext?: ReturnType<typeof normalizeShopifyInternationalContext>;
 }) {
