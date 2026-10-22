@@ -1384,3 +1384,65 @@
     padding: 14px;
   }
 }
+
+/* Native Shopify consent guidance: informational only, never a second opt-in control. */
+.moda-recovery-consent-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.moda-recovery-consent-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--recovery-line);
+  border-radius: 14px;
+  background: var(--recovery-soft);
+}
+
+.moda-recovery-consent-card h3 {
+  margin: 0 0 8px;
+  color: var(--recovery-green-900);
+  font-size: 14px;
+}
+
+.moda-recovery-consent-card p {
+  margin: 0 0 10px;
+  color: var(--recovery-ink);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.moda-recovery-consent-card p:last-child {
+  margin-bottom: 0;
+}
+
+.moda-recovery-consent-card a {
+  color: var(--recovery-green-800);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  font-size: 13px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
+.moda-recovery-consent-card a:focus-visible {
+  outline: 3px solid var(--recovery-green-600);
+  outline-offset: 3px;
+}
+
+.moda-recovery-consent-stop {
+  grid-column: 1 / -1;
+  border-color: var(--recovery-green-300);
+}
+
+@media (max-width: 700px) {
+  .moda-recovery-consent-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .moda-recovery-consent-stop {
+    grid-column: auto;
+  }
+}

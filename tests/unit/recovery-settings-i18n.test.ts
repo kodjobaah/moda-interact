@@ -3,7 +3,14 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(process.cwd());
+const consentKeys = [
+  "title", "marketing", "setupTitle", "setup", "setupLink", "earlyTitle", "early",
+  "formsLink", "noConsentTitle", "noConsent", "unavailable", "laterTitle", "later",
+  "stopTitle", "stop",
+].map((name) => `recoverySettings.whatsappConsent.${name}`);
 const keys = [
+  ...consentKeys,
+  "recoverySettings.context.title", "recoverySettings.context.description",
   "recoverySettings.adminOverride", "recoverySettings.aiDescription", "recoverySettings.discount.code",
   "recoverySettings.discount.endsAt", "recoverySettings.discount.method", "recoverySettings.discount.method.AUTOMATIC",
   "recoverySettings.discount.method.CODE", "recoverySettings.discount.startsAt", "recoverySettings.discount.status",
