@@ -176,3 +176,74 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
   });
 
 });
+
+// ARCH-040-SHOPIFY-004: These Recovery Detail labels must never silently inherit
+// the English source copy in any of the 19 non-English merchant catalogues.
+// Only this reviewed set is checked for English identity; proper names and
+// technical tokens elsewhere may legitimately be language-neutral.
+const recoveryDetailSecondaryCopyKeys = [
+  "recoveryDetail.savedSnapshot",
+  "recoveryDetail.basketUnavailable",
+  "recoveryDetail.basketPartial",
+  "recoveryDetail.emptyBasket",
+  "recoveryDetail.humanControls",
+  "recoveryDetail.windowOpen",
+  "recoveryDetail.terminal",
+  "recoveryDetail.staleRevision",
+  "recoveryDetail.controlFailed",
+  "recoveryDetail.latestReply",
+  "recoveryDetail.templateUnavailable",
+  "recoveryDetail.followUpTemplate",
+  "recoveryDetail.customerFlagged",
+  "recoveryDetail.sendStatus.CLAIMED",
+  "recoveryDetail.sendStatus.DISPATCH_ADMITTED",
+  "recoveryDetail.sendStatus.CANCELLED",
+] as const;
+
+const merchantLocales = [
+  "en", "cs", "da", "de", "es", "fi", "fr", "it", "ja", "ko",
+  "nb", "nl", "pl", "pt-BR", "pt-PT", "sv", "th", "tr", "zh-Hans", "zh-Hant",
+] as const;
+
+function interpolationTokens(value: string): string[] {
+  return [...value.matchAll(/\{[a-zA-Z][a-zA-Z0-9_.]*\}/g)]
+    .map(([token]) => token)
+    .sort();
+}
+
+describe("ARCH-040 Recovery Detail merchant locale parity", () => {
+  it("translates the 16 secondary-copy keys in every non-English locale without changing delivery meaning", async () => {
+    const catalogues = await Promise.all(merchantLocales.map(async (locale) => {
+      const content = await readFile(
+        new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url), "utf8",
+      );
+      return [locale, JSON.parse(content) as Record<string, string>] as const;
+    }));
+    const english = catalogues[0][1];
+    const sourceKeys = Object.keys(english).sort();
+    expect(recoveryDetailSecondaryCopyKeys).toHaveLength(16);
+    expect(catalogues).toHaveLength(20);
+
+    for (const [locale, dictionary] of catalogues) {
+      expect(Object.keys(dictionary).sort(), `${locale}: catalogue keys`).toEqual(sourceKeys);
+      for (const key of recoveryDetailSecondaryCopyKeys) {
+        expect(dictionary[key], `${locale}: ${key} must exist`).toBeTruthy();
+        expect(interpolationTokens(dictionary[key]), `${locale}: ${key} interpolation`).toEqual(
+          interpolationTokens(english[key]),
+        );
+        if (locale !== "en") {
+          expect(dictionary[key], `${locale}: ${key} remains an English placeholder`).not.toBe(english[key]);
+        }
+      }
+      // Queue acceptance, provider admission, no-send and confirmed send must
+      // be distinct labels. Translation may not imply delivery at admission.
+      expect(new Set([
+        dictionary["recoveryDetail.sendStatus.CLAIMED"],
+        dictionary["recoveryDetail.sendStatus.DISPATCH_ADMITTED"],
+        dictionary["recoveryDetail.sendStatus.CANCELLED"],
+        dictionary["recoveryDetail.sendStatus.SENT"],
+        dictionary["recoveryDetail.sendStatus.DELIVERED"],
+      ]).size, `${locale}: distinct outbound states`).toBe(5);
+    }
+  });
+});
