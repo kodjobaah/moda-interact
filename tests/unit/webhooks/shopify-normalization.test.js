@@ -129,19 +129,79 @@ describe("normalizeCheckoutCreatedPayload", () => {
 });
 
 describe("normalizeCheckoutUpdatedPayload", () => {
-  it("returns only the checkout token", () => {
+  it("retains only validated v3 lookup hints and normalises offset timestamps", () => {
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        cart_token: "cart-token-1",
+        created_at: "2021-12-31T19:00:00-05:00",
+        abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
+        line_items: [{ title: "ignored" }],
+      }),
+    ).toEqual({
+      checkoutToken: "checkout-token-1",
+      cartToken: "cart-token-1",
+      checkoutCreatedAt: "2022-01-01T00:00:00.000Z",
+      abandonedCheckoutUrl: "https://shop.example/checkout/1?key=abc",
+    });
+  });
+
+  it("emits a token-only event when optional lookup context is absent", () => {
     expect(
       normalizeCheckoutUpdatedPayload({
         token: "checkout-token-1",
         line_items: [{ title: "ignored" }],
       }),
+    ).toEqual({ checkoutToken: "checkout-token-1" });
+  });
+
+  it("preserves explicit nulls without inventing missing fields", () => {
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        cart_token: null,
+        created_at: null,
+        abandoned_checkout_url: null,
+      }),
     ).toEqual({
       checkoutToken: "checkout-token-1",
+      cartToken: null,
+      checkoutCreatedAt: null,
+      abandonedCheckoutUrl: null,
     });
   });
 
-  it("returns null when checkout token is missing", () => {
+  it("drops malformed optional fields independently, preserving valid context", () => {
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        cart_token: "cart-token-1",
+        created_at: "not-a-timestamp",
+        abandoned_checkout_url: "not-a-url",
+      }),
+    ).toEqual({
+      checkoutToken: "checkout-token-1",
+      cartToken: "cart-token-1",
+    });
+  });
+
+  it("drops oversized lookup hints and unexpected field types", () => {
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        cart_token: "c".repeat(101),
+        created_at: 123,
+        abandoned_checkout_url: `https://shop.example/${"x".repeat(2048)}`,
+      }),
+    ).toEqual({ checkoutToken: "checkout-token-1" });
+    expect(normalizeCheckoutUpdatedPayload({ token: "checkout-token-1", cart_token: "" }))
+      .toEqual({ checkoutToken: "checkout-token-1" });
+  });
+
+  it("returns null when checkout token is missing or not a non-empty string", () => {
     expect(normalizeCheckoutUpdatedPayload({})).toBeNull();
+    expect(normalizeCheckoutUpdatedPayload({ token: 123 })).toBeNull();
+    expect(normalizeCheckoutUpdatedPayload({ token: "" })).toBeNull();
   });
 });
 

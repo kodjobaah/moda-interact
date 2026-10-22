@@ -1,6 +1,8 @@
 import process from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  ShopifyCheckoutUpdatedEventV3Schema,
+  parseShopifyRecoveryEvent,
   parseShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
@@ -191,6 +193,47 @@ describe("shopify webhook queue helpers", () => {
     const legacyJobId = createShopifyWebhookJobId("shop_1", "delivery-up-1");
     expect(first.jobId).toBe(queueModule.createTenantReadableJobId("shop_1", legacyJobId));
     expect(first.jobId).toMatch(/^shop_1--/);
+  });
+
+  it("publishes v3 checkout.updated context without changing delivery deduplication", async () => {
+    const event = ShopifyCheckoutUpdatedEventV3Schema.parse({
+      schemaVersion: 3,
+      receiptId: "receipt-up-3",
+      deliveryId: "delivery-up-3",
+      eventId: "e-up-3",
+      source: "shopify",
+      providerTopic: "CHECKOUTS_UPDATE",
+      tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
+      occurredAt: "2026-10-20T00:20:00.000Z",
+      receivedAt: "2026-10-20T00:20:01.000Z",
+      traceId: "receipt-up-3",
+      orderingKey: "shop_1:checkout_1",
+      eventType: "checkout.updated",
+      payload: {
+        checkoutToken: "checkout_1",
+        cartToken: "cart_1",
+        checkoutCreatedAt: "2026-10-20T00:00:00.000Z",
+        abandonedCheckoutUrl: "https://shop.example/checkout/1",
+      },
+    });
+    expect(parseShopifyRecoveryEvent(event)).toEqual(event);
+    expect(() => parseShopifyRecoveryEventV2(event)).toThrow();
+
+    const first = await queueModule.publishShopifyCheckoutUpdatedEvent({ event });
+    const duplicate = await queueModule.publishShopifyCheckoutUpdatedEvent({ event });
+    const nextDelivery = await queueModule.publishShopifyCheckoutUpdatedEvent({
+      event: { ...event, receiptId: "receipt-up-4", deliveryId: "delivery-up-4" },
+    });
+
+    expect(first.outcome).toBe("enqueued");
+    expect(duplicate.outcome).toBe("duplicate");
+    expect(duplicate.jobId).toBe(first.jobId);
+    expect(nextDelivery.outcome).toBe("enqueued");
+    expect(nextDelivery.jobId).not.toBe(first.jobId);
+    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.addCalls[0].jobName).toBe("checkout-updated");
+    expect(queues.checkout.addCalls[0].data).toEqual(event);
+    expect(queues.checkout.addCalls[0].data.orderingKey).toBe("shop_1:checkout_1");
   });
 
   it("publishes cart activity to checkout-events and deduplicates delivery", async () => {
