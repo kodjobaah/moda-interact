@@ -3,6 +3,8 @@ import { createBullMQTelemetry } from "@modainteract/moda-interact-shared/observ
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   parseShopifyDiscountSyncJob,
+  ShopifyWhatsAppConsentSyncJobV1Schema,
+  type ShopifyWhatsAppConsentSyncJobV1,
   type ShopifyDiscountSyncJob,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
@@ -15,6 +17,7 @@ import {
   createShopifyWebhookJobId,
   createShopifyOrderJobId,
   createShopifyDiscountSyncJobId,
+  createShopifyWhatsAppConsentSyncJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 const JOB_PUBLISH_TIMEOUT_MS = 3_500;
@@ -32,7 +35,8 @@ type ShopifyWebhookQueueJobName =
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName
   | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName
-  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.jobName;
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC.jobName
+  | typeof SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.jobName;
 
 type ShopifyWebhookPublicationOutcome = "enqueued" | "duplicate";
 
@@ -56,7 +60,7 @@ export type ShopifyWebhookPublicationResult = {
 };
 
 let checkoutQueue: Queue<
-  ShopifyRecoveryEvent,
+  ShopifyRecoveryEvent | ShopifyWhatsAppConsentSyncJobV1,
   void,
   ShopifyWebhookQueueJobName
 > | null = null;
@@ -208,8 +212,8 @@ export function createTenantReadableJobId(
   return `${shopId}--${legacyJobId}`;
 }
 
-async function findExistingJobId(
-  queue: Queue<ShopifyRecoveryEvent, void, ShopifyWebhookQueueJobName>,
+async function findExistingJobId<T>(
+  queue: Queue<T, void, ShopifyWebhookQueueJobName>,
   newJobId: string,
   legacyJobId: string,
 ): Promise<string | null> {
@@ -220,23 +224,15 @@ async function findExistingJobId(
   return existingLegacyJob ? legacyJobId : null;
 }
 
-async function addJobWithTimeout(
-  queue: Queue<ShopifyRecoveryEvent, void, ShopifyWebhookQueueJobName>,
-  jobName: ShopifyWebhookQueueJobName,
-  event: ShopifyRecoveryEvent,
-  options: {
-    jobId: string;
-    delay?: number;
-  },
-) {
+async function addJobWithTimeout<T>(
+  jobId: string,
+  addJob: () => Promise<T>,
+): Promise<T | null> {
   try {
     return await withTimeout(
-      queue.add(jobName, event, {
-        jobId: options.jobId,
-        delay: options.delay,
-      }),
+      addJob(),
       JOB_PUBLISH_TIMEOUT_MS,
-      `Timed out publishing job ${options.jobId}`,
+      `Timed out publishing job ${jobId}`,
     );
   } catch (error) {
     if (isDuplicateJobError(error)) {
@@ -277,10 +273,12 @@ export async function publishShopifyCheckoutCreatedEvent(input: {
   }
 
   const addedJob = await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName,
-    input.event,
-    { jobId },
+    jobId,
+    () => queue.add(
+      SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.jobName,
+      input.event,
+      { jobId },
+    ),
   );
 
   if (!addedJob) {
@@ -321,10 +319,12 @@ export async function publishShopifyCheckoutUpdatedEvent(input: {
   }
 
   const addedJob = await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName,
-    input.event,
-    { jobId },
+    jobId,
+    () => queue.add(
+      SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_UPDATED_EVENTS.jobName,
+      input.event,
+      { jobId },
+    ),
   );
 
   if (!addedJob) {
@@ -365,10 +365,12 @@ export async function publishShopifyCartActivityEvent(input: {
   }
 
   const addedJob = await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName,
-    input.event,
-    { jobId },
+    jobId,
+    () => queue.add(
+      SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CART_ACTIVITY_EVENTS.jobName,
+      input.event,
+      { jobId },
+    ),
   );
 
   return {
@@ -401,10 +403,12 @@ export async function publishShopifyOrderCompletedEvent(input: {
   }
 
   const addedJob = await addJobWithTimeout(
-    queue,
-    SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName,
-    input.event,
-    { jobId },
+    jobId,
+    () => queue.add(
+      SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.ORDER_EVENTS.jobName,
+      input.event,
+      { jobId },
+    ),
   );
 
   if (!addedJob) {
@@ -469,6 +473,46 @@ export async function publishShopifyDiscountSyncJob(input: {
 
     throw new ShopifyWebhookPublicationError(
       error instanceof Error ? error.message : "Failed to publish discount sync job",
+      "QUEUE_ADD_FAILED",
+    );
+  }
+}
+
+/** Consent changes refresh CURRENT provider state; they are never checkout jobs. */
+export async function publishShopifyWhatsAppConsentSyncJob(input: {
+  event: ShopifyWhatsAppConsentSyncJobV1;
+}): Promise<ShopifyWebhookPublicationResult> {
+  const event = ShopifyWhatsAppConsentSyncJobV1Schema.parse(input.event);
+  const queue = getCheckoutQueue();
+  const jobId = createShopifyWhatsAppConsentSyncJobId(event);
+
+  try {
+    const existing = await withTimeout(
+      queue.getJob(jobId),
+      JOB_PUBLISH_TIMEOUT_MS,
+      `Timed out checking consent-sync job ${jobId}`,
+    );
+    if (existing) {
+      return { queue: queue.name as ShopifyWebhookQueueName, jobId, outcome: "duplicate" };
+    }
+
+    const added = await addJobWithTimeout(
+      jobId,
+      () => queue.add(
+        SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.jobName,
+        event,
+        { jobId },
+      ),
+    );
+    return {
+      queue: queue.name as ShopifyWebhookQueueName,
+      jobId,
+      outcome: added ? "enqueued" : "duplicate",
+    };
+  } catch (error) {
+    if (error instanceof ShopifyWebhookPublicationError) throw error;
+    throw new ShopifyWebhookPublicationError(
+      error instanceof Error ? error.message : "Failed to publish consent sync job",
       "QUEUE_ADD_FAILED",
     );
   }

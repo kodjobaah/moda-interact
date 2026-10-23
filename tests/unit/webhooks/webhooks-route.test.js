@@ -11,6 +11,7 @@ const ingestShopifyWebhookMock = vi
   .mockResolvedValue(new Response(null, { status: 200 }));
 vi.mock("../../../app/services/webhooks/shopify-webhook-ingress.service", () => ({
   ingestShopifyWebhook: ingestShopifyWebhookMock,
+  isShopifyWhatsAppConsentTopic: (topic) => topic?.trim().toLowerCase().replaceAll("/", "_") === "customers_whats_app_marketing_consent_update",
 }));
 
 const observabilityMocks = vi.hoisted(() => ({
@@ -31,6 +32,35 @@ beforeEach(() => {
 });
 
 describe("webhooks route action", () => {
+  it("preserves exact authenticated numeric customer token and still requires HMAC", async () => {
+    const raw = '{"customer_id":706405506930370084,"phone_number":"+447700900123"}';
+    authenticateWebhookMock.mockImplementationOnce(async (request) => {
+      expect(JSON.parse(await request.text()).customer_id).toBe(706405506930370000);
+      return {
+        topic: "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE",
+        shop: "shop.myshopify.com", payload: JSON.parse(raw),
+        apiVersion: "2026-07", eventId: "e1", triggeredAt: "2026-10-22T09:00:00Z",
+      };
+    });
+    const request = new Request("https://app.example/webhooks", {
+      method: "POST", headers: { "X-Shopify-Topic": "customers_whats_app_marketing_consent/update", "X-Shopify-Webhook-Id": "d1" }, body: raw,
+    });
+    expect((await action({ request })).status).toBe(200);
+    expect(ingestShopifyWebhookMock).toHaveBeenCalledWith(expect.objectContaining({
+      authenticatedConsentRawBody: raw,
+    }));
+  });
+
+  it("does not read or enqueue an invalid-HMAC consent webhook", async () => {
+    const authFailure = new Response(null, { status: 401 });
+    authenticateWebhookMock.mockRejectedValueOnce(authFailure);
+    const request = new Request("https://app.example/webhooks", {
+      method: "POST", headers: { "X-Shopify-Topic": "customers_whats_app_marketing_consent/update" }, body: '{"customer_id":42}',
+    });
+    await expect(action({ request })).rejects.toBe(authFailure);
+    expect(ingestShopifyWebhookMock).not.toHaveBeenCalled();
+  });
+
   it("preserves an authentication failure instead of swallowing it", async () => {
     const authError = new Response(null, { status: 401 });
     authenticateWebhookMock.mockRejectedValue(authError);
