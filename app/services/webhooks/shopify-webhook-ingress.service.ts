@@ -8,6 +8,9 @@ import {
   ShopifyCheckoutUpdatedEventV3Schema,
   ShopifyCartActivityEventV2Schema,
   ShopifyOrderCompletedEventV2Schema,
+  ShopifyWhatsAppConsentSyncJobV1Schema,
+  SHOPIFY_WHATSAPP_CONSENT_SYNC_SCHEMA_VERSION,
+  SHOPIFY_WHATSAPP_CONSENT_SYNC_TOPIC,
   createShopifyPendingRecoveryOrderingKey,
   createShopifyOrderCorrelationOrderingKey,
   createShopifyCartActivityOrderingKey,
@@ -28,7 +31,12 @@ import {
   publishShopifyCartActivityEvent,
   publishShopifyOrderCompletedEvent,
   publishShopifyDiscountSyncJob,
+  publishShopifyWhatsAppConsentSyncJob,
 } from "./shopify-webhook-queue.server";
+import {
+  normalizeShopifyWhatsAppConsentCustomerId,
+  ShopifyWhatsAppConsentPayloadError,
+} from "./shopify-whatsapp-consent-normalization";
 import { buildDiscountSyncJob } from "../discounts/shopify-discount-lifecycle.service";
 import { recordShopifyWebhookOutcome } from "./shopify-webhook-observability.server";
 import { getActiveTraceId } from "../otel/otel.runtime";
@@ -89,6 +97,7 @@ type SupportedWebhookPlan =
 type IngressInput = ShopifyWebhookAuthContext & {
   request: Request;
   payload: Record<string, unknown>;
+  authenticatedConsentRawBody?: string | null;
 };
 
 export async function ingestShopifyWebhook(
@@ -97,6 +106,7 @@ export async function ingestShopifyWebhook(
   const ackStartedAt = Date.now();
   const requestId = globalThis.crypto.randomUUID();
   const plan = classifyWebhookTopic(input.topic);
+  const consentSyncTopic = isShopifyWhatsAppConsentTopic(input.topic);
 
   let metadata;
   try {
@@ -131,7 +141,9 @@ export async function ingestShopifyWebhook(
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
-        queue: plan?.queue ?? null,
+        queue: consentSyncTopic
+          ? SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName
+          : plan?.queue ?? null,
         jobId: null,
         outcome: "QUARANTINED",
         shopId: shop?.id ?? null,
@@ -139,6 +151,82 @@ export async function ingestShopifyWebhook(
         ackMs: Date.now() - ackStartedAt,
       });
 
+      return new Response(null, { status: 200 });
+    }
+
+    if (consentSyncTopic) {
+      // Bound this subscription to the verified 2026-07 app configuration. A
+      // changed deployed API version must be explicitly reviewed and tested.
+      if (metadata.apiVersion !== "2026-07") {
+        recordShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName,
+          jobId: null,
+          outcome: "REJECTED_UNSUPPORTED_CONSENT_API_VERSION",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+        return new Response(null, { status: 400 });
+      }
+
+      let shopifyCustomerId;
+      try {
+        shopifyCustomerId = normalizeShopifyWhatsAppConsentCustomerId({
+          payload: input.payload,
+          authenticatedRawBody: input.authenticatedConsentRawBody ?? null,
+        });
+      } catch (error) {
+        if (!(error instanceof ShopifyWhatsAppConsentPayloadError)) throw error;
+        recordShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName,
+          jobId: null,
+          outcome: "REJECTED_INVALID_CONSENT_CUSTOMER_ID",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+        return new Response(null, { status: 400 });
+      }
+
+      const parsedEvent = ShopifyWhatsAppConsentSyncJobV1Schema.safeParse({
+        schemaVersion: SHOPIFY_WHATSAPP_CONSENT_SYNC_SCHEMA_VERSION,
+        shopId: shop.id,
+        shopifyCustomerId,
+        deliveryId: metadata.deliveryId,
+        triggeredAt: (metadata.triggeredAt ?? metadata.receivedAt).toISOString(),
+      });
+      if (!parsedEvent.success) {
+        recordShopifyWebhookOutcome({
+          topic: metadata.providerTopic,
+          deliveryId: metadata.deliveryId,
+          eventId: metadata.eventId,
+          queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName,
+          jobId: null,
+          outcome: "REJECTED_INVALID_CONSENT_METADATA",
+          shopId: shop.id,
+          shopDomain: shop.domain,
+          ackMs: Date.now() - ackStartedAt,
+        });
+        return new Response(null, { status: 400 });
+      }
+      const publication = await publishShopifyWhatsAppConsentSyncJob({ event: parsedEvent.data });
+      recordShopifyWebhookOutcome({
+        topic: SHOPIFY_WHATSAPP_CONSENT_SYNC_TOPIC,
+        deliveryId: metadata.deliveryId,
+        eventId: metadata.eventId,
+        queue: publication.queue,
+        jobId: publication.jobId,
+        outcome: publication.outcome === "duplicate" ? "DUPLICATE" : "ENQUEUED",
+        shopId: shop.id,
+        shopDomain: shop.domain,
+        ackMs: Date.now() - ackStartedAt,
+      });
       return new Response(null, { status: 200 });
     }
 
@@ -330,7 +418,9 @@ export async function ingestShopifyWebhook(
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
-        queue: plan?.queue ?? null,
+        queue: consentSyncTopic
+          ? SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName
+          : plan?.queue ?? null,
         jobId: null,
         outcome: error.code,
         shopId: null,
@@ -484,3 +574,7 @@ function normalizeDiscountWebhookTopic(
     : null;
 }
 
+export function isShopifyWhatsAppConsentTopic(topic: string): boolean {
+  return topic.trim().toLowerCase().replaceAll("/", "_") ===
+    SHOPIFY_WHATSAPP_CONSENT_SYNC_TOPIC.replaceAll("/", "_");
+}

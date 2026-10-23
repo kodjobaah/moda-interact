@@ -47,6 +47,11 @@ const publicationMock = {
     jobId: "discount-sync-job",
     outcome: "enqueued",
   })),
+  publishShopifyWhatsAppConsentSyncJob: vi.fn(async () => ({
+    queue: "checkout-events",
+    jobId: "consent-sync-job",
+    outcome: "enqueued",
+  })),
 };
 
 vi.mock("../../../app/db.server", () => ({ default: dbMock }));
@@ -65,6 +70,8 @@ function resetState() {
   publicationMock.publishShopifyCartActivityEvent.mockClear();
   publicationMock.publishShopifyOrderCompletedEvent.mockClear();
   publicationMock.publishShopifyDiscountSyncJob.mockClear();
+  publicationMock.publishShopifyWhatsAppConsentSyncJob.mockReset();
+  publicationMock.publishShopifyWhatsAppConsentSyncJob.mockResolvedValue({ queue: "checkout-events", jobId: "consent-sync-job", outcome: "enqueued" });
   delete process.env.REDIS_URL;
 }
 
@@ -131,11 +138,119 @@ function orderInput(overrides = {}) {
   };
 }
 
+const CONSENT_TOPIC = "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE";
+
+function consentInput(raw = '{"customer_id":706405506930370084,"phone_number":"+447700900123","whats_app_marketing_consent":{"state":"subscribed"}}', overrides = {}) {
+  return {
+    ...checkoutInput({
+      request: baseRequest({
+        "X-Shopify-Topic": "customers_whats_app_marketing_consent/update",
+        "X-Shopify-API-Version": "2026-07",
+      }),
+      topic: CONSENT_TOPIC,
+      payload: JSON.parse(raw),
+      authenticatedConsentRawBody: raw,
+      eventId: "consent-event-1",
+      triggeredAt: "2026-10-22T10:00:00Z",
+    }),
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   resetState();
 });
 
 describe("shopify webhook ingress", () => {
+  it("publishes only Shared v1 sync metadata for a real >2^53 Shopify numeric customer ID", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    const response = await ingestShopifyWebhook(consentInput());
+
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledWith({
+      event: {
+        schemaVersion: 1,
+        shopId: "shop_1",
+        shopifyCustomerId: "706405506930370084",
+        deliveryId: "delivery-1",
+        triggeredAt: "2026-10-22T10:00:00.000Z",
+      },
+    });
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyCartActivityEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
+    expect(publicationMock.publishShopifyDiscountSyncJob).not.toHaveBeenCalled();
+    expect(dbMock.shop.findUnique).toHaveBeenCalledWith({ where: { domain: "shop.myshopify.com" } });
+  });
+
+  it("normalizes a canonical Customer GID to the same numeric Shopify identity", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    const response = await ingestShopifyWebhook(consentInput(
+      '{"customer_id":"gid://shopify/Customer/706405506930370084","admin_graphql_api_id":"gid://shopify/Customer/706405506930370084"}',
+    ));
+    expect(response.status).toBe(200);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledWith({
+      event: expect.objectContaining({ shopifyCustomerId: "706405506930370084" }),
+    });
+  });
+
+  it.each([
+    ['{"customer_id":706405506930370084,"customer_id":7}', "duplicate top-level customer_id"],
+    ['{"customer":{"customer_id":42}}', "nested-only principal"],
+    ['{"customer_id":"gid://shopify/Order/42"}', "wrong GID type"],
+    ['{"customer_id":0}', "zero ID"],
+    ['{"customer_id":900719925474099300000}', "out-of-range ID"],
+    ['{"customer_id":42,"admin_graphql_api_id":"gid://shopify/Customer/43"}', "conflicting GID"],
+    ['{"customer_id":"42","phone_number":"+447700900123","checkoutId":"checkout"}', "extra PII is not forwarded"],
+  ])("enforces canonical Shopify identity or drops PII for %s (%s)", async (raw, label) => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    const response = await ingestShopifyWebhook(consentInput(raw));
+    if (label === "extra PII is not forwarded") {
+      expect(response.status).toBe(200);
+      expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledWith({
+        event: { schemaVersion: 1, shopId: "shop_1", shopifyCustomerId: "42", deliveryId: "delivery-1", triggeredAt: "2026-10-22T10:00:00.000Z" },
+      });
+    } else {
+      expect(response.status).toBe(400);
+      expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).not.toHaveBeenCalled();
+    }
+  });
+
+  it("quarantines inactive and unregistered stores before any consent publication", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", { ...activeShop(), status: "INACTIVE" });
+    expect((await ingestShopifyWebhook(consentInput())).status).toBe(200);
+    expect((await ingestShopifyWebhook(consentInput('{"customer_id":42}', { shop: "other.myshopify.com" }))).status).toBe(200);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unexpected API version or missing authenticated raw principal", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    expect((await ingestShopifyWebhook(consentInput(undefined, { apiVersion: "2026-10", request: baseRequest() }))).status).toBe(400);
+    expect((await ingestShopifyWebhook(consentInput(undefined, { authenticatedConsentRawBody: null }))).status).toBe(400);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).not.toHaveBeenCalled();
+  });
+
+  it("returns non-2xx for a failed queue add, allowing Shopify to retry safely", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    publicationMock.publishShopifyWhatsAppConsentSyncJob.mockRejectedValueOnce(
+      new TestPublicationError("redis unavailable", "QUEUE_ADD_FAILED"),
+    );
+    expect((await ingestShopifyWebhook(consentInput())).status).toBe(503);
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+  });
+
+  it("acknowledges duplicate consent delivery without generating checkout work", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    publicationMock.publishShopifyWhatsAppConsentSyncJob.mockResolvedValueOnce({
+      queue: "checkout-events", jobId: "consent-sync-job", outcome: "duplicate",
+    });
+    expect((await ingestShopifyWebhook(consentInput())).status).toBe(200);
+    expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledTimes(1);
+    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["DISCOUNTS_CREATE", "discounts/create"],
     ["DISCOUNTS_UPDATE", "discounts/update"],
