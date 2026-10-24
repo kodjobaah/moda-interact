@@ -19,8 +19,7 @@ api_version = "2026-07"
   "carts/create",
   "checkouts/create",
   "carts/update",
-  "checkouts/update",
-  "customers_whats_app_marketing_consent/update"
+  "checkouts/update"
 ]
 
   [[webhooks.subscriptions]]
