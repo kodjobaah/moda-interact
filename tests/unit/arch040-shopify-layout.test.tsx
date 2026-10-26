@@ -28,7 +28,7 @@ const base: Detail = {
   ], "GBP", "124.99"),
   milestones: { detectedAt: now, messageSentAt: now, engagedAt: now, completedAt: null, expiredAt: null },
   conversation: {
-    id: "owned-conversation", controlMode: "AI", controlRevision: 1,
+    id: "owned-conversation", controlMode: "AI", controlRevision: 1, languageTag: "en",
     lastInboundAt: now, windowExpiresAt: "2099-10-19T00:00:00.000Z",
     followUp: { used: false, initiatedBy: null, eligible: true, hasApprovedTemplate: true },
     humanMessagingStatus: "ACTIVE", latestCommand: null,

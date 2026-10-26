@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Prisma, type PrismaClient } from "@prisma/client";
 vi.mock("../../app/db.server", () => ({ default: {} }));
+vi.mock("../../app/services/recoveries/recovery-follow-up-sender.server", () => ({
+  trustedRecoverySenderWaba: async () => "1234567890",
+}));
+import { validFollowUpVariant } from "../fixtures/arch047-shopify-follow-up";
 const { changeRecoveryControl, admitRecoveryHumanSend, humanSendPayloadHash } =
   await import("../../app/services/recoveries/recovery-human-commands.server");
 
@@ -9,12 +13,12 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
   existing?: boolean; secondClaimed?: boolean; secondClaimedAt?: Date | null; templateApproved?: boolean }) {
   const options = { owned: true, mode: "HUMAN", revision: 1, suspended: false, inbound: true,
     existing: false, secondClaimed: false, templateApproved: true, ...input };
-  const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision };
+  const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision, languageTag: "en" };
   const tx = {
     checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: "recovery-1", shopId: "shop-1", status: "ENGAGED", customerId: "customer-1" } : null) },
     $queryRaw: vi.fn(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
       ? [{ id: "shop-1", status: "ACTIVE" }] : [context]),
-    shop: { findUnique: vi.fn(async () => ({ status: "ACTIVE" })) },
+    shop: { findUnique: vi.fn(async () => ({ status: "ACTIVE", platform: "SHOPIFY", defaultLanguageTag: "en" })) },
     subscription: { findUnique: vi.fn(async () => ({ status: "ACTIVE", plan: { active: true, features: [{ featureId: "checkout_recovery" }] } })) },
     shopHumanMessagingRestriction: { findUnique: vi.fn(async () => options.suspended ? { status: "SUSPENDED" } : null) },
     conversation: { updateMany: vi.fn(async () => ({ count: 1 })) },
@@ -38,8 +42,11 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
           followUpDueAt: options.followUpDueAt === undefined ? new Date("2026-10-17T01:00:00.000Z") : options.followUpDueAt,
           configuredOfferMode: "NONE", fixedShopifyDiscountId: null, offerSnapshot: null }),
       create: vi.fn(async () => ({ id: "attempt-2" })), updateMany: vi.fn(async () => ({ count: 1 })) },
-    whatsAppTemplateVariant: { findFirst: vi.fn(async () => options.templateApproved
-      ? { providerTemplateName: "recovery_reminder", providerLanguageCode: "en" } : null) },
+    whatsAppTemplateVariant: { findMany: vi.fn(async () => options.templateApproved
+      ? [validFollowUpVariant] : []) },
+    whatsAppTemplatePublicationTarget: { findMany: vi.fn(async () => [{
+      newVariantId: "variant-1", metaRegistrationId: "registration-1", languageTag: "en",
+    }]) },
     whatsAppRecipientReachability: { findUnique: vi.fn(async () => null) },
     conversationMessage: { findFirst: vi.fn(async () => options.inbound
       ? { createdAt: options.inboundAt ?? new Date(Date.now() - 60_000) } : null) },
@@ -141,6 +148,42 @@ describe("ARCH-040 Shopify human commands", () => {
       data: expect.objectContaining({ recoveryOutreachAttemptId: "attempt-2", templateName: "recovery_reminder",
         templateParameters: {} }),
     }));
+  });
+
+  it("rejects stale, forged, retired and unlinked Moda follow-up variants before sequence-two claim", async () => {
+    const invalid = [
+      { metaRegistrationId: null },
+      { providerAccountId: "9999999999" },
+      { purpose: "checkout-recovery" },
+      { metaRegistration: { ...validFollowUpVariant.metaRegistration, providerStatus: "PAUSED" } },
+      { metaRegistration: { ...validFollowUpVariant.metaRegistration, locale: {
+        ...validFollowUpVariant.metaRegistration.locale, definition: {
+          ...validFollowUpVariant.metaRegistration.locale.definition, retiredAt: new Date(),
+        },
+      } } },
+    ];
+    for (const bad of invalid) {
+      const { tx, db } = fixture({ inbound: false });
+      tx.whatsAppTemplateVariant.findMany.mockResolvedValue([{ ...validFollowUpVariant, ...bad }] as never);
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+        .rejects.toMatchObject({ code: "template_not_allowed" });
+      expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+      expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+    }
+  });
+
+  it("never accepts a positive-offer template using only a saved configured discount", async () => {
+    const { tx, db } = fixture({ inbound: false });
+    tx.whatsAppTemplateVariant.findMany.mockResolvedValue([{
+      ...validFollowUpVariant, purpose: "FOLLOW_UP_CODE_OFFER",
+      metaRegistration: { ...validFollowUpVariant.metaRegistration, locale: {
+        ...validFollowUpVariant.metaRegistration.locale,
+        definition: { ...validFollowUpVariant.metaRegistration.locale.definition, offerType: "CODE_OFFER" },
+      } },
+    }] as never);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+      .rejects.toMatchObject({ code: "template_not_allowed" });
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
   });
   it("rejects a prior sequence-two claim or an unapproved template without creating a command", async () => {
     const prior = fixture({ inbound: false, secondClaimed: true });
@@ -260,7 +303,7 @@ describe("ARCH-040-SHOPIFY-005 verified service-window admission", () => {
     const { db, tx } = fixture({ inbound: false, sentAt, followUpDueAt: due });
     await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
       .rejects.toMatchObject(error("follow_up_unavailable"));
-    expect(tx.whatsAppTemplateVariant.findFirst).not.toHaveBeenCalled();
+    expect(tx.whatsAppTemplateVariant.findMany).not.toHaveBeenCalled();
     expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
   });
 

@@ -10,7 +10,7 @@ import {
   readRecoveryMessages,
   readRelatedRecoveries,
 } from "../../../services/recoveries/recovery-detail.server";
-import { readApprovedRecoveryTemplates } from "../../../services/recoveries/recovery-human-commands.server";
+import { readCurrentFollowUpTemplates } from "../../../services/recoveries/recovery-follow-up-catalogue.server";
 import { InvalidRecoveryDetailQuery } from "../../../services/recoveries/detail-cursor.server";
 import type { DetailData, Section } from "./state";
 
@@ -68,10 +68,14 @@ export async function loadRecoveryDetail({
     section(() => readRecoveryMessages(identity)),
     section(() => readRelatedRecoveries(identity)),
   ]);
-  if (result.detail.conversation) {
-    try { result.templates = await readApprovedRecoveryTemplates(shopId); }
-    catch { result.templates = []; } // History stays readable even if template catalogue is unavailable.
+  if (result.detail.conversation?.followUp.eligible && !result.detail.conversation.followUp.used) {
+    try {
+      result.templates = await readCurrentFollowUpTemplates(shopId, result.detail.conversation.languageTag);
+    } catch {
+      result.templates = []; // History stays available; never guess a template when sender/config is unavailable.
+    }
   }
+  if (result.detail.conversation) result.detail.conversation.followUp.hasApprovedTemplate = result.templates.length > 0;
   return data(result);
 }
 export async function loadRecoverySection(

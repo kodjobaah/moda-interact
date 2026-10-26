@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import prisma from "../../db.server";
 import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
+import { readCurrentFollowUpTemplates } from "./recovery-follow-up-catalogue.server";
 
 const logger = createLogger({ serviceName: "moda-interact", environment: process.env.NODE_ENV ?? "development" });
 const terminal = new Set(["COMPLETED", "CANCELLED", "EXPIRED"]);
@@ -25,7 +26,7 @@ const refused = (code: string, status = 409, currentControl?: CurrentControl): n
 type Context = {
   shopId: string;
   recovery: { id: string; status: string; customerId: string | null };
-  conversation: { id: string; controlMode: "AI" | "HUMAN"; controlRevision: number };
+  conversation: { id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; languageTag: string | null };
 };
 
 /** DATABASE-001 ordering contract: Shop -> Conversation -> command / outreach attempt.
@@ -41,8 +42,8 @@ async function lockedContext(tx: Prisma.TransactionClient, shopId: string, recov
     SELECT "id", "status"::text FROM "commerce"."Shop"
     WHERE "id"=${shopId} FOR UPDATE`);
   if (!shop.length) return refused("not_found", 404);
-  const matching = await tx.$queryRaw<{ id: string; controlMode: "AI" | "HUMAN"; controlRevision: number }[]>(Prisma.sql`
-    SELECT "id", "controlMode"::text, "controlRevision" FROM "whatsapp"."Conversation"
+  const matching = await tx.$queryRaw<{ id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; languageTag: string | null }[]>(Prisma.sql`
+    SELECT "id", "controlMode"::text, "controlRevision", "languageTag" FROM "whatsapp"."Conversation"
     WHERE "checkoutRecoveryId"=${owned.id} AND "type"='RECOVERY'
       AND ("shopId" IS NULL OR "shopId"=${shopId}) FOR UPDATE`);
   const conversation = matching[0];
@@ -200,12 +201,12 @@ export async function admitRecoveryHumanSend(
       if (windowOpen || !configuredFollowUpIsDue(initial.sentAt, initial.followUpDueAt, now)) {
         return refused("follow_up_unavailable");
       }
-      const variant = await tx.whatsAppTemplateVariant.findFirst({
-        where: { id: input.templateVariantId, shopId, purpose: "checkout-recovery", status: "APPROVED", enabled: true },
-        select: { providerTemplateName: true, providerLanguageCode: true },
-      });
-      if (!variant) return refused("template_not_allowed");
-      template = variant;
+      // Re-read the current Moda-only catalogue under the same transaction as
+      // sequence-two admission. A browser variant ID cannot select Meta identity.
+      const catalogue = await readCurrentFollowUpTemplates(shopId, conversation.languageTag, tx);
+      const chosen = catalogue.find((candidate) => candidate.id === input.templateVariantId);
+      if (!chosen) return refused("template_not_allowed");
+      template = { providerTemplateName: chosen.name, providerLanguageCode: chosen.providerLanguageCode };
       // Sequence 2 is shared with existing scheduled recovery follow-up. This
       // claim is committed atomically with the command; no provider work runs here.
       let follow = await tx.recoveryOutreachAttempt.findUnique({
@@ -282,13 +283,4 @@ export async function readRecoveryCommandStatus(
     // Only persistently classified reasons; no provider body, score or admin notes.
     failureCode: found.failureCode, moderation: found.moderationAssessments[0]?.decision ?? "PENDING",
   };
-}
-
-export async function readApprovedRecoveryTemplates(shopId: string, db: PrismaClient = prisma) {
-  const rows = await db.whatsAppTemplateVariant.findMany({
-    where: { shopId, purpose: "checkout-recovery", status: "APPROVED", enabled: true },
-    orderBy: [{ languageTag: "asc" }, { providerTemplateName: "asc" }], take: 30,
-    select: { id: true, providerTemplateName: true, languageTag: true },
-  });
-  return rows.map(({ id, providerTemplateName, languageTag }) => ({ id, name: providerTemplateName, language: languageTag }));
 }

@@ -27,7 +27,7 @@ type StatusResult = {
 /** The command controller is not an authorisation boundary; the server revalidates atomically. */
 export function HumanConversationPanel({ detail, templates, t, stamp, embed, onRefresh, onMessagesRefresh, children }: {
   detail: Detail;
-  templates: { id: string; name: string; language: string }[];
+  templates: { id: string; name: string; language: string; purpose?: "FOLLOW_UP_NO_OFFER" | "FOLLOW_UP_CODE_OFFER" | "FOLLOW_UP_AUTOMATIC_OFFER" }[];
   t: Translate;
   stamp: Stamp;
   embed: Record<string, string | undefined>;
@@ -66,6 +66,14 @@ export function HumanConversationPanel({ detail, templates, t, stamp, embed, onR
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    // Revalidation may retire or replace a selected publication. Never leave a
+    // stale selection armed while the server is showing a different catalogue.
+    if (variant && !templates.some((row) => row.id === variant)) {
+      setVariant("");
+      idempotencyKey.current = null;
+    }
+  }, [variant, templates]);
   useEffect(() => {
     if (control.state === "idle") controlGate.current = false;
     if (control.data?.controlRevision !== undefined) {
@@ -118,7 +126,8 @@ export function HumanConversationPanel({ detail, templates, t, stamp, embed, onR
     submit(`${base}/control`, { targetMode, expectedControlRevision: conversation.controlRevision }, control);
   };
   const reply = (kind: "HUMAN_TEXT" | "RECOVERY_FOLLOW_UP_TEMPLATE") => {
-    if (!conversation || send.state !== "idle" || sendGate.current) return;
+    if (!conversation || send.state !== "idle" || sendGate.current ||
+        kind === "RECOVERY_FOLLOW_UP_TEMPLATE" && !templates.some((row) => row.id === variant)) return;
     sendGate.current = true;
     idempotencyKey.current ??= crypto.randomUUID();
     submit(`${base}/commands`, {
