@@ -16,7 +16,7 @@ type OwnedRecovery = {
   humanRestriction?: string | null; followUpUsed?: boolean | null; followUpInitiator?: string | null;
   initialSentAt?: Date | null; followUpDueAt?: Date | null;
   followUpRecipient?: string | null; followUpAvailable?: boolean | null;
-  approvedTemplateCount?: bigint | number | null;
+  conversationLanguageTag?: string | null;
   latestCommandId?: string | null; latestCommandState?: string | null;
   latestCommandKind?: string | null; latestCommandModeration?: string | null;
   detectedAt: Date; messageSentAt: Date | null; engagedAt: Date | null;
@@ -39,7 +39,7 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
   const rows = await db.$queryRaw<OwnedRecovery[]>(Prisma.sql`
     SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId",
       c."firstName", c."lastName", c."email", r."status", r."totalPrice", r."currency", r."lineItems",
-      v."controlMode"::text AS "controlMode", v."controlRevision",
+      v."controlMode"::text AS "controlMode", v."controlRevision", v."languageTag" AS "conversationLanguageTag",
       restriction."status"::text AS "humanRestriction",
       (SELECT m."createdAt" FROM "whatsapp"."ConversationMessage" m
         WHERE m."conversationId"=v."id" AND m."direction"='INBOUND'
@@ -56,9 +56,6 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
       (initial."sentAt" IS NOT NULL AND (follow."id" IS NULL OR
         (follow."initiationKey" IS NULL AND follow."claimedAt" IS NULL
           AND follow."status"='PENDING' AND follow."outboundMessageId" IS NULL))) AS "followUpAvailable",
-      (SELECT COUNT(*) FROM "whatsapp"."WhatsAppTemplateVariant" template
-        WHERE template."shopId"=r."shopId" AND template."purpose"='checkout-recovery'
-          AND template."status"='APPROVED' AND template."enabled"=TRUE) AS "approvedTemplateCount",
       recent."id" AS "latestCommandId", recent."state"::text AS "latestCommandState",
       recent."kind"::text AS "latestCommandKind",
       (SELECT a."decision"::text FROM "whatsapp"."ConversationModerationAssessment" a
@@ -98,11 +95,11 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
     basket: projectRecoveryBasket(row.lineItems, row.currency, row.totalPrice?.toString() ?? null),
     conversation: row.conversationId ? {
       id: row.conversationId, controlMode: row.controlMode === "HUMAN" ? "HUMAN" as const : "AI" as const,
-      controlRevision: row.controlRevision ?? 0,
+      controlRevision: row.controlRevision ?? 0, languageTag: row.conversationLanguageTag ?? null,
       lastInboundAt: window.lastInboundAt?.toISOString() ?? null,
       windowExpiresAt: window.expiresAt?.toISOString() ?? null,
       followUp: { used: row.followUpUsed ?? false, initiatedBy: row.followUpInitiator ?? null,
-        eligible: followUpEligible, hasApprovedTemplate: Number(row.approvedTemplateCount ?? 0) > 0 },
+        eligible: followUpEligible, hasApprovedTemplate: false },
       humanMessagingStatus: row.humanRestriction === "SUSPENDED" ? "SUSPENDED" as const : "ACTIVE" as const,
       latestCommand: row.latestCommandId ? { commandId: row.latestCommandId,
         state: row.latestCommandState ?? "UNKNOWN", kind: row.latestCommandKind ?? "HUMAN_TEXT",
