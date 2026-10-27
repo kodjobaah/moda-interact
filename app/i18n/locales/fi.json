@@ -632,6 +632,7 @@
   "support.translationProcessing": "Käännöstä käsitellään.",
   "support.viewTranslation": "Näytä käännös",
   "support.viewOriginal": "Näytä alkuperäinen",
+  "support.viewRecoveryConversation": "Näytä keskustelu",
   "support.sendFailed": "Viestin lähettäminen epäonnistui. Yritä uudelleen.",
   "support.unsupportedAction": "Tämä tukitoiminto ei ole käytettävissä.",
   "common.logoAlt": "Moda Interact -logo",

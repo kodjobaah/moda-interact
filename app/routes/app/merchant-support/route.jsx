@@ -14,9 +14,13 @@ import {
   markMerchantSupportMessageRead,
   readMerchantSupportMessages,
 } from "@/services/merchant-support/merchant-support.service";
-import { getMerchantSystemMessageAction } from "@/services/merchant-support/system-message-actions";
+import {
+  getMerchantSystemMessageAction,
+  getRecoverySupportMessageAction,
+} from "@/services/merchant-support/system-message-actions";
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { billingService } from "@/services/billing/billing.service";
+import { recordMerchantSupportSendFailure } from "@/services/merchant-support/merchant-support-observability.server";
 
 /** @param {{ request: Request }} args */
 export async function loader({ request }) {
@@ -55,13 +59,19 @@ export async function action({ request }) {
     return Response.json({ errorCode: "UNSUPPORTED_ACTION" }, { status: 400 });
   }
 
+  const authoredBody = AuthoredSupportBodySchema.safeParse(String(formData.get("body") ?? ""));
+  if (!authoredBody.success) {
+    return Response.json({ errorCode: "SEND_FAILED" }, { status: 400 });
+  }
+
   try {
     return Response.json(await composeMerchantMessage({
       shopId: shop.id,
-      body: String(formData.get("body") ?? ""),
+      body: authoredBody.data,
       shopifyUserId: session.onlineAccessInfo?.associated_user?.id?.toString() ?? null,
     }));
-  } catch {
+  } catch (error) {
+    recordMerchantSupportSendFailure(shop.id, error);
     return Response.json({ errorCode: "SEND_FAILED" }, { status: 400 });
   }
 }
@@ -187,12 +197,20 @@ function MessageCard({ message, i18n, merchantExperienceState }) {
   const hasTranslation = message.isTranslated === true;
   const [showOriginal, setShowOriginal] = useState(false);
   const unavailable = !isMerchant && message.displayBody === null;
-  const systemAction = message.kind === "SYSTEM"
+  const recoveryAction = message.kind === "SYSTEM" && message.state === "AVAILABLE"
+    ? getRecoverySupportMessageAction({
+      systemCode: message.systemCode,
+      systemVersion: message.systemVersion,
+      checkoutRecoveryId: message.checkoutRecoveryId,
+      merchantExperienceState: /** @type {import("@/services/shop/merchant-route-access-policy").MerchantExperienceState} */ (merchantExperienceState),
+    })
+    : null;
+  const systemAction = recoveryAction ?? (message.kind === "SYSTEM"
         ? getMerchantSystemMessageAction(
           message.systemCode,
           /** @type {import("@/services/shop/merchant-route-access-policy").MerchantExperienceState} */ (merchantExperienceState),
         )
-    : null;
+    : null);
 
   return (
     <li className={`merchant-support-message merchant-support-message-${message.kind.toLowerCase()}`}>
@@ -221,6 +239,7 @@ MessageCard.propTypes = {
     isTranslated: PropTypes.bool,
     systemCode: PropTypes.string,
     systemVersion: PropTypes.string,
+    checkoutRecoveryId: PropTypes.string,
     createdAt: PropTypes.string.isRequired,
   }).isRequired,
   i18n: PropTypes.shape({

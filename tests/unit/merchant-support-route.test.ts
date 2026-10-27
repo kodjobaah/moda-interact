@@ -8,6 +8,10 @@ const composeMerchantMessage = vi.fn();
 const markMerchantSupportMessageRead = vi.fn();
 const findShopSettings = vi.fn();
 const getSubscription = vi.fn();
+const recordMerchantSupportSendFailure = vi.hoisted(() => vi.fn());
+vi.mock("../../app/services/merchant-support/merchant-support-observability.server", () => ({
+  recordMerchantSupportSendFailure,
+}));
 const merchantSupportRouteSource = await readFile(
   new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url),
   "utf8",
@@ -145,6 +149,14 @@ describe("merchant support resource route", () => {
     expect(merchantSupportRouteSource).not.toContain('message.originalBody.includes("http");');
   });
 
+  it("renders recovery actions only for available SYSTEM notices with the projected target", () => {
+    expect(merchantSupportRouteSource).toContain("getRecoverySupportMessageAction");
+    expect(merchantSupportRouteSource).toContain('message.kind === "SYSTEM" && message.state === "AVAILABLE"');
+    expect(merchantSupportRouteSource).toContain("checkoutRecoveryId: message.checkoutRecoveryId");
+    expect(merchantSupportRouteSource).toContain("{i18n.t(systemAction.labelKey)}");
+    expect(merchantSupportRouteSource).toContain("<Link to={systemAction.href}>");
+  });
+
   it("does not post or revalidate when there are no unread IDs", async () => {
     const fetchImpl = vi.fn();
     const revalidate = vi.fn();
@@ -198,8 +210,24 @@ describe("merchant support resource route", () => {
     expect(revalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("returns a stable compose failure code without exposing service errors", async () => {
-    composeMerchantMessage.mockRejectedValue(new Error("Body must contain at most 500 graphemes."));
+  it("logs unexpected compose failures and returns a stable code without exposing service errors", async () => {
+    const failure = new Error("Database failure");
+    composeMerchantMessage.mockRejectedValue(failure);
+    const form = new FormData();
+    form.set("intent", "compose");
+    form.set("body", "Please help with this order.");
+
+    const response = await action({
+      request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ errorCode: "SEND_FAILED" });
+    expect(composeMerchantMessage).toHaveBeenCalledWith(expect.objectContaining({ body: "Please help with this order." }));
+    expect(recordMerchantSupportSendFailure).toHaveBeenCalledWith("internal-shop-1", failure);
+  });
+
+  it("rejects invalid authored bodies before persistence or error logging", async () => {
     const form = new FormData();
     form.set("intent", "compose");
     form.set("body", "👩‍💻".repeat(501));
@@ -210,7 +238,8 @@ describe("merchant support resource route", () => {
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ errorCode: "SEND_FAILED" });
-    expect(composeMerchantMessage).toHaveBeenCalledWith(expect.objectContaining({ body: "👩‍💻".repeat(501) }));
+    expect(composeMerchantMessage).not.toHaveBeenCalled();
+    expect(recordMerchantSupportSendFailure).not.toHaveBeenCalled();
   });
 
   it("returns a stable unsupported-action code", async () => {

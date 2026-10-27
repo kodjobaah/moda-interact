@@ -632,6 +632,7 @@
   "support.translationProcessing": "번역 처리 중입니다.",
   "support.viewTranslation": "번역 보기",
   "support.viewOriginal": "원문 보기",
+  "support.viewRecoveryConversation": "대화 보기",
   "support.sendFailed": "메시지를 보낼 수 없습니다. 다시 시도해 주세요.",
   "support.unsupportedAction": "해당 지원 작업은 사용할 수 없습니다.",
   "common.logoAlt": "Moda Interact 로고",

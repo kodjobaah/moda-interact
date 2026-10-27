@@ -632,6 +632,7 @@
   "support.translationProcessing": "La traduction est en cours.",
   "support.viewTranslation": "Voir la traduction",
   "support.viewOriginal": "Voir l’original",
+  "support.viewRecoveryConversation": "Voir la conversation",
   "support.sendFailed": "Impossible d’envoyer le message. Veuillez réessayer.",
   "support.unsupportedAction": "Cette action d’assistance n’est pas disponible.",
   "common.logoAlt": "Logo de Moda Interact",
