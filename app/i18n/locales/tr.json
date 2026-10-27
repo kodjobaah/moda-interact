@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Konuşma kontrolü geçici olarak kullanılamıyor. Yenileyip tekrar deneyin.",
   "recoveryDetail.recipientUnavailable": "Kullanılabilir WhatsApp alıcısı yok veya gönderim geçici olarak engellenmiş.",
   "recoveryDetail.templateRejected": "Seçilen şablon artık onaylı ya da kullanılabilir değil.",
-  "recoveryDetail.sendNotHumanControlled": "Yanıt göndermeden önce konuşmayı devralın."
+  "recoveryDetail.sendNotHumanControlled": "Yanıt göndermeden önce konuşmayı devralın.",
+  "recoverySettings.initialOutreachNotification.title": "İlk kurtarma mesajı bildirimi",
+  "recoverySettings.initialOutreachNotification.description": "Moda terk edilmiş bir ödeme işlemi için ilk kurtarma mesajını gönderdiğinde sizi bilgilendirir. Bu ayar müşteri mesajlarını veya kurtarma kredisi kullanımını değiştirmez."
 }

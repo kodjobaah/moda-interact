@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Řízení konverzace je dočasně nedostupné. Obnovte stránku a zkuste to znovu.",
   "recoveryDetail.recipientUnavailable": "Zákazník nemá použitelný kontakt WhatsApp nebo je odesílání dočasně blokováno.",
   "recoveryDetail.templateRejected": "Vybraná šablona již není schválená nebo dostupná.",
-  "recoveryDetail.sendNotHumanControlled": "Nejprve převezměte konverzaci a pak odpovězte."
+  "recoveryDetail.sendNotHumanControlled": "Nejprve převezměte konverzaci a pak odpovězte.",
+  "recoverySettings.initialOutreachNotification.title": "Upozornění na první zprávu k obnovení",
+  "recoverySettings.initialOutreachNotification.description": "Upozornit vás, když Moda odešle první zprávu k obnovení opuštěného nákupu. Toto nemění zprávy zákazníkům ani čerpání kreditů na obnovení."
 }

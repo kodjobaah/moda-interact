@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "El control no está disponible temporalmente. Actualice e inténtelo de nuevo.",
   "recoveryDetail.recipientUnavailable": "No hay un número de WhatsApp válido o el envío está suspendido temporalmente.",
   "recoveryDetail.templateRejected": "La plantilla elegida ya no está aprobada o disponible.",
-  "recoveryDetail.sendNotHumanControlled": "Tome el control de la conversación antes de responder."
+  "recoveryDetail.sendNotHumanControlled": "Tome el control de la conversación antes de responder.",
+  "recoverySettings.initialOutreachNotification.title": "Aviso del primer mensaje de recuperación",
+  "recoverySettings.initialOutreachNotification.description": "Avisarte cuando Moda envíe el primer mensaje para recuperar un pago abandonado. Esto no cambia los mensajes a clientes ni el uso de créditos de recuperación."
 }

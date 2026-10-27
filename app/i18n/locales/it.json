@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Controllo temporaneamente non disponibile. Aggiorna e riprova.",
   "recoveryDetail.recipientUnavailable": "Numero WhatsApp non utilizzabile o invio temporaneamente sospeso.",
   "recoveryDetail.templateRejected": "Il modello selezionato non è più approvato o disponibile.",
-  "recoveryDetail.sendNotHumanControlled": "Assumi il controllo della conversazione prima di rispondere."
+  "recoveryDetail.sendNotHumanControlled": "Assumi il controllo della conversazione prima di rispondere.",
+  "recoverySettings.initialOutreachNotification.title": "Notifica del primo messaggio di recupero",
+  "recoverySettings.initialOutreachNotification.description": "Avvisarti quando Moda invia il primo messaggio per recuperare un checkout abbandonato. Questo non modifica i messaggi ai clienti né l’utilizzo dei crediti di recupero."
 }

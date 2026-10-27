@@ -9,6 +9,13 @@ import {
   saveMerchantRecoveryPolicy,
 } from "@/services/recovery-policy/recovery-policy.server";
 import { ZodError } from "zod";
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import { resolveDeploymentEnvironmentName } from "@/services/otel/otel.runtime";
+
+const logger = createLogger({
+  serviceName: "moda-interact",
+  environment: resolveDeploymentEnvironmentName(),
+});
 export async function action({ request }: ActionFunctionArgs) {
   const { shop } = await settingsAccess(request);
   const form = await request.formData();
@@ -31,6 +38,7 @@ export async function action({ request }: ActionFunctionArgs) {
           "fixedShopifyDiscountId",
           "followUpEnabled",
           "followUpDelayMinutes",
+          "notifyOnInitialRecoveryOutreach",
         ]),
   ]);
   if (
@@ -57,6 +65,9 @@ export async function action({ request }: ActionFunctionArgs) {
       );
       return reply({ ok: true, revision: snapshot.revision });
     }
+    const notifyOnInitialRecoveryOutreach = form.get("notifyOnInitialRecoveryOutreach");
+    if (notifyOnInitialRecoveryOutreach !== "true" && notifyOnInitialRecoveryOutreach !== "false")
+      return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     const settings = await saveMerchantRecoveryPolicy(
       shop.id,
       {
@@ -68,6 +79,7 @@ export async function action({ request }: ActionFunctionArgs) {
             : null,
         followUpEnabled: form.get("followUpEnabled"),
         followUpDelayMinutes: form.get("followUpDelayMinutes"),
+        notifyOnInitialRecoveryOutreach: notifyOnInitialRecoveryOutreach === "true",
       },
       new Date(),
       String(form.get("revision")),
@@ -84,6 +96,14 @@ export async function action({ request }: ActionFunctionArgs) {
       error instanceof ZodError
     )
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    if (intent === "recovery") {
+      logger.error("merchant.recovery_settings.save.failed", {
+        shopId: shop.id,
+        operation: "recovery_notice_preference",
+        errorCategory: "persistence_failure",
+        error,
+      });
+    }
     throw error;
   }
 }

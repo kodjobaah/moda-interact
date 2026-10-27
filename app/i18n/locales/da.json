@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Samtalestyring er midlertidigt utilgængelig. Opdater og prøv igen.",
   "recoveryDetail.recipientUnavailable": "Kunden har ingen brugbar WhatsApp-modtager, eller afsendelse er midlertidigt blokeret.",
   "recoveryDetail.templateRejected": "Den valgte skabelon er ikke længere godkendt eller tilgængelig.",
-  "recoveryDetail.sendNotHumanControlled": "Overtag samtalen, før du sender et svar."
+  "recoveryDetail.sendNotHumanControlled": "Overtag samtalen, før du sender et svar.",
+  "recoverySettings.initialOutreachNotification.title": "Notifikation om første gendannelsesbesked",
+  "recoverySettings.initialOutreachNotification.description": "Giv dig besked, når Moda sender den første besked om gendannelse af et forladt køb. Dette ændrer ikke kundebeskeder eller brugen af gendannelseskreditter."
 }

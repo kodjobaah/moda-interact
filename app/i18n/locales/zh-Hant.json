@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "對話控制暫時無法使用，請重新整理後再試。",
   "recoveryDetail.recipientUnavailable": "沒有可用的WhatsApp收件人，或傳送暫時受到限制。",
   "recoveryDetail.templateRejected": "所選範本不再獲得核准或無法使用。",
-  "recoveryDetail.sendNotHumanControlled": "請先接管對話，再傳送回覆。"
+  "recoveryDetail.sendNotHumanControlled": "請先接管對話，再傳送回覆。",
+  "recoverySettings.initialOutreachNotification.title": "首次挽回訊息通知",
+  "recoverySettings.initialOutreachNotification.description": "Moda 為未完成的結帳傳送首則挽回訊息時通知你。此設定不會變更傳送給客戶的訊息，也不會影響挽回額度的使用。"
 }

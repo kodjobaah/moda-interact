@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Samtalekontrollen er midlertidig utilgjengelig. Oppdater og prøv igjen.",
   "recoveryDetail.recipientUnavailable": "Kunden har ingen gyldig WhatsApp-mottaker, eller sending er midlertidig blokkert.",
   "recoveryDetail.templateRejected": "Den valgte malen er ikke lenger godkjent eller tilgjengelig.",
-  "recoveryDetail.sendNotHumanControlled": "Overta samtalen før du sender et svar."
+  "recoveryDetail.sendNotHumanControlled": "Overta samtalen før du sender et svar.",
+  "recoverySettings.initialOutreachNotification.title": "Varsel om første gjenopprettingsmelding",
+  "recoverySettings.initialOutreachNotification.description": "Varsle deg når Moda sender den første meldingen for å gjenopprette en forlatt utsjekking. Dette endrer ikke kundemeldinger eller bruk av gjenopprettingskreditter."
 }

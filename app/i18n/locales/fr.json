@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Le contrôle est temporairement indisponible. Actualisez et réessayez.",
   "recoveryDetail.recipientUnavailable": "Aucun destinataire WhatsApp utilisable ou envoi temporairement suspendu.",
   "recoveryDetail.templateRejected": "Le modèle choisi n’est plus approuvé ou disponible.",
-  "recoveryDetail.sendNotHumanControlled": "Prenez d’abord en charge la conversation pour répondre."
+  "recoveryDetail.sendNotHumanControlled": "Prenez d’abord en charge la conversation pour répondre.",
+  "recoverySettings.initialOutreachNotification.title": "Notification du premier message de relance",
+  "recoverySettings.initialOutreachNotification.description": "Vous avertir lorsque Moda envoie le premier message de relance pour un paiement abandonné. Cela ne modifie ni les messages aux clients ni l’utilisation des crédits de récupération."
 }

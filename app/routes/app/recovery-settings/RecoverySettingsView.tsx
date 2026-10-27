@@ -45,6 +45,9 @@ export default function RecoverySettingsView({
   const [followUpEnabled, setFollowUpEnabled] = useState(
     data.merchant.followUpEnabled,
   );
+  const [notifyOnInitialRecoveryOutreach, setNotifyOnInitialRecoveryOutreach] = useState(
+    data.notifyOnInitialRecoveryOutreach,
+  );
 
   return (
     <s-page heading={i18n.t("recoverySettings.title")}>
@@ -362,6 +365,40 @@ export default function RecoverySettingsView({
                 <span aria-hidden="true">i</span>
                 <p>{i18n.t("recoverySettings.followUp.creditWarning")}</p>
               </div>
+
+              <section
+                className="moda-recovery-behaviour-section"
+                aria-labelledby="initial-outreach-notification-heading"
+              >
+                <div className="moda-recovery-panel-heading">
+                  <div>
+                    <h2 id="initial-outreach-notification-heading">
+                      {i18n.t("recoverySettings.initialOutreachNotification.title")}
+                    </h2>
+                    <p id="initial-outreach-notification-description">{i18n.t("recoverySettings.initialOutreachNotification.description")}</p>
+                  </div>
+                </div>
+                <label className={`moda-recovery-toggle-card${notifyOnInitialRecoveryOutreach ? " is-selected" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={notifyOnInitialRecoveryOutreach}
+                    onChange={(event) =>
+                      setNotifyOnInitialRecoveryOutreach(event.currentTarget.checked)
+                    }
+                    aria-labelledby="initial-outreach-notification-heading"
+                    aria-describedby="initial-outreach-notification-description"
+                  />
+                  <span className="moda-recovery-toggle" aria-hidden="true">
+                    <span />
+                  </span>
+                  <span>{i18n.t("recoverySettings.initialOutreachNotification.title")}</span>
+                </label>
+                <input
+                  type="hidden"
+                  name="notifyOnInitialRecoveryOutreach"
+                  value={notifyOnInitialRecoveryOutreach ? "true" : "false"}
+                />
+              </section>
             </section>
           </SettingsForm>
         </div>
