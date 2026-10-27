@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Keskustelun hallinta ei ole tilapäisesti käytettävissä. Päivitä ja yritä uudelleen.",
   "recoveryDetail.recipientUnavailable": "Asiakkaalla ei ole kelvollista WhatsApp-vastaanottajaa tai lähetys on tilapäisesti estetty.",
   "recoveryDetail.templateRejected": "Valittu mallipohja ei ole enää hyväksytty tai saatavilla.",
-  "recoveryDetail.sendNotHumanControlled": "Ota keskustelu haltuun ennen vastauksen lähettämistä."
+  "recoveryDetail.sendNotHumanControlled": "Ota keskustelu haltuun ennen vastauksen lähettämistä.",
+  "recoverySettings.initialOutreachNotification.title": "Ilmoitus ensimmäisestä palautusviestistä",
+  "recoverySettings.initialOutreachNotification.description": "Ilmoita, kun Moda lähettää ensimmäisen viestin kesken jääneen kassalla käynnin palauttamiseksi. Tämä ei muuta asiakasviestejä tai palautuskrediittien käyttöä."
 }

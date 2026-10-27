@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Sterowanie rozmową jest tymczasowo niedostępne. Odśwież i spróbuj ponownie.",
   "recoveryDetail.recipientUnavailable": "Brak prawidłowego odbiorcy WhatsApp lub wysyłanie jest tymczasowo zablokowane.",
   "recoveryDetail.templateRejected": "Wybrany szablon nie jest już zatwierdzony lub dostępny.",
-  "recoveryDetail.sendNotHumanControlled": "Przejmij rozmowę przed wysłaniem odpowiedzi."
+  "recoveryDetail.sendNotHumanControlled": "Przejmij rozmowę przed wysłaniem odpowiedzi.",
+  "recoverySettings.initialOutreachNotification.title": "Powiadomienie o pierwszej wiadomości odzyskiwania",
+  "recoverySettings.initialOutreachNotification.description": "Powiadom, gdy Moda wyśle pierwszą wiadomość odzyskiwania dla porzuconego procesu płatności. Nie zmienia to wiadomości do klientów ani zużycia kredytów odzyskiwania."
 }

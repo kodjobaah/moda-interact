@@ -329,6 +329,7 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
       recoveryOfferMode: "AI_BEST_APPLICABLE",
       followUpEnabled: "true",
       followUpDelayMinutes: "60",
+      notifyOnInitialRecoveryOutreach: false,
     };
     const rows = await Promise.all([
       saveMerchantRecoveryPolicy(

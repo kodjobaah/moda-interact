@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "O controle está temporariamente indisponível. Atualize e tente novamente.",
   "recoveryDetail.recipientUnavailable": "Não há destinatário válido do WhatsApp ou o envio foi suspenso temporariamente.",
   "recoveryDetail.templateRejected": "O modelo escolhido não está mais aprovado ou disponível.",
-  "recoveryDetail.sendNotHumanControlled": "Assuma o controle da conversa antes de responder."
+  "recoveryDetail.sendNotHumanControlled": "Assuma o controle da conversa antes de responder.",
+  "recoverySettings.initialOutreachNotification.title": "Notificação do primeiro contato de recuperação",
+  "recoverySettings.initialOutreachNotification.description": "Avise você quando a Moda enviar a primeira mensagem de recuperação de um checkout abandonado. Isso não altera as mensagens aos clientes nem o uso de créditos de recuperação."
 }

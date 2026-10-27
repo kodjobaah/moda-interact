@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Gespreksbeheer tijdelijk niet beschikbaar. Vernieuw en probeer opnieuw.",
   "recoveryDetail.recipientUnavailable": "Geen bruikbare WhatsApp-ontvanger of verzenden is tijdelijk geblokkeerd.",
   "recoveryDetail.templateRejected": "Het gekozen sjabloon is niet meer goedgekeurd of beschikbaar.",
-  "recoveryDetail.sendNotHumanControlled": "Neem eerst het gesprek over om te antwoorden."
+  "recoveryDetail.sendNotHumanControlled": "Neem eerst het gesprek over om te antwoorden.",
+  "recoverySettings.initialOutreachNotification.title": "Melding bij het eerste herstelbericht",
+  "recoverySettings.initialOutreachNotification.description": "Laat het je weten wanneer Moda het eerste bericht verstuurt om een afgebroken checkout te herstellen. Dit verandert niets aan klantberichten of het gebruik van herstelcredits."
 }

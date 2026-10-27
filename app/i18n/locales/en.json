@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Conversation control is temporarily unavailable. Refresh and try again.",
   "recoveryDetail.recipientUnavailable": "The customer has no usable WhatsApp recipient, or messaging is temporarily suppressed.",
   "recoveryDetail.templateRejected": "The selected follow-up template is not approved or is no longer available.",
-  "recoveryDetail.sendNotHumanControlled": "Take over the conversation before sending a merchant reply."
+  "recoveryDetail.sendNotHumanControlled": "Take over the conversation before sending a merchant reply.",
+  "recoverySettings.initialOutreachNotification.title": "Notification for initial recovery outreach",
+  "recoverySettings.initialOutreachNotification.description": "Notify you when Moda sends the first recovery message for an abandoned checkout. This does not change customer messages or recovery credit usage."
 }

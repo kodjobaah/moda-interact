@@ -17,7 +17,8 @@ const keys = [
   "recoverySettings.discount.status.ACTIVE", "recoverySettings.discount.summary", "recoverySettings.effective",
   "recoverySettings.effectiveFixedDiscount", "recoverySettings.effectiveFollowUpDisabled", "recoverySettings.effectiveFollowUpEnabled", "recoverySettings.effectiveOffer",
   "recoverySettings.followUp.creditWarning", "recoverySettings.followUp.delay", "recoverySettings.followUp.enable",
-  "recoverySettings.followUp.title", "recoverySettings.invalid", "recoverySettings.offer.AI_BEST_APPLICABLE",
+  "recoverySettings.followUp.title", "recoverySettings.initialOutreachNotification.description",
+  "recoverySettings.initialOutreachNotification.title", "recoverySettings.invalid", "recoverySettings.offer.AI_BEST_APPLICABLE",
   "recoverySettings.offer.FIXED", "recoverySettings.offer.NONE", "recoverySettings.offer.catalogueUnavailable",
   "recoverySettings.offer.availableDiscounts", "recoverySettings.offer.catalogueEmpty", "recoverySettings.offer.catalogueError", "recoverySettings.offer.catalogueSyncRequired", "recoverySettings.offer.catalogueSyncing",
   "recoverySettings.offer.notSelectable", "recoverySettings.offer.title", "recoverySettings.save", "recoverySettings.saved",
@@ -40,5 +41,8 @@ describe("Recovery Settings translation contract", () => {
     expect(route).not.toContain("recoverySettings.discount.starts\"");
     expect(route).toContain("recoverySettings.discount.summary");
     expect(route).toContain("recoverySettings.effectiveFixedDiscount");
+    expect(route).toContain('name="notifyOnInitialRecoveryOutreach"');
+    expect(route).toContain('notifyOnInitialRecoveryOutreach ? "true" : "false"');
+    expect(route).toContain("aria-labelledby=\"initial-outreach-notification-heading\"");
   });
 });

@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "会話の制御を一時的に利用できません。更新して再試行してください。",
   "recoveryDetail.recipientUnavailable": "有効なWhatsApp宛先がないか、送信が一時的に制限されています。",
   "recoveryDetail.templateRejected": "選択したテンプレートは承認済みではないか、利用できなくなりました。",
-  "recoveryDetail.sendNotHumanControlled": "返信する前に会話を引き継いでください。"
+  "recoveryDetail.sendNotHumanControlled": "返信する前に会話を引き継いでください。",
+  "recoverySettings.initialOutreachNotification.title": "初回のリカバリーメッセージ通知",
+  "recoverySettings.initialOutreachNotification.description": "Modaが放棄されたチェックアウトへの最初のリカバリーメッセージを送信したときに通知します。顧客へのメッセージやリカバリークレジットの使用には影響しません。"
 }

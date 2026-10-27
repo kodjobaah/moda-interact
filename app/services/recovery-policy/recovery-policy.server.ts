@@ -61,6 +61,7 @@ export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(
     : [];
   return {
     merchant,
+    notifyOnInitialRecoveryOutreach: settings.notifyOnInitialRecoveryOutreach ?? false,
     revision: settings.updatedAt.toISOString(),
     effective,
     overrideActive: Boolean(override),
@@ -93,6 +94,7 @@ export function parseMerchantRecoveryPolicy(input: {
   fixedShopifyDiscountId?: unknown;
   followUpEnabled: unknown;
   followUpDelayMinutes?: unknown;
+  notifyOnInitialRecoveryOutreach: unknown;
 }) {
   if (typeof input.recoveryDelayMinutes !== "string" || !input.recoveryDelayMinutes.trim()) throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
   const recoveryDelayMinutes = Number(input.recoveryDelayMinutes);
@@ -101,18 +103,24 @@ export function parseMerchantRecoveryPolicy(input: {
   const followUpDelayMinutes = !followUpEnabled ? null : input.followUpDelayMinutes === "" || input.followUpDelayMinutes == null
     ? null
     : Number(input.followUpDelayMinutes);
+  if (typeof input.notifyOnInitialRecoveryOutreach !== "boolean") throw new RecoveryPolicyValidationError("INVALID_INITIAL_OUTREACH_NOTIFICATION");
   const fixedShopifyDiscountId = input.fixedShopifyDiscountId ? String(input.fixedShopifyDiscountId) : null;
   return parseEffectiveRecoveryPolicy({ recoveryDelayMinutes, recoveryOfferMode, fixedShopifyDiscountId, followUpEnabled, followUpDelayMinutes, source: "MERCHANT" });
 }
 
 export async function saveMerchantRecoveryPolicy(shopId: string, input: Parameters<typeof parseMerchantRecoveryPolicy>[0], now = new Date(), expectedRevision?: string, client: PrismaClient = db) {
   const policy = parseMerchantRecoveryPolicy(input);
+  const notifyOnInitialRecoveryOutreach = input.notifyOnInitialRecoveryOutreach;
+  if (typeof notifyOnInitialRecoveryOutreach !== "boolean") throw new RecoveryPolicyValidationError("INVALID_INITIAL_OUTREACH_NOTIFICATION");
   if (policy.recoveryDelayMinutes < 0 || policy.recoveryDelayMinutes > MAX_DELAY_MINUTES) throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
   if (policy.followUpEnabled && (policy.followUpDelayMinutes == null || policy.followUpDelayMinutes < 1 || policy.followUpDelayMinutes > MAX_DELAY_MINUTES)) throw new RecoveryPolicyValidationError("INVALID_FOLLOW_UP_DELAY");
   return client.$transaction(async (transaction: Prisma.TransactionClient) => {
     await lockSettingsShop(transaction, shopId);
     const current = await transaction.shopSettings.findUniqueOrThrow({where: {shopId}});
-    if (revisionOf(toPolicy(current, "MERCHANT")) === revisionOf(policy)) return current;
+    if (
+      revisionOf(toPolicy(current, "MERCHANT")) === revisionOf(policy) &&
+      current.notifyOnInitialRecoveryOutreach === notifyOnInitialRecoveryOutreach
+    ) return current;
     if (expectedRevision !== current.updatedAt.toISOString()) throw new PreferenceError("CONFLICT");
     if (policy.recoveryOfferMode === "FIXED") {
       const catalogue = await transaction.shopifyDiscountCatalogue.findUnique({ where: { shopId }, include: { discounts: true } });
@@ -127,6 +135,7 @@ export async function saveMerchantRecoveryPolicy(shopId: string, input: Paramete
         fixedShopifyDiscountId: policy.fixedShopifyDiscountId,
         followUpEnabled: policy.followUpEnabled,
         followUpDelayMinutes: policy.followUpDelayMinutes,
+        notifyOnInitialRecoveryOutreach,
       },
     });
   });

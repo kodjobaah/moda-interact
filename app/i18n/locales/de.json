@@ -706,5 +706,7 @@
   "recoveryDetail.controlTemporarilyUnavailable": "Die Gesprächssteuerung ist vorübergehend nicht verfügbar. Aktualisieren Sie die Ansicht.",
   "recoveryDetail.recipientUnavailable": "Keine gültige WhatsApp-Nummer vorhanden oder der Versand ist vorübergehend gesperrt.",
   "recoveryDetail.templateRejected": "Die ausgewählte Vorlage ist nicht mehr genehmigt oder verfügbar.",
-  "recoveryDetail.sendNotHumanControlled": "Übernehmen Sie zuerst das Gespräch, um zu antworten."
+  "recoveryDetail.sendNotHumanControlled": "Übernehmen Sie zuerst das Gespräch, um zu antworten.",
+  "recoverySettings.initialOutreachNotification.title": "Benachrichtigung zur ersten Wiederherstellungsnachricht",
+  "recoverySettings.initialOutreachNotification.description": "Benachrichtige dich, wenn Moda die erste Nachricht zur Wiederherstellung eines abgebrochenen Checkouts sendet. Kundenmitteilungen und der Verbrauch von Wiederherstellungsguthaben bleiben unverändert."
 }

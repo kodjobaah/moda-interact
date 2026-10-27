@@ -3,20 +3,24 @@ import { activeDiscount, parseMerchantRecoveryPolicy } from "../../app/services/
 
 describe("recovery policy validation", () => {
   it.each([
-    [{ recoveryDelayMinutes: "0", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "" }],
-    [{ recoveryDelayMinutes: "10080", recoveryOfferMode: "AI_BEST_APPLICABLE", followUpEnabled: "true", followUpDelayMinutes: "60" }],
+    [{ recoveryDelayMinutes: "0", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "", notifyOnInitialRecoveryOutreach: false }],
+    [{ recoveryDelayMinutes: "10080", recoveryOfferMode: "AI_BEST_APPLICABLE", followUpEnabled: "true", followUpDelayMinutes: "60", notifyOnInitialRecoveryOutreach: true }],
   ])("accepts valid merchant snapshots", (input) => {
     expect(parseMerchantRecoveryPolicy(input)).toMatchObject({ source: "MERCHANT" });
   });
 
   it("requires a fixed discount only for FIXED mode", () => {
-    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "FIXED", followUpEnabled: "false" })).toThrow();
-    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", fixedShopifyDiscountId: "discount-1", followUpEnabled: "false" })).toThrow();
+    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "FIXED", followUpEnabled: "false", notifyOnInitialRecoveryOutreach: false })).toThrow();
+    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", fixedShopifyDiscountId: "discount-1", followUpEnabled: "false", notifyOnInitialRecoveryOutreach: false })).toThrow();
   });
 
   it("requires a delay for enabled follow-up and clears it when disabled", () => {
-    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "true" })).toThrow();
-    expect(parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "60" })).toMatchObject({ followUpEnabled: false, followUpDelayMinutes: null });
+    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "true", notifyOnInitialRecoveryOutreach: false })).toThrow();
+    expect(parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "false", followUpDelayMinutes: "60", notifyOnInitialRecoveryOutreach: true })).toMatchObject({ followUpEnabled: false, followUpDelayMinutes: null });
+  });
+
+  it("requires a Boolean initial outreach notification preference", () => {
+    expect(() => parseMerchantRecoveryPolicy({ recoveryDelayMinutes: "30", recoveryOfferMode: "NONE", followUpEnabled: "false", notifyOnInitialRecoveryOutreach: "true" })).toThrow();
   });
 
   it("recognizes only currently selectable discounts", () => {
