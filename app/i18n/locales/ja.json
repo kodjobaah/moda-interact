@@ -632,6 +632,7 @@
   "support.translationProcessing": "翻訳を処理中です。",
   "support.viewTranslation": "翻訳を表示",
   "support.viewOriginal": "原文を表示",
+  "support.viewRecoveryConversation": "会話を表示",
   "support.sendFailed": "メッセージを送信できませんでした。もう一度お試しください。",
   "support.unsupportedAction": "このサポート操作は利用できません。",
   "common.logoAlt": "Moda Interactのロゴ",

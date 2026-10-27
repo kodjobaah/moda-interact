@@ -632,6 +632,7 @@
   "support.translationProcessing": "กำลังประมวลผลคำแปล",
   "support.viewTranslation": "ดูคำแปล",
   "support.viewOriginal": "ดูต้นฉบับ",
+  "support.viewRecoveryConversation": "ดูการสนทนา",
   "support.sendFailed": "ส่งข้อความไม่สำเร็จ โปรดลองอีกครั้ง",
   "support.unsupportedAction": "การดำเนินการช่วยเหลือนี้ไม่พร้อมใช้งาน",
   "common.logoAlt": "โลโก้ Moda Interact",

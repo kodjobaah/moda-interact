@@ -632,6 +632,7 @@
   "support.translationProcessing": "Translation is processing.",
   "support.viewTranslation": "View translation",
   "support.viewOriginal": "View original",
+  "support.viewRecoveryConversation": "View conversation",
   "support.sendFailed": "Unable to send message. Please try again.",
   "support.unsupportedAction": "That support action is not available.",
   "common.logoAlt": "Moda Interact logo",

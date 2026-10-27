@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import type { DetailData, Detail, Messages } from "./state";
 import { sectionUrl } from "./state";
 import type { MerchantI18n, Stamp, Translate } from "./recovery-ui-types";
@@ -5,6 +6,16 @@ import { useRecoverySection } from "./use-recovery-section";
 import { RecoverySectionError, RecoverySectionPaging } from "./recovery-section-ui";
 import { HumanConversationPanel } from "./human-conversation-panel";
 import { RecoveryMessageList } from "./recovery-message-list";
+
+export function focusRecoveryConversationAnchor(): boolean {
+  if (typeof window === "undefined" || window.location.hash !== "#recovery-conversation") return false;
+  const section = document.getElementById("recovery-conversation");
+  const heading = section?.querySelector<HTMLElement>("#transcript-heading");
+  if (!section || !heading) return false;
+  section.scrollIntoView({ block: "start" });
+  heading.focus({ preventScroll: true });
+  return true;
+}
 
 export function RecoveryConversationThread({ detail, data, t, i18n, stamp, onRefresh }: {
   detail: Detail;
@@ -16,8 +27,13 @@ export function RecoveryConversationThread({ detail, data, t, i18n, stamp, onRef
 }) {
   const messages = useRecoverySection<Messages>(data.messages, sectionUrl(detail.id, "messages", data.embed));
   const page = messages.result.page;
+  useEffect(() => {
+    if (typeof window === "undefined" || window.location.hash !== "#recovery-conversation") return;
+    const frame = window.requestAnimationFrame(() => { focusRecoveryConversationAnchor(); });
+    return () => window.cancelAnimationFrame(frame);
+  }, [detail.id]);
   return (
-    <section className="recovery-detail__card recovery-detail__conversation" aria-labelledby="transcript-heading" aria-busy={messages.busy}>
+    <section id="recovery-conversation" className="recovery-detail__card recovery-detail__conversation" aria-labelledby="transcript-heading" aria-busy={messages.busy}>
       <div className="recovery-detail__section-heading">
         <div>
           <h2 id="transcript-heading" tabIndex={-1} ref={messages.heading}>{t("chart.conversation")}</h2>

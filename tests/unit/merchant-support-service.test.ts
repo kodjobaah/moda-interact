@@ -5,9 +5,18 @@ import {
   AuthoredSupportBodySchema,
 } from "@modainteract/moda-interact-shared/merchant-communications";
 
+const supportObservability = vi.hoisted(() => ({
+  recordMerchantSupportReadFailure: vi.fn(),
+  recordMerchantSupportTranslationDispatchFailure: vi.fn(),
+}));
+vi.mock("../../app/services/merchant-support/merchant-support-observability.server", () => ({
+  ...supportObservability,
+}));
+
 import {
   composeMerchantMessage,
   markMerchantSupportMessageRead,
+  readMerchantSupportMessages,
 } from "../../app/services/merchant-support/merchant-support.service";
 
 const supportServiceSource = await readFile(
@@ -34,6 +43,7 @@ function databaseFor(languageTag: string) {
 describe("merchant support compose", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it("enforces the shared 500-grapheme authored-body contract", () => {
@@ -77,6 +87,8 @@ describe("merchant support compose", () => {
       expect.objectContaining({ translationId: result.translationId, schemaVersion: 1 }),
       expect.objectContaining({ jobId: expect.any(String) }),
     );
+    expect(supportObservability.recordMerchantSupportTranslationDispatchFailure)
+      .toHaveBeenCalledWith(result.translationId, expect.any(Error));
   });
 
   it("rejects invalid bodies before opening a transaction", async () => {
@@ -104,6 +116,50 @@ describe("merchant support compose", () => {
     expect(supportServiceSource).toContain('m."systemCode", m."systemVersion"');
     expect(supportServiceSource).toContain("systemCode: message.systemCode");
     expect(supportServiceSource).toContain("systemVersion: message.systemVersion");
+  });
+
+  it("projects only a tenant-matched initial outreach recovery target", async () => {
+    const message = {
+      id: "message-1",
+      kind: "SYSTEM",
+      state: "AVAILABLE",
+      originalBody: "A recovery was sent.",
+      sourceLanguageTag: "en",
+      displayLanguageTag: "en",
+      systemCode: "RECOVERY_INITIAL_OUTREACH_SENT",
+      systemVersion: "1",
+      checkoutRecoveryId: "recovery-1",
+      translatedBody: null,
+      translationStatus: null,
+      createdAt: new Date("2026-10-27T12:00:00.000Z"),
+      readAt: null,
+    };
+    const transaction = {
+      $queryRaw: vi.fn()
+        .mockResolvedValueOnce([message])
+        .mockResolvedValueOnce([{ count: 1n }])
+        .mockResolvedValueOnce([{ unread: 0n }]),
+    };
+    const database = { $transaction: vi.fn(async (callback) => callback(transaction)) };
+
+    const page = await readMerchantSupportMessages({ shopId: "shop-1", database });
+    const historySql = transaction.$queryRaw.mock.calls[0]?.[0].sql as string;
+
+    expect(page.items[0]?.checkoutRecoveryId).toBe("recovery-1");
+    expect(historySql).toContain('LEFT JOIN "commerce"."CheckoutRecovery" r');
+    expect(historySql).toContain('ON r."id" = m."checkoutRecoveryId" AND r."shopId" = t."shopId"');
+    expect(historySql).toContain("m.\"kind\" = 'SYSTEM' AND m.\"state\" = 'AVAILABLE'");
+    expect(historySql).toContain("m.\"systemCode\" = 'RECOVERY_INITIAL_OUTREACH_SENT' AND m.\"systemVersion\" = '1'");
+    expect(historySql).toContain('r."id" IS NOT NULL THEN r."id" ELSE NULL END AS "checkoutRecoveryId"');
+    expect(transaction.$queryRaw.mock.calls[1]?.[0].sql).not.toContain('"commerce"."CheckoutRecovery"');
+  });
+
+  it("logs and propagates Support database read failures without returning a page", async () => {
+    const failure = new Error("database unavailable");
+    const database = { $transaction: vi.fn().mockRejectedValue(failure) };
+
+    await expect(readMerchantSupportMessages({ shopId: "shop-1", database })).rejects.toBe(failure);
+    expect(supportObservability.recordMerchantSupportReadFailure).toHaveBeenCalledWith("shop-1", failure);
   });
 
   it("returns true only for tenant-owned AVAILABLE outbound messages", async () => {

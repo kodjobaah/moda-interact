@@ -14,6 +14,10 @@ import { createTranslationDispatchJobId } from "@modainteract/moda-interact-shar
 import { Queue } from "bullmq";
 
 import prisma from "../../db.server";
+import {
+  recordMerchantSupportReadFailure,
+  recordMerchantSupportTranslationDispatchFailure,
+} from "./merchant-support-observability.server";
 
 const MAX_PAGE_SIZE = 50;
 
@@ -37,6 +41,7 @@ type MessageRow = {
   displayLanguageTag: string | null;
   systemCode: string | null;
   systemVersion: string | null;
+  checkoutRecoveryId: string | null;
   translatedBody: string | null;
   translationStatus: "AVAILABLE" | null;
   createdAt: Date;
@@ -101,8 +106,9 @@ export async function enqueueTranslationBestEffort(
       { schemaVersion: MERCHANT_COMMUNICATIONS_SCHEMA_VERSION, translationId },
       { jobId: createTranslationDispatchJobId(translationId) },
     );
-  } catch {
+  } catch (error) {
     // Durable translation state is committed before this best-effort hint.
+    recordMerchantSupportTranslationDispatchFailure(translationId, error);
   }
 }
 
@@ -197,6 +203,7 @@ export type MerchantSupportPage = {
     displayLanguageTag: string | null;
     systemCode: string | null;
     systemVersion: string | null;
+    checkoutRecoveryId: string | null;
     createdAt: string;
     readAt: string | null;
   }>;
@@ -212,13 +219,20 @@ export async function readMerchantSupportMessages(input: {
   const pageSize = clampPageSize(input.pageSize ?? 25);
   const database = input.database ?? (prisma as unknown as DatabaseClient);
   const offset = (page - 1) * pageSize;
-  const rows = await database.$transaction(async (transaction) => {
+  let rows: { messages: MessageRow[]; total: number; unread: number };
+  try {
+    rows = await database.$transaction(async (transaction) => {
     const messages = await transaction.$queryRaw<MessageRow[]>(Prisma.sql`
       SELECT m."id", m."kind", m."state", m."originalBody", m."sourceLanguageTag",
         m."displayLanguageTag", m."systemCode", m."systemVersion", m."createdAt", m."readAt",
-        tr."translatedBody", tr."status" AS "translationStatus"
+        tr."translatedBody", tr."status" AS "translationStatus",
+        CASE WHEN m."kind" = 'SYSTEM' AND m."state" = 'AVAILABLE'
+          AND m."systemCode" = 'RECOVERY_INITIAL_OUTREACH_SENT' AND m."systemVersion" = '1'
+          AND r."id" IS NOT NULL THEN r."id" ELSE NULL END AS "checkoutRecoveryId"
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
+      LEFT JOIN "commerce"."CheckoutRecovery" r
+        ON r."id" = m."checkoutRecoveryId" AND r."shopId" = t."shopId"
       LEFT JOIN LATERAL (
         SELECT "translatedBody", "status"
         FROM "support"."MerchantMessageTranslation"
@@ -249,7 +263,11 @@ export async function readMerchantSupportMessages(input: {
         AND m."state" = 'AVAILABLE' AND m."readAt" IS NULL
     `);
     return { messages, total: Number(count), unread: Number(unread) };
-  });
+    });
+  } catch (error) {
+    recordMerchantSupportReadFailure(input.shopId, error);
+    throw error;
+  }
 
   return {
     page,
@@ -276,6 +294,7 @@ export async function readMerchantSupportMessages(input: {
         displayLanguageTag: message.displayLanguageTag,
         systemCode: message.systemCode,
         systemVersion: message.systemVersion,
+        checkoutRecoveryId: message.checkoutRecoveryId,
         createdAt: message.createdAt.toISOString(),
         readAt: message.readAt?.toISOString() ?? null,
       };
