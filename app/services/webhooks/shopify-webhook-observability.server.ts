@@ -2,6 +2,7 @@ import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { recordShopifyWebhookTelemetry } from "../otel/shopify-webhook-telemetry.server";
 import type { ShopifyWebhookObservation } from "./shopify-webhook-observation";
+import type { ShopifyBrandReadGrant } from "../shopify-brand/shopify-brand-read-scope";
 
 /**
  * One service logger per process, owned by the shared
@@ -90,6 +91,7 @@ export function recordShopifyWebhookRouteOutcome(input: {
   shopDomain: string;
   shopId?: string | null;
   outcome: string;
+  brandReadScopeGrantFromWebhook?: ShopifyBrandReadGrant;
   statusCode?: number;
   ackMs: number;
 }): void {
@@ -103,6 +105,9 @@ export function recordShopifyWebhookRouteOutcome(input: {
     queue: null,
     jobId: null,
     outcome: input.outcome,
+    ...(input.brandReadScopeGrantFromWebhook
+      ? { brandReadScopeGrantFromWebhook: input.brandReadScopeGrantFromWebhook }
+      : {}),
     shopId: input.shopId ?? null,
     shopDomain: input.shopDomain,
     ackMs: input.ackMs,

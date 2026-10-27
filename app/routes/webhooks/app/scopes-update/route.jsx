@@ -1,5 +1,6 @@
 import { authenticate } from "@/shopify.server";
 import db from "@/db.server";
+import { shopifyBrandReadGrant } from "@/services/shopify-brand/shopify-brand-read-scope";
 import {
   buildDiscountSyncJob,
   hasReadDiscountsScope,
@@ -109,6 +110,7 @@ export const action = async ({ request }) => {
       eventId: eventId ?? null,
       shopDomain: shop,
       shopId: syncRequest?.shopId ?? null,
+      brandReadScopeGrantFromWebhook: shopifyBrandReadGrant(current),
       outcome: syncRequest
         ? "PROCESSED_APP_SCOPES_UPDATE_SYNC_REQUESTED"
         : "PROCESSED_APP_SCOPES_UPDATE",

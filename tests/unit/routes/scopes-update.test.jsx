@@ -121,8 +121,47 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
         shopDomain: shopRecord.domain,
         shopId: shopRecord.id,
         outcome: "PROCESSED_APP_SCOPES_UPDATE_SYNC_REQUESTED",
+        brandReadScopeGrantFromWebhook: "MISSING",
       }),
     );
+  });
+
+  it("reports read_brand approval from the authenticated webhook without initiating brand sync", async () => {
+    mocks.authenticateWebhook.mockResolvedValue({
+      payload: { current: ["read_products", "read_discounts", "read_brand"] },
+      session: { id: "session-1" },
+      topic: "APP_SCOPES_UPDATE",
+      shop: shopRecord.domain,
+    });
+    mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts,read_brand" });
+
+    await action({ request: request() });
+
+    expect(mocks.sessionUpdate).toHaveBeenCalledWith({
+      where: { id: "session-1" },
+      data: { scope: "read_products,read_discounts,read_brand" },
+    });
+    expect(mocks.webhookRouteOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ brandReadScopeGrantFromWebhook: "GRANTED" }),
+    );
+    // No brand GraphQL call, ShopBrand write or brand-sync job is owned by this route.
+    expect(mocks.publish).toHaveBeenCalledTimes(1); // existing discount-sync behaviour
+  });
+
+  it("reports a missing brand grant independently of existing discount permission", async () => {
+    mocks.authenticateWebhook.mockResolvedValue({
+      payload: { current: "read_products,read_discounts,read_brand_extra" },
+      session: { id: "session-1" },
+      topic: "APP_SCOPES_UPDATE",
+      shop: shopRecord.domain,
+    });
+
+    await action({ request: request() });
+
+    expect(mocks.webhookRouteOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({ brandReadScopeGrantFromWebhook: "MISSING" }),
+    );
+    expect(mocks.publish).toHaveBeenCalledTimes(1); // unrelated discount sync unchanged
   });
 
   it("marks scope removal unavailable without publishing", async () => {
