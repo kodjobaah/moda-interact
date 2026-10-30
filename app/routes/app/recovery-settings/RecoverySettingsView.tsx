@@ -39,8 +39,8 @@ export default function RecoverySettingsView({
   const [selectedOfferMode, setSelectedOfferMode] = useState<RecoveryOfferMode>(
     data.merchant.recoveryOfferMode,
   );
-  const [selectedFixedDiscountId, setSelectedFixedDiscountId] = useState(
-    data.merchant.fixedShopifyDiscountId ?? "",
+  const [selectedDiscountIds, setSelectedDiscountIds] = useState<string[]>(
+    data.selectedDiscountIds,
   );
   const [followUpEnabled, setFollowUpEnabled] = useState(
     data.merchant.followUpEnabled,
@@ -112,6 +112,11 @@ export default function RecoverySettingsView({
         ) : null}
         <div className="moda-recovery-panel moda-recovery-behaviour-panel">
           <SettingsForm revision={data.revision} intent="recovery" t={i18n.t}>
+            <input
+              type="hidden"
+              name="selectedDiscountIds"
+              value={JSON.stringify(selectedDiscountIds)}
+            />
             <section
               className="moda-recovery-behaviour-section"
               aria-labelledby="recovery-offer-heading"
@@ -168,25 +173,49 @@ export default function RecoverySettingsView({
                 <div className="moda-recovery-fixed-discounts">
                   <div className="moda-recovery-subsection-heading">
                     <h3>{i18n.t("recoverySettings.offer.availableDiscounts")}</h3>
+                    <p aria-live="polite">
+                      {i18n.t("recoverySettings.offer.selectedCount", {
+                        count: selectedDiscountIds.length,
+                      })}
+                    </p>
                   </div>
-                  {data.catalogueStatus === "CURRENT" &&
-                  data.discounts.length > 0 ? (
+                  {data.catalogueStatus !== "CURRENT" && data.discounts.length > 0 ? (
+                    <div className="moda-recovery-inline-message" role="status">
+                      <span aria-hidden="true">i</span>
+                      <p>
+                        {i18n.t(
+                          discountCatalogueMessageKey(data.catalogueStatus),
+                        )}
+                      </p>
+                    </div>
+                  ) : null}
+                  {data.discounts.length > 0 ? (
                     <div className="moda-recovery-discount-grid">
                       {data.discounts.map((discount: DiscountRow) => (
                         <label
                           aria-label={discount.title ?? discount.id}
                           key={discount.id}
-                          className={`moda-recovery-discount-card${selectedFixedDiscountId === discount.id ? " is-selected" : ""}${!discount.fixedSelectable ? " is-disabled" : ""}`}
+                          className={`moda-recovery-discount-card${selectedDiscountIds.includes(discount.id) ? " is-selected" : ""}${!selectedDiscountIds.includes(discount.id) && selectedDiscountIds.length >= 50 ? " is-disabled" : ""}`}
                         >
                           <input
-                            type="radio"
-                            name="fixedShopifyDiscountId"
+                            type="checkbox"
                             value={discount.id}
-                            checked={selectedFixedDiscountId === discount.id}
-                            onChange={() =>
-                              setSelectedFixedDiscountId(discount.id)
+                            checked={selectedDiscountIds.includes(discount.id)}
+                            aria-label={discount.title ?? discount.id}
+                            disabled={
+                              !selectedDiscountIds.includes(discount.id) &&
+                              selectedDiscountIds.length >= 50
                             }
-                            disabled={!discount.fixedSelectable}
+                            onChange={(event) => {
+                              const checked = event.currentTarget.checked;
+                              setSelectedDiscountIds((current) =>
+                                checked
+                                  ? [...current, discount.id].sort((left, right) =>
+                                      left < right ? -1 : left > right ? 1 : 0,
+                                    )
+                                  : current.filter((id) => id !== discount.id),
+                              );
+                            }}
                           />
                           <span
                             className="moda-recovery-choice-mark"
@@ -237,9 +266,21 @@ export default function RecoverySettingsView({
                                   ),
                                 })}
                               </span>
-                              {!discount.fixedSelectable ? (
+                              <span>
+                                {i18n.t("recoverySettings.discount.syncGeneration", {
+                                  generation: discount.lastSeenSyncGeneration,
+                                })}
+                              </span>
+                              <span>
+                                {i18n.t("recoverySettings.discount.lastSyncedAt", {
+                                  value: i18n.formatDateTime(discount.lastSyncedAt),
+                                })}
+                              </span>
+                              {discount.unavailableAt ? (
                                 <span>
-                                  {i18n.t("recoverySettings.offer.notSelectable")}
+                                  {i18n.t("recoverySettings.discount.unavailableAt", {
+                                    value: i18n.formatDateTime(discount.unavailableAt),
+                                  })}
                                 </span>
                               ) : null}
                             </span>

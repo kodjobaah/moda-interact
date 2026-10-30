@@ -35,7 +35,7 @@ export async function action({ request }: ActionFunctionArgs) {
       : [
           "recoveryDelayMinutes",
           "recoveryOfferMode",
-          "fixedShopifyDiscountId",
+          "selectedDiscountIds",
           "followUpEnabled",
           "followUpDelayMinutes",
           "notifyOnInitialRecoveryOutreach",
@@ -68,20 +68,38 @@ export async function action({ request }: ActionFunctionArgs) {
     const notifyOnInitialRecoveryOutreach = form.get("notifyOnInitialRecoveryOutreach");
     if (notifyOnInitialRecoveryOutreach !== "true" && notifyOnInitialRecoveryOutreach !== "false")
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    const rawSelectedDiscountIds = form.get("selectedDiscountIds");
+    if (
+      typeof rawSelectedDiscountIds !== "string" ||
+      new TextEncoder().encode(rawSelectedDiscountIds).byteLength > 8192
+    ) return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    let selectedDiscountIds: unknown;
+    try {
+      selectedDiscountIds = JSON.parse(rawSelectedDiscountIds);
+    } catch {
+      return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    }
+    if (!Array.isArray(selectedDiscountIds) || selectedDiscountIds.some(
+      (id) => typeof id !== "string" || id.length === 0,
+    ) || new Set(selectedDiscountIds).size !== selectedDiscountIds.length)
+      return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    if (selectedDiscountIds.length > 50)
+      return reply({ ok: false, error: "TOO_MANY_DISCOUNTS" }, 422);
+    if (form.get("recoveryOfferMode") === "FIXED" && selectedDiscountIds.length === 0)
+      return reply({ ok: false, error: "FIXED_SELECTION_REQUIRED" }, 422);
+    selectedDiscountIds.sort((left: string, right: string) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    );
     const settings = await saveMerchantRecoveryPolicy(
       shop.id,
       {
         recoveryDelayMinutes: form.get("recoveryDelayMinutes"),
         recoveryOfferMode: form.get("recoveryOfferMode"),
-        fixedShopifyDiscountId:
-          form.get("recoveryOfferMode") === "FIXED"
-            ? form.get("fixedShopifyDiscountId")
-            : null,
+        selectedDiscountIds,
         followUpEnabled: form.get("followUpEnabled"),
         followUpDelayMinutes: form.get("followUpDelayMinutes"),
         notifyOnInitialRecoveryOutreach: notifyOnInitialRecoveryOutreach === "true",
       },
-      new Date(),
       String(form.get("revision")),
     );
     return reply({ ok: true, revision: settings.updatedAt.toISOString() });
@@ -94,8 +112,13 @@ export async function action({ request }: ActionFunctionArgs) {
     if (
       error instanceof RecoveryPolicyValidationError ||
       error instanceof ZodError
-    )
+    ) {
+      if (
+        error instanceof RecoveryPolicyValidationError &&
+        ["TOO_MANY_DISCOUNTS", "FIXED_SELECTION_REQUIRED"].includes(error.code)
+      ) return reply({ ok: false, error: error.code }, 422);
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    }
     if (intent === "recovery") {
       logger.error("merchant.recovery_settings.save.failed", {
         shopId: shop.id,

@@ -31,13 +31,18 @@ vi.mock("@/services/recovery-policy/recovery-policy.server", () => ({
 
 import { action } from "../../app/routes/app/settings-save/route";
 
-function recoveryForm(preference: string | null = "true") {
+function recoveryForm(
+  preference: string | null = "true",
+  selectedDiscountIds = "[]",
+  recoveryOfferMode = "NONE",
+) {
   const form = new FormData();
   form.set("operationId", "operation-123");
   form.set("intent", "recovery");
   form.set("revision", "revision-1");
   form.set("recoveryDelayMinutes", "30");
-  form.set("recoveryOfferMode", "NONE");
+  form.set("recoveryOfferMode", recoveryOfferMode);
+  form.set("selectedDiscountIds", selectedDiscountIds);
   form.set("followUpEnabled", "false");
   form.set("followUpDelayMinutes", "");
   if (preference !== null) form.set("notifyOnInitialRecoveryOutreach", preference);
@@ -69,8 +74,8 @@ describe("recovery settings save route", () => {
       "shop-123",
       expect.objectContaining({
         notifyOnInitialRecoveryOutreach: value === "true",
+        selectedDiscountIds: [],
       }),
-      expect.any(Date),
       "revision-1",
     );
   });
@@ -87,6 +92,48 @@ describe("recovery settings save route", () => {
     form.append("notifyOnInitialRecoveryOutreach", "false");
     const response = await submit(form);
     expect(response.status).toBe(400);
+    expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+  });
+
+  it("sorts the selected ID set before saving and never accepts the legacy anchor", async () => {
+    const response = await submit(recoveryForm("true", '["zeta","alpha"]', "FIXED"));
+    expect(response.status).toBe(200);
+    expect(mocks.saveMerchantRecoveryPolicy).toHaveBeenCalledWith(
+      "shop-123",
+      expect.objectContaining({ selectedDiscountIds: ["alpha", "zeta"] }),
+      "revision-1",
+    );
+
+    const legacy = recoveryForm();
+    legacy.set("fixedShopifyDiscountId", "browser-authority");
+    expect((await submit(legacy)).status).toBe(400);
+  });
+
+  it.each([
+    "not-json",
+    "{}",
+    '["same","same"]',
+    '[""]',
+  ])("rejects malformed or duplicate selected IDs (%s)", async (raw) => {
+    expect((await submit(recoveryForm("true", raw))).status).toBe(400);
+    expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+  });
+
+  it("rejects selected payloads over 8192 bytes and more than 50 entries", async () => {
+    expect((await submit(recoveryForm("true", `"${"x".repeat(8192)}"`))).status).toBe(400);
+    expect((await submit(recoveryForm("true", JSON.stringify(Array.from({ length: 51 }, (_, index) => `d${index}`))))).status).toBe(422);
+  });
+
+  it("requires at least one selection in FIXED mode", async () => {
+    const response = await submit(recoveryForm("true", "[]", "FIXED"));
+    expect(response.status).toBe(422);
+    expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+  });
+
+  it("rejects repeated selectedDiscountIds form keys", async () => {
+    const form = recoveryForm();
+    form.append("selectedDiscountIds", "[]");
+    expect((await submit(form)).status).toBe(400);
     expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
   });
 
