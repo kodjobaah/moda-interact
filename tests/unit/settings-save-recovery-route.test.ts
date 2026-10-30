@@ -144,7 +144,12 @@ describe("recovery settings save route", () => {
         operationId: "operation-123",
         intent: "recovery",
         revision: "revision-1",
+        recoveryOfferMode: "NONE",
         recoveryDelayMinutes: "x".repeat(9000),
+        selectedDiscountIds: "[]",
+        followUpEnabled: "false",
+        followUpDelayMinutes: "",
+        notifyOnInitialRecoveryOutreach: "false",
       }).toString();
 
       const response = await submitEncoded(body, contentLength);
