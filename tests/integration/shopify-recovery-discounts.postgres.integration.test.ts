@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
@@ -75,6 +75,92 @@ async function createShop(shopId: string, ids: string[]) {
   });
 }
 
+async function applyShopifyCatalogueSyncUpserts(
+  transaction: Pick<Prisma.TransactionClient, "shopifyDiscount">,
+  shopId: string,
+) {
+  const syncedAt = new Date("2026-10-30T12:05:00.000Z");
+  const discounts = [discountA, discountNew].map((id) => ({
+    shopifyDiscountNodeId: `gid://shopify/Discount/${id}`,
+    providerType: "DiscountCodeBasic",
+    method: "CODE" as const,
+    providerStatus: "ACTIVE",
+    title: `Synced ${id}`,
+    summary: null,
+    startsAt: null,
+    endsAt: null,
+    codeCount: null,
+    singleRedeemCode: null,
+    fixedSelectable: false,
+    providerSnapshot: { id: `gid://shopify/Discount/${id}`, status: "ACTIVE" },
+  }));
+
+  for (const discount of discounts) {
+    await transaction.shopifyDiscount.upsert({
+      where: {
+        shopId_shopifyDiscountNodeId: {
+          shopId,
+          shopifyDiscountNodeId: discount.shopifyDiscountNodeId,
+        },
+      },
+      create: {
+        shopId,
+        ...discount,
+        lastSeenSyncGeneration: 5,
+        lastSyncedAt: syncedAt,
+        isAvailable: false,
+        unavailableAt: null,
+      },
+      update: {
+        ...discount,
+        lastSeenSyncGeneration: 5,
+        lastSyncedAt: syncedAt,
+        unavailableAt: null,
+      },
+    });
+  }
+}
+
+function clientWithCatalogueSyncInterleaved(shopId: string): PrismaClient {
+  const client = requireDatabase();
+  return new Proxy(client, {
+    get(target, property, receiver) {
+      if (property !== "$transaction") return Reflect.get(target, property, receiver);
+
+      return (callback: (transaction: Prisma.TransactionClient) => Promise<unknown>) =>
+        target.$transaction(async (transaction) => {
+          let updateManyCalls = 0;
+          const discountDelegate = new Proxy(transaction.shopifyDiscount, {
+            get(delegate, method) {
+              const original = Reflect.get(delegate, method, delegate);
+              if (method !== "updateMany") {
+                return typeof original === "function" ? original.bind(delegate) : original;
+              }
+
+              return async (args: Parameters<typeof transaction.shopifyDiscount.updateMany>[0]) => {
+                const result = await Reflect.apply(original, delegate, [args]);
+                updateManyCalls += 1;
+                if (updateManyCalls === 2) {
+                  await applyShopifyCatalogueSyncUpserts(transaction, shopId);
+                }
+                return result;
+              };
+            },
+          });
+          const interleavedTransaction = new Proxy(transaction, {
+            get(current, property) {
+              if (property === "shopifyDiscount") return discountDelegate;
+              const value = Reflect.get(current, property, current);
+              return typeof value === "function" ? value.bind(current) : value;
+            },
+          });
+
+          return callback(interleavedTransaction);
+        });
+    },
+  });
+}
+
 function input(
   selectedDiscountIds: string[],
   recoveryOfferMode: "NONE" | "FIXED" | "AI_BEST_APPLICABLE" = "NONE",
@@ -113,7 +199,7 @@ describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => 
     ({ saveMerchantRecoveryPolicy } = await import(
       "../../app/services/recovery-policy/recovery-policy.server"
     ));
-    await createShop(shopA, [discountA, discountNew]);
+    await createShop(shopA, [discountA]);
     await createShop(shopB, [discountB]);
   }, 240_000);
 
@@ -139,7 +225,7 @@ describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => 
     expect(await revision(shopA)).toBe(beforeRevision);
   });
 
-  it("keeps new sync rows unchecked, allows dormant selections, and is idempotent", async () => {
+  it("allows dormant selections and is idempotent", async () => {
     const db = requireDatabase();
     const before = await revision(shopA);
     const first = await save(shopA, [discountA], "FIXED", before);
@@ -148,8 +234,6 @@ describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => 
       isAvailable: true,
       providerStatus: "EXPIRED",
     });
-    expect(await db.shopifyDiscount.findUniqueOrThrow({ where: { id: discountNew } })).toMatchObject({ isAvailable: false });
-
     const second = await save(shopA, [discountA], "FIXED", updatedRevision);
     expect(second.updatedAt.toISOString()).toBe(updatedRevision);
     const none = await save(shopA, [discountA], "NONE", updatedRevision);
@@ -160,12 +244,52 @@ describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => 
     expect(await db.shopifyDiscount.findUniqueOrThrow({ where: { id: discountA } })).toMatchObject({ isAvailable: false });
   });
 
+  it("preserves a selected discount when catalogue upserts interleave with the selection transaction", async () => {
+    const db = requireDatabase();
+    expect(await db.shopifyDiscount.count({
+      where: {
+        shopId: shopA,
+        shopifyDiscountNodeId: `gid://shopify/Discount/${discountNew}`,
+      },
+    })).toBe(0);
+
+    const result = await saveMerchantRecoveryPolicy(
+      shopA,
+      input([discountA], "FIXED"),
+      await revision(shopA),
+      clientWithCatalogueSyncInterleaved(shopA),
+    );
+
+    expect(await db.shopifyDiscount.findUniqueOrThrow({ where: { id: discountA } }))
+      .toMatchObject({ isAvailable: true });
+    expect(await db.shopifyDiscount.findUniqueOrThrow({
+      where: {
+        shopId_shopifyDiscountNodeId: {
+          shopId: shopA,
+          shopifyDiscountNodeId: `gid://shopify/Discount/${discountNew}`,
+        },
+      },
+    }))
+      .toMatchObject({ isAvailable: false });
+    expect(result.fixedShopifyDiscountId).toBe(discountA);
+  });
+
   it("serializes concurrent saves and rejects the stale revision without partial writes", async () => {
     if (!firstClient || !secondClient) throw new Error("Independent PostgreSQL clients are unavailable");
+    await save(shopA, [], "NONE", await revision(shopA));
+    await applyShopifyCatalogueSyncUpserts(requireDatabase(), shopA);
+    const syncedNewDiscount = await requireDatabase().shopifyDiscount.findUniqueOrThrow({
+      where: {
+        shopId_shopifyDiscountNodeId: {
+          shopId: shopA,
+          shopifyDiscountNodeId: `gid://shopify/Discount/${discountNew}`,
+        },
+      },
+    });
     const expectedRevision = await revision(shopA);
     const results = await Promise.allSettled([
       save(shopA, [discountA], "FIXED", expectedRevision, firstClient),
-      save(shopA, [discountNew], "FIXED", expectedRevision, secondClient),
+      save(shopA, [syncedNewDiscount.id], "FIXED", expectedRevision, secondClient),
     ]);
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     const rejected = results.find((result) => result.status === "rejected");
