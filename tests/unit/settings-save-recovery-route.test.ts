@@ -49,11 +49,24 @@ function recoveryForm(
   return form;
 }
 
-async function submit(form: FormData) {
+async function submit(form: FormData, contentLength?: string) {
   const request = new Request("https://merchant.example/app/settings-save", {
     method: "POST",
     body: form,
   });
+  if (contentLength !== undefined)
+    request.headers.set("content-length", contentLength);
+  return action({ request } as never);
+}
+
+async function submitEncoded(body: string, contentLength?: string) {
+  const request = new Request("https://merchant.example/app/settings-save", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+  if (contentLength !== undefined)
+    request.headers.set("content-length", contentLength);
   return action({ request } as never);
 }
 
@@ -120,9 +133,26 @@ describe("recovery settings save route", () => {
   });
 
   it("rejects selected payloads over 8192 bytes and more than 50 entries", async () => {
-    expect((await submit(recoveryForm("true", `"${"x".repeat(8192)}"`))).status).toBe(400);
+    expect((await submitEncoded(`selectedDiscountIds=${"x".repeat(8193)}`)).status).toBe(400);
     expect((await submit(recoveryForm("true", JSON.stringify(Array.from({ length: 51 }, (_, index) => `d${index}`))))).status).toBe(422);
   });
+
+  it.each([undefined, "1"] as const)(
+    "rejects a complete oversized form body with Content-Length %s",
+    async (contentLength) => {
+      const body = new URLSearchParams({
+        operationId: "operation-123",
+        intent: "recovery",
+        revision: "revision-1",
+        recoveryDelayMinutes: "x".repeat(9000),
+      }).toString();
+
+      const response = await submitEncoded(body, contentLength);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ ok: false, error: "INVALID_INPUT" });
+      expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+    },
+  );
 
   it("requires at least one selection in FIXED mode", async () => {
     const response = await submit(recoveryForm("true", "[]", "FIXED"));
