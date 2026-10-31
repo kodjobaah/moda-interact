@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => {
     settingsAccess: vi.fn(),
     saveMerchantRecoveryPolicy: vi.fn(),
     saveFeaturePreferences: vi.fn(),
+    saveAiResponseDelay: vi.fn(),
+    AiResponseDelayValidationError: class AiResponseDelayValidationError extends Error {},
   };
 });
 
@@ -27,6 +29,10 @@ vi.mock("@/services/feature-preferences/feature-preferences.server", () => ({
 vi.mock("@/services/recovery-policy/recovery-policy.server", () => ({
   RecoveryPolicyValidationError: class RecoveryPolicyValidationError extends Error {},
   saveMerchantRecoveryPolicy: mocks.saveMerchantRecoveryPolicy,
+}));
+vi.mock("@/services/ai-response-delay/ai-response-delay.server", () => ({
+  AiResponseDelayValidationError: mocks.AiResponseDelayValidationError,
+  saveAiResponseDelay: mocks.saveAiResponseDelay,
 }));
 
 import { action } from "../../app/routes/app/settings-save/route";
@@ -70,6 +76,15 @@ async function submitEncoded(body: string, contentLength?: string) {
   return action({ request } as never);
 }
 
+function aiResponseDelayForm(value = "7") {
+  const form = new FormData();
+  form.set("operationId", "operation-delay-123");
+  form.set("intent", "ai-response-delay");
+  form.set("revision", "2026-10-31T10:00:00.000Z");
+  form.set("aiResponseDelayMinutes", value);
+  return form;
+}
+
 describe("recovery settings save route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -77,6 +92,62 @@ describe("recovery settings save route", () => {
     mocks.saveMerchantRecoveryPolicy.mockResolvedValue({
       updatedAt: new Date("2026-10-27T12:00:00.000Z"),
     });
+    mocks.saveAiResponseDelay.mockResolvedValue({
+      updatedAt: new Date("2026-10-31T10:01:00.000Z"),
+    });
+  });
+
+  it("saves the delay for the authenticated shop", async () => {
+    const response = await submit(aiResponseDelayForm("7"));
+    expect(response.status).toBe(200);
+    expect(mocks.saveAiResponseDelay).toHaveBeenCalledWith(
+      "shop-123",
+      "7",
+      "2026-10-31T10:00:00.000Z",
+    );
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      revision: "2026-10-31T10:01:00.000Z",
+    });
+  });
+
+  it.each(["shopId", "unknown"])("rejects extra field %s", async (field) => {
+    const form = aiResponseDelayForm();
+    form.set(field, "attacker-controlled");
+    const response = await submit(form);
+    expect(response.status).toBe(400);
+    expect(mocks.saveAiResponseDelay).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 for an optimistic revision conflict", async () => {
+    mocks.saveAiResponseDelay.mockRejectedValue(new mocks.MockPreferenceError("CONFLICT"));
+    const response = await submit(aiResponseDelayForm());
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ ok: false, error: "CONFLICT" });
+  });
+
+  it("returns 400 for invalid delay input", async () => {
+    mocks.saveAiResponseDelay.mockRejectedValue(
+      new mocks.AiResponseDelayValidationError(),
+    );
+    const response = await submit(aiResponseDelayForm("1e1"));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, error: "INVALID_INPUT" });
+  });
+
+  it("logs unexpected delay persistence failures through Shared and rethrows", async () => {
+    const error = new Error("database unavailable");
+    mocks.saveAiResponseDelay.mockRejectedValue(error);
+    await expect(submit(aiResponseDelayForm())).rejects.toBe(error);
+    expect(mocks.logger.error).toHaveBeenCalledWith(
+      "merchant.recovery_settings.save.failed",
+      expect.objectContaining({
+        shopId: "shop-123",
+        operation: "ai_response_delay",
+        errorCategory: "persistence_failure",
+        error,
+      }),
+    );
   });
 
   it.each(["true", "false"] as const)("passes explicit %s as a Boolean to persistence", async (value) => {

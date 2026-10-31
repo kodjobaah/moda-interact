@@ -21,7 +21,7 @@ export default function SettingsForm({
 }: {
   children: ReactNode;
   revision: string;
-  intent: "features" | "recovery";
+  intent: "features" | "recovery" | "ai-response-delay";
   t: (key: string) => string;
   prepare?: (form: HTMLFormElement, body: FormData) => void;
   showSubmit?: boolean;
@@ -64,24 +64,23 @@ export default function SettingsForm({
     return () => active.dispose();
   }, []);
   const pending = state.phase === "saving" || state.phase === "unknown";
-  const statusMessage =
+  const statusKey =
     state.phase === "idle"
       ? ""
-      : t(
-          state.phase === "error"
-            ? state.error === "CONFLICT"
-              ? "merchantFeatures.conflict"
-              : state.error === "DENIED"
-                ? "merchantFeatures.denied"
-                : "recoverySettings.invalid"
-            : state.phase === "saved"
-              ? intent === "features"
-                ? "merchantFeatures.saved"
-                : "recoverySettings.saved"
-              : state.phase === "unknown"
-                ? "merchantFeatures.unknown"
-                : "merchantFeatures.saving",
-        );
+      : state.phase === "error"
+        ? state.error === "CONFLICT"
+          ? "merchantFeatures.conflict"
+          : state.error === "DENIED"
+            ? "merchantFeatures.denied"
+            : "recoverySettings.invalid"
+        : state.phase === "saved"
+          ? intent === "features"
+            ? "merchantFeatures.saved"
+            : "recoverySettings.saved"
+          : state.phase === "unknown"
+            ? "merchantFeatures.unknown"
+            : "merchantFeatures.saving";
+  const statusMessage = statusKey ? t(statusKey) : "";
 
   const status = (
     <p
