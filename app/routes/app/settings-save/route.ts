@@ -9,6 +9,10 @@ import {
   saveMerchantRecoveryPolicy,
 } from "@/services/recovery-policy/recovery-policy.server";
 import { ZodError } from "zod";
+import {
+  AiResponseDelayValidationError,
+  saveAiResponseDelay,
+} from "@/services/ai-response-delay/ai-response-delay.server";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "@/services/otel/otel.runtime";
 
@@ -78,28 +82,37 @@ export async function action({ request }: ActionFunctionArgs) {
   const form = await formRequest.formData();
   operationId = String(form.get("operationId") ?? "");
   const intent = form.get("intent");
-  const allowed = new Set([
-    "operationId",
-    "intent",
-    "revision",
-    ...(intent === "features"
+  const intentFields =
+    intent === "features"
       ? ["preferences"]
-      : [
-          "recoveryDelayMinutes",
-          "recoveryOfferMode",
-          "selectedDiscountIds",
-          "followUpEnabled",
-          "followUpDelayMinutes",
-          "notifyOnInitialRecoveryOutreach",
-        ]),
-  ]);
+      : intent === "recovery"
+        ? [
+            "recoveryDelayMinutes",
+            "recoveryOfferMode",
+            "selectedDiscountIds",
+            "followUpEnabled",
+            "followUpDelayMinutes",
+            "notifyOnInitialRecoveryOutreach",
+          ]
+        : intent === "ai-response-delay"
+          ? ["aiResponseDelayMinutes"]
+          : [];
+  const allowed = new Set(["operationId", "intent", "revision", ...intentFields]);
   if (
     !/^[a-zA-Z0-9-]{1,64}$/.test(operationId) ||
-    !["features", "recovery"].includes(String(intent)) ||
+    !["features", "recovery", "ai-response-delay"].includes(String(intent)) ||
     [...form.keys()].some((k) => !allowed.has(k) || form.getAll(k).length !== 1)
   )
     return reply({ ok: false, error: "INVALID_INPUT" }, 400);
   try {
+    if (intent === "ai-response-delay") {
+      const rawMinutes = form.get("aiResponseDelayMinutes");
+      const revision = form.get("revision");
+      if (typeof rawMinutes !== "string" || typeof revision !== "string" || !revision)
+        return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+      const settings = await saveAiResponseDelay(shop.id, rawMinutes, revision);
+      return reply({ ok: true, revision: settings.updatedAt.toISOString() });
+    }
     if (intent === "features") {
       const raw = form.get("preferences");
       if (typeof raw !== "string" || raw.length > 131072)
@@ -163,6 +176,7 @@ export async function action({ request }: ActionFunctionArgs) {
       );
     if (
       error instanceof RecoveryPolicyValidationError ||
+      error instanceof AiResponseDelayValidationError ||
       error instanceof ZodError
     ) {
       if (
@@ -171,10 +185,13 @@ export async function action({ request }: ActionFunctionArgs) {
       ) return reply({ ok: false, error: error.code }, 422);
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     }
-    if (intent === "recovery") {
+    if (intent === "recovery" || intent === "ai-response-delay") {
       logger.error("merchant.recovery_settings.save.failed", {
         shopId: shop.id,
-        operation: "recovery_notice_preference",
+        operation:
+          intent === "ai-response-delay"
+            ? "ai_response_delay"
+            : "recovery_notice_preference",
         errorCategory: "persistence_failure",
         error,
       });

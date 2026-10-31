@@ -7,6 +7,7 @@ import FeaturePreferences from "@/components/settings/FeaturePreferences";
 import StoreProfileSection from "@/components/settings/StoreProfileSection";
 import MerchantKnowledgeSection from "@/components/settings/MerchantKnowledgeSection";
 import WhatsAppCustomerConsent from "./WhatsAppCustomerConsent";
+import AiResponseDelaySettings from "./AiResponseDelaySettings";
 import "./RecoverySettingsRoute.css";
 type DiscountRow = Awaited<ReturnType<typeof loader>>["discounts"][number];
 type DiscountCatalogueStatus = Awaited<
@@ -442,6 +443,14 @@ export default function RecoverySettingsView({
               </section>
             </section>
           </SettingsForm>
+        </div>
+        <div className="moda-recovery-panel moda-recovery-ai-response-delay-panel">
+          <AiResponseDelaySettings
+            key={data.revision}
+            revision={data.revision}
+            value={data.aiResponseDelayMinutes}
+            t={i18n.t}
+          />
         </div>
         <WhatsAppCustomerConsent t={i18n.t} />
         <FeaturePreferences snapshot={data.features} t={i18n.t} />
