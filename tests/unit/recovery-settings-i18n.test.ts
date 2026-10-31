@@ -21,6 +21,7 @@ const keys = [
   "recoverySettings.initialOutreachNotification.title", "recoverySettings.invalid", "recoverySettings.offer.AI_BEST_APPLICABLE",
   "recoverySettings.offer.FIXED", "recoverySettings.offer.NONE", "recoverySettings.offer.catalogueUnavailable",
   "recoverySettings.offer.availableDiscounts", "recoverySettings.offer.catalogueEmpty", "recoverySettings.offer.catalogueError", "recoverySettings.offer.catalogueSyncRequired", "recoverySettings.offer.catalogueSyncing",
+  "recoverySettings.offer.selectedCount", "recoverySettings.discount.syncGeneration", "recoverySettings.discount.lastSyncedAt", "recoverySettings.discount.unavailableAt",
   "recoverySettings.offer.notSelectable", "recoverySettings.offer.title", "recoverySettings.save", "recoverySettings.saved",
   "recoverySettings.start.label", "recoverySettings.start.title", "recoverySettings.title", "recoverySettings.nav",
 ].sort();
