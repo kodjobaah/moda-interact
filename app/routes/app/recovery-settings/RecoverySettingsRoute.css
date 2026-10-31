@@ -411,6 +411,24 @@
   opacity: 0.58;
 }
 
+.moda-recovery-discount-card .moda-recovery-choice-mark {
+  border-radius: 4px;
+}
+
+.moda-recovery-discount-card.is-selected .moda-recovery-choice-mark {
+  border: 0;
+  background: var(--recovery-green-700);
+}
+
+.moda-recovery-discount-card.is-selected .moda-recovery-choice-mark::after {
+  width: 9px;
+  height: 5px;
+  border-bottom: 2px solid #fff;
+  border-left: 2px solid #fff;
+  content: "";
+  transform: translateY(-1px) rotate(-45deg);
+}
+
 .moda-recovery-discount-meta {
   display: flex;
   flex-wrap: wrap;

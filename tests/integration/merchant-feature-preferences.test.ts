@@ -327,32 +327,31 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
     const input = {
       recoveryDelayMinutes: "40",
       recoveryOfferMode: "AI_BEST_APPLICABLE",
+      selectedDiscountIds: [],
       followUpEnabled: "true",
       followUpDelayMinutes: "60",
       notifyOnInitialRecoveryOutreach: false,
     };
-    const rows = await Promise.all([
+    const outcomes = await Promise.allSettled([
       saveMerchantRecoveryPolicy(
         shopId,
         input,
-        new Date(),
         initial.updatedAt.toISOString(),
         db,
       ),
       saveMerchantRecoveryPolicy(
         shopId,
         input,
-        new Date(),
         initial.updatedAt.toISOString(),
         db,
       ),
     ]);
-    expect(rows[0].updatedAt).toEqual(rows[1].updatedAt);
+    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
     await expect(
       saveMerchantRecoveryPolicy(
         shopId,
         { ...input, recoveryDelayMinutes: "50" },
-        new Date(),
         initial.updatedAt.toISOString(),
         db,
       ),
