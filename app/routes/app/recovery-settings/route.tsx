@@ -11,7 +11,7 @@ import { merchantUiContext } from "@/utils/merchant-i18n";
 import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
 import RecoverySettingsView from "./RecoverySettingsView";
 export async function loader({ request }: LoaderFunctionArgs) {
-  const { shop, session } = await settingsAccess(request);
+  const { shop, session, settings } = await settingsAccess(request);
   const merchantUi = merchantUiContext(shop, session);
   const [storeCategories, storeProfile] = await Promise.all([
     listSelectableStoreCategories(merchantUi.locale),
@@ -27,6 +27,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
   );
   return {
     ...(await loadRecoveryPolicySnapshot(shop.id)),
+    aiResponseDelayMinutes: settings?.aiResponseDelayMinutes ?? 0,
     features,
     storeCategories,
     storeProfile,

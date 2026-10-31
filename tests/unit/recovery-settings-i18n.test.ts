@@ -22,6 +22,7 @@ const keys = [
   "recoverySettings.offer.FIXED", "recoverySettings.offer.NONE", "recoverySettings.offer.catalogueUnavailable",
   "recoverySettings.offer.availableDiscounts", "recoverySettings.offer.catalogueEmpty", "recoverySettings.offer.catalogueError", "recoverySettings.offer.catalogueSyncRequired", "recoverySettings.offer.catalogueSyncing",
   "recoverySettings.offer.selectedCount", "recoverySettings.discount.syncGeneration", "recoverySettings.discount.lastSyncedAt", "recoverySettings.discount.unavailableAt",
+  "recoverySettings.aiResponseDelay.help", "recoverySettings.aiResponseDelay.label", "recoverySettings.aiResponseDelay.title",
   "recoverySettings.offer.notSelectable", "recoverySettings.offer.title", "recoverySettings.save", "recoverySettings.saved",
   "recoverySettings.start.label", "recoverySettings.start.title", "recoverySettings.title", "recoverySettings.nav",
 ].sort();
