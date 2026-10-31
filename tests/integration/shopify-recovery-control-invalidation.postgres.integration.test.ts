@@ -22,10 +22,8 @@ const prismaExecutable = resolve(
   process.platform === "win32" ? "prisma.cmd" : "prisma",
 );
 const fixturePrefix = `arch054-shopify-control-${randomUUID()}`;
-const featureId = `${fixturePrefix}-feature`;
 const planId = `${fixturePrefix}-plan`;
 const planHandle = `${fixturePrefix}-plan-handle`;
-const featureKey = "checkout_recovery";
 const shopId = `${fixturePrefix}-shop`;
 
 let postgres: StartedPostgreSqlContainer | undefined;
@@ -34,8 +32,6 @@ let firstClient: PrismaClient | undefined;
 let secondClient: PrismaClient | undefined;
 let changeRecoveryControl:
   typeof import("../../app/services/recoveries/recovery-human-commands.server")["changeRecoveryControl"];
-const recoveryIds: string[] = [];
-const conversationIds: string[] = [];
 
 async function deployMigrations(databaseUrl: string) {
   await execFileAsync(
@@ -57,16 +53,12 @@ function requireDatabase() {
 
 async function createRecovery(input: {
   label: string;
-  mode: "AI" | "HUMAN";
-  revision: number;
   inboundVersion: number;
 }) {
   const db = requireDatabase();
   const recoveryId = `${fixturePrefix}-${input.label}-recovery`;
   const conversationId = `${fixturePrefix}-${input.label}-conversation`;
   const pendingAt = new Date("2026-10-31T12:00:00.000Z");
-  recoveryIds.push(recoveryId);
-  conversationIds.push(conversationId);
   await db.checkoutRecovery.create({
     data: {
       id: recoveryId,
@@ -79,13 +71,13 @@ async function createRecovery(input: {
           id: conversationId,
           shopId,
           type: "RECOVERY",
-          controlMode: input.mode,
-          controlRevision: input.revision,
+          controlMode: "AI",
+          controlRevision: 0,
           inboundVersion: input.inboundVersion,
           lastProcessedVersion: input.inboundVersion - 2,
           pendingTurnStartedAt: pendingAt,
           pendingAiNotBeforeAt: new Date(pendingAt.getTime() + 7 * 60_000),
-          pendingAiControlRevision: input.revision,
+          pendingAiControlRevision: 0,
           pendingAiDelayMinutes: 7,
           processingInboundVersion: input.inboundVersion,
           processingStartedAt: pendingAt,
@@ -140,13 +132,9 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
     ({ changeRecoveryControl } = await import(
       "../../app/services/recoveries/recovery-human-commands.server"
     ));
-    await database.feature.create({
-      data: {
-        id: featureId,
-        key: featureKey,
-        displayName: "ARCH-054 test recovery",
-        activationMode: "ALWAYS_ENABLED",
-      },
+    const checkoutRecoveryFeature = await database.feature.findUniqueOrThrow({
+      where: { key: "checkout_recovery" },
+      select: { id: true },
     });
     await database.billingPlan.create({
       data: {
@@ -154,7 +142,7 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
         shopifyPlanHandle: planHandle,
         name: "ARCH-054 control test plan",
         kind: "PAID_METERED",
-        features: { create: { featureId, enabled: true } },
+        features: { create: { featureId: checkoutRecoveryFeature.id, enabled: true } },
       },
     });
     await database.shop.create({
@@ -166,34 +154,22 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
   }, 240_000);
 
   afterAll(async () => {
-    try {
-      if (database) {
-        await database.conversationControlEvent.deleteMany({ where: { conversationId: { in: conversationIds } } });
-        await database.conversation.deleteMany({ where: { id: { in: conversationIds } } });
-        await database.checkoutRecovery.deleteMany({ where: { id: { in: recoveryIds } } });
-        await database.subscription.deleteMany({ where: { shopId } });
-        await database.shop.deleteMany({ where: { id: shopId } });
-        await database.billingPlan.deleteMany({ where: { id: planId } });
-        await database.feature.deleteMany({ where: { id: featureId } });
-      }
-    } finally {
-      await Promise.allSettled([
-        firstClient?.$disconnect() ?? Promise.resolve(),
-        secondClient?.$disconnect() ?? Promise.resolve(),
-        database?.$disconnect() ?? Promise.resolve(),
-      ]);
-      await postgres?.stop();
-    }
+    await Promise.allSettled([
+      firstClient?.$disconnect() ?? Promise.resolve(),
+      secondClient?.$disconnect() ?? Promise.resolve(),
+      database?.$disconnect() ?? Promise.resolve(),
+    ]);
+    await postgres?.stop();
   }, 60_000);
 
   it("allows one concurrent takeover and atomically invalidates the pending turn", async () => {
     if (!firstClient || !secondClient) throw new Error("Disposable PostgreSQL clients are unavailable");
     const { recoveryId, conversationId } = await createRecovery({
-      label: "race", mode: "AI", revision: 4, inboundVersion: 12,
+      label: "race", inboundVersion: 12,
     });
     const outcomes = await Promise.allSettled([
-      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 4 }, firstClient),
-      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 4 }, secondClient),
+      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, firstClient),
+      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, secondClient),
     ]);
 
     expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
@@ -201,7 +177,7 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
     const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
     expect(conversation).toMatchObject({
       controlMode: "HUMAN",
-      controlRevision: 5,
+      controlRevision: 1,
       inboundVersion: 12,
       lastProcessedVersion: 12,
       pendingTurnStartedAt: null,
@@ -217,22 +193,22 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
   it("rolls back invalidation when the control event cannot be persisted", async () => {
     if (!firstClient) throw new Error("Disposable PostgreSQL client is unavailable");
     const { recoveryId, conversationId } = await createRecovery({
-      label: "rollback", mode: "AI", revision: 8, inboundVersion: 21,
+      label: "rollback", inboundVersion: 21,
     });
 
     await expect(changeRecoveryControl(
       shopId,
       recoveryId,
-      { targetMode: "HUMAN", expectedControlRevision: 8 },
+      { targetMode: "HUMAN", expectedControlRevision: 0 },
       clientWithControlEventFailure(firstClient),
     )).rejects.toThrow("injected control event failure");
 
     const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
     expect(conversation).toMatchObject({
       controlMode: "AI",
-      controlRevision: 8,
+      controlRevision: 0,
       lastProcessedVersion: 19,
-      pendingAiControlRevision: 8,
+      pendingAiControlRevision: 0,
       pendingAiDelayMinutes: 7,
       processingInboundVersion: 21,
     });
@@ -244,9 +220,10 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
   it("preserves a fresh turn when a request carries the prior control revision", async () => {
     if (!firstClient) throw new Error("Disposable PostgreSQL client is unavailable");
     const { recoveryId, conversationId } = await createRecovery({
-      label: "stale", mode: "HUMAN", revision: 2, inboundVersion: 30,
+      label: "stale", inboundVersion: 30,
     });
-    await changeRecoveryControl(shopId, recoveryId, { targetMode: "AI", expectedControlRevision: 2 }, firstClient);
+    await changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, firstClient);
+    await changeRecoveryControl(shopId, recoveryId, { targetMode: "AI", expectedControlRevision: 1 }, firstClient);
     const nextTurnAt = new Date("2026-10-31T13:00:00.000Z");
     await requireDatabase().conversation.update({
       where: { id: conversationId },
@@ -254,7 +231,7 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
         inboundVersion: 31,
         pendingTurnStartedAt: nextTurnAt,
         pendingAiNotBeforeAt: new Date(nextTurnAt.getTime() + 7 * 60_000),
-        pendingAiControlRevision: 3,
+        pendingAiControlRevision: 2,
         pendingAiDelayMinutes: 7,
         processingInboundVersion: 31,
         processingStartedAt: nextTurnAt,
@@ -264,17 +241,17 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
     await expect(changeRecoveryControl(
       shopId,
       recoveryId,
-      { targetMode: "HUMAN", expectedControlRevision: 2 },
+      { targetMode: "HUMAN", expectedControlRevision: 1 },
       firstClient,
     )).rejects.toMatchObject({ code: "stale_control_revision" });
 
     const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
     expect(conversation).toMatchObject({
       controlMode: "AI",
-      controlRevision: 3,
+      controlRevision: 2,
       inboundVersion: 31,
       lastProcessedVersion: 30,
-      pendingAiControlRevision: 3,
+      pendingAiControlRevision: 2,
       pendingAiDelayMinutes: 7,
       processingInboundVersion: 31,
     });
