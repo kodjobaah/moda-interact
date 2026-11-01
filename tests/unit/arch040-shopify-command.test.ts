@@ -13,7 +13,8 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
   existing?: boolean; secondClaimed?: boolean; secondClaimedAt?: Date | null; templateApproved?: boolean }) {
   const options = { owned: true, mode: "HUMAN", revision: 1, suspended: false, inbound: true,
     existing: false, secondClaimed: false, templateApproved: true, ...input };
-  const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision, languageTag: "en" };
+  const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision,
+    inboundVersion: 7, languageTag: "en" };
   const tx = {
     checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: "recovery-1", shopId: "shop-1", status: "ENGAGED", customerId: "customer-1" } : null) },
     $queryRaw: vi.fn(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
@@ -134,6 +135,53 @@ describe("ARCH-040 Shopify human commands", () => {
     const { db } = fixture({ mode: "AI", revision: 3 });
     await expect(changeRecoveryControl("shop-1", "recovery-1", { targetMode: "HUMAN", expectedControlRevision: 1 }, db))
       .rejects.toMatchObject({ code: "stale_control_revision", currentControl: { controlMode: "AI", controlRevision: 3 } });
+  });
+  it.each([
+    ["AI", "HUMAN"],
+    ["HUMAN", "AI"],
+  ] as const)("atomically invalidates pending AI and processing state for %s -> %s", async (mode, targetMode) => {
+    const { db, tx } = fixture({ mode, revision: 4 });
+    await expect(changeRecoveryControl("shop-1", "recovery-1", {
+      targetMode, expectedControlRevision: 4,
+    }, db)).resolves.toEqual({ controlMode: targetMode, controlRevision: 5 });
+
+    expect(tx.conversation.updateMany).toHaveBeenCalledWith({
+      where: { id: "conversation-1", controlRevision: 4, controlMode: mode, inboundVersion: 7 },
+      data: expect.objectContaining({
+        controlMode: targetMode,
+        controlRevision: { increment: 1 },
+        pendingTurnStartedAt: null,
+        pendingAiNotBeforeAt: null,
+        pendingAiControlRevision: null,
+        pendingAiDelayMinutes: null,
+        processingInboundVersion: null,
+        processingStartedAt: null,
+        lastProcessedVersion: 7,
+      }),
+    });
+    expect(tx.conversationControlEvent.create).toHaveBeenCalledWith({
+      data: { conversationId: "conversation-1", fromMode: mode, toMode: targetMode,
+        fromRevision: 4, toRevision: 5 },
+    });
+  });
+
+  it("does not clear a new turn when a concurrent control compare-and-set loses", async () => {
+    const { db, tx } = fixture({ mode: "AI", revision: 4 });
+    tx.conversation.updateMany.mockResolvedValue({ count: 0 });
+
+    await expect(changeRecoveryControl("shop-1", "recovery-1", {
+      targetMode: "HUMAN", expectedControlRevision: 4,
+    }, db)).rejects.toMatchObject({ code: "stale_control_revision" });
+    expect(tx.conversationControlEvent.create).not.toHaveBeenCalled();
+  });
+
+  it("does not alter pending state or revision for an idempotent control request", async () => {
+    const { db, tx } = fixture({ mode: "AI", revision: 4 });
+    await expect(changeRecoveryControl("shop-1", "recovery-1", {
+      targetMode: "AI", expectedControlRevision: 4,
+    }, db)).rejects.toMatchObject({ code: "control_already_selected" });
+    expect(tx.conversation.updateMany).not.toHaveBeenCalled();
+    expect(tx.conversationControlEvent.create).not.toHaveBeenCalled();
   });
   it("claims the existing shared sequence-two follow-up in the same command transaction", async () => {
     const { db, tx } = fixture({ inbound: false });

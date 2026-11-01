@@ -26,7 +26,13 @@ const refused = (code: string, status = 409, currentControl?: CurrentControl): n
 type Context = {
   shopId: string;
   recovery: { id: string; status: string; customerId: string | null };
-  conversation: { id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; languageTag: string | null };
+  conversation: {
+    id: string;
+    controlMode: "AI" | "HUMAN";
+    controlRevision: number;
+    inboundVersion: number;
+    languageTag: string | null;
+  };
 };
 
 /** DATABASE-001 ordering contract: Shop -> Conversation -> command / outreach attempt.
@@ -42,8 +48,8 @@ async function lockedContext(tx: Prisma.TransactionClient, shopId: string, recov
     SELECT "id", "status"::text FROM "commerce"."Shop"
     WHERE "id"=${shopId} FOR UPDATE`);
   if (!shop.length) return refused("not_found", 404);
-  const matching = await tx.$queryRaw<{ id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; languageTag: string | null }[]>(Prisma.sql`
-    SELECT "id", "controlMode"::text, "controlRevision", "languageTag" FROM "whatsapp"."Conversation"
+  const matching = await tx.$queryRaw<{ id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; inboundVersion: number; languageTag: string | null }[]>(Prisma.sql`
+    SELECT "id", "controlMode"::text, "controlRevision", "inboundVersion", "languageTag" FROM "whatsapp"."Conversation"
     WHERE "checkoutRecoveryId"=${owned.id} AND "type"='RECOVERY'
       AND ("shopId" IS NULL OR "shopId"=${shopId}) FOR UPDATE`);
   const conversation = matching[0];
@@ -95,8 +101,24 @@ export async function changeRecoveryControl(
     });
     if (current.controlMode === input.targetMode) return refused("control_already_selected");
     const update = await tx.conversation.updateMany({
-      where: { id: current.id, controlRevision: current.controlRevision, controlMode: current.controlMode },
-      data: { controlMode: input.targetMode, controlRevision: { increment: 1 }, controlChangedAt: new Date() },
+      where: {
+        id: current.id,
+        controlRevision: current.controlRevision,
+        controlMode: current.controlMode,
+        inboundVersion: current.inboundVersion,
+      },
+      data: {
+        controlMode: input.targetMode,
+        controlRevision: { increment: 1 },
+        controlChangedAt: new Date(),
+        pendingTurnStartedAt: null,
+        pendingAiNotBeforeAt: null,
+        pendingAiControlRevision: null,
+        pendingAiDelayMinutes: null,
+        processingInboundVersion: null,
+        processingStartedAt: null,
+        lastProcessedVersion: current.inboundVersion,
+      },
     });
     if (update.count !== 1) return refused("stale_control_revision");
     await tx.conversationControlEvent.create({
