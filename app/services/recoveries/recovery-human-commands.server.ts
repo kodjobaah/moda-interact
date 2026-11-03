@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import prisma from "../../db.server";
@@ -189,6 +189,7 @@ export async function admitRecoveryHumanSend(
       return { commandId: existing.id, conversationId: conversation.id, state: existing.state, kind: existing.kind,
         controlRevision: input.expectedControlRevision, replay: true };
     }
+    const commandId = randomUUID();
     // Freeze eligibility time once, after replay lookup and under the shop/conversation locks.
     const now = new Date();
     if (terminal.has(context.recovery.status)) return refused("terminal_recovery");
@@ -251,7 +252,7 @@ export async function admitRecoveryHumanSend(
       }
       const claimed = await tx.recoveryOutreachAttempt.updateMany({
         where: { id: follow.id, status: "PENDING", initiationKey: null, claimedAt: null, outboundMessageId: null },
-        data: { initiatedBy: "HUMAN", initiationKey: input.idempotencyKey,
+        data: { initiatedBy: "HUMAN", initiationKey: commandId,
           claimedAt: now, trigger: "POST_WINDOW_FOLLOW_UP" },
       });
       if (claimed.count !== 1) return refused("follow_up_unavailable");
@@ -259,6 +260,8 @@ export async function admitRecoveryHumanSend(
     }
     const command = await tx.merchantConversationSendCommand.create({
       data: {
+        id: commandId,
+        followUpClaimKey: input.kind === "RECOVERY_FOLLOW_UP_TEMPLATE" ? commandId : null,
         shopId, conversationId: conversation.id, idempotencyKey: input.idempotencyKey, payloadSha256: digest,
         expectedControlRevision: input.expectedControlRevision, kind: input.kind,
         recipientSnapshot: initial.recipient,
