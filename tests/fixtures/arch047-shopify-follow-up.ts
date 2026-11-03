@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 /** A Moda-authored, explicitly published, provider-approved recovery template.
  * Deliberately includes full registration/definition identity for forged-row tests.
  */
@@ -21,3 +23,9 @@ export const validFollowUpVariant = {
       } },
   },
 };
+
+/** Echo only the public create projection; this mock is not database constraint proof. */
+export function createdCommandProjection(data: Prisma.MerchantConversationSendCommandCreateArgs["data"]) {
+  if (!data.id) throw new Error("Expected a preallocated command ID");
+  return { id: data.id, state: "ACCEPTED" as const, kind: data.kind };
+}

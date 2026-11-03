@@ -1,24 +1,31 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
+vi.mock("node:crypto", async (original) => {
+  const actual = await original<typeof import("node:crypto")>();
+  return { ...actual, randomUUID: vi.fn(actual.randomUUID) };
+});
 vi.mock("../../app/db.server", () => ({ default: {} }));
 vi.mock("../../app/services/recoveries/recovery-follow-up-sender.server", () => ({
   trustedRecoverySenderWaba: async () => "1234567890",
 }));
-import { validFollowUpVariant } from "../fixtures/arch047-shopify-follow-up";
+import { validFollowUpVariant, createdCommandProjection } from "../fixtures/arch047-shopify-follow-up";
 const { changeRecoveryControl, admitRecoveryHumanSend, humanSendPayloadHash } =
   await import("../../app/services/recoveries/recovery-human-commands.server");
 
-function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: number; suspended?: boolean;
+function fixture(input?: { shopId?: string; recoveryId?: string; conversationId?: string; variantId?: string; owned?: boolean; mode?: "AI" | "HUMAN"; revision?: number; suspended?: boolean;
   inbound?: boolean; inboundAt?: Date | null; sentAt?: Date | null; followUpDueAt?: Date | null;
   existing?: boolean; secondClaimed?: boolean; secondClaimedAt?: Date | null; templateApproved?: boolean }) {
   const options = { owned: true, mode: "HUMAN", revision: 1, suspended: false, inbound: true,
     existing: false, secondClaimed: false, templateApproved: true, ...input };
-  const context = { id: "conversation-1", controlMode: options.mode, controlRevision: options.revision,
+  const shopId = input?.shopId ?? "shop-1";
+  const recoveryId = input?.recoveryId ?? "recovery-1";
+  const context = { id: input?.conversationId ?? "conversation-1", controlMode: options.mode, controlRevision: options.revision,
     inboundVersion: 7, languageTag: "en" };
   const tx = {
-    checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: "recovery-1", shopId: "shop-1", status: "ENGAGED", customerId: "customer-1" } : null) },
+    checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: recoveryId, shopId, status: "ENGAGED", customerId: "customer-1" } : null) },
     $queryRaw: vi.fn(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
-      ? [{ id: "shop-1", status: "ACTIVE" }] : [context]),
+      ? [{ id: shopId, status: "ACTIVE" }] : [context]),
     shop: { findUnique: vi.fn(async () => ({ status: "ACTIVE", platform: "SHOPIFY", defaultLanguageTag: "en" })) },
     subscription: { findUnique: vi.fn(async () => ({ status: "ACTIVE", plan: { active: true, features: [{ featureId: "checkout_recovery" }] } })) },
     shopHumanMessagingRestriction: { findUnique: vi.fn(async () => options.suspended ? { status: "SUSPENDED" } : null) },
@@ -32,7 +39,7 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
       } : null),
       create: vi.fn<(args: Prisma.MerchantConversationSendCommandCreateArgs) => Promise<{
         id: string; state: string; kind: string;
-      }>>(async () => ({ id: "command-1", state: "ACCEPTED", kind: "HUMAN_TEXT" })),
+      }>>(async ({ data }) => createdCommandProjection(data)),
     },
     recoveryOutreachAttempt: { findUnique: vi.fn(async (query: { where: { checkoutRecoveryId_sequence?: { sequence: number } } }) =>
       query.where.checkoutRecoveryId_sequence?.sequence === 2
@@ -44,9 +51,9 @@ function fixture(input?: { owned?: boolean; mode?: "AI" | "HUMAN"; revision?: nu
           configuredOfferMode: "NONE", fixedShopifyDiscountId: null, offerSnapshot: null }),
       create: vi.fn(async () => ({ id: "attempt-2" })), updateMany: vi.fn(async () => ({ count: 1 })) },
     whatsAppTemplateVariant: { findMany: vi.fn(async () => options.templateApproved
-      ? [validFollowUpVariant] : []) },
+      ? [{ ...validFollowUpVariant, id: input?.variantId ?? validFollowUpVariant.id, shopId }] : []) },
     whatsAppTemplatePublicationTarget: { findMany: vi.fn(async () => [{
-      newVariantId: "variant-1", metaRegistrationId: "registration-1", languageTag: "en",
+      newVariantId: input?.variantId ?? "variant-1", metaRegistrationId: "registration-1", languageTag: "en",
     }]) },
     whatsAppRecipientReachability: { findUnique: vi.fn(async () => null) },
     conversationMessage: { findFirst: vi.fn(async () => options.inbound
@@ -103,18 +110,19 @@ describe("ARCH-040 Shopify human commands", () => {
   it("accepts only one durable command and labels it ACCEPTED, not SENT", async () => {
     const { db, tx } = fixture();
     expect(await admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db)).toMatchObject({
-      commandId: "command-1", state: "ACCEPTED", replay: false,
+      commandId: expect.any(String), state: "ACCEPTED", replay: false,
     });
     expect(tx.merchantConversationSendCommand.create).toHaveBeenCalledTimes(1);
     expect(tx.merchantConversationSendCommand.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
-        kind: "HUMAN_TEXT", textBody: "Hello", templateParameters: Prisma.DbNull,
+        kind: "HUMAN_TEXT", followUpClaimKey: null, textBody: "Hello", templateParameters: Prisma.DbNull,
         templateName: null, templateLanguageCode: null, recoveryOutreachAttemptId: null,
       }),
     }));
     // Prisma null sentinels are structurally similar objects. Vitest deep matching
     // cannot distinguish them; compare their exact runtime identities instead.
     const submitted = tx.merchantConversationSendCommand.create.mock.calls[0]?.[0];
+    expect(submitted?.data.id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     expect(submitted?.data.templateParameters).toBe(Prisma.DbNull);
     expect(submitted?.data.templateParameters).not.toBe(Prisma.JsonNull);
   });
@@ -185,15 +193,16 @@ describe("ARCH-040 Shopify human commands", () => {
   });
   it("claims the existing shared sequence-two follow-up in the same command transaction", async () => {
     const { db, tx } = fixture({ inbound: false });
-    await admitRecoveryHumanSend("shop-1", "recovery-1", {
+    const result = await admitRecoveryHumanSend("shop-1", "recovery-1", {
       kind: "RECOVERY_FOLLOW_UP_TEMPLATE", templateVariantId: "variant-1", idempotencyKey: "template-send-01",
       expectedControlRevision: 1,
     }, db);
     expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ initiatedBy: "HUMAN", initiationKey: "template-send-01" }),
+      data: expect.objectContaining({ initiatedBy: "HUMAN", initiationKey: result.commandId }),
     }));
     expect(tx.merchantConversationSendCommand.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ recoveryOutreachAttemptId: "attempt-2", templateName: "recovery_reminder",
+      data: expect.objectContaining({ id: result.commandId, followUpClaimKey: result.commandId,
+        idempotencyKey: "template-send-01", recoveryOutreachAttemptId: "attempt-2", templateName: "recovery_reminder",
         templateParameters: {} }),
     }));
   });
@@ -380,5 +389,113 @@ describe("ARCH-040-SHOPIFY-005 verified service-window admission", () => {
       .resolves.toMatchObject({ replay: true, commandId: "command-1" });
     expect(tx.recoveryOutreachAttempt.findUnique).not.toHaveBeenCalled();
     expect(tx.conversationMessage.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe("ARCH-055 Shopify internal follow-up claim identity", () => {
+  it("uses distinct internal identities for two Shops with the same public retry key", async () => {
+    const first = fixture({ inbound: false });
+    const second = fixture({ inbound: false, shopId: "shop-2", recoveryId: "recovery-2",
+      conversationId: "conversation-2", variantId: "variant-2" });
+    const a = await admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, first.db);
+    const b = await admitRecoveryHumanSend("shop-2", "recovery-2",
+      { ...templateInput, templateVariantId: "variant-2" }, second.db);
+
+    expect(a.commandId).not.toBe(b.commandId);
+    for (const [result, tx, shopId, conversationId] of [
+      [a, first.tx, "shop-1", "conversation-1"], [b, second.tx, "shop-2", "conversation-2"],
+    ] as const) {
+      expect(result.kind).toBe("RECOVERY_FOLLOW_UP_TEMPLATE");
+      expect(result.commandId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+      expect(tx.merchantConversationSendCommand.findUnique).toHaveBeenCalledWith({
+        where: { shopId_idempotencyKey: { shopId, idempotencyKey: templateInput.idempotencyKey } },
+        select: { id: true, conversationId: true, payloadSha256: true, state: true, kind: true },
+      });
+      const create = tx.merchantConversationSendCommand.create.mock.calls[0]![0];
+      expect(create.data).toMatchObject({
+        id: result.commandId, followUpClaimKey: result.commandId, shopId, conversationId,
+        idempotencyKey: templateInput.idempotencyKey,
+      });
+      expect(create.select).toEqual({ id: true, state: true, kind: true });
+      expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ initiationKey: result.commandId, initiatedBy: "HUMAN" }),
+      }));
+      expect(result.commandId).not.toBe(templateInput.idempotencyKey);
+      expect(Object.keys(result).sort()).toEqual(
+        ["commandId", "conversationId", "state", "kind", "controlRevision", "replay"].sort(),
+      );
+      expect(tx.recoveryOutreachAttempt.updateMany.mock.invocationCallOrder[0])
+        .toBeLessThan(tx.merchantConversationSendCommand.create.mock.invocationCallOrder[0]!);
+    }
+  });
+
+  it("returns exact template replay before allocating an ID or a new claim and rejects conflicting reuse", async () => {
+    const { tx, db } = fixture({ inbound: false });
+    const first = await admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db);
+    const stored = { id: first.commandId, conversationId: "conversation-1", state: "ACCEPTED",
+      kind: "RECOVERY_FOLLOW_UP_TEMPLATE", followUpClaimKey: first.commandId,
+      payloadSha256: humanSendPayloadHash("conversation-1", templateInput) };
+    tx.merchantConversationSendCommand.findUnique.mockResolvedValue(stored);
+    const uuidCount = vi.mocked(randomUUID).mock.calls.length;
+    const writes = tx.merchantConversationSendCommand.create.mock.calls.length;
+    const claims = tx.recoveryOutreachAttempt.updateMany.mock.calls.length;
+
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db))
+      .resolves.toEqual({ ...first, replay: true });
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1",
+      { ...templateInput, templateVariantId: "different-variant" }, db))
+      .rejects.toMatchObject({ code: "idempotency_conflict" });
+    expect(vi.mocked(randomUUID).mock.calls).toHaveLength(uuidCount);
+    expect(tx.merchantConversationSendCommand.create).toHaveBeenCalledTimes(writes);
+    expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledTimes(claims);
+  });
+
+  it("preserves a historical template command whose backfilled claim is the original public key", async () => {
+    const { tx, db } = fixture({ inbound: false });
+    const historical = { id: "historical-command", conversationId: "conversation-1", state: "SENT",
+      kind: "RECOVERY_FOLLOW_UP_TEMPLATE", followUpClaimKey: templateInput.idempotencyKey,
+      payloadSha256: humanSendPayloadHash("conversation-1", templateInput) };
+    tx.merchantConversationSendCommand.findUnique.mockResolvedValue(historical);
+    const uuidCount = vi.mocked(randomUUID).mock.calls.length;
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).resolves.toEqual({
+      commandId: historical.id, conversationId: historical.conversationId, state: "SENT",
+      kind: "RECOVERY_FOLLOW_UP_TEMPLATE", controlRevision: 1, replay: true,
+    });
+    expect(vi.mocked(randomUUID).mock.calls).toHaveLength(uuidCount);
+    expect(tx.recoveryOutreachAttempt.findUnique).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+    expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+  });
+
+  it("propagates command-insert failure from the same Serializable transaction after claiming", async () => {
+    const { tx, db } = fixture({ inbound: false });
+    const failure = new Prisma.PrismaClientKnownRequestError("distinct command insert failure", {
+      code: "P2002", clientVersion: "6.19.3",
+    });
+    tx.merchantConversationSendCommand.create.mockRejectedValueOnce(failure);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).rejects.toBe(failure);
+    expect(db.$transaction).toHaveBeenCalledTimes(1);
+    expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    });
+    expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledTimes(1);
+    expect(tx.recoveryOutreachAttempt.updateMany.mock.invocationCallOrder[0])
+      .toBeLessThan(tx.merchantConversationSendCommand.create.mock.invocationCallOrder[0]!);
+    // This verifies rejection/atomic transaction placement, not migrated SQL rollback.
+  });
+
+  it("allocates a text-command ID while keeping its private claim null and public projection unchanged", async () => {
+    const { tx, db } = fixture();
+    const uuidCount = vi.mocked(randomUUID).mock.calls.length;
+    const result = await admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db);
+    const create = tx.merchantConversationSendCommand.create.mock.calls[0]![0];
+    expect(create.data).toMatchObject({ id: result.commandId, followUpClaimKey: null,
+      idempotencyKey: sendInput.idempotencyKey, textBody: "Hello" });
+    expect(create.data.payloadSha256).toBe(humanSendPayloadHash("conversation-1", sendInput));
+    expect(create.select).toEqual({ id: true, state: true, kind: true });
+    expect(result).not.toHaveProperty("followUpClaimKey");
+    expect(result).not.toHaveProperty("initiationKey");
+    expect(vi.mocked(randomUUID).mock.calls).toHaveLength(uuidCount + 1);
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
   });
 });
