@@ -1,3 +1,6 @@
+import { knowledgeFailureRetryable } from "./merchant-knowledge-error.server";
+import { recordMerchantKnowledgeFailure } from "./merchant-knowledge-observability.server";
+import { S3ServiceException } from "@aws-sdk/client-s3";
 import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import {
@@ -84,13 +87,17 @@ function dataFormatKey(key: string): DataFormatKey {
   return key;
 }
 
-function normalizeError(error: unknown): never {
+function normalizeError(error: unknown, shopId: string): never {
   if (error instanceof MerchantKnowledgeError) throw error;
-  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") throw DENIED();
+  if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") {
+    recordMerchantKnowledgeFailure({shopId, operation: "upload_record_missing", error});
+    throw new MerchantKnowledgeError("DENIED", {cause: error});
+  }
   throw error;
 }
 
 async function dependencies(input: {
+  shopId: string;
   database?: Database;
   r2?: MerchantKnowledgeR2Client;
   config?: MerchantKnowledgeR2Config;
@@ -98,15 +105,13 @@ async function dependencies(input: {
 }) {
   // Never merge database policy with legacy environment credentials.
   // The caller may inject one complete snapshot for isolated tests.
-  const config = input.config ?? r2ClientConfigFromSnapshot(
-    await createDefaultShopifyPlatformConfigurationService().requireMerchantKnowledgeR2Configuration(),
-  );
-  return {
-    database: input.database ?? db,
-    config,
-    r2: input.r2 ?? createMerchantKnowledgeR2Client(config),
-    queue: input.queue,
-  };
+  try {
+    const config = input.config ?? r2ClientConfigFromSnapshot(await createDefaultShopifyPlatformConfigurationService().requireMerchantKnowledgeR2Configuration());
+    return {database: input.database ?? db, config, r2: input.r2 ?? createMerchantKnowledgeR2Client(config, input.shopId), queue: input.queue};
+  } catch (cause) {
+    recordMerchantKnowledgeFailure({shopId: input.shopId, operation: "upload_configuration", error: cause});
+    throw new MerchantKnowledgeError("UNAVAILABLE", {cause, retryable: knowledgeFailureRetryable(cause)});
+  }
 }
 
 function parseShopDomain(value: unknown): string {
@@ -150,8 +155,8 @@ export async function createMerchantKnowledgeUploadIntent(input: {
     const intent = await deps.database.$transaction(async (transaction) => {
       await lockMerchantKnowledgeShop(input.shopId, transaction);
       const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+      if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", {cause: entitlement.cause, retryable: entitlement.retryable});
       if (entitlement.kind !== "entitled") throw DENIED();
-      await readMerchantKnowledgeActivation(input.shopId, transaction);
       const pair = await requireAllowedPair(transaction, entitlement.configuration, { purposeKey, dataFormatKey: formatKey }, "UPLOAD");
       const format = await transaction.merchantKnowledgeDataFormat.findUniqueOrThrow({
         where: { id: pair.dataFormatId },
@@ -196,7 +201,7 @@ export async function createMerchantKnowledgeUploadIntent(input: {
       maxUploadBytes: deps.config.maxUploadBytes,
     };
   } catch (error) {
-    normalizeError(error);
+    normalizeError(error, input.shopId);
   }
 }
 
@@ -268,8 +273,11 @@ export async function finalizeMerchantKnowledgeUpload(input: {
     let metadata;
     try {
       metadata = await deps.r2.headObject({ bucket: deps.config.bucket, key: asset.objectKey });
-    } catch {
-      throw new MerchantKnowledgeError("UPLOAD_OBJECT_NOT_FOUND");
+    } catch (cause) {
+      const failure = cause as {$metadata?: {httpStatusCode?: number}; name?: string};
+      if (failure?.$metadata?.httpStatusCode === 404 || (cause instanceof S3ServiceException && ["NotFound", "NoSuchKey"].includes(cause.name)))
+        throw new MerchantKnowledgeError("UPLOAD_OBJECT_NOT_FOUND", {cause});
+      throw new MerchantKnowledgeError("UNAVAILABLE", {cause, retryable: knowledgeFailureRetryable(cause)});
     }
     if (metadata.contentLength !== input.sizeBytes || metadata.contentLength > deps.config.maxUploadBytes) {
       throw new MerchantKnowledgeError("UPLOAD_SIZE_MISMATCH");
@@ -290,6 +298,7 @@ export async function finalizeMerchantKnowledgeUpload(input: {
       if (!lockedAsset.length) throw CONFLICT();
 
       const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+      if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", {cause: entitlement.cause, retryable: entitlement.retryable});
       if (entitlement.kind !== "entitled") throw DENIED();
       const pair = await requireAllowedPair(transaction, entitlement.configuration, {
         purposeKey,
@@ -340,8 +349,7 @@ export async function finalizeMerchantKnowledgeUpload(input: {
         const allowed = new Set(entitlement.configuration.allowedSourceTypes.map((entry) => `${entry.purposeKey}\u0000${entry.dataFormatKey}`));
         const eligible = sources.filter((entry) => entry.purpose.active && entry.dataFormat.active && allowed.has(`${entry.purpose.key}\u0000${entry.dataFormat.key}`));
         if (eligible.length >= entitlement.configuration.maxKnowledgeSources) throw DENIED();
-        const shop = await transaction.shop.findUnique({ where: { id: input.shopId }, select: { defaultLanguageTag: true } });
-        const selectedLanguageTag = parseLanguage(languageTag, shop?.defaultLanguageTag ?? null);
+        const selectedLanguageTag = languageTag;
         actualSourceId = randomUUID();
         generation = 1;
         reason = "CREATE";
@@ -373,14 +381,15 @@ export async function finalizeMerchantKnowledgeUpload(input: {
     let merchantEnabled = false;
     try {
       merchantEnabled = (await readMerchantKnowledgeActivation(input.shopId, deps.database)).merchantEnabled;
-    } catch {
+    } catch (error) {
+      recordMerchantKnowledgeFailure({shopId: input.shopId, operation: "postcommit_activation", error, warn: true});
       // Finalization is already durable. Queue publication remains best effort and
       // reconciliation can publish the pending revision when the database recovers.
     }
     const queued = await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, merchantEnabled, deps.queue);
     return { sourceId: result.sourceId, queued };
   } catch (error) {
-    normalizeError(error);
+    normalizeError(error, input.shopId);
   }
 }
 
@@ -397,6 +406,7 @@ export async function editMerchantKnowledgeUploadSource(input: {
     await database.$transaction(async (transaction) => {
       await lockMerchantKnowledgeShop(input.shopId, transaction);
       const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+      if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", {cause: entitlement.cause, retryable: entitlement.retryable});
       if (entitlement.kind !== "entitled") throw DENIED();
       const locks = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
@@ -426,7 +436,7 @@ export async function editMerchantKnowledgeUploadSource(input: {
     });
     return { ok: true };
   } catch (error) {
-    normalizeError(error);
+    normalizeError(error, input.shopId);
   }
 }
 
@@ -441,6 +451,7 @@ export async function reprocessMerchantKnowledgeUpload(input: {
     const result = await database.$transaction(async (transaction) => {
       await lockMerchantKnowledgeShop(input.shopId, transaction);
       const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+      if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", {cause: entitlement.cause, retryable: entitlement.retryable});
       if (entitlement.kind !== "entitled") throw DENIED();
       const locks = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
         SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
@@ -477,6 +488,6 @@ export async function reprocessMerchantKnowledgeUpload(input: {
     await enqueueMerchantKnowledgeRevisionIfEnabled(result.revision, result.merchantEnabled, input.queue);
     return { ok: true };
   } catch (error) {
-    normalizeError(error);
+    normalizeError(error, input.shopId);
   }
 }

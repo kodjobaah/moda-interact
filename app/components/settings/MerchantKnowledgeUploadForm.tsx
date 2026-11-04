@@ -46,6 +46,7 @@ function sourceNameFromFile(fileName: string, canonicalExtension: string | null)
 
 export default function MerchantKnowledgeUploadForm({
   catalogue,
+  disabled = false,
   maxUploadBytes,
   defaultLanguageTag,
   supportedLanguageTags,
@@ -54,6 +55,7 @@ export default function MerchantKnowledgeUploadForm({
   initialLanguageTag,
   t,
 }: {
+  disabled?: boolean;
   catalogue: UploadFormat[];
   maxUploadBytes: number;
   defaultLanguageTag: string;
@@ -79,7 +81,7 @@ export default function MerchantKnowledgeUploadForm({
   const accept = selected
     ? [selected.dataFormat.canonicalExtension, ...accepted].filter(Boolean).join(",")
     : "";
-  const busy = stage === "preparing" || stage === "uploading" || stage === "finalizing";
+  const busy = disabled || stage === "preparing" || stage === "uploading" || stage === "finalizing";
   const selectedFormatLabel = selected
     ? localized(t, `merchantKnowledge.dataFormats.${selected.dataFormat.key}.label`, selected.dataFormat.displayName)
     : "";
@@ -179,6 +181,7 @@ export default function MerchantKnowledgeUploadForm({
         uploadUrl?: string;
         requiredHeaders?: Record<string, string>;
         error?: string;
+        retryable?: boolean;
       };
       if (!intentResponse.ok || !intent.assetId || !intent.uploadUrl || !intent.requiredHeaders) {
         throw new UploadPipelineError(intent.error ?? "UPLOAD_INTENT_FAILED", "intent", intentResponse.status);
@@ -225,7 +228,7 @@ export default function MerchantKnowledgeUploadForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(finalization),
       });
-      const finalResult = await finalResponse.json() as { ok?: boolean; error?: string; queued?: boolean };
+      const finalResult = await finalResponse.json() as { ok?: boolean; error?: string; queued?: boolean; retryable?: boolean };
       if (!finalResponse.ok || !finalResult.ok) {
         throw new UploadPipelineError(finalResult.error ?? "UPLOAD_FINALIZATION_FAILED", "finalize", finalResponse.status);
       }
@@ -271,7 +274,7 @@ export default function MerchantKnowledgeUploadForm({
       }
 
       setNotice(null);
-      setFailure(`${localized(t, "merchantKnowledge.upload.failed", "Upload failed")} (${uploadError.code})`);
+      setFailure(uploadError.code === "UNAVAILABLE" ? t("common.unavailable") : `${localized(t, "merchantKnowledge.upload.failed", "Upload failed")} (${uploadError.code})`);
       setStage("failed");
     }
   }

@@ -24,8 +24,9 @@ const mocks = vi.hoisted(() => {
 });
 
 vi.mock("../../app/services/feature-preferences/access.server", () => ({
-  settingsAccess: mocks.settingsAccess,
+  settingsMutationAccess: mocks.settingsAccess,
 }));
+vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-error.server", () => ({ MerchantKnowledgeError: mocks.MerchantKnowledgeError, knowledgeFailureRetryable: () => false }));
 vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", () => ({
   createWebPageSource: mocks.createWebPageSource,
   editWebPageSource: mocks.editWebPageSource,
@@ -42,6 +43,7 @@ vi.mock("../../app/services/merchant-knowledge/upload.server", () => ({
 }));
 vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-observability.server", () => ({
   recordMerchantKnowledgeUploadFailure: mocks.recordMerchantKnowledgeUploadFailure,
+  recordMerchantKnowledgeFailure: vi.fn(),
 }));
 
 import { action as sourceAction } from "../../app/routes/app/merchant-knowledge/source/route";
@@ -279,16 +281,7 @@ it("logs server-side upload intent failures without browser filenames", async ()
   });
 
   expect(response.status).toBe(403);
-  expect(mocks.recordMerchantKnowledgeUploadFailure).toHaveBeenCalledWith({
-    stage: "intent",
-    shopId: "authenticated-shop",
-    purposeKey: "PRODUCT_INFORMATION",
-    dataFormatKey: "XLSX",
-    sizeBytes: 4096,
-    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    statusCode: 403,
-    errorCode: "DENIED",
-  });
+  expect(mocks.recordMerchantKnowledgeUploadFailure).not.toHaveBeenCalled();
   expect(JSON.stringify(mocks.recordMerchantKnowledgeUploadFailure.mock.calls)).not.toContain(
     "customer-private-name.xlsx",
   );
