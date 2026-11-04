@@ -25,7 +25,7 @@ type Profile = {
 };
 type SelectionResult =
   | { ok: true; pendingSelectionGeneration: number }
-  | { ok: false; error: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "INVALID_INPUT" };
+  | { ok: false; error: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "SHOP_UNAVAILABLE" | "INVALID_INPUT" };
 
 function mappingIdsForCategory(
   categoryId: string,

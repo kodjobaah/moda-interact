@@ -63,7 +63,7 @@ const makeStore = ({
     },
   };
   const tx = {
-    $queryRaw: vi.fn(async () => []),
+    $queryRaw: vi.fn<(query: { sql: string }) => Promise<Array<{ id: string }>>>().mockResolvedValue([{ id: "shop-1" }]),
     commerceShopProfile: {
       findUnique: vi.fn(async () => state.profile),
       create: vi.fn(async ({ data }) => {
@@ -705,4 +705,13 @@ describe("selectable Store Category read model", () => {
     }));
     expect(JSON.stringify(await listSelectableStoreCategories("de-DE", client))).not.toContain("Do not expose this prompt.");
   });
+});
+
+it("requires an ACTIVE Shop under the existing lock before any publication writes", async () => {
+ const { client, tx } = makeStore();
+ tx.$queryRaw.mockResolvedValueOnce([]);
+ await expect(selectPendingStoreCategory({ shopId: "shop-1", categoryId: "category-home", expectedPendingSelectionGeneration: 0 }, client as never)).rejects.toMatchObject({ code: "SHOP_UNAVAILABLE" });
+ const query = tx.$queryRaw.mock.calls[0][0];
+ expect(query.sql).toContain('AND "status" = \'ACTIVE\' FOR UPDATE');
+ expect(tx.commerceShopProfile.create).not.toHaveBeenCalled(); expect(tx.commerceAgentPrompt.create).not.toHaveBeenCalled(); expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
 });

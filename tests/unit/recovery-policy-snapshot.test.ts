@@ -77,3 +77,12 @@ it("returns selected IDs and provider catalogue facts independently from effecti
   expect(snapshot.effective.recoveryOfferMode).toBe("AI_BEST_APPLICABLE");
   expect(snapshot.effective.source).toBe("ADMIN_OVERRIDE");
 });
+
+it.each([null, { recoveryDelayMinutes: 30, recoveryOfferMode: "NONE", fixedShopifyDiscountId: null, followUpEnabled: false, followUpDelayMinutes: null, updatedAt: new Date() }])("uses supplied settings including null with zero settings queries", async settings => {
+ const client = { shopSettings: { findUnique: vi.fn() }, shopRecoveryPolicyOverride: { findFirst: vi.fn().mockResolvedValue(null) }, shopifyDiscountCatalogue: { findUnique: vi.fn().mockResolvedValue(null) } };
+ const result = loadRecoveryPolicySnapshot("shop-1", undefined, client as never, { settings: settings as never });
+ if (settings) expect((await result).revision).toBe(settings.updatedAt.toISOString());
+ else await expect(result).rejects.toMatchObject({ code: "SETTINGS_NOT_FOUND" });
+ expect(client.shopSettings.findUnique).not.toHaveBeenCalled();
+ expect(client.shopRecoveryPolicyOverride.findFirst).toHaveBeenCalledOnce(); expect(client.shopifyDiscountCatalogue.findUnique).toHaveBeenCalledOnce();
+});

@@ -6,19 +6,27 @@ import {
   getMerchantDeniedRedirect,
   resolveMerchantExperienceState,
 } from "@/services/shop/merchant-route-access-policy";
-export async function settingsAccess(request: Request, context: Readonly<RouterContextProvider> = new RouterContextProvider()) {
-  const merchant = await getMerchantRequestContext({request, context});
-  const {shop, authentication: {session}} = merchant;
+async function authorizeSettings(
+  request: Request,
+  context: Readonly<RouterContextProvider> = new RouterContextProvider(),
+) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const {
+    shop,
+    authentication: { session },
+  } = merchant;
   assertActiveShop(shop, {
     route: "/app/recovery-settings",
     capability: "manage-settings",
     redirectTo: "/app/merchant-support",
   });
-  const settings = await merchant.readSettings();
   const subscription = await merchant.readSubscription();
   const state = resolveMerchantExperienceState({
     shop,
-    subscription: subscription && ["ACTIVE", "TRIALING"].includes(subscription.status) ? subscription : null,
+    subscription:
+      subscription && ["ACTIVE", "TRIALING"].includes(subscription.status)
+        ? subscription
+        : null,
   });
   if (!canAccessMerchantSurface(state, "RECOVERY_SETTINGS"))
     throw new Response(null, {
@@ -27,5 +35,20 @@ export async function settingsAccess(request: Request, context: Readonly<RouterC
         Location: getMerchantDeniedRedirect(state, "RECOVERY_SETTINGS"),
       },
     });
-  return { shop, settings, session, merchant };
+  return { shop, session, merchant };
+}
+
+export async function settingsAccess(
+  request: Request,
+  context?: Readonly<RouterContextProvider>,
+) {
+  const access = await authorizeSettings(request, context);
+  return { ...access, settings: await access.merchant.readSettings() };
+}
+
+export async function settingsMutationAccess(
+  request: Request,
+  context?: Readonly<RouterContextProvider>,
+) {
+  return authorizeSettings(request, context);
 }
