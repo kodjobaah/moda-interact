@@ -95,6 +95,56 @@ describe("purchase history route", () => {
     expect(JSON.stringify(ports.records)).toContain('"origin":"internal"');
     expect(ports.batch).not.toHaveBeenCalled();
   });
+  describe.each([200, 503])("malformed Admin HTTP %i", status => {
+    it.each(["short", "long"])("excludes %s response text from actual Shared output while preserving the original cause", async kind => {
+      const body = kind === "short" ? "SECRETXYZ" : `PARTIAL_BODY_SENTINEL:${"private-body-content".repeat(1000)}:BODY_TAIL_SENTINEL`;
+      const response = new Response(body, { status, headers: { "x-request-id": "safe-parse-request" } });
+      const nativeJson = response.json.bind(response);
+      let parseFailure: unknown;
+      vi.spyOn(response, "json").mockImplementation(async () => {
+        try { return await nativeJson(); } catch (error) { parseFailure = error; throw error; }
+      });
+      ports.graphql.mockResolvedValue(response);
+      let thrown: unknown;
+      try { await action(refund()); } catch (error) { thrown = error; }
+      expect(parseFailure).toBeInstanceOf(SyntaxError);
+      expect((parseFailure as Error).message).toContain(kind === "short" ? "SECRETXYZ" : "PARTIAL_BO");
+      expect(thrown).toBeInstanceOf(Error);
+      expect((thrown as Error).cause).toBe(parseFailure);
+      expect((thrown as Error).message).not.toContain(kind === "short" ? "SECRETXYZ" : "PARTIAL_BO");
+      expect(ports.batch).not.toHaveBeenCalled();
+      expect(ports.history).not.toHaveBeenCalled();
+      expect(ports.reactivate).not.toHaveBeenCalled();
+      expect(ports.records).toHaveLength(1);
+      const output = JSON.stringify(ports.records);
+      for (const fragment of ["SECRETXYZ", "PARTIAL_BO", "private-body-content", "BODY_TAIL_SENTINEL"]) expect(output).not.toContain(fragment);
+      expect(ports.records[0]).toMatchObject({ event: "shopify.billing.provider_failed", data: {
+        operation: "verify_refund_development_store", httpStatus: status, providerRequestId: "safe-parse-request",
+        failureKind: status === 200 ? "MALFORMED_RESPONSE" : "HTTP",
+        origin: status === 200 ? "internal" : "provider_response",
+        error: { message: "Shopify Admin development-store response JSON parsing failed." },
+        causeChain: [{ name: "SyntaxError", message: "Shopify Admin development-store response JSON parsing failed." }],
+      } });
+      process.stdout.write(JSON.stringify({ evidence: "safe_admin_parse_failure", status, bodyKind: kind, records: ports.records }) + "\n");
+    });
+  });
+  it.each([200, 503])("preserves malformed-response rejection with a throwing Shared sink at HTTP %i", async status => {
+    ports.brokenSink = true;
+    const response = new Response("PRIVATE_PARSE_SENTINEL", { status });
+    const nativeJson = response.json.bind(response);
+    let parseFailure: unknown;
+    vi.spyOn(response, "json").mockImplementation(async () => {
+      try { return await nativeJson(); } catch (error) { parseFailure = error; throw error; }
+    });
+    ports.graphql.mockResolvedValue(response);
+    let thrown: unknown;
+    try { await action(refund()); } catch (error) { thrown = error; }
+    expect(parseFailure).toBeInstanceOf(SyntaxError);
+    expect(thrown).toMatchObject({ message: "Shopify Admin development-store response JSON parsing failed." });
+    expect((thrown as Error).cause).toBe(parseFailure);
+    expect(ports.batch).not.toHaveBeenCalled();
+    expect(ports.records).toHaveLength(0);
+  });
   it("isolates a throwing real Shared sink without allowing an unverified refund", async () => {
     ports.brokenSink = true;
     ports.graphql.mockRejectedValue(new Error("original SDK failure"));

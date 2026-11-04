@@ -55,10 +55,14 @@ async function resolveShopifyPartnerDevelopment(admin: AdminApiContext): Promise
   try {
     result = await response.json() as ShopifyShopPlanResponse;
   } catch (error) {
+    // Native JSON parser messages can contain raw response text. Keep the
+    // original cause for propagation, but supply only a safe diagnostic cause.
+    const message = "Shopify Admin development-store response JSON parsing failed.";
     throw createShopifyBillingProviderError({
       operation, failureKind: response.ok ? "MALFORMED_RESPONSE" : "HTTP",
       origin: response.ok ? "internal" : "provider_response",
-      message: error instanceof Error ? error.message : String(error), cause: error,
+      reasonCode: "INVALID_JSON_RESPONSE", message, cause: error,
+      diagnosticCause: error instanceof SyntaxError ? new SyntaxError(message) : new Error(message),
       httpStatus: response.status, providerRequestId: response.headers.get("x-request-id"),
     });
   }
