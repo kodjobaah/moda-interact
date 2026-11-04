@@ -40,6 +40,20 @@ vi.mock("../../../app/db.server", () => ({
 
 import { action } from "../../../app/routes/app/onboarding/resume/route";
 
+async function captureSharedErrorRecords(
+  run: () => Promise<unknown>,
+  options: { throwFromSink?: boolean } = {},
+) {
+  const records: Array<Record<string, unknown>> = [];
+  const sink = vi.spyOn(console, "error").mockImplementation((line) => {
+    if (options.throwFromSink) throw new Error("test Shared sink failure");
+    if (typeof line !== "string") return;
+    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+  });
+  try { await run(); } finally { sink.mockRestore(); }
+  return records;
+}
+
 function request(generation = "7") {
   return new Request("https://app.test/app/onboarding/resume", {
     method: "POST",
@@ -137,5 +151,82 @@ describe("onboarding resume action", () => {
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.transaction).not.toHaveBeenCalled();
+  });
+
+  it("emits category activation failure with the actual generation and preserves the throw", async () => {
+    const cause = new Error("category owner marker");
+    const failure = new Error("category dispatch marker", { cause });
+    mocks.activateInitialCategory.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(action({ request: request("19") } as never)).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.initial_category_activation.failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "activate_initial_pending_store_category",
+      stage: "onboarding_resume",
+      origin: "internal",
+      shopId: "shop-1",
+      identities: { expectedPendingSelectionGeneration: "19" },
+      error: { name: "Error", message: "category dispatch marker" },
+      causeChain: [{ name: "Error", message: "category owner marker" }],
+    });
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(action({ request: request("19") } as never)).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("emits the actual milestone persistence failure without reporting success", async () => {
+    const failure = Object.assign(new Error("resume milestone marker"), { code: "P2025" });
+    mocks.transaction.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(action({ request: request() } as never)).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.onboarding_milestone.persist_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "persist_shopify_onboarding_milestone",
+      stage: "two_row_transaction",
+      origin: "database",
+      shopId: "shop-1",
+      databaseCode: "P2025",
+      error: { name: "Error", message: "resume milestone marker" },
+    });
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(action({ request: request() } as never)).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs original synchronization failure but preserves the bounded 503 response", async () => {
+    const cause = new Error("resume provider adapter marker");
+    const failure = Object.assign(new Error("resume projection marker", { cause }), { code: "P2034" });
+    mocks.syncSubscription.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      const response = await action({ request: request() } as never);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ ok: false, error: "BILLING_RECONCILIATION_FAILED" });
+    });
+    const record = records.find((item) => item.event === "billing.onboarding_resume.sync_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "sync_subscription_for_onboarding_resume",
+      stage: "provider_or_projection",
+      origin: "database",
+      shopId: "shop-1",
+      databaseCode: "P2034",
+      error: { name: "Error", message: "resume projection marker" },
+      causeChain: [{ name: "Error", message: "resume provider adapter marker" }],
+    });
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      const response = await action({ request: request() } as never);
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ ok: false, error: "BILLING_RECONCILIATION_FAILED" });
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
   });
 });

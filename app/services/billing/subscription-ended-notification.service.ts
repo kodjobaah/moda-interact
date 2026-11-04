@@ -60,14 +60,20 @@ export class SubscriptionEndedNotificationService {
   ) {}
 
   async notifySubscriptionEnded(shopId: string, lifecycle: SubscriptionLifecycle): Promise<void> {
+    let stage: "notification_persistence" | "translation_dispatch" = "notification_persistence";
     try {
       const translationId = await this.persistNotification(shopId, lifecycle);
-      if (translationId) await this.dispatchTranslation(translationId);
+      if (translationId) {
+        stage = "translation_dispatch";
+        await this.dispatchTranslation(translationId);
+      }
     } catch (error) {
+      const hasDatabaseCode = typeof error === "object" && error !== null && "code" in error;
       logBillingBoundaryFailure({
         event: "billing.subscription_ended_notification.failed",
         operation: "notify_subscription_ended",
-        stage: "persist_or_dispatch",
+        stage,
+        origin: stage === "notification_persistence" || hasDatabaseCode ? "database" : "transport",
         shopId,
         identities: {
           provider: lifecycle.provider,

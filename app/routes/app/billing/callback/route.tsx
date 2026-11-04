@@ -140,13 +140,40 @@ export async function loader({
     throw new Response("Missing plan_handle", { status: 400 });
   }
 
-  const verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
+  let verificationFence;
+  try {
+    verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
+  } catch (error) {
+    logBillingBoundaryFailure({
+      event: "billing.hosted_plan_verification_fence.read_failed",
+      operation: "read_hosted_plan_verification_fence",
+      stage: "verification_fence_read",
+      origin: "database",
+      shopId: shop.id,
+      error,
+    });
+    throw error;
+  }
   let verification;
   try {
     verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
   } catch (error) {
     const verificationFailure = classifyBillingVerificationFailure(error);
-    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence, verificationFailure);
+    let retry;
+    try {
+      retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence, verificationFailure);
+    } catch (retryError) {
+      logBillingBoundaryFailure({
+        event: "billing.hosted_plan_verification_retry.persist_failed",
+        operation: "record_hosted_plan_verification_failure",
+        stage: "fenced_retry_persistence",
+        origin: "database",
+        shopId: shop.id,
+        identities: { subscriptionId: verificationFence?.id ?? null },
+        error: retryError,
+      });
+      throw retryError;
+    }
     if (retry) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
@@ -162,12 +189,26 @@ export async function loader({
     verification.subscription?.pendingUpdate?.planHandle === requestedPlanHandle
   );
   if (!providerConfirmsSelection) {
-    const result = await billingService.recordHostedPlanChangeReturn({
-      shopId: shop.id,
-      requestedPlanHandle,
-      state: verification,
-      verificationFence,
-    });
+    let result;
+    try {
+      result = await billingService.recordHostedPlanChangeReturn({
+        shopId: shop.id,
+        requestedPlanHandle,
+        state: verification,
+        verificationFence,
+      });
+    } catch (error) {
+      logBillingBoundaryFailure({
+        event: "billing.hosted_plan_change_return.persist_failed",
+        operation: "record_hosted_plan_change_return",
+        stage: "fenced_hosted_return_persistence",
+        origin: "database",
+        shopId: shop.id,
+        identities: { subscriptionId: verificationFence?.id ?? null },
+        error,
+      });
+      throw error;
+    }
     if (
       result.subscriptionId &&
       result.nextReconcileAt &&
@@ -184,8 +225,37 @@ export async function loader({
 
   await persistShopifyOnboardingMilestone(shop.id);
 
-  const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
-    await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
+  let activation;
+  try {
+    activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle);
+  } catch (error) {
+    logBillingBoundaryFailure({
+      event: "billing.subscription_activation.prepare_failed",
+      operation: "prepare_free_subscription_activation",
+      stage: "activation_prepare",
+      origin: "database",
+      shopId: shop.id,
+      identities: { requestedPlanHandle },
+      error,
+    });
+    throw error;
+  }
+  if (!activation) {
+    try {
+      activation = await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
+    } catch (error) {
+      logBillingBoundaryFailure({
+        event: "billing.subscription_activation.prepare_failed",
+        operation: "prepare_paid_subscription_activation",
+        stage: "activation_prepare",
+        origin: "database",
+        shopId: shop.id,
+        identities: { requestedPlanHandle },
+        error,
+      });
+      throw error;
+    }
+  }
 
   if (activation) {
     let partnerVerificationSucceeded = false;
@@ -215,7 +285,21 @@ export async function loader({
     }
 
     if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
-      const completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+      let completed;
+      try {
+        completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+      } catch (error) {
+        logBillingBoundaryFailure({
+          event: "billing.subscription_activation.complete_failed",
+          operation: "complete_free_subscription_activation",
+          stage: "activation_finalize",
+          origin: "database",
+          shopId: shop.id,
+          identities: { requestedPlanHandle, subscriptionId: activation.token?.subscriptionId ?? null },
+          error,
+        });
+        throw error;
+      }
       if (completed) await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
       if (completed?.nextReconcileAt) {
         await enqueueBillingSubscriptionReconcileBestEffort({
@@ -237,12 +321,26 @@ export async function loader({
     }
 
     const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
-    const pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
-      shopId: shop.id,
-      expected: activation.token,
-      nextReconcileAt,
-      verificationFailure,
-    });
+    let pending;
+    try {
+      pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
+        shopId: shop.id,
+        expected: activation.token,
+        nextReconcileAt,
+        verificationFailure,
+      });
+    } catch (error) {
+      logBillingBoundaryFailure({
+        event: "billing.initial_activation_retry.persist_failed",
+        operation: "schedule_initial_free_reconciliation",
+        stage: "fenced_retry_persistence",
+        origin: "database",
+        shopId: shop.id,
+        identities: { subscriptionId: activation.token.subscriptionId },
+        error,
+      });
+      throw error;
+    }
     if (pending) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,

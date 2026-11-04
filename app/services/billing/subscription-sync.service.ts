@@ -215,7 +215,7 @@ export class SubscriptionSyncService {
             : null;
     const now = new Date();
 
-    return this.database.$transaction(async (transaction) => {
+    const projectedSubscription = await this.database.$transaction(async (transaction) => {
       await lockSubscriptionLifecycleRows(transaction, shopId);
       const existingSubscription = await transaction.subscription.findUnique({
         where: { shopId },
@@ -425,5 +425,21 @@ export class SubscriptionSyncService {
       }
       return projectedSubscription;
     });
+
+    if (
+      projectedSubscription?.status === SubscriptionProjectionStatus.SYNC_ERROR &&
+      projectedSubscription.lastSyncErrorCode
+    ) {
+      logBillingBoundaryFailure({
+        event: "billing.subscription_sync.projection_failed",
+        operation: "project_verified_subscription",
+        stage: "local_plan_configuration",
+        origin: "internal",
+        reasonCode: projectedSubscription.lastSyncErrorCode,
+        shopId,
+        identities: { providerPlanHandle: providerSubscription.planHandle },
+      });
+    }
+    return projectedSubscription;
   }
 }

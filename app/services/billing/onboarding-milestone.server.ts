@@ -30,6 +30,7 @@ export async function persistShopifyOnboardingMilestone(
       event: "billing.onboarding_milestone.persist_failed",
       operation: "persist_shopify_onboarding_milestone",
       stage: "two_row_transaction",
+      origin: "database",
       shopId,
       error,
     });

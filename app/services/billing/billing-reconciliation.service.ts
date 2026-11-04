@@ -50,12 +50,14 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
   injectedQueue?: BillingReconciliationQueue | null,
   injectedQueueFactory?: BillingReconciliationQueueFactory,
 ): Promise<void> {
+  let stage: "queue_acquisition" | "queue_add" = "queue_acquisition";
   try {
     const targetQueue = injectedQueue === undefined
       ? await getQueue(injectedQueueFactory)
       : injectedQueue;
     if (!targetQueue) return;
 
+    stage = "queue_add";
     const expectedNextReconcileAt = input.expectedNextReconcileAt.toISOString();
     await targetQueue.add(
       BILLING_SUBSCRIPTION_RECONCILE_JOB_NAME,
@@ -77,7 +79,8 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
     logBillingBoundaryFailure({
       event: "billing.subscription_reconcile.enqueue_failed",
       operation: "enqueue_billing_subscription_reconcile",
-      stage: "queue_add",
+      stage,
+      origin: "transport",
       shopId: input.shopId,
       identities: {
         subscriptionId: input.subscriptionId,

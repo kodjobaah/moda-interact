@@ -63,6 +63,20 @@ vi.mock("../../../app/db.server", () => ({
 import { loader } from "../../../app/routes/app/billing/callback/route";
 import { ShopifyBillingProviderError } from "../../../app/services/billing/providers/shopify-billing-diagnostics.server";
 
+async function captureSharedErrorRecords(
+  run: () => Promise<unknown>,
+  options: { throwFromSink?: boolean } = {},
+) {
+  const records: Array<Record<string, unknown>> = [];
+  const sink = vi.spyOn(console, "error").mockImplementation((line) => {
+    if (options.throwFromSink) throw new Error("test Shared sink failure");
+    if (typeof line !== "string") return;
+    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+  });
+  try { await run(); } finally { sink.mockRestore(); }
+  return records;
+}
+
 const shop = { id: "shop-1", status: "ACTIVE" };
 const freePlan = { id: "free-1", kind: "FREE", shopifyPlanHandle: "free" };
 const paidPlan = { id: "paid-1", kind: "PAID_METERED", shopifyPlanHandle: "growth" };
@@ -232,6 +246,219 @@ describe("billing callback activation", () => {
       data: { onboardingCompleted: true },
     });
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toThrow("ShopSettings invariant missing for Shop shop-1");
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
+  });
+
+  it("emits the original milestone persistence failure and does not continue activation", async () => {
+    const cause = new Error("milestone driver marker");
+    const failure = Object.assign(new Error("milestone write marker", { cause }), { code: "P2025" });
+    mocks.updateOnboarding.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.onboarding_milestone.persist_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "persist_shopify_onboarding_milestone",
+      stage: "two_row_transaction",
+      origin: "database",
+      shopId: "shop-1",
+      databaseCode: "P2025",
+      error: { name: "Error", message: "milestone write marker" },
+      causeChain: [{ name: "Error", message: "milestone driver marker" }],
+    });
+    expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
+  });
+
+  it("emits category activation failure after the durable subscription commit", async () => {
+    const cause = new Error("category storage marker merchant@example.com");
+    const failure = new Error("category activation marker password=category-secret", { cause });
+    mocks.activateInitialCategory.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.initial_category_activation.failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "activate_initial_pending_store_category",
+      stage: "after_subscription_commit",
+      origin: "internal",
+      shopId: "shop-1",
+      error: { name: "Error", message: "category activation marker [REDACTED]" },
+      causeChain: [{ name: "Error", message: "category storage marker [REDACTED]" }],
+    });
+    expect(JSON.stringify(record)).not.toContain("category-secret");
+    expect(JSON.stringify(record)).not.toContain("merchant@example.com");
+    expect(mocks.completeFreeActivation).toHaveBeenCalledBefore(mocks.activateInitialCategory);
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("emits retry persistence failure separately and preserves the original throw", async () => {
+    const failure = Object.assign(new Error("fenced retry write marker"), { code: "P2034" });
+    mocks.getState.mockRejectedValue(new Error("provider timeout marker"));
+    mocks.recordFailure.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.hosted_plan_verification_retry.persist_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "record_hosted_plan_verification_failure",
+      stage: "fenced_retry_persistence",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { subscriptionId: "subscription-1" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "fenced retry write marker" },
+    });
+    expect(JSON.stringify(record)).not.toContain("provider timeout marker");
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs initial activation retry persistence failure distinctly and keeps the bounded outcome", async () => {
+    const cause = new Error("initial retry driver marker");
+    const failure = Object.assign(new Error("initial retry persistence marker password=retry-secret", { cause }), { code: "P2034" });
+    mocks.syncSubscription.mockRejectedValue(new ShopifyBillingProviderError({
+      operation: "get_active_subscription",
+      failureKind: "TRANSPORT",
+      origin: "transport",
+      message: "provider transport marker",
+    }));
+    mocks.scheduleInitialFreeReconciliationIfCurrent.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.initial_activation_retry.persist_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "schedule_initial_free_reconciliation",
+      stage: "fenced_retry_persistence",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { subscriptionId: "subscription-1" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "initial retry persistence marker [REDACTED]" },
+      causeChain: [{ name: "Error", message: "initial retry driver marker" }],
+    });
+    expect(JSON.stringify(record)).not.toContain("provider transport marker");
+    expect(JSON.stringify(record)).not.toContain("retry-secret");
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+    expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
+  });
+
+  it("logs a verification-fence read failure with its database owner and preserves the throw", async () => {
+    const cause = new Error("fence driver marker");
+    const failure = Object.assign(new Error("fence read marker", { cause }), { code: "P2034" });
+    mocks.getFence.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.hosted_plan_verification_fence.read_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "read_hosted_plan_verification_fence",
+      stage: "verification_fence_read",
+      origin: "database",
+      shopId: "shop-1",
+      databaseCode: "P2034",
+      error: { name: "Error", message: "fence read marker" },
+      causeChain: [{ name: "Error", message: "fence driver marker" }],
+    });
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs hosted-return persistence failure at its fenced database boundary", async () => {
+    const failure = Object.assign(new Error("hosted return marker"), { code: "P2034" });
+    mocks.getState.mockResolvedValue({ status: "ACTIVE_SUBSCRIPTION", subscription: { planHandle: "starter" } });
+    mocks.recordReturn.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.hosted_plan_change_return.persist_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "record_hosted_plan_change_return",
+      stage: "fenced_hosted_return_persistence",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { subscriptionId: "subscription-1" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "hosted return marker" },
+    });
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs activation prepare persistence failure with the requested plan identity", async () => {
+    const failure = Object.assign(new Error("activation prepare marker"), { code: "P2034" });
+    mocks.prepareFreeActivation.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "prepare_free_subscription_activation",
+      stage: "activation_prepare",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { requestedPlanHandle: "growth" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "activation prepare marker" },
+    });
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs activation finalization persistence failure without advancing category activation", async () => {
+    const cause = new Error("activation transaction marker");
+    const failure = Object.assign(new Error("activation finalize marker", { cause }), { code: "P2034" });
+    mocks.completeFreeActivation.mockRejectedValue(failure);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.subscription_activation.complete_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "complete_free_subscription_activation",
+      stage: "activation_finalize",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { requestedPlanHandle: "free", subscriptionId: "subscription-1" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "activation finalize marker" },
+      causeChain: [{ name: "Error", message: "activation transaction marker" }],
+    });
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("free")).rejects.toBe(failure);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
   });
 
   it("records and completes a first paid activation only after matching verification", async () => {

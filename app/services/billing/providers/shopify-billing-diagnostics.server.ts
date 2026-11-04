@@ -86,8 +86,15 @@ function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): 
   text = text
     .replace(/(?:https?|postgres(?:ql)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED]")
     .replace(/(?:Bearer\s+|(?:access[_-]?token|authorization|cookie|password|email|phone|address|customer|card|payment)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]")
-    .replace(/\+?\d[\d ()-]{8,}\d/g, "[REDACTED]");
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]");
+  const timestamps = Array.from(
+    text.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,})?Z\b/g),
+    (match) => ({ start: match.index!, end: match.index! + match[0].length }),
+  );
+  text = text.replace(/\+?\d[\d ()-]{8,}\d/g, (match, offset: number) => {
+    const overlapsTimestamp = timestamps.some((timestamp) => offset < timestamp.end && offset + match.length > timestamp.start);
+    return overlapsTimestamp ? match : "[REDACTED]";
+  });
   redacted ||= text !== beforePatterns;
   const truncated = text.length > maxLength;
   return { value: text.slice(0, maxLength), redacted, truncated };
@@ -204,7 +211,9 @@ export function logBillingBoundaryFailure(input: {
   stage: string;
   shopId?: string;
   identities?: Record<string, string | null>;
-  error: unknown;
+  error?: unknown;
+  origin?: ShopifyBillingFailureOrigin;
+  reasonCode?: string;
 }, diagnosticLogger: StructuredLogger = logger): void {
   if (input.error instanceof ShopifyBillingProviderError && input.error.sourceDiagnosticEmitted) return;
   if (typeof input.error === "object" && input.error !== null) {
@@ -217,24 +226,26 @@ export function logBillingBoundaryFailure(input: {
     }
   }
 
-  const safeError = safeErrorValue(input.error, []);
-  const causes = causeChain(input.error, []);
+  const safeError = input.error === undefined ? null : safeErrorValue(input.error, []);
+  const causes = input.error === undefined ? null : causeChain(input.error, []);
   const identities = Object.fromEntries(Object.entries(input.identities ?? {}).map(([key, value]) => {
     const safe = safeText(value, [], 256);
     return [key, safe?.value ?? null];
   }));
-  const code = databaseCode(input.error);
+  const code = input.error === undefined ? undefined : databaseCode(input.error);
   try {
     diagnosticLogger.error(input.event, {
       operation: input.operation,
       stage: input.stage,
+      origin: input.origin ?? (code ? "database" : "internal"),
       ...(input.shopId ? { shopId: input.shopId } : {}),
       ...(Object.keys(identities).length ? { identities } : {}),
-      error: safeError.value,
-      causeChain: causes.causes,
+      ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
+      ...(safeError ? { error: safeError.value } : {}),
+      ...(causes ? { causeChain: causes.causes } : {}),
       ...(code ? { databaseCode: code } : {}),
-      redactionApplied: safeError.redacted || causes.redacted,
-      truncated: safeError.truncated || causes.truncated,
+      redactionApplied: Boolean(safeError?.redacted || causes?.redacted),
+      truncated: Boolean(safeError?.truncated || causes?.truncated),
     });
   } catch {
     // Diagnostics must not change the failure or best-effort policy of the caller.

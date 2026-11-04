@@ -1,6 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ShopifyBillingProvider } from "../../../app/services/billing/providers/shopify-billing.provider";
+import { logBillingBoundaryFailure } from "../../../app/services/billing/providers/shopify-billing-diagnostics.server";
+
+async function captureSharedErrorRecords(
+  run: () => Promise<unknown>,
+  options: { throwFromSink?: boolean } = {},
+) {
+  const records: Array<Record<string, unknown>> = [];
+  const sink = vi.spyOn(console, "error").mockImplementation((line) => {
+    if (options.throwFromSink) throw new Error("test Shared sink failure");
+    if (typeof line !== "string") return;
+    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+  });
+  try { await run(); } finally { sink.mockRestore(); }
+  return records;
+}
 
 const credentialSnapshot = {
   version: 1,
@@ -340,6 +355,188 @@ describe("ShopifyBillingProvider", () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, [{ message: "token-1 is rejected" }]));
     await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" }))
       .rejects.toThrow("[REDACTED] is rejected");
+  });
+
+  it.each([
+    ["HTTP", new Response(JSON.stringify({ errors: [{ message: "HTTP marker token=token-1 email=merchant@example.com", extensions: { code: "HTTP_FAILURE" } }] }), { status: 503, headers: { "x-request-id": "request-http-1" } }), "HTTP marker", "HTTP_FAILURE"],
+    ["GRAPHQL", new Response(JSON.stringify({
+      data: { activeSubscription: null },
+      errors: [{
+        message: "GraphQL marker token=token-1 email=merchant@example.com",
+        extensions: { code: "ACCESS_DENIED", details: "customer=merchant@example.com" },
+      }],
+    }), { status: 200, headers: { "Content-Type": "application/json", "x-request-id": "request-graphql-1" } }), "GraphQL marker", "ACCESS_DENIED"],
+    ["MALFORMED_RESPONSE", response(undefined), "data.activeSubscription", undefined],
+  ] as const)("emits real Shared provider output for %s failures", async (failureKind, result, marker, code) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(result);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" })).rejects.toThrow();
+    });
+    const record = records.find((item) => item.event === "shopify.billing.provider_failed");
+    const data = record?.data as Record<string, unknown>;
+    const serialized = JSON.stringify(record);
+
+    expect(record).toBeDefined();
+    expect(data).toMatchObject({ operation: "get_active_subscription", provider: "shopify" });
+    expect(data.origin).toBe("provider_response");
+    expect(JSON.stringify(data)).toContain(marker);
+    expect(serialized).not.toContain("token-1");
+    expect(serialized).not.toContain("merchant@example.com");
+    if (failureKind === "HTTP") {
+      expect(data).toMatchObject({ failureKind, httpStatus: 503, providerRequestId: "request-http-1" });
+      expect(JSON.stringify(data)).toContain(code);
+    } else if (failureKind === "GRAPHQL") {
+      expect(data.failureKind).toBe(failureKind);
+      expect(data).toMatchObject({
+        httpStatus: 200,
+        providerRequestId: "request-graphql-1",
+        providerErrors: [{ code: "ACCESS_DENIED" }],
+      });
+      expect(data.redactionApplied).toBe(true);
+    } else {
+      expect(data).toMatchObject({ failureKind, reasonCode: "MALFORMED_SUCCESS_RESPONSE" });
+      expect(data).not.toHaveProperty("providerErrors");
+    }
+  });
+
+  it("emits the original credential read failure and database code without making a request", async () => {
+    const cause = Object.assign(new Error("credential row marker password=credential-secret"), { code: "P2025" });
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider(vi.fn().mockRejectedValue(cause)).getActiveSubscription({ shopifyShopId: "shop-1" }))
+        .rejects.toThrow("credential row marker");
+    });
+    const record = records.find((item) => item.event === "shopify.billing.provider_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "get_active_subscription",
+      origin: "database",
+      failureKind: "CONFIGURATION",
+      reasonCode: "PARTNER_CREDENTIALS_UNAVAILABLE",
+      databaseCode: "P2025",
+    });
+    expect(JSON.stringify(data)).toContain("credential row marker [REDACTED]");
+    expect(JSON.stringify(data)).toContain("P2025");
+    expect(JSON.stringify(record)).not.toContain("credential-secret");
+    expect(data).not.toHaveProperty("providerErrors");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const isolatedFetch = vi.spyOn(globalThis, "fetch");
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(provider(vi.fn().mockRejectedValue(cause)).getActiveSubscription({ shopifyShopId: "shop-1" }))
+        .rejects.toThrow("credential row marker");
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+    expect(isolatedFetch).not.toHaveBeenCalled();
+  });
+
+  it("emits JSON parse exceptions without retaining malformed response bodies", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("raw response marker {", {
+      status: 200,
+      headers: { "x-request-id": "request-json-1" },
+    }));
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" })).rejects.toMatchObject({
+        failureKind: "MALFORMED_RESPONSE",
+        cause: expect.any(SyntaxError),
+      });
+    });
+    const record = records.find((item) => item.event === "shopify.billing.provider_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "get_active_subscription",
+      origin: "provider_response",
+      failureKind: "MALFORMED_RESPONSE",
+      reasonCode: "INVALID_JSON_RESPONSE",
+      providerRequestId: "request-json-1",
+    });
+    expect(JSON.stringify(record)).not.toContain("raw response marker");
+    expect(data).not.toHaveProperty("providerErrors");
+  });
+
+  it("emits body-read transport exception and cause without provider response fields", async () => {
+    const cause = new Error("response stream marker");
+    const body = response(null);
+    vi.spyOn(body, "text").mockRejectedValue(cause);
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(body);
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" })).rejects.toMatchObject({
+        failureKind: "TRANSPORT",
+        cause,
+      });
+    });
+    const record = records.find((item) => item.event === "shopify.billing.provider_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "get_active_subscription",
+      origin: "transport",
+      failureKind: "TRANSPORT",
+      httpStatus: 200,
+      causeChain: [{ name: "Error", message: "response stream marker" }],
+    });
+    expect(data).not.toHaveProperty("providerErrors");
+    expect(data).not.toHaveProperty("providerErrorExcerpt");
+  });
+
+  it("emits transport exception and cause without inventing provider error fields", async () => {
+    const cause = new Error("socket transport marker");
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("fetch wrapper", { cause }));
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" })).rejects.toThrow("fetch wrapper");
+    });
+    const record = records.find((item) => item.event === "shopify.billing.provider_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "get_active_subscription",
+      origin: "transport",
+      failureKind: "TRANSPORT",
+      error: { name: "ShopifyBillingProviderError", message: "fetch wrapper" },
+      causeChain: [
+        { name: "Error", message: "fetch wrapper" },
+        { name: "Error", message: "socket transport marker" },
+      ],
+    });
+    expect(JSON.stringify(data)).toContain("socket transport marker");
+    expect(data).not.toHaveProperty("providerErrors");
+    expect(data).not.toHaveProperty("httpStatus");
+  });
+
+  it("does not duplicate the full source diagnostic at a rethrowing caller", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, [{ message: "single source marker" }]));
+    const records = await captureSharedErrorRecords(async () => {
+      await expect((async () => {
+        try {
+          await provider().getActiveSubscription({ shopifyShopId: "shop-1" });
+        } catch (error) {
+          logBillingBoundaryFailure({
+            event: "billing.callback.sync_failed",
+            operation: "sync_subscription",
+            stage: "provider_or_projection",
+            shopId: "shop-1",
+            error,
+          });
+          throw error;
+        }
+      })()).rejects.toThrow("single source marker");
+    });
+
+    expect(records.filter((item) => item.event === "shopify.billing.provider_failed")).toHaveLength(1);
+    expect(records.some((item) => item.event === "billing.callback.sync_failed")).toBe(false);
+    expect(JSON.stringify(records)).toContain("single source marker");
+  });
+
+  it("preserves typed provider failure when the actual Shared console sink throws", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response(null, [{ message: "sink isolation marker" }]));
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" }))
+        .rejects.toMatchObject({ failureKind: "GRAPHQL", message: "sink isolation marker" });
+    }, { throwFromSink: true });
+
+    expect(records).toHaveLength(0);
   });
 
 });
