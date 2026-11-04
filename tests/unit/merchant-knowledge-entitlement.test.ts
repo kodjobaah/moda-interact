@@ -91,12 +91,12 @@ it.each([
 });
 
 it("fails closed for malformed Shared C2 configuration", async () => {
-  mocks.parse.mockReturnValue({ success: false });
+  mocks.parse.mockReturnValue({ success: false, error: new Error("invalid configuration marker") });
   const { client } = clientWith(validSubscription);
 
   await expect(
     loadEntitlement("shop-1", client),
-  ).resolves.toEqual({ kind: "unavailable", retryable: false });
+  ).resolves.toMatchObject({ kind: "unavailable", retryable: false, cause: expect.any(Error) });
 });
 
 it("reports a database read failure as retryable and unavailable", async () => {
@@ -105,5 +105,5 @@ it("reports a database read failure as retryable and unavailable", async () => {
 
   await expect(
     loadEntitlement("shop-1", client),
-  ).resolves.toEqual({ kind: "unavailable", retryable: true });
+  ).resolves.toMatchObject({ kind: "unavailable", retryable: true, cause: expect.any(Error) });
 });

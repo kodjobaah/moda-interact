@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createMerchantKnowledgeR2Client } from "../../app/services/merchant-knowledge/r2-client.server";
 import { r2ClientConfigFromSnapshot } from "../../app/services/merchant-knowledge/r2-config.server";
@@ -26,13 +27,11 @@ vi.mock("../../app/services/platform-configuration/composition.server", () => ({
 vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-entitlement.server", () => ({
   loadCurrentMerchantKnowledgeEntitlement: serviceMocks.entitlement,
 }));
-vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", () => ({
+vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", async () => ({
   createMerchantKnowledgeRevision: vi.fn(),
   enqueueMerchantKnowledgeRevisionIfEnabled: vi.fn(),
   lockMerchantKnowledgeShop: serviceMocks.lockShop,
-  MerchantKnowledgeError: class MerchantKnowledgeError extends Error {
-    constructor(readonly code: string) { super(code); }
-  },
+  MerchantKnowledgeError: (await import("../../app/services/merchant-knowledge/merchant-knowledge-error.server")).MerchantKnowledgeError,
   readMerchantKnowledgeActivation: serviceMocks.activation,
   requireAllowedPair: serviceMocks.requireAllowedPair,
   requireCurrentlyPlanEntitledSource: vi.fn(),
@@ -133,6 +132,7 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     originalFileName: "catalog.csv",
     uploadExpiresAt: new Date("2026-10-01T12:10:00.000Z"),
   });
+  expect(serviceMocks.activation).not.toHaveBeenCalled();
   expect(result).not.toHaveProperty("objectKey");
   expect(result).not.toHaveProperty("credentials");
   expect(serviceMocks.signPut).toHaveBeenCalledWith({
@@ -186,7 +186,7 @@ it("fails closed before creating upload intents when R2 config is revoked", asyn
     sizeBytes: 32,
     database: serviceMocks.database as never,
     r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
-  })).rejects.toThrow("DISABLED");
+  })).rejects.toMatchObject({code: "UNAVAILABLE", retryable: false, cause: expect.objectContaining({message: "DISABLED"})});
   expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
   expect(serviceMocks.signPut).not.toHaveBeenCalled();
 });
@@ -234,7 +234,7 @@ it("rejects an unsafe deployment environment before allocating an asset", async 
 });
 
 it("includes the lowercase if-none-match header in the signed PUT request", async () => {
-  const client = createMerchantKnowledgeR2Client(testConfig);
+  const client = createMerchantKnowledgeR2Client(testConfig, "shop-1");
   const signedUrl = await client.signPut({
     bucket: "merchant-knowledge",
     key: "merchant-knowledge/shop-1/asset-1/source.csv",
@@ -336,10 +336,32 @@ it("does not finalise an in-flight object against a newly selected bucket", asyn
     database: database as never,
     r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
     now: () => new Date("2026-10-01T12:01:00.000Z"),
-  })).rejects.toMatchObject({ code: "UPLOAD_OBJECT_NOT_FOUND" });
+  })).rejects.toMatchObject({ code: "UNAVAILABLE", retryable: false });
   expect(serviceMocks.requireR2).toHaveBeenCalledTimes(1);
   expect(serviceMocks.headObject).toHaveBeenCalledWith({
     bucket: "new-bucket", key: "merchant-knowledge/test/shop-1/asset-1/source.csv",
   });
   expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
+});
+
+it.each([[404, "UPLOAD_OBJECT_NOT_FOUND", undefined], [403, "UNAVAILABLE", false], [429, "UNAVAILABLE", true], [503, "UNAVAILABLE", true]])("classifies actual HEAD HTTP %i without opening a transaction", async (status, code, retryable) => {
+ serviceMocks.transaction.merchantKnowledgeUploadedAsset.findUnique.mockResolvedValue({id: "asset", shopId: "shop", dataFormatId: "format-csv", status: "PENDING_UPLOAD", objectKey: "private-key", uploadExpiresAt: new Date("2099-01-01"), dataFormat: {key: "CSV", inputKind: "UPLOAD", active: true, acceptedContentTypes: ["text/csv"]}});
+ const cause = Object.assign(new Error("original storage failure"), {$metadata: {httpStatusCode: status}});
+ serviceMocks.headObject.mockRejectedValue(cause);
+ await expect(finalizeMerchantKnowledgeUpload({shopId: "shop", assetId: "asset", purposeKey: "PRODUCT_INFORMATION", name: "Fixture", languageTag: "en", sizeBytes: 32, sha256: "a".repeat(64), contentType: "text/csv",
+ database: {...serviceMocks.database, merchantKnowledgeUploadedAsset: serviceMocks.transaction.merchantKnowledgeUploadedAsset} as never, config: testConfig, r2: {signPut: serviceMocks.signPut, headObject: serviceMocks.headObject}})).rejects.toMatchObject({code, cause, ...(retryable === undefined ? {} : {retryable})});
+ expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
+});
+
+it("normalization logs the real P2025 and cause before preserving the typed denial", async () => {
+ const original = new Prisma.PrismaClientKnownRequestError("original missing upload record", {code: "P2025", clientVersion: "6.19.3"});
+ Object.assign(original, {cause: new Error("original missing record cause")});
+ serviceMocks.database.$transaction.mockRejectedValueOnce(original);
+ const output = vi.spyOn(console, "error").mockImplementation(() => {});
+ try {
+  await expect(createMerchantKnowledgeUploadIntent({shopId: "shop-1", shopDomain: "shop.myshopify.com", purposeKey: "PRODUCT_INFORMATION", dataFormatKey: "CSV", originalFileName: "fixture.csv", contentType: "text/csv", sizeBytes: 32,
+   database: serviceMocks.database as never, config: testConfig, r2: {signPut: serviceMocks.signPut, headObject: serviceMocks.headObject}})).rejects.toMatchObject({code: "DENIED", cause: original});
+  const json = output.mock.calls.map(call => String(call[0])).join("\n");
+  expect(json).toContain("P2025"); expect(json).toContain("original missing record cause"); expect(json).toContain("original missing upload record");
+ } finally {output.mockRestore();}
 });

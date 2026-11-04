@@ -1,12 +1,12 @@
+import { merchantKnowledgeActionFailure } from "@/services/merchant-knowledge/merchant-knowledge-http.server";
 import type { ActionFunctionArgs } from "react-router";
-import { settingsAccess } from "@/services/feature-preferences/access.server";
+import { settingsMutationAccess } from "@/services/feature-preferences/access.server";
 import {
-  MerchantKnowledgeError,
   reorderMerchantKnowledgeSources,
 } from "@/services/merchant-knowledge/merchant-knowledge.server";
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request, context);
+  const { shop } = await settingsMutationAccess(request, context);
   const form = await request.formData();
   if ([...form.keys()].some((key) => key !== "sourceIds" || form.getAll(key).length !== 1))
     return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
@@ -23,8 +23,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
     await reorderMerchantKnowledgeSources({ shopId: shop.id, sourceIds });
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof MerchantKnowledgeError)
-      return Response.json({ ok: false, error: error.code }, { status: error.code === "CONFLICT" ? 409 : error.code === "DENIED" ? 403 : 400 });
-    throw error;
+    return merchantKnowledgeActionFailure(error, {shopId: shop.id, operation: "reorder"});
   }
 }

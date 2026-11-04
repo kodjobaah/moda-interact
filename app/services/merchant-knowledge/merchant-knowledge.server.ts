@@ -10,20 +10,17 @@ import {
   resolveModaConfigurationLocale,
 } from "@modainteract/moda-interact-shared/internationalization";
 import db from "@/db.server";
-import { loadCurrentMerchantKnowledgeEntitlement } from "./merchant-knowledge-entitlement.server";
+import type { SettingsReadContext } from "../feature-preferences/settings-read-context.server";
+import { MerchantKnowledgeError } from "./merchant-knowledge-error.server";
+export { MerchantKnowledgeError } from "./merchant-knowledge-error.server";
+import { recordMerchantKnowledgeFailure } from "./merchant-knowledge-observability.server";
+import { loadCurrentMerchantKnowledgeEntitlement, projectMerchantKnowledgeEntitlement } from "./merchant-knowledge-entitlement.server";
 import { enqueueMerchantKnowledgeRevisionBestEffort } from "./merchant-knowledge-queue.server";
 import { createDefaultShopifyPlatformConfigurationService } from "../platform-configuration/composition.server";
 
 type Database = Pick<PrismaClient, "$transaction" | "merchantKnowledgePurpose" | "merchantKnowledgeDataFormat" | "merchantKnowledgePurposeDataFormat" | "merchantKnowledgeSource" | "merchantKnowledgeSourceRevision" | "subscription" | "feature" | "shopFeaturePreference" | "shop">;
 export type MerchantKnowledgeTransaction = Prisma.TransactionClient;
 type Transaction = MerchantKnowledgeTransaction;
-
-export class MerchantKnowledgeError extends Error {
-  constructor(readonly code: string) {
-    super(code);
-    this.name = "MerchantKnowledgeError";
-  }
-}
 
 const denied = () => new MerchantKnowledgeError("DENIED");
 const invalid = () => new MerchantKnowledgeError("INVALID_INPUT");
@@ -107,12 +104,16 @@ async function loadSourcePair(source: { purposeId: string; dataFormatId: string 
   });
 }
 
-export async function loadMerchantKnowledge(shopId: string, database: Database = db) {
+export async function loadMerchantKnowledge(shopId: string, database: Database = db, readContext?: SettingsReadContext) {
+  if (readContext && readContext.shop.id !== shopId) throw denied();
+  try { return await readMerchantKnowledge(shopId, database, readContext); }
+  catch (error) { recordMerchantKnowledgeFailure({shopId, operation: "read", error}); throw error; }
+}
+async function readMerchantKnowledge(shopId: string, database: Database, readContext?: SettingsReadContext) {
   const [entitlement, shop, catalogue, sources] = await Promise.all([
-    loadCurrentMerchantKnowledgeEntitlement(shopId, database),
-    database.shop.findUnique({
-      where: { id: shopId },
-      select: { defaultLanguageTag: true },
+    readContext ? projectMerchantKnowledgeEntitlement(readContext.subscription, readContext.plan) : loadCurrentMerchantKnowledgeEntitlement(shopId, database),
+    readContext ? readContext.shop : database.shop.findUnique({
+      where: { id: shopId }, select: { defaultLanguageTag: true },
     }),
     database.merchantKnowledgePurposeDataFormat.findMany({
       where: {
@@ -157,7 +158,11 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
       },
     }),
   ]);
-  const activation = await readMerchantKnowledgeActivation(shopId, database);
+  if (readContext && entitlement.kind === "unavailable") recordMerchantKnowledgeFailure({shopId, operation: "entitlement_configuration", error: entitlement.cause, origin: "internal"});
+  const mappedFeature = readContext?.plan?.features.find(mapping => mapping.feature.key === "merchant_knowledge")?.feature;
+  const feature = readContext ? mappedFeature ?? await database.feature.findUnique({ where: {key: "merchant_knowledge"}, select: {id: true, active: true, activationMode: true} }) : null;
+  const activation = readContext ? { featureId: feature?.id ?? null, merchantEnabled: Boolean(feature?.active && feature.activationMode === "MERCHANT_OPT_IN" && readContext.preferences.find(preference => preference.featureId === feature.id)?.enabled) }
+    : await readMerchantKnowledgeActivation(shopId, database);
   const activeRevisions = sources.length
     ? await database.merchantKnowledgeSourceRevision.findMany({
         where: { sourceId: { in: sources.map(({ id }) => id) }, status: "ACTIVE" },
@@ -189,9 +194,10 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
   const maxUploadBytes = await createDefaultShopifyPlatformConfigurationService()
     .requireMerchantKnowledgeR2Configuration()
     .then((snapshot) => snapshot.maxUploadBytes)
-    .catch(() => 0);
+    .catch(error => { recordMerchantKnowledgeFailure({shopId, operation: "display_configuration", error}); return 0; });
 
   return {
+    entitlementState: entitlement.kind,
     planEntitled,
     merchantEnabled: activation.merchantEnabled,
     effectiveEnabled: planEntitled && activation.merchantEnabled,
@@ -205,7 +211,7 @@ export async function loadMerchantKnowledge(shopId: string, database: Database =
     sources: sources.map((source) => {
       const currentlyPlanEntitled = source.purpose.active && source.dataFormat.active &&
         allowed.has(`${source.purpose.key}\u0000${source.dataFormat.key}`) && withinCount.has(source.id);
-      const dormantReason = !planEntitled
+      const dormantReason = entitlement.kind === "unavailable" ? null : !planEntitled
         ? "NO_CURRENT_PLAN"
         : !allowed.has(`${source.purpose.key}\u0000${source.dataFormat.key}`) || !source.purpose.active || !source.dataFormat.active
           ? "SOURCE_TYPE"
@@ -358,6 +364,7 @@ export async function createWebPageSource(input: {
   const result = await database.$transaction(async (transaction) => {
     await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", { cause: entitlement.cause, retryable: entitlement.retryable });
     if (entitlement.kind !== "entitled") throw denied();
     const pair = await requireAllowedPair(transaction, entitlement.configuration, type);
     const activation = await readMerchantKnowledgeActivation(input.shopId, transaction);
@@ -417,6 +424,7 @@ export async function editWebPageSource(input: {
   const result = await database.$transaction(async (transaction) => {
     await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", { cause: entitlement.cause, retryable: entitlement.retryable });
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
@@ -463,6 +471,7 @@ export async function refreshWebPageSource(input: {
   const result = await database.$transaction(async (transaction) => {
     await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", { cause: entitlement.cause, retryable: entitlement.retryable });
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
@@ -493,22 +502,23 @@ export async function refreshWebPageSource(input: {
   return { ok: true };
 }
 
-async function rewritePositions(
-  transaction: Transaction,
-  shopId: string,
-  sourceIds: readonly string[],
-) {
-  await transaction.merchantKnowledgeSource.updateMany({
-    where: { shopId },
-    data: { position: { increment: 1_000_000_000 } },
-  });
-  for (const [position, id] of sourceIds.entries()) {
-    const updated = await transaction.merchantKnowledgeSource.updateMany({
-      where: { id, shopId },
-      data: { position },
-    });
-    if (updated.count !== 1) throw conflict();
+async function rewritePositions(transaction: Transaction, shopId: string, sourceIds: readonly string[], rows: readonly {id: string; position: number}[]) {
+  if (rows.every((row, index) => row.id === sourceIds[index] && row.position === index)) return;
+  const maxPosition = rows.reduce((max, row) => Math.max(max, row.position), -1);
+  const offset = maxPosition + 1;
+  if (rows.some(row => !Number.isInteger(row.position) || row.position < 0) || maxPosition + offset > 2147483647 || sourceIds.length - 1 > 2147483647) {
+    const error = new Error("Merchant knowledge persisted ordering range is invalid.");
+    recordMerchantKnowledgeFailure({shopId, operation: "order_range", error, origin: "internal"});
+    throw new MerchantKnowledgeError("CONFLICT", { cause: error });
   }
+  const moved = await transaction.$executeRaw(Prisma.sql`UPDATE "commerce"."MerchantKnowledgeSource" SET "position" = "position" + ${offset} WHERE "shopId" = ${shopId}`);
+  if (moved !== rows.length) throw conflict();
+  const updated = await transaction.$executeRaw(Prisma.sql`
+    UPDATE "commerce"."MerchantKnowledgeSource" s SET "position" = (ordered.ordinal - 1)::integer, "updatedAt" = ${new Date()}
+    FROM unnest(${[...sourceIds]}::text[]) WITH ORDINALITY AS ordered(id, ordinal)
+    WHERE s."id" = ordered.id AND s."shopId" = ${shopId}
+  `);
+  if (updated !== rows.length) throw conflict();
 }
 
 export async function deleteMerchantKnowledgeSource(input: {
@@ -520,6 +530,7 @@ export async function deleteMerchantKnowledgeSource(input: {
   await database.$transaction(async (transaction) => {
     await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", { cause: entitlement.cause, retryable: entitlement.retryable });
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT "id" FROM "commerce"."MerchantKnowledgeSource"
@@ -531,9 +542,9 @@ export async function deleteMerchantKnowledgeSource(input: {
     const remaining = await transaction.merchantKnowledgeSource.findMany({
       where: { shopId: input.shopId },
       orderBy: [{ position: "asc" }, { id: "asc" }],
-      select: { id: true },
+      select: { id: true, position: true },
     });
-    await rewritePositions(transaction, input.shopId, remaining.map(({ id }) => id));
+    await rewritePositions(transaction, input.shopId, remaining.map(({ id }) => id), remaining);
   });
   return { ok: true };
 }
@@ -549,13 +560,15 @@ export async function reorderMerchantKnowledgeSources(input: {
   await database.$transaction(async (transaction) => {
     await lockMerchantKnowledgeShop(input.shopId, transaction);
     const entitlement = await loadCurrentMerchantKnowledgeEntitlement(input.shopId, transaction);
+    if (entitlement.kind === "unavailable") throw new MerchantKnowledgeError("UNAVAILABLE", { cause: entitlement.cause, retryable: entitlement.retryable });
     if (entitlement.kind !== "entitled") throw denied();
     const rows = await transaction.merchantKnowledgeSource.findMany({
       where: { shopId: input.shopId },
-      select: { id: true },
+      orderBy: [{position: "asc"}, {id: "asc"}],
+      select: { id: true, position: true },
     });
     if (rows.length !== sourceIds.length || rows.some(({ id }) => !sourceIds.includes(id))) throw conflict();
-    await rewritePositions(transaction, input.shopId, sourceIds);
+    await rewritePositions(transaction, input.shopId, sourceIds, rows);
   });
   return { ok: true };
 }

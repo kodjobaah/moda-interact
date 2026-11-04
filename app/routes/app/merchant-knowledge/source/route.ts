@@ -1,9 +1,9 @@
+import { merchantKnowledgeActionFailure } from "@/services/merchant-knowledge/merchant-knowledge-http.server";
 import type { ActionFunctionArgs } from "react-router";
-import { settingsAccess } from "@/services/feature-preferences/access.server";
+import { settingsMutationAccess } from "@/services/feature-preferences/access.server";
 import {
   createWebPageSource,
   editWebPageSource,
-  MerchantKnowledgeError,
 } from "@/services/merchant-knowledge/merchant-knowledge.server";
 import { editMerchantKnowledgeUploadSource } from "@/services/merchant-knowledge/upload.server";
 
@@ -17,7 +17,7 @@ function stringField(form: FormData, key: string): string | null {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request, context);
+  const { shop } = await settingsMutationAccess(request, context);
   const form = await request.formData();
   const operation = stringField(form, "operation");
   const fields = operation === "create"
@@ -63,8 +63,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
     }
     return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    if (error instanceof MerchantKnowledgeError)
-      return Response.json({ ok: false, error: error.code }, { status: error.code === "CONFLICT" ? 409 : error.code === "DENIED" ? 403 : 400 });
-    throw error;
+    return merchantKnowledgeActionFailure(error, {shopId: shop.id, operation: "source"});
   }
 }

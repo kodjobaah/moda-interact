@@ -3,6 +3,7 @@ import {
   MerchantKnowledgeFeatureConfigurationSchema,
   type MerchantKnowledgeFeatureConfiguration,
 } from "@modainteract/moda-interact-shared/merchant-knowledge";
+import { recordMerchantKnowledgeFailure } from "./merchant-knowledge-observability.server";
 import db from "@/db.server";
 
 const FEATURE_KEY = "merchant_knowledge";
@@ -10,7 +11,7 @@ const FEATURE_KEY = "merchant_knowledge";
 export type MerchantKnowledgeEntitlement =
   | { kind: "entitled"; configuration: MerchantKnowledgeFeatureConfiguration }
   | { kind: "denied" }
-  | { kind: "unavailable"; retryable: boolean };
+  | { kind: "unavailable"; retryable: boolean; cause: unknown };
 
 const subscriptionSelection = {
   status: true,
@@ -53,20 +54,27 @@ export async function loadCurrentMerchantKnowledgeEntitlement(
       where: { shopId },
       select: subscriptionSelection,
     });
-  } catch {
-    return { kind: "unavailable", retryable: true };
+  } catch (cause) {
+    recordMerchantKnowledgeFailure({ shopId, operation: "entitlement", error: cause, origin: "database" });
+    return { kind: "unavailable", retryable: true, cause };
   }
+  const result = projectMerchantKnowledgeEntitlement(subscription, subscription?.plan ?? null);
+  if (result.kind === "unavailable") recordMerchantKnowledgeFailure({shopId, operation: "entitlement_configuration", error: result.cause, origin: "internal"});
+  return result;
+}
+
+export function projectMerchantKnowledgeEntitlement(subscription: {status: string; planId: string | null} | null, plan: SubscriptionRow["plan"]): MerchantKnowledgeEntitlement {
 
   if (
     !subscription ||
     (subscription.status !== "ACTIVE" && subscription.status !== "TRIALING") ||
     !subscription.planId ||
-    !subscription.plan?.active
+    !plan?.active
   ) {
     return { kind: "denied" };
   }
 
-  const mapping = subscription.plan.features.find(
+  const mapping = plan.features.find(
     (candidate) =>
       candidate.enabled &&
       candidate.feature.key === FEATURE_KEY &&
@@ -78,8 +86,9 @@ export async function loadCurrentMerchantKnowledgeEntitlement(
   const configuration = MerchantKnowledgeFeatureConfigurationSchema.safeParse(
     mapping.configuration,
   );
-  if (!configuration.success)
-    return { kind: "unavailable", retryable: false };
+  if (!configuration.success) {
+    return { kind: "unavailable", retryable: false, cause: configuration.error };
+  }
 
   return { kind: "entitled", configuration: configuration.data };
 }
