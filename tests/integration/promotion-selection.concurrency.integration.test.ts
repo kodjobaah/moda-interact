@@ -116,7 +116,9 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("promotion sele
       const sql = queries.slice(offset);
       expect(sql.filter(query => query.startsWith("SELECT")).length).toBeGreaterThanOrEqual(5);
       process.stdout.write(JSON.stringify({ operation: "translated_promotion_page", page: offerPage, returnedRows: page.offers.length,
-        totalEntries: page.offersPagination.totalEntries, emittedSql: sql.length }) + "\n");
+        totalEntries: page.offersPagination.totalEntries, emittedSql: sql.length,
+        selectStatements: sql.filter(query => /^SELECT\b/i.test(query)).length,
+        transactionControl: sql.filter(query => /^(BEGIN|COMMIT|ROLLBACK)\b/i.test(query)).length }) + "\n");
     }
     expect(selected).toEqual(expected.sort());
     expect(new Set(selected).size).toBe(expected.length);
