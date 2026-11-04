@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   authenticateAdmin: vi.fn(),
   resolveShop: vi.fn(),
+  getMerchantRequestContext: vi.fn(),
   assertActiveShop: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   syncSubscription: vi.fn(),
@@ -17,6 +18,9 @@ vi.mock("../../../app/shopify.server", () => ({
 }));
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
+}));
+vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: mocks.getMerchantRequestContext,
 }));
 vi.mock("../../../app/services/shop/shop-access-policy", () => ({
   assertActiveShop: mocks.assertActiveShop,
@@ -54,6 +58,14 @@ beforeEach(() => {
     domain: "merchant.myshopify.com",
     status: "ACTIVE",
     onboardingCompleted: false,
+  });
+  mocks.getMerchantRequestContext.mockResolvedValue({
+    shop: {
+      id: "shop-1",
+      domain: "merchant.myshopify.com",
+      status: "ACTIVE",
+      onboardingCompleted: false,
+    },
   });
   mocks.getSubscriptionProjection.mockResolvedValue({
     status: "UNMAPPED",

@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 
 import { SubscriptionSyncService } from "../../../../app/services/billing/subscription-sync.service";
+import { ShopifyBillingProviderError } from "../../../../app/services/billing/providers/shopify-billing-diagnostics.server";
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
@@ -131,6 +132,33 @@ function createSyncService({
 }
 
 describe("SubscriptionSyncService", () => {
+  it("does not start a projection transaction when provider success evidence is malformed", async () => {
+    const harness = createSyncService({
+      currentSubscription: {
+        id: "subscription-1",
+        status: SubscriptionProjectionStatus.ACTIVE,
+        planId: "paid-plan",
+        observedShopifyPlanHandle: "growth",
+        providerSubscriptionId: "provider-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        trialEndsAt: null,
+      },
+    });
+    const malformed = new ShopifyBillingProviderError({
+      operation: "get_active_subscription",
+      failureKind: "MALFORMED_RESPONSE",
+      origin: "provider_response",
+      message: "Partner response missing data.activeSubscription",
+    });
+    harness.provider.getActiveSubscription.mockRejectedValue(malformed);
+
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(malformed);
+
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+    expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
+  });
+
   it("rejects a Woo-owned Shop before Shopify provider access", async () => {
     const harness = createSyncService();
     harness.database.shop.findUnique.mockResolvedValueOnce({

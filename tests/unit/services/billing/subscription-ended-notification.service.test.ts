@@ -46,6 +46,7 @@ function makeEndedSyncDatabase(current: Record<string, unknown>, notificationQue
   };
   const projectionTransaction = {
     subscription,
+    billingOperation: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: vi.fn().mockResolvedValue([]),
   };
   const notificationTransaction = {
@@ -59,6 +60,7 @@ function makeEndedSyncDatabase(current: Record<string, unknown>, notificationQue
     shop: {
       findUnique: vi.fn().mockResolvedValue({
         id: "shop-1",
+        platform: "SHOPIFY",
         status: "ACTIVE",
         shopifyShopId: "gid://shop/1",
       }),

@@ -645,6 +645,7 @@ describe("ShopifyBillingOperationService", () => {
       subscriptionId: "subscription-1",
     });
 
+    expect(harness.transaction.billingOperation.updateMany).toHaveBeenCalledTimes(1);
     expect(confirmed).toMatchObject({
       id: operation?.id,
       state: BillingOperationState.CONFIRMED,

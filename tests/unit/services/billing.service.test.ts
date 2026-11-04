@@ -718,10 +718,10 @@ describe("BillingService subscription projection", () => {
       planKind: "PAID_METERED",
     });
 
-    expect(lockSql[0]).toContain('FROM "shopify"."ShopSettings"');
-    expect(lockSql[1]).toContain('FROM "billing"."Subscription"');
-    expect(lockSql[2]).toContain('FROM "shopify"."Shop"');
-    expect(lockSql[2]).toContain("FOR UPDATE");
+    expect(lockSql[0]).toContain('FROM "commerce"."Shop"');
+    expect(lockSql[1]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockSql[2]).toContain('FROM "billing"."Subscription"');
+    expect(lockSql.every((statement) => statement.includes("FOR UPDATE"))).toBe(true);
   });
 
   it("fails closed when the current cycle is missing", async () => {
@@ -1229,10 +1229,12 @@ describe("BillingService subscription projection", () => {
 
     await service.prepareFreeActivation("shop-1", "free");
 
-    expect(lockSql[0]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockSql[0]).toContain('FROM "commerce"."Shop"');
     expect(lockSql[0]).toContain("FOR UPDATE");
-    expect(lockSql[1]).toContain('FROM "billing"."Subscription"');
+    expect(lockSql[1]).toContain('FROM "shopify"."ShopSettings"');
     expect(lockSql[1]).toContain("FOR UPDATE");
+    expect(lockSql[2]).toContain('FROM "billing"."Subscription"');
+    expect(lockSql[2]).toContain("FOR UPDATE");
   });
 
   it("ignores a stale token before projecting an active Partner response", async () => {
@@ -1343,7 +1345,10 @@ describe("BillingService subscription projection", () => {
       shopId: "shop-1",
       expected: activation.token,
       nextReconcileAt: new Date("2026-09-12T10:02:00.000Z"),
-      partnerErrorAt: new Date("2026-09-12T10:01:30.000Z"),
+      verificationFailure: {
+        code: "PARTNER_API_ERROR",
+        occurredAt: new Date("2026-09-12T10:01:30.000Z"),
+      },
     })).resolves.toBeNull();
 
     expect(database.subscription.update).not.toHaveBeenCalled();
@@ -1360,13 +1365,16 @@ describe("BillingService subscription projection", () => {
     if (!activation?.token) throw new Error("Expected an initial activation token.");
     database.subscription.update.mockClear();
     const nextReconcileAt = new Date("2026-09-12T10:01:00.000Z");
-    const partnerErrorAt = new Date("2026-09-12T10:00:30.000Z");
+    const verificationFailure = {
+      code: "PARTNER_API_ERROR" as const,
+      occurredAt: new Date("2026-09-12T10:00:30.000Z"),
+    };
 
     await expect(service.scheduleInitialFreeReconciliationIfCurrent({
       shopId: "shop-1",
       expected: activation.token,
       nextReconcileAt,
-      partnerErrorAt,
+      verificationFailure,
     })).resolves.toEqual({
       subscriptionId: "subscription-1",
       nextReconcileAt,
@@ -1378,7 +1386,7 @@ describe("BillingService subscription projection", () => {
       data: {
         nextReconcileAt,
         lastSyncErrorCode: "PARTNER_API_ERROR",
-        lastSyncErrorAt: partnerErrorAt,
+        lastSyncErrorAt: verificationFailure.occurredAt,
       },
     });
     expect(state.onboardingCompleted).toBe(true);
@@ -2479,9 +2487,10 @@ describe("BillingService hosted plan-change return", () => {
       verificationFence: hostedFence(state.current),
     });
 
-    expect(lockQueries[0]).toContain('FROM "shopify"."ShopSettings"');
-    expect(lockQueries[1]).toContain('FROM "billing"."Subscription"');
-    expect(lockQueries[1]).toContain("FOR UPDATE");
+    expect(lockQueries[0]).toContain('FROM "commerce"."Shop"');
+    expect(lockQueries[1]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockQueries[2]).toContain('FROM "billing"."Subscription"');
+    expect(lockQueries.every((statement) => statement.includes("FOR UPDATE"))).toBe(true);
     expect(subscription.findUnique).toHaveBeenCalledTimes(1);
   });
 
@@ -2547,7 +2556,10 @@ describe("BillingService hosted plan-change return", () => {
     const service = new BillingService({} as never, database as never);
     const before = { ...state.current };
 
-    await service.recordHostedPlanVerificationFailure("shop-1", hostedFence(state.current));
+    await service.recordHostedPlanVerificationFailure("shop-1", hostedFence(state.current), {
+      code: "PARTNER_API_ERROR",
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+    });
 
     expect(state.current).toMatchObject({
       planId: before.planId,
@@ -2565,7 +2577,10 @@ describe("BillingService hosted plan-change return", () => {
     noSubscription.state.current = null as never;
     const service = new BillingService({} as never, noSubscription.database as never);
 
-    await expect(service.recordHostedPlanVerificationFailure("shop-1", null)).resolves.toBeNull();
+    await expect(service.recordHostedPlanVerificationFailure("shop-1", null, {
+      code: "SUBSCRIPTION_SYNC_FAILED",
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+    })).resolves.toBeNull();
 
     expect(noSubscription.subscription.update).not.toHaveBeenCalled();
     expect(noSubscription.subscription.updateMany).not.toHaveBeenCalled();
@@ -2601,6 +2616,7 @@ describe("BillingService hosted plan-change return", () => {
     await expect(service.recordHostedPlanVerificationFailure(
       "shop-1",
       verificationFence,
+      { code: "PARTNER_API_ERROR", occurredAt: new Date("2026-09-01T00:00:00.000Z") },
     )).resolves.toBeNull();
 
     expect(subscription.updateMany).not.toHaveBeenCalled();
@@ -2653,7 +2669,10 @@ describe("BillingService hosted plan-change return", () => {
     state.current.pendingShopifyPlanHandle = "new-pending";
     const service = new BillingService({} as never, database as never);
 
-    await expect(service.recordHostedPlanVerificationFailure("shop-1", verificationFence)).resolves.toBeNull();
+    await expect(service.recordHostedPlanVerificationFailure("shop-1", verificationFence, {
+      code: "PARTNER_API_ERROR",
+      occurredAt: new Date("2026-09-01T00:00:00.000Z"),
+    })).resolves.toBeNull();
 
     expect(subscription.updateMany).not.toHaveBeenCalled();
     expectNoProtectedWrites(protectedModels);

@@ -158,7 +158,9 @@ describe("ShopifyBillingProvider", () => {
 
   it("rejects duplicate active pending flat-rate items", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(response(subscription([flat("growth")], {
+      billingPeriod: null,
       items: [flat("starter"), flat("pro")],
+      legacySubscriptionId: null,
     })));
 
     await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" }))
@@ -315,7 +317,7 @@ describe("ShopifyBillingProvider", () => {
     await billing.getSubscriptionLifecycleSnapshot({ shopifyShopId: "shop-1" });
     expect(reader).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[0]?.[0]).toBe("https://partners.shopify.com/org-7/api/2026-10/graphql.json");
-    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://partners.shopify.com/org-8/api/2026-07/graphql.json");
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("https://partners.shopify.com/org-8/api/2026-10/graphql.json");
     const first = fetchMock.mock.calls[0]?.[1] as RequestInit;
     const second = fetchMock.mock.calls[1]?.[1] as RequestInit;
     expect(first.headers).toMatchObject({ "X-Shopify-Access-Token": "token-7" });

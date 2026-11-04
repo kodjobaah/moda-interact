@@ -126,6 +126,16 @@ describe("billing-period projection", () => {
     expect(fixture.billingPeriod.create).not.toHaveBeenCalled();
   });
 
+  it("does not update an already-correct period on exact replay", async () => {
+    const fixture = createTransaction(existingPeriod());
+
+    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
+
+    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: false });
+    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
+    expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+  });
+
   it("creates the missing included counter once for an existing paid period", async () => {
     const period = existingPeriod({
       planId: "paid-plan",
@@ -139,7 +149,7 @@ describe("billing-period projection", () => {
     const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput(paidPlan));
 
     expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: true });
-    expect(fixture.billingPeriod.update).toHaveBeenCalledTimes(1);
+    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
     expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledTimes(1);
     expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -192,6 +202,7 @@ describe("billing-period projection", () => {
     );
 
     expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: false });
+    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
     expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
   });
 

@@ -8,16 +8,18 @@ import type {
   BillingPlan,
   Subscription,
 } from "@prisma/client";
-import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
-
 import {
   billingService,
   INITIAL_BILLING_RETRY_DELAY_MS,
 } from "@/services/billing/billing.service";
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
+import { persistShopifyOnboardingMilestone } from "@/services/billing/onboarding-milestone.server";
+import {
+  classifyBillingVerificationFailure,
+  logBillingBoundaryFailure,
+} from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
 import { activateInitialPendingStoreCategoryIfEligible } from "@/services/store-profile/store-category-activation.server";
 
@@ -27,26 +29,6 @@ function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
     params.set("requested_plan_handle", requestedPlanHandle);
   }
   return `/app/billing/options?${params.toString()}`;
-}
-
-async function persistOnboardingMilestone(shopId: string): Promise<void> {
-  await db.$transaction(async (transaction) => {
-    const shop = await transaction.shop.updateMany({
-      where: { id: shopId },
-      data: { onboardingCompleted: true },
-    });
-    if (shop.count !== 1) {
-      throw new Error(`Unable to mark onboarding complete for Shop ${shopId}`);
-    }
-
-    const settings = await transaction.shopSettings.updateMany({
-      where: { shopId },
-      data: { onboardingCompleted: true },
-    });
-    if (settings.count !== 1) {
-      throw new Error(`ShopSettings invariant missing for Shop ${shopId}`);
-    }
-  });
 }
 
 type BillingCallbackSubscription = Pick<
@@ -126,23 +108,29 @@ async function activateInitialCategoryAfterSubscriptionCommit(
     (subscription.status === SubscriptionProjectionStatus.ACTIVE ||
       subscription.status === SubscriptionProjectionStatus.TRIALING)
   ) {
-    await activateInitialPendingStoreCategoryIfEligible({ shopId });
+    try {
+      await activateInitialPendingStoreCategoryIfEligible({ shopId });
+    } catch (error) {
+      logBillingBoundaryFailure({
+        event: "billing.initial_category_activation.failed",
+        operation: "activate_initial_pending_store_category",
+        stage: "after_subscription_commit",
+        shopId,
+        identities: { subscriptionStatus: subscription.status },
+        error,
+      });
+      throw error;
+    }
   }
 }
 
 export async function loader({
   request,
+  context,
 }: LoaderFunctionArgs) {
-  const {
-    admin,
-    redirect,
-    session,
-  } = await authenticate.admin(request);
-
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+  const merchantContext = await getMerchantRequestContext({ request, context });
+  const { redirect } = merchantContext.authentication;
+  const { shop } = merchantContext;
   assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
 
   const url = new URL(request.url);
@@ -156,8 +144,9 @@ export async function loader({
   let verification;
   try {
     verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
-  } catch {
-    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence);
+  } catch (error) {
+    const verificationFailure = classifyBillingVerificationFailure(error);
+    const retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence, verificationFailure);
     if (retry) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
@@ -193,20 +182,20 @@ export async function loader({
     return redirect(billingOptionsRedirect(result.result, requestedPlanHandle));
   }
 
-  await persistOnboardingMilestone(shop.id);
+  await persistShopifyOnboardingMilestone(shop.id);
 
   const activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle) ??
     await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
 
   if (activation) {
     let partnerVerificationSucceeded = false;
-    let partnerErrorAt: Date | null = null;
+    let verificationFailure: ReturnType<typeof classifyBillingVerificationFailure> | null = null;
     let syncedSubscription: BillingCallbackSubscription | null = null;
     try {
       syncedSubscription = await billingService.syncSubscription(shop.id, activation.token ?? undefined) as BillingCallbackSubscription | null;
       partnerVerificationSucceeded = true;
-    } catch {
-      partnerErrorAt = new Date();
+    } catch (error) {
+      verificationFailure = classifyBillingVerificationFailure(error);
     }
 
     const subscription = activation.plan.kind === "PAID_METERED"
@@ -252,7 +241,7 @@ export async function loader({
       shopId: shop.id,
       expected: activation.token,
       nextReconcileAt,
-      partnerErrorAt,
+      verificationFailure,
     });
     if (pending) {
       await enqueueBillingSubscriptionReconcileBestEffort({

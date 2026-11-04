@@ -335,9 +335,7 @@ export class ShopifyBillingOperationService {
       recoveryCreditPurchaseId: null,
       providerReference,
     });
-    return desiredState === BillingOperationState.CONFIRMED
-      ? this.confirmOperation(transaction, operation, providerReference)
-      : operation;
+    return operation;
   }
 
   async recordOneTimeChargeIntent(

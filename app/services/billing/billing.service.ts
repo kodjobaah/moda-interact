@@ -8,6 +8,7 @@ import type {
   MerchantShopifyLifecycleState,
   MerchantRecoveryCapacityState,
   MerchantShopifySubscriptionState,
+  BillingVerificationFailure,
 } from "./billing.types";
 
 import {
@@ -150,18 +151,18 @@ export class BillingService {
     shopId,
     expected,
     nextReconcileAt,
-    partnerErrorAt = null,
+    verificationFailure = null,
   }: {
     shopId: string;
     expected: InitialFreeActivationToken;
     nextReconcileAt: Date;
-    partnerErrorAt?: Date | null;
+    verificationFailure?: BillingVerificationFailure;
   }): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     return this.subscriptionActivationService.scheduleInitialFreeReconciliationIfCurrent({
       shopId,
       expected,
       nextReconcileAt,
-      partnerErrorAt,
+      verificationFailure,
     });
   }
 
@@ -212,10 +213,12 @@ async getSubscription(
   async recordHostedPlanVerificationFailure(
     shopId: string,
     verificationFence: HostedPlanVerificationFence | null,
+    verificationFailure: Exclude<BillingVerificationFailure, null>,
   ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     return this.hostedPlanChangeService.recordHostedPlanVerificationFailure(
       shopId,
       verificationFence,
+      verificationFailure,
     );
   }
 

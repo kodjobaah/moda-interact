@@ -1,11 +1,11 @@
 import { SubscriptionProjectionStatus } from "@prisma/client";
 import type { ActionFunctionArgs } from "react-router";
 
-import { authenticate } from "@/shopify.server";
 import { billingService } from "@/services/billing/billing.service";
-import db from "@/db.server";
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
+import { persistShopifyOnboardingMilestone } from "@/services/billing/onboarding-milestone.server";
+import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { activateInitialPendingStoreCategoryIfEligible } from "@/services/store-profile/store-category-activation.server";
 
 const ACTIVE_STATUSES = new Set<SubscriptionProjectionStatus>([
@@ -13,29 +13,8 @@ const ACTIVE_STATUSES = new Set<SubscriptionProjectionStatus>([
   SubscriptionProjectionStatus.TRIALING,
 ]);
 
-async function persistOnboardingMilestone(shopId: string): Promise<void> {
-  await db.$transaction(async (transaction) => {
-    const shop = await transaction.shop.updateMany({
-      where: { id: shopId },
-      data: { onboardingCompleted: true },
-    });
-    if (shop.count !== 1) {
-      throw new Error(`Unable to mark onboarding complete for Shop ${shopId}`);
-    }
-
-    const settings = await transaction.shopSettings.updateMany({
-      where: { shopId },
-      data: { onboardingCompleted: true },
-    });
-    if (settings.count !== 1) {
-      throw new Error(`ShopSettings invariant missing for Shop ${shopId}`);
-    }
-  });
-}
-
-export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await getMerchantRequestContext({ request, context });
   assertActiveShop(shop, {
     route: "/app/onboarding/resume",
     redirectTo: "/app/merchant-support",
@@ -74,7 +53,14 @@ export async function action({ request }: ActionFunctionArgs) {
   let subscription;
   try {
     subscription = await billingService.syncSubscription(shop.id);
-  } catch {
+  } catch (error) {
+    logBillingBoundaryFailure({
+      event: "billing.onboarding_resume.sync_failed",
+      operation: "sync_subscription_for_onboarding_resume",
+      stage: "provider_or_projection",
+      shopId: shop.id,
+      error,
+    });
     return Response.json(
       { ok: false, error: "BILLING_RECONCILIATION_FAILED" },
       { status: 503, headers: { "Cache-Control": "no-store" } },
@@ -92,10 +78,23 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  const activation = await activateInitialPendingStoreCategoryIfEligible({
-    shopId: shop.id,
-    expectedPendingSelectionGeneration: generation,
-  });
+  let activation;
+  try {
+    activation = await activateInitialPendingStoreCategoryIfEligible({
+      shopId: shop.id,
+      expectedPendingSelectionGeneration: generation,
+    });
+  } catch (error) {
+    logBillingBoundaryFailure({
+      event: "billing.initial_category_activation.failed",
+      operation: "activate_initial_pending_store_category",
+      stage: "onboarding_resume",
+      shopId: shop.id,
+      identities: { expectedPendingSelectionGeneration: String(generation) },
+      error,
+    });
+    throw error;
+  }
   if (activation.kind !== "ACTIVATED" && activation.kind !== "ALREADY_ACTIVE") {
     return Response.json(
       { ok: false, error: "CATEGORY_ACTIVATION_REQUIRED" },
@@ -103,7 +102,7 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
 
-  await persistOnboardingMilestone(shop.id);
+  await persistShopifyOnboardingMilestone(shop.id);
 
   return Response.json({ ok: true, onboardingCompleted: true }, {
     headers: { "Cache-Control": "no-store" },

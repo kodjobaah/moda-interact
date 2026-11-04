@@ -15,10 +15,7 @@ import type { BillingPlanResolutionService } from "./billing-plan-resolution.ser
 import type { ProviderSubscription } from "./billing.types";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
-import {
-  lockInitialFreeActivationState,
-  lockShopForInitialPaidActivation,
-} from "./subscription-locks";
+import { lockSubscriptionLifecycleRows } from "./subscription-locks";
 
 export type InitialFreeActivationToken = Readonly<{
   subscriptionId: string;
@@ -84,7 +81,7 @@ export class SubscriptionActivationService {
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const currentSubscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -159,7 +156,7 @@ export class SubscriptionActivationService {
 
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const currentSubscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -217,7 +214,6 @@ export class SubscriptionActivationService {
       existingSubscription: ExistingInitialPaidSubscription;
       now: Date;
     }): Promise<Subscription> {
-      await lockShopForInitialPaidActivation(transaction, shopId);
       const transactionalShop = await transaction.shop.findUnique({
         where: { id: shopId },
         select: { status: true },
@@ -404,15 +400,15 @@ export class SubscriptionActivationService {
     shopId,
     expected,
     nextReconcileAt,
-    partnerErrorAt = null,
+    verificationFailure = null,
   }: {
     shopId: string;
     expected: InitialFreeActivationToken;
     nextReconcileAt: Date;
-    partnerErrorAt?: Date | null;
+    verificationFailure?: import("./billing.types").BillingVerificationFailure;
   }): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -430,10 +426,10 @@ export class SubscriptionActivationService {
         where: { shopId },
         data: {
           nextReconcileAt,
-          ...(partnerErrorAt
+          ...(verificationFailure
             ? {
-                lastSyncErrorCode: "PARTNER_API_ERROR",
-                lastSyncErrorAt: partnerErrorAt,
+                lastSyncErrorCode: verificationFailure.code,
+                lastSyncErrorAt: verificationFailure.occurredAt,
               }
             : {}),
         },
@@ -453,7 +449,7 @@ export class SubscriptionActivationService {
   ): Promise<CompletedFreeActivation | null> {
     const topUpConfiguration = await this.planResolutionService.readRecoveryCreditTopUpConfiguration(requestedPlanHandle);
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         include: { plan: true },
