@@ -1,7 +1,5 @@
-import { redirect } from "react-router";
-import { authenticate } from "../../../shopify.server";
-import { shopService } from "../../../services/shop/shop.service";
-import { billingService } from "../../../services/billing/billing.service";
+import { redirect, RouterContextProvider } from "react-router";
+import { getMerchantRequestContext } from "../../../services/shop/merchant-request-context.server";
 import {
   canAccessMerchantSurface,
   getMerchantDeniedRedirect,
@@ -11,12 +9,9 @@ import { merchantUiContext } from "../../../utils/merchant-i18n";
 import type { EmbedContext } from "./recovery-list-state";
 
 /** Every page/resource calls this guard independently before recovery reads. */
-export async function requireRecoveryHistory(request: Request) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export async function requireRecoveryHistory(request: Request, context: Readonly<RouterContextProvider> = new RouterContextProvider()) {
+  const merchant = await getMerchantRequestContext({request, context});
+  const {shop, authentication: {session}} = merchant;
   const url = new URL(request.url);
   const embed: EmbedContext = { shop: session.shop };
   const host = url.searchParams.get("host");
@@ -25,17 +20,18 @@ export async function requireRecoveryHistory(request: Request) {
   // Resolve lifecycle before recovery reads, even when this loader runs without its parent.
   const subscription =
     shop.status === "ACTIVE"
-      ? await billingService.getSubscription(shop.id)
+      ? await merchant.readSubscription()
       : null;
   const state = resolveMerchantExperienceState({
     shop,
-    subscription,
+    subscription: subscription && ["ACTIVE", "TRIALING"].includes(subscription.status) ? subscription : null,
   });
   if (!canAccessMerchantSurface(state, "RECOVERY_HISTORY")) {
     const destination = getMerchantDeniedRedirect(state, "RECOVERY_HISTORY");
     throw redirect(`${destination}?${new URLSearchParams(embed)}`);
   }
   return {
+    merchant,
     shopId: shop.id,
     merchantUi: merchantUiContext(shop, session),
     embed,

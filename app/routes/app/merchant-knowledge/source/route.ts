@@ -16,8 +16,8 @@ function stringField(form: FormData, key: string): string | null {
   return typeof value === "string" ? value : null;
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await settingsAccess(request, context);
   const form = await request.formData();
   const operation = stringField(form, "operation");
   const fields = operation === "create"

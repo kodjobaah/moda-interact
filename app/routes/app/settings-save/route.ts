@@ -61,8 +61,8 @@ async function readRequestBodyWithinLimit(
   return body;
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await settingsAccess(request, context);
   let operationId = "";
   const reply = (value: object, status = 200) =>
     Response.json(

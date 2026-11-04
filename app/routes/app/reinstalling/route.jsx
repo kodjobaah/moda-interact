@@ -1,14 +1,15 @@
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { Form, Link, redirect, useLoaderData, useRouteError } from "react-router";
-import { authenticate, apiKey } from "@/shopify.server";
+import { apiKey } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 
-export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request }) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request, context }) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
 
   if (shop.status === "ACTIVE") throw redirect("/app");
   if (shop.status === "SUSPENDED") throw redirect("/app/merchant-support");
@@ -25,9 +26,9 @@ export async function loader(/** @type {import("react-router").LoaderFunctionArg
   };
 }
 
-export async function action(/** @type {import("react-router").ActionFunctionArgs} */ { request }) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function action(/** @type {import("react-router").ActionFunctionArgs} */ { request, context }) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop } = merchant;
   const formData = await request.formData();
   if (formData.get("intent") !== "retry") throw redirect("/app/reinstalling");
 

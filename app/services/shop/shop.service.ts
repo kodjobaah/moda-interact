@@ -1,3 +1,7 @@
+import { GraphqlQueryError, HttpRequestError, HttpResponseError } from "@shopify/shopify-api";
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import { z } from "zod";
+import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import type {
   AdminApiContext,
 } from "@shopify/shopify-app-react-router/server";
@@ -5,6 +9,8 @@ import type {
 import type {
   Prisma,
   Shop,
+  Subscription,
+  ShopSettings,
 } from "@prisma/client";
 import {
   canonicaliseLanguageTag,
@@ -25,31 +31,102 @@ export interface ResolveShopifyShopInput {
 }
 
 
-interface ShopifyShopResponse {
-  data?: {
-    shop?: {
-      shopifyShopId?: string | null;
-      myshopifyDomain?: string | null;
-      ianaTimezone?: string | null;
-      shopAddress?: {
-        countryCodeV2?: string | null;
-      } | null;
-    } | null;
-    shopLocales?: Array<{
-      locale?: string | null;
-      primary?: boolean | null;
-      published?: boolean | null;
-    }> | null;
-  };
+const profileSchema = z.object({
+  data: z.object({
+    shop: z.object({
+      shopifyShopId: z.string().regex(/^gid:\/\/shopify\/Shop\/[1-9][0-9]*$/),
+      myshopifyDomain: z.string().regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i),
+      ianaTimezone: z.string().nullish(),
+      shopAddress: z.object({countryCodeV2: z.string().nullish()}).nullish(),
+    }),
+    shopLocales: z.array(z.object({
+      locale: z.string().nullish(), primary: z.boolean().nullish(), published: z.boolean().nullish(),
+    })).nullish(),
+  }),
+});
+const providerErrorsSchema = z.object({
+  errors: z.array(z.object({
+    message: z.string(),
+    extensions: z.object({code: z.string().optional()}).optional(),
+  })).min(1),
+});
+const merchantLogger = createLogger({
+  serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName(),
+});
+
+// Only profile-boundary error text is extracted; never emit GraphQL data or bodies.
+function safeProfileErrorText(text: string): string {
+  return text
+    .replace(/(?:https?|postgres(?:ql)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED]")
+    .replace(/(?:Bearer\s+|(?:token|access[_-]?token|authorization|cookie|password|email|phone|address|name|card)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]")
+    .replace(/\+?\d[\d ()-]{8,}\d/g, "[REDACTED]");
 }
 
+export function recordMerchantResolutionFailure(
+  operation: string, origin: "database" | "transport" | "sdk_exception" | "internal" | "provider_response",
+  error: unknown,
+  source?: {retrying?: boolean; shopId?: string; httpStatus?: number; providerRequestId?: string; providerError?: unknown; redactionApplied?: boolean; truncated?: boolean},
+): void {
+  const original = error instanceof Error ? error : new Error(String(error));
+  const causes: Error[] = [];
+  let cause = original.cause;
+  for (let index = 0; index < 4 && cause instanceof Error; index++) {
+    causes.push(cause);
+    cause = cause.cause;
+  }
+  const texts = [original, ...causes];
+  const redactionApplied = source?.redactionApplied || texts.some(item => safeProfileErrorText(item.message) !== item.message);
+  const safeError = (item: Error) => ({
+    name: safeProfileErrorText(item.name), message: safeProfileErrorText(item.message).slice(0, 2048),
+  });
+  const fields = {
+    operation, origin,
+    ...(source?.shopId ? {shopId: source.shopId} : {}),
+    ...(origin === "provider_response" || origin === "transport" || origin === "sdk_exception" ? {provider: "shopify"} : {}),
+    error: safeError(original),
+    causeChain: causes.map(safeError),
+    ...(origin === "database" && "code" in original && typeof original.code === "string" ? {databaseCode: safeProfileErrorText(original.code)} : {}),
+    ...(source?.httpStatus !== undefined ? {httpStatus: source.httpStatus} : {}),
+    ...(source?.providerRequestId ? {providerRequestId: safeProfileErrorText(source.providerRequestId)} : {}),
+    ...(source?.providerError ? {providerError: source.providerError} : {}),
+    redactionApplied,
+    truncated: source?.truncated || texts.some(item => item.message.length > 2048),
+  };
+  if (source?.retrying) merchantLogger.warn("shopify.merchant.bootstrap.retry", fields);
+  else merchantLogger.error("shopify.merchant.resolve.failed", fields);
+}
+
+class MerchantProfileFailure extends Error {
+  constructor(cause: unknown) { super("Merchant profile resolution failed", {cause}); }
+}
 
 export class ShopService {
-  async resolveShopifyShop({
+  async resolveShopifyShop(input: ResolveShopifyShopInput): Promise<Shop> {
+    return (await this.resolveShopifyMerchantSnapshot(input)).shop;
+  }
+
+  async resolveShopifyMerchantSnapshot(input: ResolveShopifyShopInput): Promise<{shop: Shop; subscription: Subscription; settings: ShopSettings}> {
+    try {
+      return await this.resolveMerchantSnapshot(input);
+    } catch (error) {
+      // Profile/parse failures are owned at their source below; DB work starts only afterwards.
+      if (!(error instanceof MerchantProfileFailure) && !(error instanceof Response)) {
+        recordMerchantResolutionFailure("resolve_local_snapshot", "database", error);
+      }
+      throw error instanceof MerchantProfileFailure ? error.cause : error;
+    }
+  }
+
+  private async resolveMerchantSnapshot({
     admin,
     domain,
-  }: ResolveShopifyShopInput): Promise<Shop> {
-    const response = await admin.graphql(
+  }: ResolveShopifyShopInput): Promise<{shop: Shop; subscription: Subscription; settings: ShopSettings}> {
+    let origin: "transport" | "internal" | "provider_response" = "transport";
+    let response: Response | undefined;
+    let result: z.infer<typeof profileSchema>;
+    try {
+      response = await admin.graphql(
       `#graphql
         query ResolveModaInteractShop {
           shop {
@@ -69,37 +146,76 @@ export class ShopService {
       `,
     );
 
-    const result =
-      (await response.json()) as ShopifyShopResponse;
-
-    const shopifyGraphqlShop =
-      result.data?.shop;
-
-    if (
-      !shopifyGraphqlShop?.shopifyShopId ||
-      !shopifyGraphqlShop.myshopifyDomain
-    ) {
-      throw new Error(
-        `Unable to resolve Shopify shop identity for ${domain}`,
-      );
+      origin = "internal";
+      const body: unknown = await response.json();
+      const providerErrors = providerErrorsSchema.safeParse(body);
+      if (providerErrors.success) {
+        origin = "provider_response";
+        const messages = providerErrors.data.errors.map(entry => ({
+          message: safeProfileErrorText(entry.message).slice(0, 2048),
+          ...(entry.extensions?.code ? {code: safeProfileErrorText(entry.extensions.code)} : {}),
+        }));
+        const error = new Error(providerErrors.data.errors.map(entry => entry.message).join("; "));
+        recordMerchantResolutionFailure("observe_profile", origin, error, {
+          httpStatus: response.status,
+          providerRequestId: response.headers.get("x-request-id") ?? undefined,
+          providerError: messages,
+        });
+        throw new MerchantProfileFailure(error);
+      }
+      if (body && typeof body === "object" && "errors" in body &&
+        (!Array.isArray(body.errors) || body.errors.length > 0)) {
+        throw new Error("Malformed Shopify GraphQL error response");
+      }
+      const parsed = profileSchema.safeParse(body);
+      if (!parsed.success) throw new Error("Malformed Shopify merchant profile identity");
+      result = parsed.data;
+      if (normalizeShopDomain(result.data.shop.myshopifyDomain) !== normalizeShopDomain(domain)) {
+        throw new Error("Shop domain mismatch in authenticated merchant profile");
+      }
+    } catch (error) {
+      if (error instanceof MerchantProfileFailure) throw error;
+      if (error instanceof Response) throw error;
+      if (error instanceof HttpResponseError) {
+        const upstreamMessage = typeof error.response.body?.errors === "string" ? error.response.body.errors : undefined;
+        const requestId = error.response.headers?.["x-request-id"];
+        recordMerchantResolutionFailure("observe_profile", "provider_response", error, {
+          httpStatus: error.response.code,
+          ...(typeof requestId === "string" ? {providerRequestId: requestId} : {}),
+          ...(upstreamMessage ? {
+            providerError: {message: safeProfileErrorText(upstreamMessage).slice(0, 2048)},
+            redactionApplied: safeProfileErrorText(upstreamMessage) !== upstreamMessage,
+            truncated: upstreamMessage.length > 2048,
+          } : {}),
+        });
+        throw new MerchantProfileFailure(error);
+      }
+      if (error instanceof GraphqlQueryError) {
+        const errors = providerErrorsSchema.safeParse({errors: error.body?.errors?.graphQLErrors});
+        const requestId = error.headers?.["x-request-id"];
+        recordMerchantResolutionFailure("observe_profile", "provider_response", error, {
+          ...(typeof error.response.status === "number" ? {httpStatus: error.response.status} : {}),
+          ...(typeof requestId === "string" ? {providerRequestId: requestId} : {}),
+          ...(errors.success ? {
+            redactionApplied: errors.data.errors.some(entry => safeProfileErrorText(entry.message) !== entry.message),
+            truncated: errors.data.errors.some(entry => entry.message.length > 2048),
+            providerError: errors.data.errors.map(entry => ({
+            message: safeProfileErrorText(entry.message).slice(0, 2048),
+            ...(entry.extensions?.code ? {code: safeProfileErrorText(entry.extensions.code)} : {}),
+          }))} : {}),
+        });
+        throw new MerchantProfileFailure(error);
+      }
+      recordMerchantResolutionFailure("observe_profile",
+        origin === "transport" && !(error instanceof HttpRequestError)
+          ? "sdk_exception" : origin, error, response ? {
+        httpStatus: response.status,
+        providerRequestId: response.headers.get("x-request-id") ?? undefined,
+      } : undefined);
+      throw new MerchantProfileFailure(error);
     }
-    
-    /*
-     * The authenticated session domain and Shopify's
-     * canonical myshopifyDomain should represent the
-     * same shop.
-     */
-    if (
-      normalizeShopDomain(
-        shopifyGraphqlShop.myshopifyDomain,
-      ) !== normalizeShopDomain(domain)
-    ) {
-      throw new Error(
-        `Shop domain mismatch. Session=${domain}, Shopify=${shopifyGraphqlShop.myshopifyDomain}`,
-      );
-    }
-   
-    const shopDomain = shopifyGraphqlShop.myshopifyDomain;
+    const shopifyGraphqlShop = result.data.shop;
+    const shopDomain = normalizeShopDomain(shopifyGraphqlShop.myshopifyDomain);
     const shopifyShopId = shopifyGraphqlShop.shopifyShopId;
     const primaryLocale =
       result.data?.shopLocales?.find(
@@ -133,20 +249,21 @@ export class ShopService {
     const existingShop = await prisma.shop.findUnique({
       where: { domain: shopDomain },
     });
+    if (existingShop && (
+      (existingShop.shopifyShopId && existingShop.shopifyShopId !== shopifyShopId) ||
+      existingShop.platform !== "SHOPIFY"
+    )) {
+      const error = new Error("Authenticated merchant profile conflicts with local tenant identity");
+      recordMerchantResolutionFailure("verify_local_identity", "internal", error);
+      throw new MerchantProfileFailure(error);
+    }
     const [existingSubscription, existingSettings] = existingShop
       ? await Promise.all([
           prisma.subscription.findUnique({
             where: { shopId: existingShop.id },
-            select: { id: true },
           }),
           prisma.shopSettings.findUnique({
             where: { shopId: existingShop.id },
-            select: {
-              id: true,
-              defaultLanguageTag: true,
-              defaultTimeZone: true,
-              defaultCountryCode: true,
-            },
           }),
         ])
       : [null, null];
@@ -165,7 +282,7 @@ export class ShopService {
 
     if (existingShop && existingSubscription && existingSettings) {
       if (!shopNeedsRefresh && !settingsNeedsRefresh) {
-        return existingShop;
+        return {shop: existingShop, subscription: existingSubscription, settings: existingSettings};
       }
 
       return prisma.$transaction(async (transaction) => {
@@ -179,18 +296,18 @@ export class ShopService {
             })
           : existingShop;
 
-        if (settingsNeedsRefresh) {
-          await transaction.shopSettings.update({
+        const settings = settingsNeedsRefresh
+          ? await transaction.shopSettings.update({
             where: { shopId: existingShop.id },
             data: settingsUpdateContext,
-          });
-        }
+          })
+          : existingSettings;
 
-        return shop;
+        return {shop, subscription: existingSubscription, settings};
       });
     }
 
-    return prisma.$transaction(async (transaction) => {
+    const bootstrap = () => prisma.$transaction(async (transaction) => {
       const shop = await transaction.shop.upsert({
         where: { domain: shopDomain },
         create: {
@@ -208,8 +325,7 @@ export class ShopService {
         },
       });
 
-      if (!existingSubscription) {
-        await transaction.subscription.upsert({
+      const subscription = existingSubscription ?? await transaction.subscription.upsert({
           where: { shopId: shop.id },
           create: {
             shopId: shop.id,
@@ -228,10 +344,9 @@ export class ShopService {
           },
           update: {},
         });
-      }
 
-      if (!existingSettings) {
-        await transaction.shopSettings.upsert({
+      const settings = !existingSettings
+        ? await transaction.shopSettings.upsert({
           where: { shopId: shop.id },
           create: {
             shopId: shop.id,
@@ -240,16 +355,26 @@ export class ShopService {
             defaultCountryCode,
           },
           update: settingsUpdateContext,
-        });
-      } else if (settingsNeedsRefresh) {
-        await transaction.shopSettings.update({
+        })
+        : settingsNeedsRefresh ? await transaction.shopSettings.update({
           where: { shopId: shop.id },
           data: settingsUpdateContext,
-        });
-      }
+        }) : existingSettings;
 
-      return shop;
+      return {shop, subscription, settings};
     });
+    try {
+      return await bootstrap();
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") throw error;
+      // Multiple unique indexes can race before ON CONFLICT(domain) resolves.
+      // Retry once only after the committed winner proves the exact same tenant.
+      const winner = await prisma.shop.findUnique({where: {domain: shopDomain}});
+      if (!winner || winner.platform !== "SHOPIFY" || winner.shopifyShopId !== shopifyShopId) throw error;
+      recordMerchantResolutionFailure("bootstrap_unique_race", "database", error, {shopId: winner.id, retrying: true});
+      return bootstrap();
+    }
+
   }
 
 
@@ -267,12 +392,12 @@ export class ShopService {
   async getByDomain(
     domain: string,
   ): Promise<Shop | null> {
-    return prisma.shop.findUnique({
-      where: {
-        domain:
-          normalizeShopDomain(domain),
-      },
-    });
+    try {
+      return await prisma.shop.findUnique({where: {domain: normalizeShopDomain(domain)}});
+    } catch (error) {
+      recordMerchantResolutionFailure("lookup_local_shop", "database", error);
+      throw error;
+    }
   }
 
 

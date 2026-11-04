@@ -12,6 +12,19 @@ const getReinstallSubscription = vi.fn();
 const retryReinstallReconciliation = vi.fn();
 const enqueueBillingSubscriptionReconcileBestEffort = vi.fn();
 
+vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({request}: {request: Request}) => {
+    const authentication = await authenticateAdmin(request);
+    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    return {
+      authentication, shop,
+      readSubscription: () => Promise.resolve(null),
+      readSettings: () => Promise.resolve(null),
+    };
+  },
+  merchantPageContextMiddleware: vi.fn(),
+}));
+
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
   apiKey: "database-public-key",

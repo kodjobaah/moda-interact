@@ -1,3 +1,5 @@
+import { RouterContextProvider } from "react-router";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import {
   redirect,
   useNavigation,
@@ -8,7 +10,6 @@ import {
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
-import { authenticate } from "@/shopify.server";
 
 import LegacyBillingUnavailable from "@/components/dashboard/LegacyBillingUnavailable";
 import RecoveryOverview from "@/components/dashboard/RecoveryOverview";
@@ -16,7 +17,6 @@ import { loadOverviewPerformance, overviewEmbed } from "./overview.server";
 import Onboarding from "@/components/onboarding/Onboarding";
 import BillingSetupStatus from "@/components/billing-setup/BillingSetupStatus";
 
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
 import { billingService } from "@/services/billing/billing.service";
@@ -36,9 +36,10 @@ import {
 
 import db from "@/db.server";
 
-/** @param {{ request: Request }} args */
-export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
+/** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
+export const loader = async ({ request, context = new RouterContextProvider() }) => {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { admin, session } } = merchant;
   const url = new URL(request.url);
   const embed = overviewEmbed(url, session.shop);
   const pendingPage = Number.parseInt(
@@ -50,10 +51,6 @@ export const loader = async ({ request }) => {
    * Resolve Shopify's shop into our
    * internal tenant.
    */
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
 
   assertActiveShop(shop, {
     route: "/app",

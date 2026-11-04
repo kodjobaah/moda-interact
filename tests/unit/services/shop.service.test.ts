@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { GraphqlQueryError, HttpResponseError, HttpRequestError } from "@shopify/shopify-api";
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 
 const shop = {
@@ -6,6 +7,7 @@ const shop = {
   domain: "shop.myshopify.com",
   shopifyShopId: "gid://shopify/Shop/1",
   status: "ACTIVE",
+  platform: "SHOPIFY",
 };
 
 const dbMock = {
@@ -60,14 +62,14 @@ function adminFor(shopData: Record<string, unknown>) {
 beforeEach(() => {
   dbMock.$transaction.mockReset();
   dbMock.$queryRaw.mockReset();
-  dbMock.shop.findUnique.mockReset();
+  dbMock.shop.findUnique.mockReset().mockResolvedValue(null);
   dbMock.shop.upsert.mockReset();
   dbMock.shop.update.mockReset();
   dbMock.shop.updateMany.mockReset();
   dbMock.subscription.updateMany.mockReset();
-  dbMock.subscription.findUnique.mockReset();
+  dbMock.subscription.findUnique.mockReset().mockResolvedValue(null);
   dbMock.subscription.upsert.mockReset();
-  dbMock.shopSettings.findUnique.mockReset();
+  dbMock.shopSettings.findUnique.mockReset().mockResolvedValue(null);
   dbMock.shopSettings.upsert.mockReset();
   dbMock.shopSettings.update.mockReset();
   dbMock.shopifyDiscountCatalogue.updateMany.mockReset();
@@ -574,5 +576,206 @@ describe("ShopService.resolveShopifyShop", () => {
     expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
       update: { shopifyShopId: shop.shopifyShopId },
     }));
+  });
+});
+
+describe("merchant snapshot source diagnostics", () => {
+  function capture() {
+    const records: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((record) => {records.push(String(record));});
+    return records;
+  }
+  it("returns the already-read full scalar rows without a duplicate existence probe", async () => {
+    dbMock.shop.findUnique.mockResolvedValue(shop);
+    dbMock.subscription.findUnique.mockResolvedValue({id: "subscription", status: "FROZEN"});
+    dbMock.shopSettings.findUnique.mockResolvedValue({id: "settings"});
+    const snapshot = await new ShopService().resolveShopifyMerchantSnapshot({
+      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+    });
+    expect(snapshot.subscription.status).toBe("FROZEN");
+    expect(dbMock.subscription.findUnique).toHaveBeenCalledExactlyOnceWith({where: {shopId: shop.id}});
+    expect(dbMock.shopSettings.findUnique).toHaveBeenCalledExactlyOnceWith({where: {shopId: shop.id}});
+  });
+  it("retains errors-only provider message, code and request ID while redacting sensitive spans", async () => {
+    const records = capture();
+    const admin = {graphql: vi.fn(async () => Response.json({
+      errors: [{message: "profile-original-marker token=private-token-sentinel email=private@example.test https://x.test/?signature=private-url-sentinel",
+        extensions: {code: "PROFILE_DENIED"}}],
+    }, {headers: {"x-request-id": "provider-request-marker"}}))} as unknown as AdminApiContext;
+    try {
+      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, domain: shop.domain}))
+        .rejects.toThrow("profile-original-marker");
+      const emitted = records.join("\n");
+      expect(emitted).toContain("profile-original-marker");
+      expect(emitted).toContain("PROFILE_DENIED");
+      expect(emitted).toContain("provider-request-marker");
+      expect(emitted).toContain("provider_response");
+      expect(emitted).not.toMatch(/private-token-sentinel|private@example.test|private-url-sentinel/);
+      expect(dbMock.shop.findUnique).not.toHaveBeenCalled();
+      expect(dbMock.$transaction).not.toHaveBeenCalled();
+    } finally {vi.restoreAllMocks();}
+  });
+  it.each(["network", "json", "identity", "domain"])("owns %s failure and performs no writes", async (kind) => {
+    const records = capture();
+    const original = Object.assign(new HttpRequestError("original-failure-marker"), {cause: new Error("cause-marker")});
+    const admin = {
+      graphql: vi.fn(async () => {
+        if (kind === "network") throw original;
+        if (kind === "json") return {json: async () => {throw original;}, status: 200, headers: new Headers()};
+        return Response.json({data: {shop: {shopifyShopId: kind === "identity" ? {} : shop.shopifyShopId,
+          myshopifyDomain: kind === "domain" ? "foreign.myshopify.com" : shop.domain}}});
+      }),
+    } as unknown as AdminApiContext;
+    try {
+      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, domain: shop.domain})).rejects.toThrow();
+      const data = JSON.parse(records[0]).data;
+      expect(data.origin).toBe(kind === "network" ? "transport" : "internal");
+      expect(data.providerError).toBeUndefined();
+      if (kind === "network" || kind === "json") {
+        expect(data.error.message).toContain("original-failure-marker");
+        expect(data.causeChain[0].message).toContain("cause-marker");
+      }
+      expect(dbMock.shop.upsert).not.toHaveBeenCalled();
+      expect(dbMock.$transaction).not.toHaveBeenCalled();
+    } finally {vi.restoreAllMocks();}
+  });
+  it("retains multiline Prisma safe reason, actual code and cause through real Shared JSON", async () => {
+    const records = capture();
+    const error = Object.assign(new Error(
+      "Invalid prisma.shop.findUnique() invocation:\n\nDatabase failure: original-database-marker\nConnection: postgresql://user:password@db.test/private\nCause: safe-failure-reason",
+      {cause: new Error("database-cause-marker")},
+    ), {code: "P2021"});
+    dbMock.shop.findUnique.mockRejectedValue(error);
+    try {
+      await expect(new ShopService().resolveShopifyShop({
+        admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+      })).rejects.toBe(error);
+      const emitted = records.join("\n");
+      expect(emitted).toContain("original-database-marker");
+      expect(emitted).toContain("safe-failure-reason");
+      expect(emitted).toContain("database-cause-marker");
+      expect(emitted).toContain("P2021");
+      expect(emitted).not.toContain("user:password");
+    } finally {vi.restoreAllMocks();}
+  });
+  it("throwing Shared sink preserves original failure identity and successful resolution", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {throw new Error("sink-failure");});
+    const error = new Error("original-database-marker");
+    dbMock.shop.findUnique.mockRejectedValueOnce(error);
+    const admin = adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain});
+    try {
+      await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(error);
+      await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).resolves.toEqual(shop);
+    } finally {vi.restoreAllMocks();}
+  });
+});
+
+
+it("retains installed SDK GraphqlQueryError evidence without exposing its data body", async () => {
+  const records: string[] = [];
+  vi.spyOn(console, "error").mockImplementation(record => {records.push(String(record));});
+  const source = new GraphqlQueryError({
+    message: "sdk-original-marker",
+    response: {status: 200}, headers: {"x-request-id": "sdk-request-marker"},
+    body: {errors: {graphQLErrors: [{message: "provider-original-marker token=private-sdk-sentinel",
+      extensions: {code: "SDK_PROVIDER_CODE"}}]}, data: {privateData: "private-data-sentinel"}},
+  });
+  const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
+  try {
+    await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(source);
+    const data = JSON.parse(records[0]).data;
+    expect(data.origin).toBe("provider_response");
+    expect(data.error.message).toBe("sdk-original-marker");
+    expect(data.providerError[0].message).toContain("provider-original-marker");
+    expect(data.providerError[0].code).toBe("SDK_PROVIDER_CODE");
+    expect(data.providerRequestId).toBe("sdk-request-marker");
+    expect(data.redactionApplied).toBe(true);
+    expect(records.join("")).not.toMatch(/private-sdk-sentinel|private-data-sentinel/);
+  } finally {vi.restoreAllMocks();}
+});
+it("rejects an authenticated provider identity that conflicts with an existing local tenant", async () => {
+  const record = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  dbMock.shop.findUnique.mockResolvedValue({...shop, shopifyShopId: "gid://shopify/Shop/999"});
+  try {
+    await expect(new ShopService().resolveShopifyShop({
+      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+    })).rejects.toThrow("conflicts with local tenant identity");
+    expect(dbMock.shop.upsert).not.toHaveBeenCalled();
+    expect(dbMock.shop.update).not.toHaveBeenCalled();
+    expect(dbMock.$transaction).not.toHaveBeenCalled();
+    expect(record).toHaveBeenCalled();
+  } finally {vi.restoreAllMocks();}
+});
+
+
+it("retains actual SDK HTTP provider status and safe error excerpt", async () => {
+  const records: string[] = [];
+  vi.spyOn(console, "error").mockImplementation(record => {records.push(String(record));});
+  const source = new HttpResponseError({
+    message: "sdk-http-marker", code: 503, statusText: "Service Unavailable",
+    headers: {"x-request-id": "http-request-marker"},
+    body: {errors: "upstream-http-marker token=private-http-sentinel", data: "private-body-sentinel"},
+  });
+  const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
+  try {
+    await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(source);
+    const data = JSON.parse(records[0]).data;
+    expect(data.origin).toBe("provider_response");
+    expect(data.httpStatus).toBe(503);
+    expect(data.error.message).toBe("sdk-http-marker");
+    expect(data.providerError.message).toContain("upstream-http-marker");
+    expect(data.providerRequestId).toBe("http-request-marker");
+    expect(data.redactionApplied).toBe(true);
+    expect(records.join("")).not.toMatch(/private-http-sentinel|private-body-sentinel/);
+  } finally {vi.restoreAllMocks();}
+});
+
+
+describe("merchant bootstrap unique-index race", () => {
+  const input = () => ({admin: adminFor({
+    shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain,
+  }), domain: shop.domain});
+  it("retries once against an exact committed tenant without another provider observation", async () => {
+    const records: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation(record => {records.push(String(record));});
+    const source = Object.assign(new Error("bootstrap-race-marker", {cause: new Error("race-cause-marker")}), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
+    dbMock.$transaction.mockRejectedValueOnce(source);
+    const args = input();
+    try {
+      const result = await new ShopService().resolveShopifyMerchantSnapshot(args);
+      expect(result.shop.id).toBe(shop.id);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
+      expect(args.admin.graphql).toHaveBeenCalledTimes(1);
+      const data = JSON.parse(records[0]).data;
+      expect(data.databaseCode).toBe("P2002");
+      expect(data.error.message).toBe("bootstrap-race-marker");
+      expect(data.causeChain[0].message).toBe("race-cause-marker");
+      expect(data.shopId).toBe(shop.id);
+    } finally {vi.restoreAllMocks();}
+  });
+  it.each(["missing", "different-identity", "different-platform"])("does not retry a %s winner", async kind => {
+    const source = Object.assign(new Error("bootstrap-conflict-marker"), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(kind === "missing" ? null : {
+      ...shop, ...(kind === "different-identity" ? {shopifyShopId: "gid://shopify/Shop/999"} : {platform: "WOOCOMMERCE"}),
+    });
+    dbMock.$transaction.mockRejectedValueOnce(source);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(source);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    } finally {log.mockRestore();}
+  });
+  it("retains the second failure and never performs an unbounded retry", async () => {
+    const first = Object.assign(new Error("first-race"), {code: "P2002"});
+    const second = Object.assign(new Error("second-race"), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
+    dbMock.$transaction.mockRejectedValueOnce(first).mockRejectedValueOnce(second);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(second);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
+    } finally {vi.restoreAllMocks();}
   });
 });

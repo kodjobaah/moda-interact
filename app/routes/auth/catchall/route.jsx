@@ -8,6 +8,7 @@ export const loader = async (/** @type {import("react-router").LoaderFunctionArg
   const { admin, session } = await authenticate.admin(request);
 
   if (admin && session) {
+    // Authentication entry explicitly refreshes provider profile and provisioning.
     const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
     if (shop.status === "UNINSTALLED") {
       const reconciliation = await shopService.beginReinstallReconciliation(shop.id);

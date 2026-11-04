@@ -11,8 +11,9 @@ import { type ListFilters, type RecoveryListData } from "./recovery-list-state";
 
 export async function loadRecoveryList({
   request,
+  context,
 }: LoaderFunctionArgs): Promise<RecoveryListData> {
-  const { shopId, merchantUi, embed } = await requireRecoveryHistory(request);
+  const { shopId, merchantUi, embed } = await requireRecoveryHistory(request, context);
   const url = new URL(request.url);
   const now = new Date();
   const defaults = normalizeRecoveryQuery(

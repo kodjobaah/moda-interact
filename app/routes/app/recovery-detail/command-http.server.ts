@@ -118,18 +118,18 @@ function handleFailure(error: unknown) {
   return response({ error: "internal_error" }, 503);
 }
 
-export async function recoveryControlAction({ request, params }: ActionFunctionArgs) {
+export async function recoveryControlAction({ request, params, context }: ActionFunctionArgs) {
   if (request.method !== "POST") return response({ error: "method_not_allowed" }, 405);
-  const { shopId } = await requireRecoveryHistory(request);
+  const { shopId } = await requireRecoveryHistory(request, context);
   try {
     assertSameOrigin(request);
     const input = parseControl(await requestObject(request));
     return response(await changeRecoveryControl(shopId, params.recoveryId ?? "", input));
   } catch (error) { return handleFailure(error); }
 }
-export async function recoverySendAction({ request, params }: ActionFunctionArgs) {
+export async function recoverySendAction({ request, params, context }: ActionFunctionArgs) {
   if (request.method !== "POST") return response({ error: "method_not_allowed" }, 405);
-  const { shopId } = await requireRecoveryHistory(request);
+  const { shopId } = await requireRecoveryHistory(request, context);
   try {
     assertSameOrigin(request);
     const input = parseSend(await requestObject(request));
@@ -137,8 +137,8 @@ export async function recoverySendAction({ request, params }: ActionFunctionArgs
     return response({ schemaVersion: 1, ...result }, result.replay ? 200 : 202);
   } catch (error) { return handleFailure(error); }
 }
-export async function recoveryCommandStatusLoader({ request, params }: LoaderFunctionArgs) {
-  const { shopId } = await requireRecoveryHistory(request);
+export async function recoveryCommandStatusLoader({ request, params, context }: LoaderFunctionArgs) {
+  const { shopId } = await requireRecoveryHistory(request, context);
   try {
     return response(await readRecoveryCommandStatus(shopId, params.recoveryId ?? "", params.commandId ?? ""));
   } catch (error) { return handleFailure(error); }

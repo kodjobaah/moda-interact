@@ -5,8 +5,8 @@ import {
   refreshWebPageSource,
 } from "@/services/merchant-knowledge/merchant-knowledge.server";
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await settingsAccess(request, context);
   const form = await request.formData();
   if ([...form.keys()].some((key) => key !== "sourceId" || form.getAll(key).length !== 1))
     return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
