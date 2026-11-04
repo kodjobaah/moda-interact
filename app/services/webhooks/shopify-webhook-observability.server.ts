@@ -1,4 +1,12 @@
-import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import {
+  createLogger,
+  sanitizeLogFields,
+  type StructuredLogger,
+} from "@modainteract/moda-interact-shared/logging";
+import {
+  logBillingBoundaryFailure,
+  type ShopifyBillingFailureOrigin,
+} from "../billing/providers/shopify-billing-diagnostics.server";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { recordShopifyWebhookTelemetry } from "../otel/shopify-webhook-telemetry.server";
 import type { ShopifyWebhookObservation } from "./shopify-webhook-observation";
@@ -67,16 +75,24 @@ export function recordShopifyWebhookAuthenticationFailure(input: {
   error: unknown;
   ackMs: number;
 }): void {
-  logger.warn("shopify.webhook.authentication_failed", {
-    route: input.route,
-    method: input.request.method,
-    statusCode: errorStatusCode(input.error),
-    errorType: errorType(input.error),
-    classification: input.error instanceof Response ? "sdk_denial" : "sdk_exception",
-    origin: input.error instanceof Response ? "sdk_response" : "sdk_exception",
-    ...safeErrorFields(input.error),
-    ackMs: input.ackMs,
-  });
+  logBillingBoundaryFailure({
+    event: "shopify.webhook.authentication_failed",
+    operation: "authenticate_webhook",
+    stage: "authentication",
+    origin: "internal",
+    error: input.error,
+  }, diagnosticLogger(
+    input.error instanceof Response ? "sdk_response" : "sdk_exception",
+    {
+      route: input.route,
+      method: input.request.method,
+      statusCode: errorStatusCode(input.error),
+      errorType: errorType(input.error),
+      classification: input.error instanceof Response ? "sdk_denial" : "sdk_exception",
+      ackMs: input.ackMs,
+    },
+    "warn",
+  ));
 }
 
 /**
@@ -135,22 +151,25 @@ export function recordShopifyWebhookRouteFailure(input: {
   stage?: string;
   origin?: string;
 }): void {
-  logger.error("shopify.webhook.failed", {
+  const origin = input.origin ?? "internal";
+  logBillingBoundaryFailure({
+    event: "shopify.webhook.failed",
+    operation: input.operation ?? input.route,
+    stage: input.stage ?? "route_failure",
+    origin: billingFailureOrigin(origin),
+    shopId: input.shopId ?? undefined,
+    error: input.error,
+  }, diagnosticLogger(origin, {
     route: input.route,
     method: input.request.method,
     topic: input.topic ?? null,
     deliveryId: webhookDeliveryId(input.request),
     eventId: input.eventId ?? null,
-    shopId: input.shopId ?? null,
     shopDomain: input.shopDomain ?? null,
     statusCode: errorStatusCode(input.error),
     errorType: errorType(input.error),
-    ...(input.operation ? { operation: input.operation } : {}),
-    ...(input.stage ? { stage: input.stage } : {}),
-    ...(input.origin ? { origin: input.origin } : {}),
-    ...safeErrorFields(input.error),
     ackMs: input.ackMs,
-  });
+  }));
 }
 
 export function recordShopifyLifecycleFailure(input: {
@@ -160,50 +179,47 @@ export function recordShopifyLifecycleFailure(input: {
   error: unknown;
   shopId?: string;
 }): void {
-  logger.error("shopify.lifecycle.failed", {
+  logBillingBoundaryFailure({
+    event: "shopify.lifecycle.failed",
     operation: input.operation,
     stage: input.stage,
-    origin: input.origin,
+    origin: billingFailureOrigin(input.origin),
     ...(input.shopId ? { shopId: input.shopId } : {}),
-    ...safeErrorFields(input.error),
-  });
+    error: input.error,
+  }, diagnosticLogger(input.origin));
 }
 
-function safeErrorFields(value: unknown): Record<string, unknown> {
-  const original = value instanceof Error ? value : new Error(String(value));
-  const causes: Error[] = [];
-  let cause = original.cause;
-  for (let index = 0; index < 4 && cause instanceof Error; index += 1) {
-    causes.push(cause);
-    cause = cause.cause;
-  }
-  const safeError = (error: Error) => ({
-    name: safeDiagnosticText(error.name).slice(0, 256),
-    message: safeDiagnosticText(error.message).slice(0, 2048),
-  });
-  const codedError = [original, ...causes].find(
-    (error) => "code" in error && typeof error.code === "string",
-  ) as (Error & { code: string }) | undefined;
-  const code = codedError ? safeDiagnosticText(codedError.code).slice(0, 128) : undefined;
-
+function diagnosticLogger(
+  origin: string,
+  context: Record<string, unknown> = {},
+  level: "error" | "warn" = "error",
+): StructuredLogger {
+  const scopedLogger = logger.child(sanitizeLogFields(context));
   return {
-    error: safeError(original),
-    ...(causes.length > 0 ? { causeChain: causes.map(safeError) } : {}),
-    ...(code ? { databaseCode: code } : {}),
-    redactionApplied: [original, ...causes].some(
-      (error) => safeDiagnosticText(error.message) !== error.message,
-    ),
-    truncated: [original, ...causes].some((error) => error.message.length > 2048),
+    ...scopedLogger,
+    error(event, fields = {}) {
+      const { databaseCode, ...safeFields } = fields;
+      scopedLogger[level](event, {
+        ...safeFields,
+        origin,
+        ...(typeof databaseCode === "string"
+          ? origin === "database" ? { databaseCode } : { sourceCode: databaseCode }
+          : {}),
+      });
+    },
   };
 }
 
-function safeDiagnosticText(value: string): string {
-  return value
-    .replace(/(?:https?|postgres(?:ql)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED]")
-    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
-    .replace(/(?:token|access[_-]?token|refresh[_-]?token|authorization|cookie|password|secret|email|phone|address)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]")
-    .replace(/\+?\d[\d ()-]{8,}\d/g, "[REDACTED]");
+function billingFailureOrigin(origin: string): ShopifyBillingFailureOrigin {
+  switch (origin) {
+    case "provider_response":
+    case "transport":
+    case "sdk_exception":
+    case "database":
+      return origin;
+    default:
+      return "internal";
+  }
 }
 
 function webhookDeliveryId(request: Request): string {

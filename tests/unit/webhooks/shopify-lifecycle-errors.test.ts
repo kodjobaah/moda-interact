@@ -124,4 +124,29 @@ describe("Shopify lifecycle Shared diagnostics", () => {
       error: new Error("queue unavailable"),
     })).not.toThrow();
   });
+
+  it("emits non-database source codes separately from database codes", () => {
+    const output = vi.spyOn(console, "error").mockImplementation(() => {});
+    const queueFailure = Object.assign(new Error("queue connection refused"), {
+      code: "ECONNREFUSED",
+    });
+
+    recordShopifyLifecycleFailure({
+      operation: "subscription_activated_discount_sync",
+      stage: "publish",
+      origin: "best_effort",
+      error: queueFailure,
+    });
+
+    const record = emittedRecord(output);
+    expect(record.event).toBe("shopify.lifecycle.failed");
+    expect(record.data).toMatchObject({
+      operation: "subscription_activated_discount_sync",
+      stage: "publish",
+      origin: "best_effort",
+      sourceCode: "ECONNREFUSED",
+      error: { message: "queue connection refused" },
+    });
+    expect(record.data).not.toHaveProperty("databaseCode");
+  });
 });
