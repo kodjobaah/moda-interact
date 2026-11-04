@@ -5,14 +5,14 @@ export type ShopifyConfigurationErrorCode =
   | "INVALID_ROW" | "INVALID_ENVELOPE" | "UNSEAL_FAILED" | "INVALID_VALUE";
 
 export class ShopifyPlatformConfigurationError extends Error {
-  constructor(readonly key: ShopifyConfigurationKey, readonly code: ShopifyConfigurationErrorCode) {
-    super(`Shopify platform configuration ${key}: ${code}`);
+  constructor(readonly key: ShopifyConfigurationKey, readonly code: ShopifyConfigurationErrorCode, options?: ErrorOptions) {
+    super(`Shopify platform configuration ${key}: ${code}`, options);
     this.name = "ShopifyPlatformConfigurationError";
   }
 }
 
-export function configurationFailure(key: ShopifyConfigurationKey, code: ShopifyConfigurationErrorCode): never {
-  throw new ShopifyPlatformConfigurationError(key, code);
+export function configurationFailure(key: ShopifyConfigurationKey, code: ShopifyConfigurationErrorCode, options?: ErrorOptions): never {
+  throw new ShopifyPlatformConfigurationError(key, code, options);
 }
 
 export type MerchantKnowledgeR2Configuration = Readonly<{

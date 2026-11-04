@@ -6,13 +6,14 @@ import { Prisma } from "@prisma/client";
 import { recoveryDetailPgTypes, recoveryDetailPgValues } from "../helpers/recovery-detail-pg-utc.mjs";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 vi.mock("../../app/db.server", () => ({ default: {} }));
-import { readRecoveryMessages, readRecoveryDetail, readRelatedRecoveries, recoveryMessagePageSql, type RecoveryDetailDatabase } from "../../app/services/recoveries/recovery-detail.server";
+import { createRecoveryDetailReader, readRecoveryMessages, readRecoveryDetail, readRelatedRecoveries, recoveryMessagePageSql, type RecoveryDetailDatabase } from "../../app/services/recoveries/recovery-detail.server";
 
 // Explicit opt-in: this command provisions its own disposable container only.
 const enabled = process.env.MODA_RECOVERY_DETAIL_POSTGRES === "1";
 let postgres: StartedPostgreSqlContainer | undefined;
 let client: Client | undefined;
 let db: RecoveryDetailDatabase;
+const emitted: Prisma.Sql[] = [];
 const own = { shopId: "arch019-shop-1", recoveryId: "arch019-r-1-00001" };
 
 describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
@@ -26,10 +27,50 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     }
     await loadRecoveryDetailSeed(client, await readFile(new URL("../../database/scripts/fixtures/arch019-recovery-indexes-seed.sql", import.meta.url), "utf8"));
     await client.query('ANALYZE "whatsapp"."Conversation"');
-    db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
+    db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { emitted.push(query); return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
     process.stdout.write(`POSTGRES_VERSION ${JSON.stringify((await client.query("SELECT version()")).rows)}\n`);
   }, 180_000);
   afterAll(async () => { try { await client?.end(); } finally { await postgres?.stop(); } }, 60_000);
+
+  it("composes identical detail/sections with five data SELECTs instead of seven independent-reader SELECTs", async () => {
+    emitted.length = 0;
+    const detail = await readRecoveryDetail(own, db);
+    const messages = await readRecoveryMessages(own, db);
+    const related = await readRelatedRecoveries(own, db);
+    expect(emitted).toHaveLength(7);
+    const compatibilityQueries = emitted.map(query => query.text);
+    emitted.length = 0;
+    const reader = (await createRecoveryDetailReader(own, db))!;
+    expect(reader.detail).toEqual(detail);
+    expect(await reader.readMessages()).toEqual(messages);
+    expect(await reader.readRelated()).toEqual(related);
+    expect(emitted).toHaveLength(5);
+    expect(emitted.filter(query => query.text.includes('r."lineItems"'))).toHaveLength(1);
+    expect(emitted.every(query => query.text.trimStart().startsWith("SELECT"))).toBe(true);
+    process.stdout.write(`RECOVERY_COMPOSITION ${JSON.stringify({ independentReaderCalls: 3, composedOwnerCalls: 1,
+      independentSql: compatibilityQueries.length, composedSql: emitted.length, transactionStatements: 0,
+      providerCalls: 0, messages: messages!.items.length, related: related!.items.length })}\n`);
+  });
+
+  it("retains same-shop customer and same-shop/legacy-null recovery conversation guards", async () => {
+    const conversation = "arch019-conv-1-00001";
+    const original = (await client!.query('SELECT "customerId" FROM "commerce"."CheckoutRecovery" WHERE "id"=$1', [own.recoveryId])).rows[0].customerId;
+    const foreign = (await client!.query('SELECT "id" FROM "commerce"."Customer" WHERE "shopId"=$1 LIMIT 1', ["arch019-shop-2"])).rows[0].id;
+    try {
+      await client!.query('UPDATE "whatsapp"."Conversation" SET "shopId"=$1 WHERE "id"=$2', ["arch019-shop-2", conversation]);
+      expect((await readRecoveryMessages(own, db))!.items).toEqual([]);
+      expect((await createRecoveryDetailReader(own, db))!.detail.conversation).toBeNull();
+      await client!.query('UPDATE "whatsapp"."Conversation" SET "shopId"=NULL WHERE "id"=$1', [conversation]);
+      expect((await readRecoveryMessages(own, db))!.items).toHaveLength(50);
+      await client!.query('UPDATE "commerce"."CheckoutRecovery" SET "customerId"=$1 WHERE "id"=$2', [foreign, own.recoveryId]);
+      expect((await readRelatedRecoveries(own, db))!.items).toEqual([]);
+      expect((await createRecoveryDetailReader(own, db))!.detail.customer).toBeNull();
+      expect(await createRecoveryDetailReader({...own, shopId: "arch019-shop-2"}, db)).toBeNull();
+    } finally {
+      await client!.query('UPDATE "whatsapp"."Conversation" SET "shopId"=$1 WHERE "id"=$2', [own.shopId, conversation]);
+      await client!.query('UPDATE "commerce"."CheckoutRecovery" SET "customerId"=$1 WHERE "id"=$2', [original, own.recoveryId]);
+    }
+  });
 
   it("pages actual owned conversations and denies foreign/missing IDs", async () => {
     expect(await readRecoveryDetail({...own,shopId:"arch019-shop-2"},db)).toBeNull();

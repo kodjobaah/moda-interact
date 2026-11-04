@@ -1,3 +1,5 @@
+import { recordRecoveryFailure } from "../../../services/recoveries/recovery-observability.server";
+import { resolveDeploymentEnvironmentName } from "../../../services/otel/otel.runtime";
 import { data, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { requireRecoveryHistory } from "../recoveries/access.server";
@@ -6,7 +8,7 @@ import {
   readRecoveryCommandStatus, type SendInput, type ControlInput,
 } from "../../../services/recoveries/recovery-human-commands.server";
 
-const logger = createLogger({ serviceName: "moda-interact", environment: process.env.NODE_ENV ?? "development" });
+const logger = createLogger({ serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName() });
 const response = (body: unknown, status = 200) => data(body, {
   status, headers: { "Cache-Control": "no-store" },
 });
@@ -26,7 +28,9 @@ function configuredShopifyAppOrigin(): string | null {
     if (parsed.protocol === "https:") return parsed.origin;
     if (parsed.protocol === "http:" &&
         ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)) return parsed.origin;
-  } catch { /* Fail closed for malformed configuration. */ }
+  } catch (error) {
+    throw new RecoveryCommandError("origin_configuration_unavailable", 503, undefined, error);
+  }
   return null;
 }
 
@@ -104,17 +108,19 @@ function parseSend(body: Record<string, unknown>): SendInput {
   throw new RecoveryCommandError("invalid_request", 400);
 }
 
-function handleFailure(error: unknown) {
-  if (error instanceof RecoveryCommandError) return response({
-    error: error.code,
-    ...(error.currentControl ? { currentControl: error.currentControl } : {}),
-  }, error.status);
+function handleFailure(error: unknown, shopId: string, operation: string, recoveryId: string) {
+  if (error instanceof RecoveryCommandError) {
+    if (error.cause !== undefined) recordRecoveryFailure("command_configuration", shopId, error.cause, false, recoveryId);
+    return response({
+      error: error.code,
+      ...(error.currentControl ? { currentControl: error.currentControl } : {}),
+    }, error.status);
+  }
   // Unique constraints and serializable conflicts must never fabricate a send.
   const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : null;
-  if (code === "P2002" || code === "P2034") return response({ error: "conflict_retry" }, 409);
-  logger.error("shopify.recovery.human_command_failed", {
-    reason: "internal_error", errorType: error instanceof Error ? error.name : "unknown",
-  });
+  const conflict = code === "P2002" || code === "P2034";
+  recordRecoveryFailure(operation, shopId, error, conflict, recoveryId);
+  if (conflict) return response({ error: "conflict_retry" }, 409);
   return response({ error: "internal_error" }, 503);
 }
 
@@ -125,7 +131,7 @@ export async function recoveryControlAction({ request, params, context }: Action
     assertSameOrigin(request);
     const input = parseControl(await requestObject(request));
     return response(await changeRecoveryControl(shopId, params.recoveryId ?? "", input));
-  } catch (error) { return handleFailure(error); }
+  } catch (error) { return handleFailure(error, shopId, "command_control", params.recoveryId ?? ""); }
 }
 export async function recoverySendAction({ request, params, context }: ActionFunctionArgs) {
   if (request.method !== "POST") return response({ error: "method_not_allowed" }, 405);
@@ -135,11 +141,11 @@ export async function recoverySendAction({ request, params, context }: ActionFun
     const input = parseSend(await requestObject(request));
     const result = await admitRecoveryHumanSend(shopId, params.recoveryId ?? "", input);
     return response({ schemaVersion: 1, ...result }, result.replay ? 200 : 202);
-  } catch (error) { return handleFailure(error); }
+  } catch (error) { return handleFailure(error, shopId, "command_send", params.recoveryId ?? ""); }
 }
 export async function recoveryCommandStatusLoader({ request, params, context }: LoaderFunctionArgs) {
   const { shopId } = await requireRecoveryHistory(request, context);
   try {
     return response(await readRecoveryCommandStatus(shopId, params.recoveryId ?? "", params.commandId ?? ""));
-  } catch (error) { return handleFailure(error); }
+  } catch (error) { return handleFailure(error, shopId, "command_status", params.recoveryId ?? ""); }
 }

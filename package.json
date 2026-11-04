@@ -30,7 +30,9 @@
     "prisma:seed": "node database/prisma/seed.mjs",
     "test:merchant-request:unit": "vitest run tests/unit/merchant-request-context.test.ts tests/unit/services/shop.service.test.ts tests/unit/routes/auth-catchall.test.ts tests/unit/merchant-route-access-policy.test.ts",
     "test:merchant-request:router": "vitest run tests/integration/merchant-request-context-router.test.ts",
-    "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts"
+    "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts",
+    "test:recovery-readers:unit": "vitest run tests/unit/recovery-read-context.test.ts tests/unit/recovery-reader-observability.test.ts tests/unit/recovery-detail-readers.test.ts tests/unit/recovery-detail-route.test.ts tests/unit/recovery-list-route.test.ts tests/unit/recovery-overview.test.ts tests/unit/recovery-cohort-readers.test.ts tests/unit/arch040-shopify-command.test.ts tests/unit/arch040-shopify-http.test.ts tests/unit/arch047-shopify-follow-up-catalogue.test.ts tests/unit/arch047-shopify-follow-up-sender.test.ts",
+    "test:recovery-readers:postgres": "MODA_RECOVERY_DETAIL_POSTGRES=1 vitest run tests/integration/recovery-detail-query-plans.test.ts"
   },
   "type": "module",
   "engines": {

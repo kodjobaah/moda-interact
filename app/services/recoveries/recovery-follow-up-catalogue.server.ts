@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, type Shop } from "@prisma/client";
 import { canonicaliseLanguageTag } from "@modainteract/moda-interact-shared/internationalization";
 import prisma from "../../db.server";
 import { trustedRecoverySenderWaba } from "./recovery-follow-up-sender.server";
@@ -6,6 +6,8 @@ import { trustedRecoverySenderWaba } from "./recovery-follow-up-sender.server";
 const FOLLOW_UP_PURPOSES = ["FOLLOW_UP_NO_OFFER", "FOLLOW_UP_CODE_OFFER", "FOLLOW_UP_AUTOMATIC_OFFER"] as const;
 const NO_OFFER = "FOLLOW_UP_NO_OFFER";
 const MAX_ROWS = 180;
+
+export type TrustedRecoveryShop = Pick<Shop, "id" | "status" | "platform" | "defaultLanguageTag">;
 
 type CatalogueDatabase = Pick<Prisma.TransactionClient, "shop" | "whatsAppTemplateVariant" | "whatsAppTemplatePublicationTarget" | "platformConfiguration">;
 export type FollowUpTemplateChoice = Readonly<{
@@ -126,9 +128,12 @@ export function eligibleFollowUpChoices(rows: readonly CatalogueVariant[], input
 export async function readCurrentFollowUpTemplates(
   shopId: string, conversationLanguageTag: string | null,
   db: CatalogueDatabase = prisma,
-  sender: (db: CatalogueDatabase) => Promise<string> = trustedRecoverySenderWaba,
+  trustedShop?: TrustedRecoveryShop | ((db: CatalogueDatabase) => Promise<string>),
 ): Promise<FollowUpTemplateChoice[]> {
-  const shop = await db.shop.findUnique({ where: { id: shopId },
+  const sender = typeof trustedShop === "function" ? trustedShop : trustedRecoverySenderWaba;
+  const snapshot = typeof trustedShop === "function" ? undefined : trustedShop;
+  if (snapshot && snapshot.id !== shopId) return [];
+  const shop = snapshot ?? await db.shop.findUnique({ where: { id: shopId },
     select: { status: true, platform: true, defaultLanguageTag: true } });
   if (!shop || shop.status !== "ACTIVE" || shop.platform !== "SHOPIFY") return [];
   const wabaId = await sender(db);

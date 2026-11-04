@@ -35,8 +35,8 @@ export async function readPlatformConfiguration(
       where: { environment_key: { environment, key } },
       select: { environment: true, key: true, version: true, value: true },
     });
-  } catch {
-    return configurationFailure(key, "DATABASE_UNAVAILABLE");
+  } catch (error) {
+    return configurationFailure(key, "DATABASE_UNAVAILABLE", { cause: error });
   }
   if (!row) configurationFailure(key, "MISSING");
   if (row.key !== key || row.environment !== environment ||
