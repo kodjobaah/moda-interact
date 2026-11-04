@@ -28,8 +28,9 @@ async function section<T>(read: () => Promise<T | null>): Promise<Section<T>> {
 export async function loadRecoveryDetail({
   request,
   params,
+  context,
 }: LoaderFunctionArgs) {
-  const access = await requireRecoveryHistory(request);
+  const access = await requireRecoveryHistory(request, context);
   const { shopId, merchantUi, embed } = access;
   let query = normalizeRecoveryQuery(new URLSearchParams(), merchantUi);
   try {
@@ -82,7 +83,7 @@ export async function loadRecoverySection(
   args: LoaderFunctionArgs,
   kind: "messages" | "related",
 ) {
-  const { shopId } = await requireRecoveryHistory(args.request);
+  const { shopId } = await requireRecoveryHistory(args.request, args.context);
   const query = new URL(args.request.url).searchParams;
   const input = {
     shopId,

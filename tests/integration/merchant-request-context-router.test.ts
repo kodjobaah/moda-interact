@@ -30,6 +30,21 @@ vi.mock("../../app/services/store-profile/store-category.server", () => ({
 vi.mock("../../app/services/store-profile/shopify-taxonomy-suggestion.server", () => ({
   suggestStoreCategory: async () => null,
 }));
+vi.mock("../../app/services/feature-preferences/feature-preferences.server", () => ({
+  loadFeaturePreferences: async () => ({revision: "fixture", features: [], denied: false}),
+  saveFeaturePreferences: vi.fn(), PreferenceError: class extends Error {},
+}));
+vi.mock("../../app/services/recovery-policy/recovery-policy.server", () => ({
+  loadRecoveryPolicySnapshot: async () => ({recoveryDelayMinutes: 30}),
+  saveMerchantRecoveryPolicy: vi.fn(), RecoveryPolicyValidationError: class extends Error {},
+}));
+vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", () => ({
+  loadMerchantKnowledge: async () => ({sources: []}),
+}));
+const readRecoveryPage = vi.fn(async () => ({
+  items: [{id: "owned-recovery"}], previousCursor: null, nextCursor: null,
+}));
+vi.mock("../../app/services/recoveries/recovery-readers.server", () => ({readRecoveryPage}));
 const {getMerchantRequestContext, merchantPageContextMiddleware} = await import(
   "../../app/services/shop/merchant-request-context.server"
 );
@@ -162,4 +177,39 @@ it.each(["subscription", "settings"])("owns lazy %s database failure through rea
     expect(data.providerError).toBeUndefined();
     expect(fixture.graphql).not.toHaveBeenCalled();
   } finally {vi.restoreAllMocks();}
+});
+
+
+// Real production route exports and access helpers; SDK/Prisma/domain ports remain simulated.
+it.each(["settings", "recoveries"])("shares app middleware context through the production %s chain", async route => {
+  const layout = await import("../../app/routes/app/route");
+  const child = route === "settings"
+    ? await import("../../app/routes/app/recovery-settings/route")
+    : await import("../../app/routes/app/recoveries/route");
+  const path = route === "settings" ? "recovery-settings" : "recoveries";
+  const handler = createStaticHandler([{
+    id: "layout", path: "/app", middleware: layout.middleware, loader: layout.loader,
+    children: [{id: "child", path, loader: child.loader}],
+  }]);
+  const request = new Request(`https://app.test/app/${path}?shopId=foreign-shop`);
+  const response = await handler.query(request, {
+    requestContext: new RouterContextProvider(),
+    generateMiddlewareResponse: async query => Response.json(await query(request)),
+  });
+  const body = await (response as Response).json();
+  expect(body.errors).toBeNull();
+  expect(body.loaderData.layout.merchantExperienceState).toBe("ACTIVE");
+  if (route === "settings") {
+    expect(body.loaderData.child.aiResponseDelayMinutes).toBe(0);
+    expect(body.loaderData.child.features.revision).toBe("fixture");
+  } else {
+    expect(body.loaderData.child.state).toBe("ready");
+    expect(readRecoveryPage).toHaveBeenCalledWith(fixture.rows.shop.id, expect.any(Object));
+  }
+  expect(fixture.authenticateAdmin).toHaveBeenCalledTimes(1);
+  expect(fixture.graphql).toHaveBeenCalledTimes(1);
+  expect(fixture.lookup).toHaveBeenCalledExactlyOnceWith({where: {domain: fixture.rows.shop.domain}});
+  expect(fixture.readSubscription).toHaveBeenCalledTimes(1);
+  expect(fixture.readSettings).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(body.loaderData)).not.toMatch(/private-session-sentinel|accessToken|authentication|foreign-shop/);
 });

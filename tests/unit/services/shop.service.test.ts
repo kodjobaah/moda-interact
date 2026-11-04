@@ -729,3 +729,53 @@ it("retains actual SDK HTTP provider status and safe error excerpt", async () =>
     expect(records.join("")).not.toMatch(/private-http-sentinel|private-body-sentinel/);
   } finally {vi.restoreAllMocks();}
 });
+
+
+describe("merchant bootstrap unique-index race", () => {
+  const input = () => ({admin: adminFor({
+    shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain,
+  }), domain: shop.domain});
+  it("retries once against an exact committed tenant without another provider observation", async () => {
+    const records: string[] = [];
+    vi.spyOn(console, "warn").mockImplementation(record => {records.push(String(record));});
+    const source = Object.assign(new Error("bootstrap-race-marker", {cause: new Error("race-cause-marker")}), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
+    dbMock.$transaction.mockRejectedValueOnce(source);
+    const args = input();
+    try {
+      const result = await new ShopService().resolveShopifyMerchantSnapshot(args);
+      expect(result.shop.id).toBe(shop.id);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
+      expect(args.admin.graphql).toHaveBeenCalledTimes(1);
+      const data = JSON.parse(records[0]).data;
+      expect(data.databaseCode).toBe("P2002");
+      expect(data.error.message).toBe("bootstrap-race-marker");
+      expect(data.causeChain[0].message).toBe("race-cause-marker");
+      expect(data.shopId).toBe(shop.id);
+    } finally {vi.restoreAllMocks();}
+  });
+  it.each(["missing", "different-identity", "different-platform"])("does not retry a %s winner", async kind => {
+    const source = Object.assign(new Error("bootstrap-conflict-marker"), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(kind === "missing" ? null : {
+      ...shop, ...(kind === "different-identity" ? {shopifyShopId: "gid://shopify/Shop/999"} : {platform: "WOOCOMMERCE"}),
+    });
+    dbMock.$transaction.mockRejectedValueOnce(source);
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(source);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+    } finally {log.mockRestore();}
+  });
+  it("retains the second failure and never performs an unbounded retry", async () => {
+    const first = Object.assign(new Error("first-race"), {code: "P2002"});
+    const second = Object.assign(new Error("second-race"), {code: "P2002"});
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
+    dbMock.$transaction.mockRejectedValueOnce(first).mockRejectedValueOnce(second);
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(second);
+      expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
+    } finally {vi.restoreAllMocks();}
+  });
+});

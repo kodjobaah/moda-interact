@@ -66,7 +66,7 @@ function safeProfileErrorText(text: string): string {
 export function recordMerchantResolutionFailure(
   operation: string, origin: "database" | "transport" | "sdk_exception" | "internal" | "provider_response",
   error: unknown,
-  source?: {shopId?: string; httpStatus?: number; providerRequestId?: string; providerError?: unknown; redactionApplied?: boolean; truncated?: boolean},
+  source?: {retrying?: boolean; shopId?: string; httpStatus?: number; providerRequestId?: string; providerError?: unknown; redactionApplied?: boolean; truncated?: boolean},
 ): void {
   const original = error instanceof Error ? error : new Error(String(error));
   const causes: Error[] = [];
@@ -80,7 +80,7 @@ export function recordMerchantResolutionFailure(
   const safeError = (item: Error) => ({
     name: safeProfileErrorText(item.name), message: safeProfileErrorText(item.message).slice(0, 2048),
   });
-  merchantLogger.error("shopify.merchant.resolve.failed", {
+  const fields = {
     operation, origin,
     ...(source?.shopId ? {shopId: source.shopId} : {}),
     ...(origin === "provider_response" || origin === "transport" || origin === "sdk_exception" ? {provider: "shopify"} : {}),
@@ -92,7 +92,9 @@ export function recordMerchantResolutionFailure(
     ...(source?.providerError ? {providerError: source.providerError} : {}),
     redactionApplied,
     truncated: source?.truncated || texts.some(item => item.message.length > 2048),
-  });
+  };
+  if (source?.retrying) merchantLogger.warn("shopify.merchant.bootstrap.retry", fields);
+  else merchantLogger.error("shopify.merchant.resolve.failed", fields);
 }
 
 class MerchantProfileFailure extends Error {
@@ -305,7 +307,7 @@ export class ShopService {
       });
     }
 
-    return prisma.$transaction(async (transaction) => {
+    const bootstrap = () => prisma.$transaction(async (transaction) => {
       const shop = await transaction.shop.upsert({
         where: { domain: shopDomain },
         create: {
@@ -361,6 +363,18 @@ export class ShopService {
 
       return {shop, subscription, settings};
     });
+    try {
+      return await bootstrap();
+    } catch (error) {
+      if (!error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") throw error;
+      // Multiple unique indexes can race before ON CONFLICT(domain) resolves.
+      // Retry once only after the committed winner proves the exact same tenant.
+      const winner = await prisma.shop.findUnique({where: {domain: shopDomain}});
+      if (!winner || winner.platform !== "SHOPIFY" || winner.shopifyShopId !== shopifyShopId) throw error;
+      recordMerchantResolutionFailure("bootstrap_unique_race", "database", error, {shopId: winner.id, retrying: true});
+      return bootstrap();
+    }
+
   }
 
 

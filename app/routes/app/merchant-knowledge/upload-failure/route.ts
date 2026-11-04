@@ -59,8 +59,8 @@ function validBody(value: unknown): value is FailureBody {
   return true;
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request);
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await settingsAccess(request, context);
   let body: unknown;
   try {
     body = await request.json();
