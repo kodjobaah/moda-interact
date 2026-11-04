@@ -40,7 +40,7 @@ Starting Shopify with:
 
   shopify = spawn(
     "npx",
-    ["shopify", "app", "dev", "--tunnel-url", tunnelUrl],
+    ["shopify", "app", "dev", "--config", "moda-interact", "--tunnel-url", tunnelUrl],
     { stdio: "inherit" },
   );
 

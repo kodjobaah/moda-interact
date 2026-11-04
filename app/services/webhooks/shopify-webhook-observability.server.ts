@@ -72,6 +72,9 @@ export function recordShopifyWebhookAuthenticationFailure(input: {
     method: input.request.method,
     statusCode: errorStatusCode(input.error),
     errorType: errorType(input.error),
+    classification: input.error instanceof Response ? "sdk_denial" : "sdk_exception",
+    origin: input.error instanceof Response ? "sdk_response" : "sdk_exception",
+    ...safeErrorFields(input.error),
     ackMs: input.ackMs,
   });
 }
@@ -128,6 +131,9 @@ export function recordShopifyWebhookRouteFailure(input: {
   shopId?: string | null;
   error: unknown;
   ackMs: number;
+  operation?: string;
+  stage?: string;
+  origin?: string;
 }): void {
   logger.error("shopify.webhook.failed", {
     route: input.route,
@@ -139,8 +145,65 @@ export function recordShopifyWebhookRouteFailure(input: {
     shopDomain: input.shopDomain ?? null,
     statusCode: errorStatusCode(input.error),
     errorType: errorType(input.error),
+    ...(input.operation ? { operation: input.operation } : {}),
+    ...(input.stage ? { stage: input.stage } : {}),
+    ...(input.origin ? { origin: input.origin } : {}),
+    ...safeErrorFields(input.error),
     ackMs: input.ackMs,
   });
+}
+
+export function recordShopifyLifecycleFailure(input: {
+  operation: string;
+  stage: string;
+  origin: string;
+  error: unknown;
+  shopId?: string;
+}): void {
+  logger.error("shopify.lifecycle.failed", {
+    operation: input.operation,
+    stage: input.stage,
+    origin: input.origin,
+    ...(input.shopId ? { shopId: input.shopId } : {}),
+    ...safeErrorFields(input.error),
+  });
+}
+
+function safeErrorFields(value: unknown): Record<string, unknown> {
+  const original = value instanceof Error ? value : new Error(String(value));
+  const causes: Error[] = [];
+  let cause = original.cause;
+  for (let index = 0; index < 4 && cause instanceof Error; index += 1) {
+    causes.push(cause);
+    cause = cause.cause;
+  }
+  const safeError = (error: Error) => ({
+    name: safeDiagnosticText(error.name).slice(0, 256),
+    message: safeDiagnosticText(error.message).slice(0, 2048),
+  });
+  const codedError = [original, ...causes].find(
+    (error) => "code" in error && typeof error.code === "string",
+  ) as (Error & { code: string }) | undefined;
+  const code = codedError ? safeDiagnosticText(codedError.code).slice(0, 128) : undefined;
+
+  return {
+    error: safeError(original),
+    ...(causes.length > 0 ? { causeChain: causes.map(safeError) } : {}),
+    ...(code ? { databaseCode: code } : {}),
+    redactionApplied: [original, ...causes].some(
+      (error) => safeDiagnosticText(error.message) !== error.message,
+    ),
+    truncated: [original, ...causes].some((error) => error.message.length > 2048),
+  };
+}
+
+function safeDiagnosticText(value: string): string {
+  return value
+    .replace(/(?:https?|postgres(?:ql)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED]")
+    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [REDACTED]")
+    .replace(/(?:token|access[_-]?token|refresh[_-]?token|authorization|cookie|password|secret|email|phone|address)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]")
+    .replace(/\+?\d[\d ()-]{8,}\d/g, "[REDACTED]");
 }
 
 function webhookDeliveryId(request: Request): string {

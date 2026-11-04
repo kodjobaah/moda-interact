@@ -38,6 +38,7 @@ export const action = async ({ request }) => {
   }
 
   const { payload, session, topic, shop, eventId } = authenticated;
+  let missingAuthenticatedSession = false;
 
   try {
     const current = payload.current.toString();
@@ -52,10 +53,11 @@ export const action = async ({ request }) => {
 
       await lockShopLifecycleRow(transaction, shopIdentity.id);
       if (session) {
-        await transaction.session.update({
-          where: { id: session.id },
+        const sessionUpdate = await transaction.session.updateMany({
+          where: { id: session.id, shop: shop.trim().toLowerCase() },
           data: { scope: current },
         });
+        missingAuthenticatedSession = sessionUpdate.count === 0;
       }
 
       const shopRecord = await transaction.shop.findUnique({
@@ -113,6 +115,8 @@ export const action = async ({ request }) => {
       brandReadScopeGrantFromWebhook: shopifyBrandReadGrant(current),
       outcome: syncRequest
         ? "PROCESSED_APP_SCOPES_UPDATE_SYNC_REQUESTED"
+        : missingAuthenticatedSession
+          ? "PROCESSED_APP_SCOPES_UPDATE_SESSION_MISSING"
         : "PROCESSED_APP_SCOPES_UPDATE",
       ackMs: Date.now() - startedAt,
     });

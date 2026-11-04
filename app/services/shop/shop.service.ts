@@ -8,6 +8,7 @@ import type {
 
 import type {
   Prisma,
+  PrismaClient,
   Shop,
   Subscription,
   ShopSettings,
@@ -23,12 +24,25 @@ import {
   lockShopLifecycleRow,
   markDiscountCatalogueUnavailable,
 } from "../discounts/shopify-discount-lifecycle.service";
+import { recordShopifyLifecycleFailure } from "../webhooks/shopify-webhook-observability.server";
 
 
 export interface ResolveShopifyShopInput {
   admin: AdminApiContext;
   domain: string;
 }
+
+export type ReinstallSchedule = {
+  shopId: string;
+  subscriptionId: string;
+  reinstallPendingAt: Date;
+  expectedNextReconcileAt: Date;
+};
+
+export type ReinstallAdmissionResult =
+  | { kind: "SCHEDULED"; schedule: ReinstallSchedule }
+  | { kind: "AUTHENTICATION_REQUIRED" }
+  | { kind: "NO_CHANGE" };
 
 
 const profileSchema = z.object({
@@ -102,6 +116,22 @@ class MerchantProfileFailure extends Error {
 }
 
 export class ShopService {
+  constructor(private readonly database: PrismaClient = prisma) {}
+
+  private async hasUsableOfflineSession(
+    transaction: Prisma.TransactionClient,
+    shopDomain: string,
+    now: Date,
+  ): Promise<boolean> {
+    const session = await transaction.session.findFirst({
+      where: { shop: shopDomain, isOnline: false },
+      select: { accessToken: true, expires: true, refreshToken: true },
+      orderBy: { expires: "desc" },
+    });
+    if (!session?.accessToken?.trim()) return false;
+    return session.expires === null || session.expires > now || Boolean(session.refreshToken?.trim());
+  }
+
   async resolveShopifyShop(input: ResolveShopifyShopInput): Promise<Shop> {
     return (await this.resolveShopifyMerchantSnapshot(input)).shop;
   }
@@ -404,18 +434,18 @@ export class ShopService {
   async beginReinstallReconciliation(
     shopId: string,
     now = new Date(),
-  ): Promise<{
-    shopId: string;
-    subscriptionId: string;
-    reinstallPendingAt: Date;
-    expectedNextReconcileAt: Date;
-  } | null> {
-    return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+  ): Promise<ReinstallAdmissionResult> {
+    try {
+      return await this.database.$transaction<ReinstallAdmissionResult>(async (transaction: Prisma.TransactionClient) => {
+      await lockShopLifecycleRow(transaction, shopId);
       const shop = await transaction.shop.findUnique({
         where: { id: shopId },
-        select: { status: true, reinstallPendingAt: true },
+        select: { domain: true, status: true, reinstallPendingAt: true },
       });
-      if (!shop || shop.status !== "UNINSTALLED") return null;
+      if (!shop || shop.status !== "UNINSTALLED") return { kind: "NO_CHANGE" };
+      if (!(await this.hasUsableOfflineSession(transaction, shop.domain, now))) {
+        return { kind: "AUTHENTICATION_REQUIRED" };
+      }
 
       const existingSubscription = await transaction.subscription.findUnique({
         where: { shopId },
@@ -423,13 +453,16 @@ export class ShopService {
       });
 
       if (shop.reinstallPendingAt) {
-        if (!existingSubscription?.nextReconcileAt) return null;
+        if (!existingSubscription?.nextReconcileAt) return { kind: "NO_CHANGE" };
 
         return {
-          shopId,
-          subscriptionId: existingSubscription.id,
-          reinstallPendingAt: shop.reinstallPendingAt,
-          expectedNextReconcileAt: existingSubscription.nextReconcileAt,
+          kind: "SCHEDULED",
+          schedule: {
+            shopId,
+            subscriptionId: existingSubscription.id,
+            reinstallPendingAt: shop.reinstallPendingAt,
+            expectedNextReconcileAt: existingSubscription.nextReconcileAt,
+          },
         };
       }
 
@@ -458,14 +491,17 @@ export class ShopService {
           !durableShop.reinstallPendingAt ||
           !durableSubscription?.nextReconcileAt
         ) {
-          return null;
+          return { kind: "NO_CHANGE" };
         }
 
         return {
-          shopId,
-          subscriptionId: durableSubscription.id,
-          reinstallPendingAt: durableShop.reinstallPendingAt,
-          expectedNextReconcileAt: durableSubscription.nextReconcileAt,
+          kind: "SCHEDULED",
+          schedule: {
+            shopId,
+            subscriptionId: durableSubscription.id,
+            reinstallPendingAt: durableShop.reinstallPendingAt,
+            expectedNextReconcileAt: durableSubscription.nextReconcileAt,
+          },
         };
       }
 
@@ -487,37 +523,50 @@ export class ShopService {
       }
 
       return {
-        shopId,
-        subscriptionId: subscription.id,
-        reinstallPendingAt,
-        expectedNextReconcileAt: subscription.nextReconcileAt,
+        kind: "SCHEDULED",
+        schedule: {
+          shopId,
+          subscriptionId: subscription.id,
+          reinstallPendingAt,
+          expectedNextReconcileAt: subscription.nextReconcileAt,
+        },
       };
-    });
+      });
+    } catch (error) {
+      recordShopifyLifecycleFailure({
+        operation: "begin_reinstall_reconciliation",
+        stage: "transaction",
+        origin: "database",
+        shopId,
+        error,
+      });
+      throw error;
+    }
   }
 
   async retryReinstallReconciliation(
     shopId: string,
     now = new Date(),
-  ): Promise<{
-    shopId: string;
-    subscriptionId: string;
-    reinstallPendingAt: Date;
-    expectedNextReconcileAt: Date;
-  } | null> {
-    return prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+  ): Promise<ReinstallAdmissionResult> {
+    try {
+      return await this.database.$transaction<ReinstallAdmissionResult>(async (transaction: Prisma.TransactionClient) => {
+      await lockShopLifecycleRow(transaction, shopId);
       const shop = await transaction.shop.findUnique({
         where: { id: shopId },
-        select: { status: true, reinstallPendingAt: true },
+        select: { domain: true, status: true, reinstallPendingAt: true },
       });
       if (!shop || shop.status !== "UNINSTALLED" || !shop.reinstallPendingAt) {
-        return null;
+        return { kind: "NO_CHANGE" };
+      }
+      if (!(await this.hasUsableOfflineSession(transaction, shop.domain, now))) {
+        return { kind: "AUTHENTICATION_REQUIRED" };
       }
 
       const subscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: { id: true, nextReconcileAt: true },
       });
-      if (subscription?.nextReconcileAt) return null;
+      if (subscription?.nextReconcileAt) return { kind: "NO_CHANGE" };
 
       const markerWrite = await transaction.shop.updateMany({
         where: {
@@ -527,7 +576,7 @@ export class ShopService {
         },
         data: { reinstallPendingAt: now },
       });
-      if (markerWrite.count !== 1) return null;
+      if (markerWrite.count !== 1) return { kind: "NO_CHANGE" };
 
       const updatedSubscription = await transaction.subscription.upsert({
         where: { shopId },
@@ -547,12 +596,25 @@ export class ShopService {
       }
 
       return {
-        shopId,
-        subscriptionId: updatedSubscription.id,
-        reinstallPendingAt: now,
-        expectedNextReconcileAt: updatedSubscription.nextReconcileAt,
+        kind: "SCHEDULED",
+        schedule: {
+          shopId,
+          subscriptionId: updatedSubscription.id,
+          reinstallPendingAt: now,
+          expectedNextReconcileAt: updatedSubscription.nextReconcileAt,
+        },
       };
-    });
+      });
+    } catch (error) {
+      recordShopifyLifecycleFailure({
+        operation: "retry_reinstall_reconciliation",
+        stage: "transaction",
+        origin: "database",
+        shopId,
+        error,
+      });
+      throw error;
+    }
   }
 
   async getReinstallSubscription(shopId: string) {
@@ -566,17 +628,17 @@ export class ShopService {
   async markUninstalled(
     domain: string,
     uninstalledAt: Date,
-  ): Promise<void> {
+  ): Promise<ShopifyUninstallResult> {
     const normalizedDomain = normalizeShopDomain(domain);
 
-    await prisma.$transaction(async (transaction: Prisma.TransactionClient) => {
+    return this.database.$transaction<ShopifyUninstallResult>(async (transaction: Prisma.TransactionClient) => {
       const shopIdentity = await transaction.shop.findUnique({
         where: { domain: normalizedDomain },
         select: { id: true },
       });
 
       if (!shopIdentity) {
-        return;
+        return { kind: "SHOP_NOT_FOUND" };
       }
 
       await lockShopLifecycleRow(transaction, shopIdentity.id);
@@ -584,29 +646,58 @@ export class ShopService {
         where: { id: shopIdentity.id },
         select: { id: true, uninstalledAt: true },
       });
-      if (!shop) return;
+      if (!shop) return { kind: "SHOP_NOT_FOUND" };
 
-      await transaction.shop.updateMany({
-        where: {
-          id: shop.id,
-          uninstalledAt: null,
-        },
-        data: {
-          status: "UNINSTALLED",
-          uninstalledAt,
-          reinstallPendingAt: null,
-        },
-      });
+      let firstUninstalledAt = shop.uninstalledAt;
+      let deletedSessionCount: number | null = null;
+      if (!firstUninstalledAt) {
+        const transition = await transaction.shop.updateMany({
+          where: {
+            id: shop.id,
+            uninstalledAt: null,
+          },
+          data: {
+            status: "UNINSTALLED",
+            uninstalledAt,
+            reinstallPendingAt: null,
+          },
+        });
+
+        if (transition.count === 1) {
+          firstUninstalledAt = uninstalledAt;
+          const deletion = await transaction.session.deleteMany({
+            where: { shop: normalizedDomain },
+          });
+          deletedSessionCount = deletion.count;
+        } else {
+          const durableShop = await transaction.shop.findUnique({
+            where: { id: shop.id },
+            select: { uninstalledAt: true },
+          });
+          firstUninstalledAt = durableShop?.uninstalledAt ?? null;
+          if (!firstUninstalledAt) {
+            throw new Error("Uninstall transition lost its guarded update without a persisted timestamp.");
+          }
+        }
+      }
 
       await markDiscountCatalogueUnavailable(
         transaction,
         shop.id,
-        shop.uninstalledAt ?? uninstalledAt,
+        firstUninstalledAt,
       );
 
+      return deletedSessionCount === null
+        ? { kind: "ALREADY_UNINSTALLED", shopId: shop.id }
+        : { kind: "UNINSTALLED", shopId: shop.id, deletedSessionCount };
     });
   }
 }
+
+export type ShopifyUninstallResult =
+  | { kind: "SHOP_NOT_FOUND" }
+  | { kind: "UNINSTALLED"; shopId: string; deletedSessionCount: number }
+  | { kind: "ALREADY_UNINSTALLED"; shopId: string };
 
 
 function normalizeShopDomain(

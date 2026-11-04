@@ -28,13 +28,16 @@ export async function loader(/** @type {import("react-router").LoaderFunctionArg
 
 export async function action(/** @type {import("react-router").ActionFunctionArgs} */ { request, context }) {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop } = merchant;
+  const { shop, authentication: { session } } = merchant;
   const formData = await request.formData();
   if (formData.get("intent") !== "retry") throw redirect("/app/reinstalling");
 
-  const reconciliation = await shopService.retryReinstallReconciliation(shop.id);
-  if (reconciliation) {
-    await enqueueBillingSubscriptionReconcileBestEffort(reconciliation);
+  const admission = await shopService.retryReinstallReconciliation(shop.id);
+  if (admission.kind === "SCHEDULED") {
+    await enqueueBillingSubscriptionReconcileBestEffort(admission.schedule);
+  } else if (admission.kind === "AUTHENTICATION_REQUIRED") {
+    const query = new URLSearchParams({ shop: session.shop });
+    throw redirect(`/auth/login?${query.toString()}`);
   }
   throw redirect("/app/reinstalling");
 }

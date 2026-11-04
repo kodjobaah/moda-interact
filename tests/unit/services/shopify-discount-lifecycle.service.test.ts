@@ -85,6 +85,37 @@ describe("Shopify discount lifecycle contract", () => {
     expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
   });
 
+  it("logs the original activation publication failure after commit without changing best-effort success", async () => {
+    const records: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((record) => { records.push(String(record)); });
+    mocks.shopFindUnique
+      .mockResolvedValueOnce({ id: "shop-1" })
+      .mockResolvedValueOnce({
+        id: "shop-1",
+        domain: "shop.myshopify.com",
+        status: "ACTIVE",
+        onboardingCompleted: true,
+        subscription: { status: "ACTIVE" },
+      });
+    mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });
+    const error = new Error("activation queue failure marker", { cause: new Error("activation queue cause") });
+    mocks.publish.mockRejectedValue(error);
+
+    await expect(enqueueSubscriptionActivatedDiscountSyncBestEffort("shop-1")).resolves.toBeUndefined();
+
+    const record = JSON.parse(records[0] ?? "{}");
+    expect(record.event).toBe("shopify.lifecycle.failed");
+    expect(record.data).toMatchObject({
+      operation: "subscription_activated_discount_sync",
+      stage: "publish",
+      origin: "best_effort",
+      shopId: "shop-1",
+      error: { message: "activation queue failure marker" },
+      causeChain: [{ message: "activation queue cause" }],
+    });
+    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+  });
+
   it("preserves prior discount unavailableAt values while invalidating all rows", async () => {
     const eventTime = new Date("2026-09-16T17:00:00.000Z");
     await markDiscountCatalogueUnavailable({
@@ -94,7 +125,7 @@ describe("Shopify discount lifecycle contract", () => {
 
     expect(mocks.catalogueUpsert).toHaveBeenCalledTimes(1);
     expect(mocks.discountUpdateMany).toHaveBeenNthCalledWith(1, {
-      where: { shopId: "shop-1" },
+      where: { shopId: "shop-1", isAvailable: true },
       data: { isAvailable: false },
     });
     expect(mocks.discountUpdateMany).toHaveBeenNthCalledWith(2, {
