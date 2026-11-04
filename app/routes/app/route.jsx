@@ -9,7 +9,7 @@ import {
   assertSupportShop,
 } from "@/services/shop/shop-access-policy";
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
-import { readMerchantSupportMessages } from "@/services/merchant-support/merchant-support.service";
+import { readMerchantSupportUnreadCount } from "@/services/merchant-support/merchant-support.service";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import MerchantNavigation from "@/components/dashboard/MerchantNavigation";
 
@@ -37,10 +37,8 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     });
   }
 
-  const support = await readMerchantSupportMessages({
+  const support = await readMerchantSupportUnreadCount({
     shopId: shop.id,
-    page: 1,
-    pageSize: 1,
   });
   const subscription = await merchant.readSubscription();
   const merchantExperienceState = resolveMerchantExperienceState({
@@ -50,7 +48,7 @@ export const loader = async ({ request, context = new RouterContextProvider() })
 
   return {
     apiKey,
-    unreadMessages: support.unread,
+    unreadMessages: support,
     merchantUi: merchantUiContext(shop, session),
     merchantExperienceState,
   };

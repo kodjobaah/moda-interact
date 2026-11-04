@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   recovery: vi.fn(),
 }));
 vi.mock("../../app/services/feature-preferences/access.server", () => ({
-  settingsAccess: mocks.access,
+  settingsMutationAccess: mocks.access,
 }));
 vi.mock(
   "../../app/services/feature-preferences/feature-preferences.server",

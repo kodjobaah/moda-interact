@@ -6,6 +6,7 @@ import {
   type PrismaClient,
 } from "@prisma/client";
 import db from "@/db.server";
+import { recordMerchantSettingsFailure } from "../feature-preferences/merchant-settings-observability.server";
 import {
   createStoreCategoryPromptContext,
   renderStoreCategoryPromptTemplate,
@@ -21,8 +22,8 @@ export type StoreCategorySelectionInput = {
 };
 
 export class StoreCategorySelectionError extends Error {
-  constructor(readonly code: "CONFLICT" | "CATEGORY_UNAVAILABLE") {
-    super(code);
+  constructor(readonly code: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "SHOP_UNAVAILABLE", options?: ErrorOptions) {
+    super(code, options);
     this.name = "StoreCategorySelectionError";
   }
 }
@@ -95,8 +96,9 @@ async function prepareStoreCategorySelection(
         selectedConditionKeys,
       }),
     });
-  } catch {
-    throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
+  } catch (error) {
+    recordMerchantSettingsFailure("category", "render", input.shopId, error);
+    throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE", { cause: error });
   }
   if (!renderedPrompt.ok || !renderedPrompt.promptText.trim())
     throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
@@ -192,9 +194,11 @@ export async function selectPendingStoreCategory(
   const prepared = await prepareStoreCategorySelection(input, client);
 
   return client.$transaction(async (tx) => {
-    await tx.$queryRaw(Prisma.sql`
-      SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${input.shopId} FOR UPDATE
+    const shops = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${input.shopId} AND "status" = 'ACTIVE' FOR UPDATE
     `);
+
+    if (!shops.length) throw new StoreCategorySelectionError("SHOP_UNAVAILABLE");
 
     let profile = await tx.commerceShopProfile.findUnique({ where: { shopId: input.shopId } });
     if (!profile) profile = await tx.commerceShopProfile.create({ data: { shopId: input.shopId } });

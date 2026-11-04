@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
   return {
     logger: { error: vi.fn() },
     MockPreferenceError,
-    settingsAccess: vi.fn(),
+    settingsMutationAccess: vi.fn(),
     saveMerchantRecoveryPolicy: vi.fn(),
     saveFeaturePreferences: vi.fn(),
     saveAiResponseDelay: vi.fn(),
@@ -20,7 +20,7 @@ vi.mock("@/services/otel/otel.runtime", () => ({
   resolveDeploymentEnvironmentName: () => "test",
 }));
 vi.mock("@/services/feature-preferences/access.server", () => ({
-  settingsAccess: mocks.settingsAccess,
+  settingsMutationAccess: mocks.settingsMutationAccess,
 }));
 vi.mock("@/services/feature-preferences/feature-preferences.server", () => ({
   PreferenceError: mocks.MockPreferenceError,
@@ -88,7 +88,7 @@ function aiResponseDelayForm(value = "7") {
 describe("recovery settings save route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.settingsAccess.mockResolvedValue({ shop: { id: "shop-123" } });
+    mocks.settingsMutationAccess.mockResolvedValue({ shop: { id: "shop-123" } });
     mocks.saveMerchantRecoveryPolicy.mockResolvedValue({
       updatedAt: new Date("2026-10-27T12:00:00.000Z"),
     });
@@ -140,12 +140,11 @@ describe("recovery settings save route", () => {
     mocks.saveAiResponseDelay.mockRejectedValue(error);
     await expect(submit(aiResponseDelayForm())).rejects.toBe(error);
     expect(mocks.logger.error).toHaveBeenCalledWith(
-      "merchant.recovery_settings.save.failed",
+      "merchant.settings.save.failed",
       expect.objectContaining({
         shopId: "shop-123",
-        operation: "ai_response_delay",
-        errorCategory: "persistence_failure",
-        error,
+        operation: "ai-response-delay",
+        error: { name: error.name, message: error.message },
       }),
     );
   });
@@ -249,13 +248,12 @@ describe("recovery settings save route", () => {
 
     await expect(submit(recoveryForm())).rejects.toBe(error);
     expect(mocks.logger.error).toHaveBeenCalledWith(
-      "merchant.recovery_settings.save.failed",
-      {
+      "merchant.settings.save.failed",
+      expect.objectContaining({
         shopId: "shop-123",
-        operation: "recovery_notice_preference",
-        errorCategory: "persistence_failure",
-        error,
-      },
+        operation: "recovery",
+        error: { name: error.name, message: error.message },
+      }),
     );
   });
 

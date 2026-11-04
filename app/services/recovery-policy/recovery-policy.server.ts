@@ -1,7 +1,8 @@
 import { lockSettingsShop, revisionOf, PreferenceError } from "../feature-preferences/feature-preferences.server";
 import { parseEffectiveRecoveryPolicy, type RecoveryOfferMode } from "@modainteract/moda-interact-shared/recovery-policy";
-import type { Prisma, PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient, ShopSettings } from "@prisma/client";
 import db from "@/db.server";
+import { recordMerchantSettingsFailure } from "../feature-preferences/merchant-settings-observability.server";
 
 const MAX_DELAY_MINUTES = 10080;
 
@@ -41,12 +42,15 @@ function toPolicy(value: RecoveryPolicyValue, source: "MERCHANT" | "ADMIN_OVERRI
   });
 }
 
-export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(), client: PrismaClient = db) {
+export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(), client: PrismaClient = db, supplied?: { settings: ShopSettings | null }) {
   const [settings, override, catalogue] = await Promise.all([
-    client.shopSettings.findUnique({ where: { shopId } }),
+    supplied ? supplied.settings : client.shopSettings.findUnique({ where: { shopId } }),
     client.shopRecoveryPolicyOverride.findFirst({ where: { shopId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
     client.shopifyDiscountCatalogue.findUnique({ where: { shopId }, include: { discounts: { orderBy: { title: "asc" } } } }),
-  ]);
+  ]).catch((error: unknown) => {
+    recordMerchantSettingsFailure("read", "recovery_policy", shopId, error);
+    throw error;
+  });
   if (!settings) throw new RecoveryPolicyValidationError("SETTINGS_NOT_FOUND");
   const merchant = toPolicy(settings, "MERCHANT");
   const effective = override ? toPolicy(override, "ADMIN_OVERRIDE") : merchant;
@@ -154,25 +158,30 @@ export async function saveMerchantRecoveryPolicy(shopId: string, input: Paramete
     const selectionsChanged = previousIds.length !== policy.selectedDiscountIds.length ||
       previousIds.some((id, index) => id !== policy.selectedDiscountIds[index]);
 
-    await transaction.shopifyDiscount.updateMany({
-      where: { shopId, isAvailable: true },
-      data: { isAvailable: false },
-    });
-    const selectedUpdate = await transaction.shopifyDiscount.updateMany({
-      where: { shopId, id: { in: policy.selectedDiscountIds } },
-      data: { isAvailable: true },
-    });
-    if (selectedUpdate.count !== policy.selectedDiscountIds.length)
-      throw new RecoveryPolicyValidationError("DISCOUNT_SELECTION_CHANGED");
-
     if (
       !selectionsChanged &&
       revisionOf(toPolicy(current, "MERCHANT")) === revisionOf(toPolicy(policy, "MERCHANT")) &&
       current.notifyOnInitialRecoveryOutreach === notifyOnInitialRecoveryOutreach
     ) return current;
+    const previous = new Set(previousIds);
+    const desired = new Set(policy.selectedDiscountIds);
+    const removed = previousIds.filter((id) => !desired.has(id));
+    const added = policy.selectedDiscountIds.filter((id) => !previous.has(id));
+    for (const [ids, wasAvailable, isAvailable] of [
+      [removed, true, false], [added, false, true],
+    ] as const) {
+      if (!ids.length) continue;
+      const changed = await transaction.shopifyDiscount.updateMany({
+        where: { shopId, id: { in: ids }, isAvailable: wasAvailable },
+        data: { isAvailable },
+      });
+      if (changed.count !== ids.length)
+        throw new RecoveryPolicyValidationError("DISCOUNT_SELECTION_CHANGED");
+    }
     return transaction.shopSettings.update({
       where: { shopId },
       data: {
+        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)),
         recoveryDelayMinutes: policy.recoveryDelayMinutes,
         recoveryOfferMode: policy.recoveryOfferMode,
         fixedShopifyDiscountId: policy.recoveryOfferMode === "FIXED"

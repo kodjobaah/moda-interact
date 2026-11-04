@@ -2,8 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   settingsAccess: vi.fn(),
+  loadSettingsReadContext: vi.fn(),
   loadRecoveryPolicySnapshot: vi.fn(),
-  loadFeaturePreferences: vi.fn(),
+  projectFeaturePreferences: vi.fn(),
   loadMerchantKnowledge: vi.fn(),
   listSelectableStoreCategories: vi.fn(),
   loadStoreProfile: vi.fn(),
@@ -18,7 +19,7 @@ vi.mock("@/services/ai-response-delay/ai-response-delay.server", () => ({
   saveAiResponseDelay: vi.fn(),
 }));
 vi.mock("@/services/feature-preferences/feature-preferences.server", () => ({
-  loadFeaturePreferences: mocks.loadFeaturePreferences,
+  projectFeaturePreferences: mocks.projectFeaturePreferences,
   PreferenceError: class PreferenceError extends Error {},
 }));
 vi.mock("@/services/recovery-policy/recovery-policy.server", () => ({
@@ -35,6 +36,8 @@ vi.mock("@/utils/merchant-i18n", () => ({
   merchantUiContext: mocks.merchantUiContext,
 }));
 
+vi.mock("@/services/feature-preferences/settings-read-context.server", () => ({ loadSettingsReadContext: mocks.loadSettingsReadContext }));
+
 import { loader } from "@/routes/app/recovery-settings/route";
 
 describe("AI response delay settings loader", () => {
@@ -45,11 +48,12 @@ describe("AI response delay settings loader", () => {
       session: { id: "session" },
       settings: { aiResponseDelayMinutes: 7 },
     });
+    mocks.loadSettingsReadContext.mockResolvedValue({ settings: { aiResponseDelayMinutes: 7 } });
     mocks.merchantUiContext.mockReturnValue({ locale: "en" });
     mocks.listSelectableStoreCategories.mockResolvedValue([]);
     mocks.loadStoreProfile.mockResolvedValue(null);
     mocks.loadMerchantKnowledge.mockResolvedValue(null);
-    mocks.loadFeaturePreferences.mockResolvedValue({ revision: "revision", features: [] });
+    mocks.projectFeaturePreferences.mockReturnValue({ revision: "revision", features: [] });
     mocks.loadRecoveryPolicySnapshot.mockResolvedValue({ revision: "revision" });
   });
 
@@ -59,11 +63,12 @@ describe("AI response delay settings loader", () => {
     } as never);
 
     expect(mocks.settingsAccess).toHaveBeenCalledOnce();
-    expect(mocks.loadRecoveryPolicySnapshot).toHaveBeenCalledWith("authenticated-shop");
+    expect(mocks.loadRecoveryPolicySnapshot).toHaveBeenCalledWith("authenticated-shop", undefined, undefined, { settings: { aiResponseDelayMinutes: 7 } });
     expect(result.aiResponseDelayMinutes).toBe(7);
   });
 
   it("uses zero when the shop has no persisted settings yet", async () => {
+    mocks.loadSettingsReadContext.mockResolvedValue({ settings: null });
     mocks.settingsAccess.mockResolvedValue({
       shop: { id: "authenticated-shop" },
       session: { id: "session" },

@@ -6,14 +6,15 @@ const fixture = merchantFixture();
 vi.mock("../../app/shopify.server", () => ({authenticate: {admin: fixture.authenticateAdmin}, apiKey: "public-api-key"}));
 vi.mock("../../app/db.server", () => ({default: {
   shop: {findUnique: fixture.lookup},
+  billingPlan: {findUnique: async () => null}, shopFeaturePreference: {findMany: async () => []},
   subscription: {findUnique: fixture.readSubscription}, shopSettings: {findUnique: fixture.readSettings},
 }}));
-const commercialProjection = vi.fn(async () => fixture.rows.subscription);
+const commercialProjection = vi.fn(async () => ({subscription: fixture.rows.subscription, capacity: null}));
 vi.mock("../../app/services/billing/billing.service", () => ({billingService: {
-  getSubscriptionProjection: commercialProjection, getMerchantRecoveryCapacityState: async () => null,
+  readMerchantHomeBillingPresentation: commercialProjection,
 }}));
 vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({
-  readMerchantSupportMessages: async () => ({unread: 0}),
+  readMerchantSupportUnreadCount: async () => 0,
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries: async () => ({available: false, items: []}),
@@ -31,7 +32,7 @@ vi.mock("../../app/services/store-profile/shopify-taxonomy-suggestion.server", (
   suggestStoreCategory: async () => null,
 }));
 vi.mock("../../app/services/feature-preferences/feature-preferences.server", () => ({
-  loadFeaturePreferences: async () => ({revision: "fixture", features: [], denied: false}),
+  projectFeaturePreferences: () => ({revision: "fixture", features: [], denied: false}),
   saveFeaturePreferences: vi.fn(), PreferenceError: class extends Error {},
 }));
 vi.mock("../../app/services/recovery-policy/recovery-policy.server", () => ({
@@ -151,7 +152,7 @@ it("connects real migrated layout/home loaders through real profile resolver and
   expect(fixture.lookup).toHaveBeenCalledTimes(1);
   expect(fixture.readSubscription).toHaveBeenCalledTimes(1);
   expect(fixture.readSettings).toHaveBeenCalledTimes(1);
-  // The home page deliberately retains its distinct rich commercial projection.
+  // Home composes its presentation from the shared scalar context.
   expect(commercialProjection).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(body.loaderData)).not.toMatch(/private-session-sentinel|accessToken|authentication/);
 });

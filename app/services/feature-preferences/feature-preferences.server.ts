@@ -3,6 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { selectCapabilities } from "@modainteract/moda-interact-shared/commerce";
 import { z } from "zod";
 import db from "@/db.server";
+import type { SettingsReadContext } from "./settings-read-context.server";
 
 export class PreferenceError extends Error {}
 export const revisionOf = (value: unknown) =>
@@ -15,6 +16,14 @@ export async function lockSettingsShop(
     Array<{ id: string }>
   >`SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${shopId} AND "status" = 'ACTIVE' FOR UPDATE`;
   if (!rows.length) throw new PreferenceError("DENIED");
+}
+function requireFeaturePlan(
+  subscription: SettingsReadContext["subscription"],
+  status: SettingsReadContext["shop"]["status"] | undefined,
+  plan: SettingsReadContext["plan"],
+): asserts plan is NonNullable<SettingsReadContext["plan"]> {
+  if (!subscription || !["ACTIVE", "TRIALING"].includes(subscription.status) ||
+    status !== "ACTIVE" || !plan?.active) throw new PreferenceError("DENIED");
 }
 export async function loadFeaturePreferences(
   shopId: string,
@@ -37,20 +46,28 @@ export async function loadFeaturePreferences(
       shop: { select: { status: true } },
     },
   });
-  if (
-    !subscription ||
-    !["ACTIVE", "TRIALING"].includes(subscription.status) ||
-    subscription.shop.status !== "ACTIVE" ||
-    !subscription.plan?.active
-  )
-    throw new PreferenceError("DENIED");
+  requireFeaturePlan(subscription, subscription?.shop.status, subscription?.plan ?? null);
   const preferences = await client.shopFeaturePreference.findMany({
     where: { shopId },
     orderBy: { featureId: "asc" },
   });
-  const mappings = subscription.plan.features.filter(
-    (m) => m.enabled && m.feature.active,
-  );
+  return projectFeaturePreferences({
+    shop: subscription?.shop ?? { status: "ACTIVE" },
+    subscription,
+    plan: subscription?.plan ?? null,
+    preferences,
+  });
+}
+export function projectFeaturePreferences({
+  shop,
+  subscription,
+  plan,
+  preferences,
+}: Pick<SettingsReadContext, "subscription" | "plan" | "preferences"> & {
+  shop: Pick<SettingsReadContext["shop"], "status">;
+}) {
+  requireFeaturePlan(subscription, shop.status, plan);
+  const mappings = plan.features.filter((m) => m.enabled && m.feature.active);
   const facts = mappings.map((m) => ({
     id: m.featureId,
     active: m.feature.active,
@@ -72,7 +89,7 @@ export async function loadFeaturePreferences(
   );
   return {
     revision: revisionOf({
-      planId: subscription.plan.id,
+      planId: plan.id,
       mappings: mappings.map((m) => [
         m.featureId,
         m.feature.updatedAt,

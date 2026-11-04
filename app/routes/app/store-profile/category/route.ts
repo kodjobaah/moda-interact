@@ -1,15 +1,14 @@
 import type { ActionFunctionArgs } from "react-router";
-import { authenticate } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
+import { recordMerchantSettingsFailure } from "@/services/feature-preferences/merchant-settings-observability.server";
 import {
   selectPendingStoreCategory,
   StoreCategorySelectionError,
 } from "@/services/store-profile/store-category-selection.server";
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function action({ request, context }: ActionFunctionArgs) {
+  const { shop } = await getMerchantRequestContext({ request, context });
   assertActiveShop(shop, {
     route: "/app/store-profile/category",
     redirectTo: "/app/merchant-support",
@@ -52,8 +51,9 @@ export async function action({ request }: ActionFunctionArgs) {
     if (error instanceof StoreCategorySelectionError)
       return Response.json(
         { ok: false, error: error.code },
-        { status: error.code === "CONFLICT" ? 409 : 400 },
+        { status: error.code === "SHOP_UNAVAILABLE" ? 403 : error.code === "CONFLICT" ? 409 : 400 },
       );
+    recordMerchantSettingsFailure("category", "select", shop.id, error);
     throw error;
   }
 }

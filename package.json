@@ -33,6 +33,10 @@
     "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts",
     "test:recovery-readers:unit": "vitest run tests/unit/recovery-read-context.test.ts tests/unit/recovery-reader-observability.test.ts tests/unit/recovery-detail-readers.test.ts tests/unit/recovery-detail-route.test.ts tests/unit/recovery-list-route.test.ts tests/unit/recovery-overview.test.ts tests/unit/recovery-cohort-readers.test.ts tests/unit/arch040-shopify-command.test.ts tests/unit/arch040-shopify-http.test.ts tests/unit/arch047-shopify-follow-up-catalogue.test.ts tests/unit/arch047-shopify-follow-up-sender.test.ts",
     "test:recovery-readers:postgres": "MODA_RECOVERY_DETAIL_POSTGRES=1 vitest run tests/integration/recovery-detail-query-plans.test.ts"
+    "test:merchant-support:unit": "vitest run tests/unit/merchant-support-service.test.ts tests/unit/merchant-support-route.test.ts tests/unit/merchant-support-observability.test.ts tests/unit/merchant-support-recovery-i18n.test.ts tests/unit/merchant-support-batch-ui.test.tsx",
+    "test:merchant-support:postgres": "MODA_DISPOSABLE_INTEGRATION=1 vitest run tests/integration/merchant-support.postgres.test.ts",
+    "test:merchant-settings:unit": "vitest run tests/unit/settings-read-context.test.ts tests/unit/merchant-settings-observability.test.ts tests/unit/recovery-policy-save.test.ts tests/unit/recovery-policy-snapshot.test.ts tests/unit/settings-save-recovery-route.test.ts tests/unit/merchant-settings-action.test.ts tests/unit/ai-response-delay-loader.test.ts tests/unit/ai-response-delay.test.ts tests/unit/store-category-selection.test.ts",
+    "test:merchant-settings:postgres": "MODA_DISPOSABLE_INTEGRATION=1 MODA_SETTINGS_POSTGRES=1 vitest run tests/integration/merchant-settings-writes.postgres.test.ts tests/integration/store-category-lifecycle.postgres.test.ts tests/integration/shopify-recovery-discounts.postgres.integration.test.ts tests/integration/store-category-selection.postgres.integration.test.ts tests/integration/merchant-feature-preferences.test.ts"
   },
   "type": "module",
   "engines": {
