@@ -26,7 +26,8 @@ let host: HTMLDivElement;
 const englishI18n = createMerchantI18n({ locale: "en-GB", timeZone: "UTC" });
 
 const knowledge: Parameters<typeof MerchantKnowledgeSection>[0]["data"] = {
-  planEntitled: true,
+  entitlementState: "entitled" as const,
+    planEntitled: true,
   merchantEnabled: false,
   effectiveEnabled: false,
   maxKnowledgeSources: 2,

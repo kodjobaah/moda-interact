@@ -22,7 +22,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     listSelectableStoreCategories(merchantUi.locale),
     loadStoreProfile(shop.id, merchantUi.locale),
   ]);
-  const merchantKnowledge = await loadMerchantKnowledge(shop.id);
+  const merchantKnowledge = await loadMerchantKnowledge(shop.id, undefined, readContext);
   const features = (() => {
     try {
       return projectFeaturePreferences(readContext);

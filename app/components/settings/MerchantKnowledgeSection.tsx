@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useFetcher, useRevalidator } from "react-router";
 import type { loader } from "@/routes/app/recovery-settings/route";
 import MerchantKnowledgeUploadForm from "./MerchantKnowledgeUploadForm";
@@ -55,30 +55,31 @@ export default function MerchantKnowledgeSection({
   const reprocessFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const revalidator = useRevalidator();
-  const busy = [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
+  const unavailable = data.entitlementState === "unavailable";
+  const busy = unavailable || [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
   const [selectedPurpose, setSelectedPurpose] = useState(data.catalogue[0]?.purpose.key ?? "");
   const hasProcessingSources = data.sources.some((source) =>
     source.processingEligible && (source.revision?.status === "PENDING" || source.revision?.status === "PROCESSING"),
   );
 
+  const currentRevalidator = useRef(revalidator);
+  currentRevalidator.current = revalidator;
+  const episodeDeadline = useRef<number | null>(null);
+  const polling = useRef(false);
   useEffect(() => {
-    if ([createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.data?.ok))
-      void revalidator.revalidate();
-  }, [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher, revalidator]);
-
-  useEffect(() => {
-    if (!hasProcessingSources) return;
-
+    if (!hasProcessingSources) { episodeDeadline.current = null; return; }
+    const deadline = episodeDeadline.current ?? (Date.now() + 60_000);
+    episodeDeadline.current = deadline;
+    if (Date.now() >= deadline) return;
     const interval = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") void revalidator.revalidate();
+      const current = currentRevalidator.current;
+      if (Date.now() >= deadline || document.visibilityState === "hidden" || current.state !== "idle" || polling.current) return;
+      polling.current = true;
+      void Promise.resolve(current.revalidate()).finally(() => { polling.current = false; });
     }, 4_000);
-    const timeout = window.setTimeout(() => window.clearInterval(interval), 60_000);
-
-    return () => {
-      window.clearInterval(interval);
-      window.clearTimeout(timeout);
-    };
-  }, [hasProcessingSources, revalidator]);
+    const timeout = window.setTimeout(() => window.clearInterval(interval), Math.max(0, deadline - Date.now()));
+    return () => { window.clearInterval(interval); window.clearTimeout(timeout); };
+  }, [hasProcessingSources]);
 
   function formAction(form: HTMLFormElement): string | undefined {
     const action = form.getAttribute("action");
@@ -110,7 +111,8 @@ export default function MerchantKnowledgeSection({
         </div>
       ) : null}
 
-      {!data.planEntitled ? (
+      {unavailable ? <p role="status">{t("common.unavailable")}</p> : null}
+      {!data.planEntitled && !unavailable ? (
           <p role="status">{t("merchantKnowledge.configurationUnavailable")}</p>
       ) : (
         <>
@@ -193,6 +195,7 @@ export default function MerchantKnowledgeSection({
                 </summary>
                 <div className="moda-settings-disclosure-body">
                   <MerchantKnowledgeUploadForm
+                    disabled={unavailable}
                     catalogue={uploadCatalogue}
                     maxUploadBytes={data.maxUploadBytes}
                     defaultLanguageTag={data.defaultLanguageTag}
@@ -262,6 +265,7 @@ export default function MerchantKnowledgeSection({
                         <details>
                           <summary>{t("merchantKnowledge.upload.replaceFile")}</summary>
                           <MerchantKnowledgeUploadForm
+                            disabled={unavailable}
                             catalogue={uploadCatalogue.filter((item) => item.purpose.key === source.purposeKey && item.dataFormat.key === source.dataFormatKey)}
                             maxUploadBytes={data.maxUploadBytes}
                             defaultLanguageTag={data.defaultLanguageTag}

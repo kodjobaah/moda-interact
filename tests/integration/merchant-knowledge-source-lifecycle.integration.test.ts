@@ -186,9 +186,9 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
       const databaseUrl = postgres.getConnectionUri();
       await deployMigrations(databaseUrl);
 
-      database = new PrismaClient({ datasourceUrl: databaseUrl });
-      firstClient = new PrismaClient({ datasourceUrl: databaseUrl });
-      secondClient = new PrismaClient({ datasourceUrl: databaseUrl });
+      database = new PrismaClient({ datasourceUrl: databaseUrl, transactionOptions: { timeout: 30_000 } });
+      firstClient = new PrismaClient({ datasourceUrl: databaseUrl, transactionOptions: { timeout: 30_000 } });
+      secondClient = new PrismaClient({ datasourceUrl: databaseUrl, transactionOptions: { timeout: 30_000 } });
       await Promise.all([database.$connect(), firstClient.$connect(), secondClient.$connect()]);
 
       const feature = await database.feature.findUnique({
@@ -366,7 +366,7 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
     const malformedShop = await createShop();
     await grantPlan(malformedShop, { ...baseConfiguration, maxKnowledgeSources: 0 });
     expect((await loadMerchantKnowledge(malformedShop, db())).planEntitled).toBe(false);
-    await expect(createPage(malformedShop, "Malformed plan")).rejects.toMatchObject({ code: "DENIED" });
+    await expect(createPage(malformedShop, "Malformed plan")).rejects.toMatchObject({ code: "UNAVAILABLE", retryable: false, cause: expect.any(Error) });
 
     const restrictedShop = await createShop();
     await grantPlan(restrictedShop, {

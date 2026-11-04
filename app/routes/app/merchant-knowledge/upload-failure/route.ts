@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { settingsAccess } from "@/services/feature-preferences/access.server";
+import { settingsMutationAccess } from "@/services/feature-preferences/access.server";
 import {
   recordMerchantKnowledgeUploadFailure,
   type MerchantKnowledgeUploadFailureStage,
@@ -60,7 +60,7 @@ function validBody(value: unknown): value is FailureBody {
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request, context);
+  const { shop } = await settingsMutationAccess(request, context);
   let body: unknown;
   try {
     body = await request.json();
