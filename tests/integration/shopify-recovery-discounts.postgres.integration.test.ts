@@ -129,7 +129,7 @@ function clientWithCatalogueSyncInterleaved(shopId: string): PrismaClient {
 
       return (callback: (transaction: Prisma.TransactionClient) => Promise<unknown>) =>
         target.$transaction(async (transaction) => {
-          let updateManyCalls = 0;
+          let syncApplied = false;
           const discountDelegate = new Proxy(transaction.shopifyDiscount, {
             get(delegate, method) {
               const original = Reflect.get(delegate, method, delegate);
@@ -139,8 +139,8 @@ function clientWithCatalogueSyncInterleaved(shopId: string): PrismaClient {
 
               return async (args: Parameters<typeof transaction.shopifyDiscount.updateMany>[0]) => {
                 const result = await Reflect.apply(original, delegate, [args]);
-                updateManyCalls += 1;
-                if (updateManyCalls === 2) {
+                if (!syncApplied && args.data.isAvailable === true) {
+                  syncApplied = true;
                   await applyShopifyCatalogueSyncUpserts(transaction, shopId);
                 }
                 return result;

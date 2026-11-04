@@ -32,7 +32,7 @@ let shopId: string, otherId: string, planId: string;
 const featureIds: string[] = [];
 describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer("postgres:15-alpine").start();
+    postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17").start();
     const url = postgres.getConnectionUri();
     const client = new Client({ connectionString: url });
     await client.connect();

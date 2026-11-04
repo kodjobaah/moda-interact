@@ -1,5 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
-import { settingsAccess } from "@/services/feature-preferences/access.server";
+import { settingsMutationAccess } from "@/services/feature-preferences/access.server";
 import {
   PreferenceError,
   saveFeaturePreferences,
@@ -13,13 +13,7 @@ import {
   AiResponseDelayValidationError,
   saveAiResponseDelay,
 } from "@/services/ai-response-delay/ai-response-delay.server";
-import { createLogger } from "@modainteract/moda-interact-shared/logging";
-import { resolveDeploymentEnvironmentName } from "@/services/otel/otel.runtime";
-
-const logger = createLogger({
-  serviceName: "moda-interact",
-  environment: resolveDeploymentEnvironmentName(),
-});
+import { recordMerchantSettingsFailure } from "@/services/feature-preferences/merchant-settings-observability.server";
 
 const MAX_REQUEST_BODY_BYTES = 8192;
 
@@ -62,7 +56,7 @@ async function readRequestBodyWithinLimit(
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
-  const { shop } = await settingsAccess(request, context);
+  const { shop } = await settingsMutationAccess(request, context);
   let operationId = "";
   const reply = (value: object, status = 200) =>
     Response.json(
@@ -185,17 +179,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
       ) return reply({ ok: false, error: error.code }, 422);
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     }
-    if (intent === "recovery" || intent === "ai-response-delay") {
-      logger.error("merchant.recovery_settings.save.failed", {
-        shopId: shop.id,
-        operation:
-          intent === "ai-response-delay"
-            ? "ai_response_delay"
-            : "recovery_notice_preference",
-        errorCategory: "persistence_failure",
-        error,
-      });
-    }
+    recordMerchantSettingsFailure("save", String(intent), shop.id, error);
     throw error;
   }
 }
