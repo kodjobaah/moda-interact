@@ -143,7 +143,7 @@ describe("purchased credit history manager", () => {
   });
 
   it("uses authenticated shop resolution and separate read/manage capabilities", () => {
-    expect(routeSource).toContain("await authenticate.admin(request)");
+    expect(routeSource).toContain("await getMerchantRequestContext({ request, context })");
     expect(routeSource).toContain('capability: "read-billing"');
     expect(routeSource).toContain('capability: "manage-billing"');
     expect(routeSource).toContain("shopId: shop.id");

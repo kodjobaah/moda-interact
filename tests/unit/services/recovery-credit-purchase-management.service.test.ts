@@ -1,6 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, expect, it, vi } from "vitest";
-import { RecoveryCreditPurchaseStatus } from "@prisma/client";
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import { createShopifyBillingProviderError } from "../../../app/services/billing/providers/shopify-billing-diagnostics.server";
+import { Prisma, RecoveryCreditPurchaseStatus } from "@prisma/client";
 import { deriveShopifyProviderContextIdentity } from "@modainteract/moda-interact-shared/billing";
 
 import { RecoveryCreditPurchaseManagementService } from "../../../app/services/billing/recovery-credit-purchase-management.service";
@@ -126,6 +128,17 @@ function database(purchases: any[]) {
     row.shopId === where.shopId &&
     (!where.provider || row.provider === where.provider) &&
     (!where.status || row.status === where.status);
+  Object.assign(transaction, {
+        shop: { findUnique: vi.fn(async () => ({
+          id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: "gid://shopify/Shop/1",
+        })) },
+        subscription: { findUnique: vi.fn(async () => ({
+          shopId: "shop-1", billingPeriodId: "period-1",
+          billingPeriod: { id: "period-1",
+            periodStart: new Date("2026-09-01T00:00:00.000Z"), periodEnd: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        })) },
+  });
   return {
     database: {
       recoveryCreditPurchase: {
@@ -133,11 +146,15 @@ function database(purchases: any[]) {
           async ({ where }: any) =>
             [...rows.values()].filter((row) => matches(row, where)).length,
         ),
-        findMany: vi.fn(async ({ where, skip = 0, take }: any) =>
-          [...rows.values()]
-            .filter((row) => matches(row, where))
-            .slice(skip, skip + take),
-        ),
+        findMany: vi.fn(async ({ where, skip = 0, take, select }: any) => {
+          const found = [...rows.values()].filter((row) => matches(row, where) &&
+            (!where.id?.in || where.id.in.includes(row.id)));
+          if (select) return found.map(row => ({
+            id: row.id,
+            refunds: row.refunds.filter((refund: any) => refund.status === "COMPLETED").slice(0, 1),
+          }));
+          return found.slice(skip, skip + take);
+        }),
         findFirst: vi.fn(async ({ where }: any) => {
           const row = rows.get(where.id);
           return row?.shopId === where.shopId &&
@@ -158,13 +175,14 @@ function database(purchases: any[]) {
       },
       shop: {
         findUnique: vi.fn(async () => ({
+          id: "shop-1", platform: "SHOPIFY", status: "ACTIVE",
           shopifyShopId: "gid://shopify/Shop/1",
         })),
       },
       subscription: {
         findUnique: vi.fn(async () => ({
-          billingPeriodId: "period-1",
-          billingPeriod: {
+          shopId: "shop-1", billingPeriodId: "period-1",
+          billingPeriod: { id: "period-1",
             periodStart: new Date("2026-09-01T00:00:00.000Z"),
             periodEnd: new Date("2026-10-01T00:00:00.000Z"),
           },
@@ -304,7 +322,7 @@ describe("RecoveryCreditPurchaseManagementService", () => {
     ).toHaveBeenLastCalledWith({ where: { shopId: "shop-1", provider: "SHOPIFY" } });
     expect(
       fixture.database.recoveryCreditPurchase.findMany,
-    ).toHaveBeenLastCalledWith(
+    ).toHaveBeenCalledWith(
       expect.objectContaining({ where: { shopId: "shop-1", provider: "SHOPIFY" } }),
     );
   });
@@ -759,6 +777,9 @@ describe("RecoveryCreditPurchaseManagementService", () => {
       purchaseId: "one",
       requestId: "request-1",
     });
+    fixture.database.recoveryCreditPurchase.findFirst.mockResolvedValueOnce({
+      ...fixture.rows.get("one"), status: "ACTIVE", refunds: [],
+    });
     fixture.database.$transaction = vi.fn().mockRejectedValue(
       new (await import("@prisma/client")).Prisma.PrismaClientKnownRequestError(
         "duplicate request key",
@@ -818,13 +839,10 @@ describe("RecoveryCreditPurchaseManagementService", () => {
         purchaseId: "woo",
         requestId: "request-woo",
       }),
-    ).rejects.toMatchObject({ code: "P2002" });
+    ).resolves.toMatchObject({ code: "NOT_FOUND" });
 
-    expect(fixture.database.recoveryCreditRefund.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({ shopId: "shop-1", provider: "SHOPIFY" }),
-      }),
-    );
+    expect(fixture.database.$transaction).not.toHaveBeenCalled();
+    expect(fixture.database.recoveryCreditRefund.findFirst).not.toHaveBeenCalled();
     expect(fixture.database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: "woo", shopId: "shop-1", provider: "SHOPIFY" },
@@ -992,5 +1010,141 @@ describe("RecoveryCreditPurchaseManagementService", () => {
         empty.database,
       ).reactivateRefund({ shopId: "shop-1", purchaseId: "empty" }),
     ).resolves.toEqual({ purchaseId: "empty", code: "COMPLETED_NO_CREDITS" });
+  });
+});
+
+
+describe("recovery credit owned diagnostics", () => {
+  function capture(throws = false) {
+    const records: unknown[] = [];
+    const logger = createLogger({ serviceName: "moda-interact", environment: "test", sink: record => {
+      if (throws) throw new Error("sink failed");
+      records.push(JSON.parse(JSON.stringify(record)));
+    } });
+    return { logger, records };
+  }
+  function failure() {
+    return Object.assign(new Error("original persistence marker email=person@example.test access_token=secret-sentinel", {
+      cause: new Error("actual causal marker password=hidden-sentinel"),
+    }), { code: "P2010" });
+  }
+  it.each(["page", "summary", "local"])("retains original %s read evidence in real Shared output", async stage => {
+    const fixture = database([purchase("one")]);
+    const error = failure();
+    if (stage === "page") fixture.database.recoveryCreditPurchase.findMany.mockRejectedValue(error);
+    if (stage === "summary") fixture.database.recoveryCreditPurchase.findMany.mockResolvedValueOnce([purchase("one")]).mockRejectedValueOnce(error);
+    if (stage === "local") fixture.database.shop.findUnique.mockRejectedValue(error);
+    const sink = capture();
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database,
+      { getActiveSubscription: vi.fn(async () => providerSubscription()) } as never, sink.logger);
+    await expect(service.listPurchaseHistory({ shopId: "shop-1", shopifyShopId: "gid://shopify/Shop/1" })).rejects.toBe(error);
+    const output = JSON.stringify(sink.records);
+    for (const marker of ["original persistence marker", "actual causal marker", "P2010", "shop-1", "stage"]) expect(output).toContain(marker);
+    for (const secret of ["person@example.test", "secret-sentinel", "hidden-sentinel"]) expect(output).not.toContain(secret);
+    expect(sink.records).toHaveLength(1);
+  });
+  it("owns preflight and unique-recovery database read failures", async () => {
+    for (const stage of ["preflight", "replay"]) {
+      const fixture = database([purchase("one")]);
+      const error = failure();
+      if (stage === "preflight") fixture.database.recoveryCreditPurchase.findFirst.mockRejectedValue(error);
+      else {
+        fixture.database.$transaction.mockRejectedValue(new Prisma.PrismaClientKnownRequestError("duplicate request", { code: "P2002", clientVersion: "6" }));
+        fixture.database.recoveryCreditRefund.findFirst.mockRejectedValue(error);
+      }
+      const sink = capture();
+      const service = new RecoveryCreditPurchaseManagementService(fixture.database,
+        { getActiveSubscription: vi.fn(async () => providerSubscription()) } as never, sink.logger);
+      await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", shopifyShopId: "gid://shopify/Shop/1", requestId: "same" })).rejects.toBe(error);
+      expect(sink.records).toHaveLength(1);
+      expect(JSON.stringify(sink.records)).toContain("P2010");
+      expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+    }
+  });
+  it.each(["history", "refund"])("preserves one provider source diagnostic for %s and makes no hold", async operation => {
+    const fixture = database([purchase("one")]);
+    const sink = capture();
+    const error = createShopifyBillingProviderError({ operation: "read_subscription", failureKind: "HTTP", origin: "provider_response",
+      message: "original Partner failure", providerRequestId: "safe-partner-request", httpStatus: 503,
+      providerErrors: [{ message: "source marker", code: "UNAVAILABLE", details: "details marker" }],
+      cause: new Error("source cause marker access_token=secret-sentinel"),
+    }, sink.logger);
+    const provider = { getActiveSubscription: vi.fn().mockRejectedValue(error) };
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database, provider as never, sink.logger);
+    const input = { shopId: "shop-1", purchaseId: "one", shopifyShopId: "gid://shopify/Shop/1", requestId: "request" };
+    await expect(operation === "history" ? service.listPurchaseHistory(input) : service.requestRefund(input)).rejects.toBe(error);
+    expect(sink.records).toHaveLength(1);
+    const output = JSON.stringify(sink.records);
+    for (const marker of ["original Partner failure", "safe-partner-request", "503", "UNAVAILABLE", "details marker", "source cause marker"]) expect(output).toContain(marker);
+    expect(output).not.toContain("secret-sentinel");
+    expect(fixture.database.$transaction).not.toHaveBeenCalled();
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+  });
+  it.each(["refund", "reactivation"])("records bounded %s retries and throws the original final cause", async operation => {
+    const fixture = database([purchase("one")]);
+    const sink = capture();
+    const errors = Array.from({ length: 3 }, (_, attempt) => {
+      const error = new Prisma.PrismaClientKnownRequestError(`actual serialization marker ${attempt}`, { code: "P2034", clientVersion: "6" });
+      Object.defineProperty(error, "cause", { value: new Error("original conflict cause") });
+      return error;
+    });
+    let attempt = 0;
+    fixture.database.$transaction.mockImplementation(async () => { throw errors[attempt++]; });
+    const provider = { getActiveSubscription: vi.fn(async () => providerSubscription()) };
+    const service = new RecoveryCreditPurchaseManagementService(fixture.database, provider as never, sink.logger);
+    const input = { shopId: "shop-1", purchaseId: "one", shopifyShopId: "gid://shopify/Shop/1", requestId: "same-key" };
+    await expect(operation === "refund" ? service.requestRefund(input) : service.reactivateRefund(input)).rejects.toBe(errors[2]);
+    expect(fixture.database.$transaction).toHaveBeenCalledTimes(3);
+    expect(provider.getActiveSubscription).toHaveBeenCalledTimes(operation === "refund" ? 3 : 0);
+    expect(sink.records).toHaveLength(3);
+    const records = sink.records as Array<{ level: string }>;
+    expect(records.map(record => record.level)).toEqual(["warn", "warn", "error"]);
+    process.stdout.write(JSON.stringify({ evidence: "mutation_retries", records: sink.records }) + "\n");
+    const output = JSON.stringify(sink.records);
+    for (const marker of ["P2034", "actual serialization marker 2", "original conflict cause", "database"]) expect(output).toContain(marker);
+  });
+  it("reports a missing aggregate invariant and isolates a throwing real Shared sink", async () => {
+    for (const throws of [false, true]) {
+      const fixture = database([purchase("one")]);
+      fixture.transaction.shopEntitlementCounter.findUnique.mockResolvedValue(null);
+      const sink = capture(throws);
+      const service = new RecoveryCreditPurchaseManagementService(fixture.database,
+        { getActiveSubscription: vi.fn(async () => providerSubscription()) } as never, sink.logger);
+      await expect(service.requestRefund({ shopId: "shop-1", purchaseId: "one", shopifyShopId: "gid://shopify/Shop/1", requestId: "same" })).rejects.toThrow("aggregate is missing");
+      expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
+      if (!throws) expect(JSON.stringify(sink.records)).toContain("Purchased recovery-credit aggregate is missing");
+    }
+  });
+});
+
+
+describe("refund transaction authority", () => {
+  const input = { shopId: "shop-1", purchaseId: "one", shopifyShopId: "gid://shopify/Shop/1", requestId: "request" };
+  it("uses no root local-context reads and finishes provider work before opening the transaction", async () => {
+    const fixture = database([purchase("one")]);
+    fixture.database.shop.findUnique.mockRejectedValue(new Error("root Shop context forbidden"));
+    fixture.database.subscription.findUnique.mockRejectedValue(new Error("root Subscription context forbidden"));
+    let open = false;
+    fixture.database.$transaction.mockImplementation(async (callback: any) => {
+      open = true;
+      try { return await callback(fixture.transaction); } finally { open = false; }
+    });
+    const provider = { getActiveSubscription: vi.fn(async () => { expect(open).toBe(false); return providerSubscription(); }) };
+    await expect(new RecoveryCreditPurchaseManagementService(fixture.database, provider as never).requestRefund(input)).resolves.toMatchObject({ code: "REQUESTED" });
+    expect(fixture.database.shop.findUnique).not.toHaveBeenCalled();
+    expect(fixture.database.subscription.findUnique).not.toHaveBeenCalled();
+    expect(fixture.transaction.shop.findUnique).toHaveBeenCalledOnce();
+    expect(fixture.transaction.subscription.findUnique).toHaveBeenCalledOnce();
+  });
+  it.each([
+    { id: "other-shop" }, { platform: "WOOCOMMERCE" }, { status: "UNINSTALLED" }, { shopifyShopId: "other-provider-shop" },
+  ])("rejects transaction-current Shop changes after provider observation %j", async changed => {
+    const fixture = database([purchase("one")]);
+    const provider = { getActiveSubscription: vi.fn(async () => {
+      fixture.transaction.shop.findUnique.mockResolvedValue({ id: "shop-1", platform: "SHOPIFY", status: "ACTIVE", shopifyShopId: input.shopifyShopId, ...changed });
+      return providerSubscription();
+    }) };
+    await expect(new RecoveryCreditPurchaseManagementService(fixture.database, provider as never).requestRefund(input)).resolves.toMatchObject({ code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT" });
+    expect(fixture.transaction.recoveryCreditRefund.create).not.toHaveBeenCalled();
   });
 });

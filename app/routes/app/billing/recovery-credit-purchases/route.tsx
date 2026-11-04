@@ -1,12 +1,13 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { RecoveryCreditPurchaseStatus } from "@prisma/client";
+import { RecoveryCreditPurchaseStatus, SubscriptionProjectionStatus } from "@prisma/client";
 import { useLoaderData, useRouteError } from "react-router";
 import { boundary, type AdminApiContext } from "@shopify/shopify-app-react-router/server";
-import { authenticate } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
+import {
+  createShopifyBillingProviderError,
+} from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { recoveryCreditPurchaseManagementService } from "@/services/billing/recovery-credit-purchase-management.service";
-import { billingService } from "@/services/billing/billing.service";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import RecoveryCreditPurchaseManager from "@/components/dashboard/RecoveryCreditPurchaseManager";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
@@ -17,36 +18,74 @@ import {
 } from "@/services/shop/merchant-route-access-policy";
 
 
+type AdminGraphQLError = { message?: string; extensions?: { code?: string }; code?: string };
 type ShopifyShopPlanResponse = {
-  data?: {
-    shop?: {
-      plan?: {
-        partnerDevelopment?: boolean | null;
-      } | null;
-    } | null;
-  };
+  data?: { shop?: { plan?: { partnerDevelopment?: boolean | null } | null } | null };
+  errors?: AdminGraphQLError[];
 };
 
-async function resolveShopifyPartnerDevelopment(
-  admin: AdminApiContext,
-): Promise<boolean> {
-  const response = await admin.graphql(
-    `#graphql
-      query ModaInteractRefundShopPlan {
-        shop {
-          plan {
-            partnerDevelopment
-          }
+async function resolveShopifyPartnerDevelopment(admin: AdminApiContext): Promise<boolean> {
+  const operation = "verify_refund_development_store";
+  let response: Response;
+  try {
+    response = await admin.graphql(
+      `#graphql
+        query ModaInteractRefundShopPlan {
+          shop { plan { partnerDevelopment } }
         }
-      }
-    `,
-  );
-  const result = (await response.json()) as ShopifyShopPlanResponse;
-  const value = result.data?.shop?.plan?.partnerDevelopment;
-  if (typeof value !== "boolean") {
-    throw new Error(
-      "Unable to verify whether the authenticated Shopify shop is a partner development store.",
+      `,
     );
+  } catch (error) {
+    const sdk = error as {
+      body?: { errors?: { graphQLErrors?: AdminGraphQLError[] } };
+      response?: { status?: number; headers?: Headers };
+      headers?: Record<string, string>;
+    } | null;
+    throw createShopifyBillingProviderError({
+      operation, failureKind: "GRAPHQL", origin: "sdk_exception",
+      message: error instanceof Error ? error.message : String(error), cause: error,
+      httpStatus: sdk?.response?.status,
+      providerRequestId: sdk?.response?.headers?.get?.("x-request-id") ?? sdk?.headers?.["x-request-id"],
+      providerErrors: Array.isArray(sdk?.body?.errors?.graphQLErrors) ? sdk.body.errors.graphQLErrors.filter(entry => entry && typeof entry === "object").map(entry => ({
+        message: entry.message, code: entry.extensions?.code ?? entry.code,
+      })) : undefined,
+    });
+  }
+  let result: ShopifyShopPlanResponse;
+  try {
+    result = await response.json() as ShopifyShopPlanResponse;
+  } catch (error) {
+    // Native JSON parser messages can contain raw response text. Keep the
+    // original cause for propagation, but supply only a safe diagnostic cause.
+    const message = "Shopify Admin development-store response JSON parsing failed.";
+    throw createShopifyBillingProviderError({
+      operation, failureKind: response.ok ? "MALFORMED_RESPONSE" : "HTTP",
+      origin: response.ok ? "internal" : "provider_response",
+      reasonCode: "INVALID_JSON_RESPONSE", message, cause: error,
+      diagnosticCause: error instanceof SyntaxError ? new SyntaxError(message) : new Error(message),
+      httpStatus: response.status, providerRequestId: response.headers.get("x-request-id"),
+    });
+  }
+  const errors = Array.isArray(result?.errors)
+    ? result.errors.filter(entry => entry && typeof entry === "object") : [];
+  const malformedErrors = result?.errors !== undefined &&
+    (!Array.isArray(result.errors) || errors.length !== result.errors.length);
+  if (!response.ok || errors.length) {
+    throw createShopifyBillingProviderError({
+      operation, failureKind: response.ok ? "GRAPHQL" : "HTTP", origin: "provider_response",
+      message: errors[0]?.message || response.statusText || "Shopify Admin verification failed.",
+      httpStatus: response.status, providerRequestId: response.headers.get("x-request-id"),
+      providerErrors: errors.map(entry => ({
+        message: entry.message, code: entry.extensions?.code ?? entry.code,
+      })),
+    });
+  }
+  const value = result?.data?.shop?.plan?.partnerDevelopment;
+  if (typeof value !== "boolean" || malformedErrors) {
+    throw createShopifyBillingProviderError({
+      operation, failureKind: "MALFORMED_RESPONSE", origin: "internal",
+      message: "Unable to verify whether the authenticated Shopify shop is a partner development store.",
+    });
   }
   return value;
 }
@@ -92,22 +131,18 @@ function resolvePurchaseHistoryFilter(
     : "ACTIVE";
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { admin, session } } = merchant;
   assertActiveShop(shop, {
     route: "/app/billing/recovery-credit-purchases",
     capability: "read-billing",
     redirectTo: "/app/merchant-support",
   });
-  const [subscription, shopifyPartnerDevelopment] =
-    await Promise.all([
-      billingService.getSubscription(shop.id),
-      resolveShopifyPartnerDevelopment(admin),
-    ]);
+  const scalarSubscription = await merchant.readSubscription();
+  const subscription = scalarSubscription &&
+    (scalarSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
+      scalarSubscription.status === SubscriptionProjectionStatus.TRIALING) ? scalarSubscription : null;
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,
@@ -127,6 +162,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         ),
       },
     });
+  const shopifyPartnerDevelopment = await resolveShopifyPartnerDevelopment(admin);
   const url = new URL(request.url);
   const filter = resolvePurchaseHistoryFilter(url.searchParams.get("filter"));
   return {
@@ -143,18 +179,18 @@ export async function loader({ request }: LoaderFunctionArgs) {
   };
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export async function action({ request, context }: ActionFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { admin, session } } = merchant;
   assertActiveShop(shop, {
     route: "/app/billing/recovery-credit-purchases",
     capability: "manage-billing",
     redirectTo: "/app/merchant-support",
   });
-  const subscription = await billingService.getSubscription(shop.id);
+  const scalarSubscription = await merchant.readSubscription();
+  const subscription = scalarSubscription &&
+    (scalarSubscription.status === SubscriptionProjectionStatus.ACTIVE ||
+      scalarSubscription.status === SubscriptionProjectionStatus.TRIALING) ? scalarSubscription : null;
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,
@@ -191,11 +227,11 @@ export async function action({ request }: ActionFunctionArgs) {
     );
   }
   const requestId = String(formData.get("requestId") ?? "").trim();
-  const purchaseIds = formData
+  const purchaseIds = [...new Set(formData
     .getAll("purchaseId")
     .map(String)
     .map((id) => id.trim())
-    .filter(Boolean);
+    .filter(Boolean))];
   if (
     intent !== "request_refund" ||
     !requestId ||
