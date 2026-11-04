@@ -40,7 +40,7 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand"
+scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand,read_legal_policies"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
