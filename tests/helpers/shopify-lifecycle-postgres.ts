@@ -48,7 +48,7 @@ export async function startLifecyclePostgres(testName: string): Promise<Lifecycl
       maxBuffer: 10 * 1024 * 1024,
     });
     const queryLog: string[] = [];
-    const clientOptions = { datasourceUrl: databaseUrl, log: [{ emit: "event", level: "query" }] } as const;
+    const clientOptions = { datasourceUrl: databaseUrl, log: [{ emit: "event" as const, level: "query" as const }] };
     const primary = new PrismaClient(clientOptions);
     const second = new PrismaClient(clientOptions);
     const observer = new PrismaClient(clientOptions);
