@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
-import { MerchantRecoveryCapacityReadService } from "../../../../app/services/billing/merchant-recovery-capacity-read.service";
+import { projectCapacityFixture } from "../../../fixtures/commercial-read-context";
+class MerchantRecoveryCapacityReadService {
+  constructor(private database: PrismaClient, private pricing: {
+    readRecoveryCreditTopUpConfiguration: (handle: string | null | undefined) => Promise<unknown>;
+  }) {}
+  getMerchantRecoveryCapacityState(shopId: string) { return projectCapacityFixture(this.database, this.pricing, shopId); }
+}
 
 const shopId = "shop-1";
 const periodStart = new Date("2026-09-01T00:00:00.000Z");

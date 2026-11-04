@@ -35,6 +35,7 @@ import {
 } from "@/services/shop/merchant-route-access-policy";
 
 import db from "@/db.server";
+import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 
 /** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
 export const loader = async ({ request, context = new RouterContextProvider() }) => {
@@ -68,7 +69,7 @@ export const loader = async ({ request, context = new RouterContextProvider() })
    */
   const [pricingCatalogue, subscriptionProjection] = await Promise.all([
     readActiveMerchantPricingCatalogue({ locale: merchantUi.locale }),
-    billingService.getSubscriptionProjection(shop.id),
+    merchant.readSubscription(),
   ]);
   const billingSetup = shouldShowMerchantBillingSetup(
     shop.onboardingCompleted,
@@ -143,17 +144,17 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     }
     throw redirect(`/app/usage?${params}`);
   }
-  const [capacity, performance] = await Promise.all([
-    billingService.getMerchantRecoveryCapacityState(shop.id).catch(() => null),
+  const [billing, performance] = await Promise.all([
+    billingService.readMerchantHomeBillingPresentation({ shop, subscription: subscriptionProjection, now: new Date(), pricingCatalogue }).catch(error => {
+      logBillingBoundaryFailure({ event: "shopify.billing.home_read_failed", operation: "read_home_presentation", stage: "read_capacity", shopId: shop.id, error });
+      return { capacity: null, subscription: subscriptionProjection ? {
+        status: subscriptionProjection.status, planHandle: subscriptionProjection.observedShopifyPlanHandle,
+        planName: subscriptionProjection.observedShopifyPlanHandle, cancelAtEndOfCycle: subscriptionProjection.cancelAtPeriodEnd,
+        currentPeriodEnd: subscriptionProjection.currentPeriodEnd?.toISOString() ?? null, pendingPlan: null,
+      } : null };
+    }),
     loadOverviewPerformance(shop.id, url, merchantUi, embed),
   ]);
-
-  const subscriptionState = subscriptionProjection ?? {
-    status:
-      capacity?.availability === "CONTRACT_FROZEN" ? "FROZEN" : "NO_CONTRACT",
-    plan: null,
-    observedShopifyPlanHandle: capacity?.observedShopifyPlanHandle,
-  };
 
   const pendingRecoveries = canAccessMerchantSurface(
     merchantExperienceState,
@@ -179,30 +180,8 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     pricingCatalogue,
     billingSetup,
 
-    subscription: subscriptionState
-      ? {
-          status: subscriptionState.status,
-
-          planHandle: subscriptionState.observedShopifyPlanHandle,
-
-          planName:
-            subscriptionState.plan?.name ??
-            subscriptionState.observedShopifyPlanHandle,
-          cancelAtEndOfCycle:
-            subscriptionProjection?.cancelAtPeriodEnd ?? false,
-          currentPeriodEnd:
-            subscriptionProjection?.currentPeriodEnd?.toISOString() ?? null,
-          pendingPlan: subscriptionProjection?.pendingPlan
-            ? {
-                name: subscriptionProjection.pendingPlan.name,
-                effectiveAt:
-                  subscriptionProjection.pendingEffectiveAt?.toISOString() ??
-                  null,
-              }
-            : null,
-        }
-      : null,
-    capacity,
+    subscription: billing.subscription,
+    capacity: billing.capacity,
 
     performance,
     pendingRecoveries,

@@ -1,34 +1,20 @@
+import { resolveCurrentRecoveryCreditOffers } from "../merchant-pricing/merchant-pricing.server.js";
+import { calculateShopifyUsageEventQuoteMinor } from "./shopify-billing-operation.service";
 import {
   BillingPeriodEntitlementCounterKind,
   BillingPeriodStatus,
   BillingPlanKind,
-  EntitlementCounter,
   ShopStatus,
   SubscriptionProjectionStatus,
-  type PrismaClient,
 } from "@prisma/client";
 
-import type {
-  BillingPeriodPhase,
-  BillingProvider,
-  MerchantShopifySubscriptionState,
-  ProviderUsageItem,
-} from "./billing.types";
+import type { BillingPeriodPhase, MerchantTopUpFacts } from "./billing.types";
 import {
   deriveBillingPeriodPhase,
   hasDurableBillingPeriod,
   hasMatchingBillingCycle,
   isSafeNonNegativeInteger,
 } from "./billing-period-projection";
-import type { BillingPlanResolutionService } from "./billing-plan-resolution.service";
-import { resolveCurrentRecoveryCreditOffers } from "../merchant-pricing/merchant-pricing.server.js";
-import { calculateShopifyUsageEventQuoteMinor } from "./shopify-billing-operation.service";
-
-type MerchantPricingPlanReader = Pick<
-  BillingPlanResolutionService,
-  "readMerchantPricingPlan"
->;
-
 const SHOPIFY_BILLING_PROVIDER = "SHOPIFY";
 
 function nonBlank(value: string | null | undefined): value is string {
@@ -64,57 +50,11 @@ function requireShopifyPurchaseSummaryEvidence<
   };
 }
 
-export class MerchantBillingReadService {
-  constructor(
-    private readonly provider: BillingProvider,
-    private readonly database: PrismaClient,
-    private readonly planResolutionService: MerchantPricingPlanReader,
-  ) {}
-
-  async getMerchantBillingState(
-    shopId: string,
-    verifiedCommercialState?: MerchantShopifySubscriptionState,
-  ) {
-    const [shop, subscription, counter, usageTotal, purchasedCounter] = await Promise.all([
-      this.database.shop.findUnique({ where: { id: shopId } }),
-      this.database.subscription.findUnique({
-        where: { shopId },
-        include: {
-          plan: true,
-          pendingPlan: true,
-          billingPeriod: {
-            include: {
-              entitlementCounters: {
-                where: {
-                  counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
-                },
-              },
-            },
-          },
-        },
-      }),
-      this.database.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS,
-          },
-        },
-      }),
-      this.database.usageEvent.aggregate({
-        where: { shopId, metric: "RECOVERY_CONVERSATION" },
-        _sum: { quantity: true },
-      }),
-      this.database.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.PURCHASED_RECOVERY_CREDITS,
-          },
-        },
-      }),
-    ]);
-
+export function projectMerchantBillingState({
+  shop, subscription, lifetimeCounter: counter, purchasedCounter, providerSubscription,
+  merchantPricingPlan, latestPurchase, unresolvedPurchases, now, verificationUnavailable = false,
+}: MerchantTopUpFacts) {
+  const shopId = shop.id;
     let recoveryCreditOffers: import("./billing.types").RecoveryCreditOffer[] = [];
     let recoveryCreditOfferDiagnostics: Array<{ code: string; handle: string }> = [];
     let recoveryCreditOfferVerificationState: import("./billing.types").RecoveryCreditOfferVerificationState = "VERIFIED";
@@ -135,48 +75,13 @@ export class MerchantBillingReadService {
       hasDurableBillingPeriod(subscription) &&
       subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
       subscription.currentPeriodStart!.getTime() < subscription.currentPeriodEnd!.getTime()
-      ? deriveBillingPeriodPhase(subscription.currentPeriodEnd)
+      ? deriveBillingPeriodPhase(subscription.currentPeriodEnd, now)
       : null;
     if (
       shop?.shopifyShopId &&
       billingPeriodPhase !== null
     ) {
-      try {
-        let providerSubscription: {
-          planHandle: string;
-          status: "ACTIVE" | "TRIALING";
-          usageItems: ProviderUsageItem[];
-          currentPeriodStart: Date | null;
-          currentPeriodEnd: Date | null;
-        } | null = null;
-
-        if (verifiedCommercialState !== undefined) {
-          if (verifiedCommercialState.status === "ACTIVE_SUBSCRIPTION") {
-            const start = verifiedCommercialState.subscription.currentPeriodStart
-              ? new Date(verifiedCommercialState.subscription.currentPeriodStart)
-              : null;
-            const end = verifiedCommercialState.subscription.currentPeriodEnd
-              ? new Date(verifiedCommercialState.subscription.currentPeriodEnd)
-              : null;
-            providerSubscription = {
-              planHandle: verifiedCommercialState.subscription.planHandle,
-              status: verifiedCommercialState.subscription.trialEndsAt &&
-                new Date(verifiedCommercialState.subscription.trialEndsAt) > new Date()
-                ? "TRIALING"
-                : "ACTIVE",
-              usageItems: verifiedCommercialState.subscription.usageItems,
-              currentPeriodStart: start && !Number.isNaN(start.getTime()) ? start : null,
-              currentPeriodEnd: end && !Number.isNaN(end.getTime()) ? end : null,
-            };
-          }
-        } else {
-          providerSubscription = await this.provider.getActiveSubscription({
-            shopifyShopId: shop.shopifyShopId,
-          });
-        }
-
         if (providerSubscription) {
-          const merchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
           const resolved = resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan });
           recoveryCreditOffers = resolved.offers.map((offer: import("./billing.types").RecoveryCreditOffer) => {
             const event = merchantPricingPlan?.usageEvents.find((item) => item.eventHandle === offer.eventHandle);
@@ -213,31 +118,15 @@ export class MerchantBillingReadService {
         if (!recoveryCreditPackPurchaseEligible) {
           unavailableReason = "Recovery credit offers are not currently available.";
         }
-      } catch {
-        recoveryCreditOffers = [];
-        recoveryCreditOfferDiagnostics = [];
-        recoveryCreditOfferVerificationState = "VERIFICATION_UNAVAILABLE";
-        recoveryCreditPackPurchaseEligible = false;
-        unavailableReason = "Shopify billing details could not be verified.";
-      }
+    }
+    if (verificationUnavailable) {
+      recoveryCreditOffers = [];
+      recoveryCreditOfferDiagnostics = [];
+      recoveryCreditOfferVerificationState = "VERIFICATION_UNAVAILABLE";
+      recoveryCreditPackPurchaseEligible = false;
+      unavailableReason = "Shopify billing details could not be verified.";
     }
 
-    const [latestPurchase, unresolvedPurchases] = await Promise.all([
-      this.database.recoveryCreditPurchase?.findFirst?.({
-        where: { shopId, provider: SHOPIFY_BILLING_PROVIDER },
-        orderBy: { createdAt: "desc" },
-        include: { usageEvent: true },
-      }) ?? Promise.resolve(null),
-      this.database.recoveryCreditPurchase?.findMany?.({
-        where: {
-          shopId,
-          provider: SHOPIFY_BILLING_PROVIDER,
-          status: "REQUESTED",
-        },
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        include: { usageEvent: true },
-      }) ?? Promise.resolve([]),
-    ]);
     const latestShopifyPurchase = latestPurchase
       ? requireShopifyPurchaseSummaryEvidence(latestPurchase)
       : null;
@@ -321,7 +210,6 @@ export class MerchantBillingReadService {
           0,
         ),
       },
-      usageQuantity: Number(usageTotal._sum.quantity ?? 0),
       purchasedRecoveryCredits: {
         grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
         committedQuantity: purchasedCounter?.committedQuantity ?? 0,
@@ -368,5 +256,4 @@ export class MerchantBillingReadService {
       })),
       billingPeriodPhase,
     };
-  }
 }

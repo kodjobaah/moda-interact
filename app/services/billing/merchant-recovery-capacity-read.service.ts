@@ -2,74 +2,18 @@ import {
   BillingPeriodEntitlementCounterKind,
   BillingPeriodStatus,
   BillingPlanKind,
-  EntitlementCounter,
   PromotionCampaignStatus,
   PromotionTargetScope,
   ProviderSubscriptionLifecycleState,
   SubscriptionProjectionStatus,
-  type PrismaClient,
 } from "@prisma/client";
 
-import type { MerchantRecoveryCapacityState } from "./billing.types";
-import type { BillingPlanResolutionService } from "./billing-plan-resolution.service";
+import type { MerchantCapacityFacts, MerchantRecoveryCapacityState } from "./billing.types";
 
-type TopUpConfigurationReader = Pick<
-  BillingPlanResolutionService,
-  "readRecoveryCreditTopUpConfiguration"
->;
-
-export class MerchantRecoveryCapacityReadService {
-  constructor(
-    private readonly database: PrismaClient,
-    private readonly planResolutionService: TopUpConfigurationReader,
-  ) {}
-
-  async getMerchantRecoveryCapacityState(
-    shopId: string,
-  ): Promise<MerchantRecoveryCapacityState> {
-    const [subscription, lifetimeCounter, purchasedCounter, selection] = await Promise.all([
-      this.database.subscription.findUnique({
-        where: { shopId },
-        include: {
-          plan: true,
-          shop: { select: { onboardingCompleted: true } },
-          billingPeriod: {
-            include: {
-              entitlementCounters: {
-                where: {
-                  counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
-                },
-              },
-            },
-          },
-        },
-      }),
-      this.database.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.LIFETIME_FREE_RECOVERY_CREDITS,
-          },
-        },
-      }),
-      this.database.shopEntitlementCounter.findUnique({
-        where: {
-          shopId_counter: {
-            shopId,
-            counter: EntitlementCounter.PURCHASED_RECOVERY_CREDITS,
-          },
-        },
-      }),
-      this.database.merchantPromotionSelection.findUnique({
-        where: { shopId },
-        include: {
-          promotionalCreditGrant: {
-            include: { campaign: true },
-          },
-        },
-      }),
-    ]);
-
+export function projectMerchantRecoveryCapacity({
+  shop, subscription, lifetimeCounter, purchasedCounter, selection, topUpConfiguration, now,
+}: MerchantCapacityFacts): MerchantRecoveryCapacityState {
+  const shopId = shop.id;
     const freeLifetime = lifetimeCounter
       ? {
           granted: lifetimeCounter.grantedQuantity,
@@ -98,7 +42,6 @@ export class MerchantRecoveryCapacityReadService {
     };
     const selectedGrant = selection?.promotionalCreditGrant;
     const campaign = selectedGrant?.campaign;
-    const now = new Date();
     const promotionTargetMatches = campaign && (
       campaign.scope === PromotionTargetScope.GLOBAL ||
       (campaign.scope === PromotionTargetScope.PLAN && campaign.targetPlanId === subscription?.planId) ||
@@ -184,16 +127,11 @@ export class MerchantRecoveryCapacityReadService {
     const postContract = Boolean(
       subscription?.status === SubscriptionProjectionStatus.NO_CONTRACT &&
       subscription.lastProviderLifecycleState === ProviderSubscriptionLifecycleState.CANCELED &&
-      subscription.shop?.onboardingCompleted === true,
+      shop.onboardingCompleted === true,
     );
     const spendablePromotional = postContract
       ? { granted: 0, committed: 0, reserved: 0, remaining: 0 }
       : promotional;
-    const topUpConfiguration = !subscription || subscription.status === SubscriptionProjectionStatus.NO_CONTRACT
-      ? { enabled: false, creditsPerPack: null }
-      : await this.planResolutionService.readRecoveryCreditTopUpConfiguration(
-          subscription.plan?.shopifyPlanHandle ?? subscription.observedShopifyPlanHandle,
-        );
 
     const base = {
       reconciledPlanMapping,
@@ -257,5 +195,4 @@ export class MerchantRecoveryCapacityReadService {
       capacitySource: capacitySource ?? "EXHAUSTED",
       canStartRecovery: Boolean(capacitySource),
     };
-  }
 }

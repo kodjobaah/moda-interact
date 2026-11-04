@@ -6,7 +6,15 @@ import type {
   MerchantShopifySubscriptionState,
   ProviderSubscription,
 } from "../../../../app/services/billing/billing.types";
-import { MerchantBillingReadService } from "../../../../app/services/billing/merchant-billing-read.service";
+import { projectBillingFixture } from "../../../fixtures/commercial-read-context";
+// Keep the original domain fixture matrix, now projected without a production I/O facade.
+class MerchantBillingReadService {
+  constructor(private provider: BillingProvider, private database: PrismaClient,
+    private pricing: { readMerchantPricingPlan: (handle: string) => Promise<unknown> }) {}
+  getMerchantBillingState(shopId: string, commercial?: MerchantShopifySubscriptionState) {
+    return projectBillingFixture(this.database, this.provider, this.pricing, shopId, commercial);
+  }
+}
 
 const shopId = "shop-1";
 const shopifyShopId = "gid://shopify/Shop/1";
@@ -191,7 +199,6 @@ describe("MerchantBillingReadService", () => {
       paidIncluded: null,
       paidConfigurationUnavailable: false,
       lifetimeFree: { grantedQuantity: 50, remaining: 35 },
-      usageQuantity: 999,
       purchasedRecoveryCredits: {
         grantedQuantity: 100,
         committedQuantity: 20,

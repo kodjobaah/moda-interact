@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import prisma from "../../db.server";
+import { createLogger, type StructuredLogger } from "@modainteract/moda-interact-shared/logging";
+import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
+import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
+const promotionLogger = createLogger({ serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName() });
 
 export const PROMOTION_SELECTION_ERROR_CODES = {
   ACTIVE_PROMOTION_ALREADY_SELECTED: "ACTIVE_PROMOTION_ALREADY_SELECTED",
@@ -34,8 +38,8 @@ export type CurrentPromotionSelectionState = {
 export class PromotionSelectionError extends Error {
   code: keyof typeof PROMOTION_SELECTION_ERROR_CODES;
 
-  constructor(code: keyof typeof PROMOTION_SELECTION_ERROR_CODES) {
-    super(code);
+  constructor(code: keyof typeof PROMOTION_SELECTION_ERROR_CODES, options?: ErrorOptions) {
+    super(code, options);
     this.name = "PromotionSelectionError";
     this.code = code;
   }
@@ -262,8 +266,9 @@ export async function getCurrentPromotionSelectionState(
   locale: string,
   now = new Date(),
   database: PromotionDatabase = prisma,
+  suppliedContext?: PromotionContext,
 ): Promise<CurrentPromotionSelectionState | null> {
-  const context = await readContext(database, shopId);
+  const context = suppliedContext ?? await readContext(database, shopId);
   if (!context) return null;
 
   const selection = await database.merchantPromotionSelection.findUnique({
@@ -330,8 +335,9 @@ export async function getPromotionHistory(
   page = 1,
   now = new Date(),
   database: PromotionDatabase = prisma,
+  suppliedContext?: PromotionContext,
 ) {
-  const context = await readContext(database, shopId);
+  const context = suppliedContext ?? await readContext(database, shopId);
   if (!context) return { entries: [], page: 1, pageSize: PROMOTION_HISTORY_PAGE_SIZE, totalEntries: 0, totalPages: 1 };
   const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
   const where = { shopId };
@@ -385,11 +391,64 @@ export async function getPromotionHistory(
   };
 }
 
+export type MerchantPromotionPageInput = {
+  shopId: string; shopStatus: string; subscriptionStatus: string | null; planId: string | null;
+  locale: string; offerPage: number; historyPage: number; now: Date;
+};
+
+export async function getMerchantPromotionPage(input: MerchantPromotionPageInput, database: PromotionDatabase = prisma,
+  diagnostics: StructuredLogger = promotionLogger) {
+  const { shopId, planId, locale, now } = input;
+  const context: PromotionContext = { shopId, shopStatus: input.shopStatus,
+    subscription: input.subscriptionStatus ? { status: input.subscriptionStatus, planId, plan: null } : null };
+  async function read<T>(stage: string, operation: () => Promise<T>): Promise<T> {
+    try { return await operation(); } catch (error) {
+      logBillingBoundaryFailure({ event: "shopify.promotions.page_read_failed", operation: "read_promotion_page", stage, shopId, error }, diagnostics);
+      throw error;
+    }
+  }
+  const where: Prisma.PromotionCampaignWhereInput = {
+    status: "ACTIVE", startsAt: { lte: now }, expiresAt: { gt: now },
+    OR: [{ scope: "GLOBAL" }, { scope: "SHOP", targetShopId: shopId }, ...(planId ? [{ scope: "PLAN" as const, targetPlanId: planId }] : [])],
+    translations: { some: { locale } },
+  };
+  const [totalEntries, promotionSelection, history] = await Promise.all([
+    read("count_offers", () => database.promotionCampaign.count({ where })),
+    read("read_selection", () => getCurrentPromotionSelectionState(shopId, locale, now, database, context)),
+    read("read_history", () => getPromotionHistory(shopId, locale, input.historyPage, now, database, context)),
+  ]);
+  const totalPages = Math.max(1, Math.ceil(totalEntries / 6));
+  const requested = Number.isSafeInteger(input.offerPage) && input.offerPage > 0 ? input.offerPage : 1;
+  const page = Math.min(requested, totalPages);
+  const campaigns = await read("read_offers", () => database.promotionCampaign.findMany({
+    where,
+    select: {
+      id: true,
+      translations: { where: { locale }, select: { merchantTitle: true, merchantDescription: true } },
+      scope: true,
+      quantity: true,
+      startsAt: true,
+      expiresAt: true,
+      status: true,
+      targetPlanId: true,
+      targetShopId: true,
+      promotionalCreditGrants: {
+        where: { shopId },
+        select: { quantity: true, reservedQuantity: true, committedQuantity: true, exhaustedAt: true, firstSelectedAt: true, lastSelectedAt: true, selection: { select: { shopId: true } } },
+      },
+    },
+    orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }, { id: "asc" }], skip: (page - 1) * 6, take: 6,
+  }));
+  return { offers: campaigns.map(campaign => merchantOffer(campaign, shopId, planId)),
+    offersPagination: { page, pageSize: 6, totalEntries, totalPages }, promotionSelection, history };
+}
+
 export async function selectPromotionOffer(
   shopId: string,
   campaignId: string,
   now = new Date(),
   database: PromotionDatabase = prisma,
+  diagnostics: StructuredLogger = promotionLogger,
 ) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
@@ -461,10 +520,13 @@ export async function selectPromotionOffer(
       }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (error instanceof PromotionSelectionError) throw error;
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") {
-        if (attempt < 3) continue;
-        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE");
-      }
+      const retrying = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && attempt < 3;
+      logBillingBoundaryFailure({ event: retrying ? "shopify.promotions.selection_retry" : "shopify.promotions.selection_failed",
+        operation: "select_promotion", stage: "selection_transaction", shopId, identities: { campaignId, attempt: String(attempt) }, error,
+      }, retrying ? { ...diagnostics, error: diagnostics.warn } : diagnostics);
+      if (retrying) continue;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034")
+        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE", { cause: error });
       throw error;
     }
   }

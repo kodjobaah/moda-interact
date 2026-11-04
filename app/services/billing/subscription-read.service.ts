@@ -141,6 +141,21 @@ export class SubscriptionReadService {
         : null,
     ]);
 
+    return projectMerchantShopifySubscription(providerSubscription, [
+      currentPlan ? { ...currentPlan, shopifyPlanHandle: providerSubscription.planHandle } : null,
+      pendingPlan ? { ...pendingPlan, shopifyPlanHandle: providerSubscription.pendingFlatRatePlan!.handle } : null,
+    ].filter(
+      (plan): plan is NonNullable<typeof plan> => plan !== null,
+    ));
+  }
+}
+
+export function projectMerchantShopifySubscription(
+  providerSubscription: NonNullable<Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>>,
+  plans: readonly Pick<import("@prisma/client").BillingPlan, "id" | "shopifyPlanHandle" | "name" | "kind">[],
+): MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" } {
+  const currentPlan = plans.find(plan => plan.shopifyPlanHandle === providerSubscription.planHandle);
+  const pendingPlan = plans.find(plan => plan.shopifyPlanHandle === providerSubscription.pendingFlatRatePlan?.handle);
     const mapping = currentPlan
       ? {
           id: currentPlan.id,
@@ -180,5 +195,4 @@ export class SubscriptionReadService {
       mappingStatus: mapping ? "MAPPED" : "UNMAPPED",
       pendingModaMapping: pendingMapping,
     };
-  }
 }

@@ -269,3 +269,66 @@ export type MerchantRecoveryCapacityState = {
     creditsPerPack: number | null;
   };
 };
+
+export type MerchantBillingReadInput = Readonly<{
+  shop: import("@prisma/client").Shop;
+  subscription: import("@prisma/client").Subscription | null;
+  now: Date;
+}>;
+export type MerchantPresentationSubscription = import("@prisma/client").Subscription & {
+  plan: import("@prisma/client").BillingPlan | null;
+  pendingPlan: import("@prisma/client").BillingPlan | null;
+  billingPeriod: import("@prisma/client").Prisma.BillingPeriodGetPayload<{
+    include: { entitlementCounters: true };
+  }> | null;
+};
+export type MerchantBalanceFacts = {
+  shop: import("@prisma/client").Shop;
+  subscription: MerchantPresentationSubscription | null;
+  lifetimeCounter: import("@prisma/client").ShopEntitlementCounter | null;
+  purchasedCounter: import("@prisma/client").ShopEntitlementCounter | null;
+  now: Date;
+};
+export type MerchantCapacityFacts = MerchantBalanceFacts & {
+  selection: import("@prisma/client").Prisma.MerchantPromotionSelectionGetPayload<{
+    include: { promotionalCreditGrant: { include: { campaign: true } } };
+  }> | null;
+  topUpConfiguration: MerchantRecoveryCapacityState["topUpConfiguration"];
+};
+export type MerchantPricingReadPlan = NonNullable<Awaited<ReturnType<
+  import("./billing-plan-resolution.service").BillingPlanResolutionService["readMerchantPricingPlan"]
+>>>;
+export type MerchantTopUpFacts = MerchantBalanceFacts & {
+  providerSubscription: ProviderSubscription | null;
+  merchantPricingPlan: MerchantPricingReadPlan | null;
+  latestPurchase: import("@prisma/client").Prisma.RecoveryCreditPurchaseGetPayload<{ include: { usageEvent: true } }> | null;
+  unresolvedPurchases: import("@prisma/client").Prisma.RecoveryCreditPurchaseGetPayload<{ include: { usageEvent: true } }>[];
+  verificationUnavailable?: boolean;
+};
+export type MerchantBillingState = ReturnType<typeof import("./merchant-billing-read.service").projectMerchantBillingState>;
+export type MerchantHomeSubscriptionSummary = {
+  status: string;
+  planHandle: string | null;
+  planName: string | null;
+  cancelAtEndOfCycle: boolean;
+  currentPeriodEnd: string | null;
+  pendingPlan: { name: string; effectiveAt: string | null } | null;
+};
+
+export type MerchantHomeBillingReadInput = MerchantBillingReadInput & {
+  pricingCatalogue?: readonly { shopifyPlanHandle: string; usageEvents: readonly { creditsGrantedPerUnit: number }[] }[];
+};
+export type MerchantBillingPresentation = {
+  commercial: MerchantShopifySubscriptionState | null;
+  capacity: MerchantRecoveryCapacityState | null;
+  topUp: MerchantBillingState | null;
+  currentContract: {
+    shopifyPlanHandle: string; mappedModaPlanName: string; mappedModaPlanKind: "FREE" | "PAID_METERED";
+    currentPeriodStart: string | null; currentPeriodEnd: string | null; cancelAtEndOfCycle: boolean;
+    price: null; interval: null;
+  } | null;
+};
+export type MerchantHomeBillingPresentation = {
+  subscription: MerchantHomeSubscriptionSummary | null;
+  capacity: MerchantRecoveryCapacityState | null;
+};

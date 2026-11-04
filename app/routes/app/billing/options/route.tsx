@@ -3,9 +3,7 @@ import { overviewEmbed } from "../../home/overview.server";
 import BillingPurchaseHub from "@/components/dashboard/BillingPurchaseHub";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
 import { billingService } from "@/services/billing/billing.service";
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
-import { authenticate } from "@/shopify.server";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { useLoaderData } from "react-router";
@@ -14,6 +12,7 @@ import {
   getMerchantDeniedRedirect,
   resolveMerchantExperienceState,
 } from "@/services/shop/merchant-route-access-policy";
+import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "@/services/otel/otel.runtime";
 import { SubscriptionProjectionStatus } from "@prisma/client";
@@ -23,41 +22,8 @@ const logger = createLogger({
   environment: resolveDeploymentEnvironmentName(),
 });
 
-function providerReadError(error: unknown): string {
-  return error instanceof Error
-    ? error.message.slice(0, 500)
-    : String(error).slice(0, 500);
-}
-
-function durableCurrentContract(
-  subscription: Awaited<
-    ReturnType<typeof billingService.getSubscriptionProjection>
-  >,
-) {
-  if (!subscription?.plan) return null;
-  const shopifyPlanHandle =
-    subscription.observedShopifyPlanHandle ??
-    subscription.plan.shopifyPlanHandle;
-  if (!shopifyPlanHandle) return null;
-  return {
-    shopifyPlanHandle,
-    mappedModaPlanName: subscription.plan.name,
-    mappedModaPlanKind:
-      subscription.plan.kind === "FREE"
-        ? ("FREE" as const)
-        : ("PAID_METERED" as const),
-    currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null,
-    currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-    cancelAtEndOfCycle: subscription.cancelAtPeriodEnd,
-    price: null,
-    interval: null,
-  };
-}
-
 function durableLifecycleState(
-  subscription: Awaited<
-    ReturnType<typeof billingService.getSubscriptionProjection>
-  >,
+  subscription: import("@prisma/client").Subscription | null,
 ) {
   switch (subscription?.status) {
     case SubscriptionProjectionStatus.ACTIVE:
@@ -74,24 +40,21 @@ function durableLifecycleState(
   }
 }
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
   const url = new URL(request.url);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
   assertActiveShop(shop, {
     route: "/app/billing/options",
     capability: "manage-billing",
     redirectTo: "/app/merchant-support",
   });
-  const subscription = await billingService.getSubscriptionProjection(shop.id);
+  const subscription = await merchant.readSubscription();
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,
   });
-  const currentContract = durableCurrentContract(subscription);
+  let currentContract: Awaited<ReturnType<typeof billingService.readMerchantBillingPresentation>>["currentContract"] = null;
   if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS"))
     throw new Response(null, {
       status: 302,
@@ -114,44 +77,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const merchantUi = merchantUiContext(shop, session);
 
   try {
-    // The billing page needs current commercial truth, not historical lifecycle
-    // events. Shopify documents activeSubscription as the canonical current
-    // contract view, so use exactly one active-subscription read and reuse it for
-    // plan presentation and top-up resolution. Durable Moda state remains the
-    // lifecycle/access authority for ACTIVE/FROZEN/NO_CONTRACT presentation.
-    const [commercialResult, capacityResult] = await Promise.allSettled([
-      billingService.getMerchantShopifySubscriptionState(shop.id),
-      billingService.getMerchantRecoveryCapacityState(shop.id),
-    ]);
-    const commercial =
-      commercialResult.status === "fulfilled" ? commercialResult.value : null;
-    const capacity =
-      capacityResult.status === "fulfilled" ? capacityResult.value : null;
-
-    if (commercialResult.status === "rejected") {
-      logger.warn("billing.options.provider_verification_failed", {
-        shopId: shop.id,
-        error: providerReadError(commercialResult.reason),
-      });
-    }
-
-    // Reuse the verified activeSubscription snapshot for live top-up offer
-    // resolution. Passing the commercial state explicitly prevents a second
-    // Partner API request.
-    let topUp = null;
-    if (commercial?.status === "ACTIVE_SUBSCRIPTION") {
-      try {
-        topUp = await billingService.getMerchantBillingState(
-          shop.id,
-          commercial,
-        );
-      } catch (error) {
-        logger.warn("billing.options.topup_read_failed", {
-          shopId: shop.id,
-          error: providerReadError(error),
-        });
-      }
-    }
+    const presentation = await billingService.readMerchantBillingPresentation({ shop, subscription, now: new Date() });
+    const { commercial, capacity, topUp } = presentation;
+    currentContract = presentation.currentContract;
 
     const lifecycleState = durableLifecycleState(subscription);
     const verificationState =
@@ -191,7 +119,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       usageHistoryHref,
       purchaseHistoryAvailable,
     };
-  } catch {
+  } catch (error) {
+    logBillingBoundaryFailure({ event: "shopify.billing.options_read_failed", operation: "read_billing_options", stage: "project_options", shopId: shop.id, error }, logger);
     const requestedPlanHandle =
       url.searchParams.get("requested_plan_handle")?.trim() ?? "";
     const planChange = url.searchParams.get("plan_change");

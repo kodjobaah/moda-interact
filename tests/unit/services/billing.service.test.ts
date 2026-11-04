@@ -7,10 +7,29 @@ import {
 } from "@modainteract/moda-interact-shared/billing";
 
 import {
-  BillingService,
+  BillingService as ProductionBillingService,
   deriveBillingPeriodPhase,
 } from "../../../app/services/billing/billing.service";
 import { getMerchantSystemMessageAction } from "../../../app/services/merchant-support/system-message-actions";
+
+import { projectBillingFixture, projectCapacityFixture } from "../../fixtures/commercial-read-context";
+import type { BillingProvider, MerchantShopifySubscriptionState } from "../../../app/services/billing/billing.types";
+import type { PrismaClient } from "@prisma/client";
+import { BillingPlanResolutionService } from "../../../app/services/billing/billing-plan-resolution.service";
+// Historical balance cases now target the pure domain projections. New facade
+// orchestration and constructor-I/O budgets have separate real-composition tests.
+class BillingService extends ProductionBillingService {
+  getMerchantBillingState(shopId: string, commercial?: MerchantShopifySubscriptionState) {
+    const ports = this as unknown as { database: PrismaClient; provider: BillingProvider };
+    const catalogue = Reflect.get(ports.database, "merchantPricingPlan") as { findUnique?: unknown } | undefined;
+    const pricing = typeof catalogue?.findUnique === "function" ? new BillingPlanResolutionService(ports.database) : { readMerchantPricingPlan: async () => null };
+    return projectBillingFixture(ports.database, ports.provider, pricing, shopId, commercial);
+  }
+  getMerchantRecoveryCapacityState(shopId: string) {
+    const ports = this as unknown as { database: PrismaClient };
+    return projectCapacityFixture(ports.database, new BillingPlanResolutionService(ports.database), shopId);
+  }
+}
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
@@ -3041,7 +3060,6 @@ describe("BillingService merchant billing state", () => {
         refundingQuantity: 10,
         available: 65,
       },
-      usageQuantity: 9999,
     });
   });
 
@@ -3078,8 +3096,8 @@ describe("BillingService merchant billing state", () => {
     expect(result.paidIncluded).toBeNull();
     expect(result.paidConfigurationUnavailable).toBe(true);
     if (_name === "billingPeriod relation missing" || _name === "included counter missing") {
-      expect(result.usageQuantity).toBe(999);
-      expect(result.paidIncluded).not.toEqual({ remaining: result.usageQuantity });
+      expect(result).not.toHaveProperty("usageQuantity");
+      expect(result.paidIncluded).not.toEqual({ remaining: 999 });
     }
   });
 

@@ -4,26 +4,24 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
-import { authenticate } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import {
-  getEligiblePromotionOffers,
-  getCurrentPromotionSelectionState,
+  getMerchantPromotionPage,
   getPromotionHistory,
   PromotionSelectionError,
   selectPromotionOffer,
 } from "@/services/promotions/promotion.service";
 import { createMerchantI18n, merchantUiContext } from "@/utils/merchant-i18n";
 import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
-import { billingService } from "@/services/billing/billing.service";
 import "./PromotionsRoute.css";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
   assertActiveShop(shop, { route: "/app/promotions", capability: "read-promotions", redirectTo: "/app/merchant-support" });
-  const subscription = await billingService.getSubscription(shop.id);
+  const scalar = await merchant.readSubscription();
+  const subscription = scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const url = new URL(request.url);
@@ -31,35 +29,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
   const offerPageValue = Number(url.searchParams.get("offerPage"));
   const merchantUi = merchantUiContext(shop, session);
   const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale;
-  const [allOffers, promotionSelection, history] = await Promise.all([
-    getEligiblePromotionOffers(shop.id, promotionLocale),
-    getCurrentPromotionSelectionState(shop.id, promotionLocale),
-    getPromotionHistory(shop.id, promotionLocale, historyPageValue),
-  ]);
-  const offerPageSize = 6;
-  const offerTotalPages = Math.max(1, Math.ceil(allOffers.length / offerPageSize));
-  const requestedOfferPage = Number.isInteger(offerPageValue) && offerPageValue > 0 ? offerPageValue : 1;
-  const offerPage = Math.min(requestedOfferPage, offerTotalPages);
-
-  return {
-    merchantUi,
-    offers: allOffers.slice((offerPage - 1) * offerPageSize, offerPage * offerPageSize),
-    offersPagination: {
-      page: offerPage,
-      pageSize: offerPageSize,
-      totalEntries: allOffers.length,
-      totalPages: offerTotalPages,
-    },
-    promotionSelection,
-    history,
-  };
+  const page = await getMerchantPromotionPage({
+    shopId: shop.id, shopStatus: shop.status, subscriptionStatus: scalar?.status ?? null, planId: scalar?.planId ?? null,
+    locale: promotionLocale, offerPage: offerPageValue, historyPage: historyPageValue, now: new Date(),
+  });
+  return { merchantUi, ...page };
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function action({ request, context }: ActionFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop } = merchant;
   assertActiveShop(shop, { route: "/app/promotions", capability: "select-promotions", redirectTo: "/app/merchant-support" });
-  const subscription = await billingService.getSubscription(shop.id);
+  const scalar = await merchant.readSubscription();
+  const subscription = scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PROMOTIONS")) throw new Response(null, { status: 302, headers: { Location: getMerchantDeniedRedirect(merchantExperienceState, "PROMOTIONS") } });
   const formData = await request.formData();
