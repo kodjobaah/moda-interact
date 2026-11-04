@@ -1,3 +1,6 @@
+import { logBillingBoundaryFailure } from "./providers/shopify-billing-diagnostics.server";
+import { createLogger, type StructuredLogger } from "@modainteract/moda-interact-shared/logging";
+import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -27,6 +30,9 @@ import {
   hasMatchingBillingCycle,
 } from "./billing-period-projection";
 
+const purchaseLogger = createLogger({
+  serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName(),
+});
 const RECOVERY_CREDIT_PACK_UNAVAILABLE_DURING_TRANSITION =
   "Recovery credit packs are temporarily unavailable while the current Shopify billing cycle is being confirmed.";
 const RECOVERY_CREDIT_PURCHASE_INTENT = "BUY_RECOVERY_CREDIT_PACK";
@@ -104,6 +110,7 @@ export class RecoveryCreditPurchaseRequestService {
     private readonly planResolutionService: BillingPlanResolutionService,
     private readonly billingOperationService: ShopifyBillingOperationService =
       new ShopifyBillingOperationService(database),
+    private readonly diagnostics: StructuredLogger = purchaseLogger,
   ) {}
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string, eventHandle: string) {
@@ -118,7 +125,7 @@ export class RecoveryCreditPurchaseRequestService {
     const existingPurchase = await this.database.recoveryCreditPurchase.findUnique({
       where: { id: purchaseId },
       include: { usageEvent: true },
-    });
+    }).catch(error => this.failRead(shopId, purchaseId, "read_purchase_receipt", error));
     if (existingPurchase) {
       if (
         existingPurchase.shopId !== shopId ||
@@ -135,7 +142,7 @@ export class RecoveryCreditPurchaseRequestService {
         where: { shopId },
         include: { plan: true, billingPeriod: true },
       }),
-    ]);
+    ]).catch(error => this.failRead(shopId, purchaseId, "read_purchase_context", error));
     if (
       shop?.platform !== ShopPlatform.SHOPIFY ||
       shop.status !== ShopStatus.ACTIVE ||
@@ -176,7 +183,8 @@ export class RecoveryCreditPurchaseRequestService {
     if (!providerSubscription || providerSubscription.planHandle !== plan.shopifyPlanHandle) {
       throw new Error("The recovery credit pack meter could not be verified with Shopify.");
     }
-    const merchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
+    const merchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle)
+      .catch(error => this.failRead(shopId, purchaseId, "read_purchase_catalogue", error));
     const selectedEvent = merchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
     let providerPackMeter = providerSubscription.usageItems.find((item) => item.handle === eventHandle);
     if (!merchantPricingPlan || !selectedEvent || !providerPackMeter || !providerSubscription.usageEventHandles.includes(eventHandle)) {
@@ -213,7 +221,8 @@ export class RecoveryCreditPurchaseRequestService {
       currentPeriodStart: providerSubscription.currentPeriodStart,
       currentPeriodEnd: providerSubscription.currentPeriodEnd,
     });
-    const currentMerchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle);
+    const currentMerchantPricingPlan = await this.planResolutionService.readMerchantPricingPlan(providerSubscription.planHandle)
+      .catch(error => this.failRead(shopId, purchaseId, "read_purchase_catalogue", error));
     const currentSelectedEvent = currentMerchantPricingPlan?.usageEvents.find((event) => event.eventHandle === eventHandle);
     if (
       !currentSelectedEvent ||
@@ -336,7 +345,7 @@ export class RecoveryCreditPurchaseRequestService {
         const replay = await this.database.recoveryCreditPurchase.findUnique({
           where: { id: purchaseId },
           include: { usageEvent: true },
-        });
+        }).catch(error => this.failRead(shopId, purchaseId, "read_purchase_replay", error));
         if (replay) {
           if (
             replay.shopId !== shopId ||
@@ -347,7 +356,15 @@ export class RecoveryCreditPurchaseRequestService {
           return replay;
         }
       }
-      throw error;
+      this.failRead(shopId, purchaseId, "purchase_transaction", error);
     }
+  }
+
+  private failRead(shopId: string, purchaseId: string, stage: string, error: unknown): never {
+    logBillingBoundaryFailure({
+      event: "shopify.billing.recovery_credit_purchase_failed", operation: "request_recovery_credit_pack",
+      stage, shopId, identities: { purchaseId }, error,
+    }, this.diagnostics);
+    throw error;
   }
 }

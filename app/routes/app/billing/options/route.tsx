@@ -1,3 +1,4 @@
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { overviewEmbed } from "../../home/overview.server";
 import BillingPurchaseHub from "@/components/dashboard/BillingPurchaseHub";
 import Breadcrumbs from "@/components/dashboard/Breadcrumbs";
@@ -217,18 +218,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
   }
 }
 
-export async function action({ request }: ActionFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export async function action({ request, context }: ActionFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop } = merchant;
   assertActiveShop(shop, {
     route: "/app/billing/options",
     capability: "purchase-recovery-credits",
     redirectTo: "/app/merchant-support",
   });
-  const subscription = await billingService.getSubscriptionProjection(shop.id);
+  const subscription = await merchant.readSubscription();
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,
@@ -243,23 +241,6 @@ export async function action({ request }: ActionFunctionArgs) {
         ),
       },
     });
-  const [capacity, liveCommercial] = await Promise.all([
-    billingService.getMerchantRecoveryCapacityState(shop.id),
-    billingService.getMerchantShopifySubscriptionState(shop.id),
-  ]);
-  if (
-    capacity.availability === "CONTRACT_FROZEN" ||
-    capacity.availability === "CONTRACT_REQUIRED" ||
-    capacity.availability === "POST_CONTRACT_AVAILABLE" ||
-    capacity.availability === "POST_CONTRACT_EXHAUSTED" ||
-    subscription?.status === SubscriptionProjectionStatus.FROZEN ||
-    subscription?.status === SubscriptionProjectionStatus.NO_CONTRACT ||
-    liveCommercial.status !== "ACTIVE_SUBSCRIPTION"
-  ) {
-    throw new Error(
-      "Recovery credit packs are unavailable while Shopify billing is restricted.",
-    );
-  }
   const formData = await request.formData();
   const purchase = await billingService.requestRecoveryCreditPack(
     shop.id,

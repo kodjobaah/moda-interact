@@ -1,9 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MerchantPricingUsagePricingMode,
   Prisma,
   ShopPlatform,
 } from "@prisma/client";
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { createShopifyUsageIdempotencyKey } from "@modainteract/moda-interact-shared/billing";
 
 import { BillingPlanResolutionService } from "../../../../app/services/billing/billing-plan-resolution.service";
@@ -192,6 +193,12 @@ function createHarness(options: {
     get topLevelPurchaseReads() { return topLevelPurchaseReads; },
   };
 }
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-09-15T00:00:00Z"));
+});
+afterEach(() => vi.useRealTimers());
 
 describe("RecoveryCreditPurchaseRequestService", () => {
   it("performs exactly two provider snapshots and two catalogue reads before its Serializable transaction", async () => {
@@ -415,5 +422,29 @@ describe("RecoveryCreditPurchaseRequestService", () => {
 
     expect(harness.usageEvents[0]).toMatchObject({ shopId, shopifyEventHandle: eventHandle, quantity: 1 });
     expect(harness.purchases.get(purchaseId)).toMatchObject({ creditsGranted: 100, planId: "plan-1" });
+  });
+});
+
+describe("purchase persistence diagnostic ownership", () => {
+  it.each([false, true])("preserves original transaction failure when the Shared sink throws=%s", async broken => {
+    const error = Object.assign(new Error("purchase original marker email=person@example.test", { cause: new Error("transaction cause access_token=secret-sentinel") }), { code: "P2010" });
+    const fixture = createHarness({ transactionError: error });
+    const records: unknown[] = [];
+    const logger = createLogger({ serviceName: "moda-interact", environment: "test", sink: record => {
+      if (broken) throw new Error("sink unavailable");
+      records.push(JSON.parse(JSON.stringify(record)));
+    } });
+    const service = new RecoveryCreditPurchaseRequestService(fixture.provider as never, fixture.database as never,
+      new BillingPlanResolutionService(fixture.database as never), fixture.billingOperationService as never, logger);
+    await expect(service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle)).rejects.toBe(error);
+    expect(fixture.usageEvents).toHaveLength(0);
+    expect(fixture.purchases.size).toBe(0);
+    expect(fixture.provider.getSubscriptionLifecycleSnapshot).toHaveBeenCalledTimes(2);
+    if (!broken) {
+      expect(records).toHaveLength(1);
+      const output = JSON.stringify(records);
+      for (const marker of ["purchase original marker", "transaction cause", "P2010", "purchase_transaction"]) expect(output).toContain(marker);
+      for (const secret of ["person@example.test", "secret-sentinel"]) expect(output).not.toContain(secret);
+    }
   });
 });
