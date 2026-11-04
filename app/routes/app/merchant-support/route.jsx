@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import PropTypes from "prop-types";
-import { Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
+import { RouterContextProvider, Link, useFetcher, useLoaderData, useRevalidator } from "react-router";
 import {
   AuthoredSupportBodySchema,
   countUnicodeGraphemes,
 } from "@modainteract/moda-interact-shared/merchant-communications";
-import { authenticate } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { assertSupportShop } from "@/services/shop/shop-access-policy";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import {
   composeMerchantMessage,
   markMerchantSupportMessageRead,
+  markMerchantSupportMessagesRead,
   readMerchantSupportMessages,
 } from "@/services/merchant-support/merchant-support.service";
 import {
@@ -19,13 +19,12 @@ import {
   getRecoverySupportMessageAction,
 } from "@/services/merchant-support/system-message-actions";
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
-import { billingService } from "@/services/billing/billing.service";
 import { recordMerchantSupportSendFailure } from "@/services/merchant-support/merchant-support-observability.server";
 
-/** @param {{ request: Request }} args */
-export async function loader({ request }) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+/** @param {{ request: Request, context?: Readonly<import("react-router").RouterContextProvider> }} args */
+export async function loader({ request, context = new RouterContextProvider() }) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
   assertSupportShop(shop, { route: "/app/merchant-support", capability: "read-messages", redirectTo: "/auth/login" });
   const url = new URL(request.url);
   const support = await readMerchantSupportMessages({
@@ -33,18 +32,51 @@ export async function loader({ request }) {
     page: Number(url.searchParams.get("page") ?? "1"),
     pageSize: Number(url.searchParams.get("pageSize") ?? "25"),
   });
-  const subscription = await billingService.getSubscription(shop.id);
+  const scalar = await merchant.readSubscription();
+  const subscription = scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   return Response.json({ ...support, merchantUi: merchantUiContext(shop, session), merchantExperienceState });
 }
 
-/** @param {{ request: Request }} args */
-export async function action({ request }) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+/** @param {{ request: Request, context?: Readonly<import("react-router").RouterContextProvider> }} args */
+export async function action({ request, context = new RouterContextProvider() }) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
   assertSupportShop(shop, { route: "/app/merchant-support", capability: "send-message", redirectTo: "/auth/login" });
-  const formData = await request.formData();
+  // Bound bytes before invoking the form parser, including multipart overhead.
+  const reader = request.body?.getReader();
+  const parts = []; let bytes = 0;
+  if (reader) {
+    try {
+      while (bytes <= 65_536) {
+        const next = await reader.read(); if (next.done) break;
+        bytes += next.value.byteLength;
+        if (bytes > 65_536) {
+          await reader.cancel();
+          return Response.json({ marked: false, errorCode: "SEND_FAILED" }, { status: 413 });
+        }
+        parts.push(next.value);
+      }
+    } finally { reader.releaseLock(); }
+  }
+  let formData;
+  try {
+    formData = await new Response(new Blob(parts), { headers: { "Content-Type": request.headers.get("content-type") ?? "" } }).formData();
+  } catch { return Response.json({ marked: false }, { status: 400 }); }
+
   const intent = String(formData.get("intent") ?? "compose");
+
+  if (intent === "read-batch") {
+    const keys = [...formData.keys()];
+    if (keys.length !== 2 || formData.getAll("intent").length !== 1 || formData.getAll("messageIds").length !== 1 ||
+      keys.some(key => !["intent", "messageIds"].includes(key))) return Response.json({ marked: false }, { status: 400 });
+    let messageIds;
+    try { messageIds = JSON.parse(String(formData.get("messageIds"))); } catch { return Response.json({ marked: false }, { status: 400 }); }
+    if (!Array.isArray(messageIds) || messageIds.length < 1 || messageIds.length > 50 ||
+      messageIds.some(id => typeof id !== "string" || !id.trim() || id.length > 191) || new Set(messageIds).size !== messageIds.length)
+      return Response.json({ marked: false }, { status: 400 });
+    return Response.json(await markMerchantSupportMessagesRead({ shopId: shop.id, messageIds }));
+  }
 
   if (intent === "read") {
     return Response.json({
@@ -95,17 +127,18 @@ export default function MerchantSupport() {
     && message.state === "AVAILABLE"
     && !message.readAt
   ));
-  const unreadMessageIds = unreadMessages.map((/** @type {any} */ message) => message.id).join(",");
+  const unreadMessageIds = unreadMessages.map((/** @type {any} */ message) => message.id);
+  const unreadMessageKey = JSON.stringify(unreadMessageIds);
 
   useEffect(() => {
     let cancelled = false;
     void markUnreadMessages({
-      messageIds: unreadMessageIds.split(",").filter(Boolean),
+      messageIds: JSON.parse(unreadMessageKey),
       revalidate,
       isCancelled: () => cancelled,
     });
     return () => { cancelled = true; };
-  }, [unreadMessageIds, revalidate]);
+  }, [unreadMessageKey, revalidate]);
 
   /** @param {import("react").FormEvent<HTMLFormElement>} event */
   function submitMessage(event) {
@@ -163,31 +196,18 @@ export async function markUnreadMessages({
   const unreadIds = messageIds.filter(Boolean);
   if (unreadIds.length === 0) return false;
 
-  let markedCount = 0;
-  for (const messageId of unreadIds) {
-    if (isCancelled()) return false;
+  if (isCancelled()) return false;
+  try {
     const form = new FormData();
-    form.set("intent", "read");
-    form.set("messageId", messageId);
-    const response = await fetchImpl("/app/merchant-support", {
-      method: "POST",
-      body: form,
-      credentials: "include",
-    });
-    if (!response.ok) {
-      if (markedCount > 0 && !isCancelled()) revalidate();
-      return false;
-    }
+    form.set("intent", "read-batch");
+    form.set("messageIds", JSON.stringify(unreadIds));
+    const response = await fetchImpl("/app/merchant-support", { method: "POST", body: form, credentials: "include" });
+    if (!response.ok) return false;
     const result = await response.json();
-    if (result?.marked !== true) {
-      if (markedCount > 0 && !isCancelled()) revalidate();
-      return false;
-    }
-    markedCount += 1;
-  }
-
-  if (markedCount > 0 && !isCancelled()) revalidate();
-  return markedCount > 0;
+    if (result?.marked !== true || isCancelled()) return false;
+    revalidate();
+    return true;
+  } catch { return false; }
 }
 
 /** @param {{ message: any, i18n: any, merchantExperienceState: string }} props */

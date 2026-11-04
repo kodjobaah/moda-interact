@@ -5,8 +5,15 @@ import {
   AuthoredSupportBodySchema,
 } from "@modainteract/moda-interact-shared/merchant-communications";
 
+const queuePorts = vi.hoisted(() => ({ construct: vi.fn(), close: vi.fn(), add: vi.fn() }));
+vi.mock("bullmq", () => ({ Queue: class {
+  constructor() { queuePorts.construct(); }
+  add = queuePorts.add;
+  close = queuePorts.close;
+} }));
 const supportObservability = vi.hoisted(() => ({
   recordMerchantSupportReadFailure: vi.fn(),
+  recordMerchantSupportAcknowledgementFailure: vi.fn(),
   recordMerchantSupportTranslationDispatchFailure: vi.fn(),
 }));
 vi.mock("../../app/services/merchant-support/merchant-support-observability.server", () => ({
@@ -15,8 +22,12 @@ vi.mock("../../app/services/merchant-support/merchant-support-observability.serv
 
 import {
   composeMerchantMessage,
+  enqueueTranslationBestEffort,
+  resetMerchantSupportQueueForTests,
   markMerchantSupportMessageRead,
   readMerchantSupportMessages,
+  readMerchantSupportUnreadCount,
+  markMerchantSupportMessagesRead,
 } from "../../app/services/merchant-support/merchant-support.service";
 
 const supportServiceSource = await readFile(
@@ -64,7 +75,7 @@ describe("merchant support compose", () => {
 
     expect(result.translationId).toBeNull();
     expect(transaction.$queryRaw.mock.calls[0]?.[0].sql).toContain('FROM "commerce"."Shop"');
-    expect(transaction.$executeRaw).toHaveBeenCalledTimes(2);
+    expect(transaction.$executeRaw).toHaveBeenCalledTimes(1);
     expect(queue.add).not.toHaveBeenCalled();
   });
 
@@ -81,7 +92,7 @@ describe("merchant support compose", () => {
 
     expect(result.translationId).toEqual(expect.any(String));
     expect(transaction.$queryRaw.mock.calls[0]?.[0].sql).toContain('FROM "commerce"."Shop"');
-    expect(transaction.$executeRaw).toHaveBeenCalledTimes(3);
+    expect(transaction.$executeRaw).toHaveBeenCalledTimes(2);
     expect(queue.add).toHaveBeenCalledWith(
       "translation-dispatch",
       expect.objectContaining({ translationId: result.translationId, schemaVersion: 1 }),
@@ -137,8 +148,7 @@ describe("merchant support compose", () => {
     const transaction = {
       $queryRaw: vi.fn()
         .mockResolvedValueOnce([message])
-        .mockResolvedValueOnce([{ count: 1n }])
-        .mockResolvedValueOnce([{ unread: 0n }]),
+        .mockResolvedValueOnce([{ count: 1n, unread: 0n }]),
     };
     const database = { $transaction: vi.fn(async (callback) => callback(transaction)) };
 
@@ -159,12 +169,12 @@ describe("merchant support compose", () => {
     const database = { $transaction: vi.fn().mockRejectedValue(failure) };
 
     await expect(readMerchantSupportMessages({ shopId: "shop-1", database })).rejects.toBe(failure);
-    expect(supportObservability.recordMerchantSupportReadFailure).toHaveBeenCalledWith("shop-1", failure);
+    expect(supportObservability.recordMerchantSupportReadFailure).toHaveBeenCalledWith("shop-1", failure, "read_support_page");
   });
 
   it("returns true only for tenant-owned AVAILABLE outbound messages", async () => {
     const executeRaw = vi.fn().mockResolvedValue(1);
-    const queryRaw = vi.fn().mockResolvedValue([{ id: "message-1" }]);
+    const queryRaw = vi.fn().mockResolvedValue([{ marked: true }]);
     const database = {
       $transaction: vi.fn(async (callback) => callback({ $queryRaw: queryRaw, $executeRaw: executeRaw })),
     };
@@ -177,7 +187,8 @@ describe("merchant support compose", () => {
 
     expect(queryRaw.mock.calls[0][0].sql).toContain('m."kind" IN (\'ADMINISTRATIVE\', \'SYSTEM\')');
     expect(queryRaw.mock.calls[0][0].sql).toContain('m."state" = \'AVAILABLE\'');
-    expect(executeRaw.mock.calls[0][0].sql).toContain('"readAt" = COALESCE("readAt", NOW())');
+    expect(queryRaw.mock.calls[0][0].sql).toContain('e."readAt" IS NULL');
+    expect(executeRaw).not.toHaveBeenCalled();
 
     queryRaw.mockResolvedValue([]);
     await expect(markMerchantSupportMessageRead({
@@ -196,4 +207,60 @@ describe("merchant support compose", () => {
       database,
     })).resolves.toBe(false);
   });
+});
+
+describe("support bounded repository operations", () => {
+  it("reads a badge with one raw SELECT and no transaction/body projection", async () => {
+    const database = { $queryRaw: vi.fn().mockResolvedValue([{ unread: 9n }]), $transaction: vi.fn() };
+    expect(await readMerchantSupportUnreadCount({ shopId: "shop-1", database })).toBe(9);
+    expect(database.$queryRaw).toHaveBeenCalledOnce(); expect(database.$transaction).not.toHaveBeenCalled();
+    const query = database.$queryRaw.mock.calls[0][0];
+    expect(query.sql).not.toContain("originalBody"); expect(query.values).toEqual(["shop-1"]);
+  });
+  it.each([[], Array.from({length: 51}, (_, i) => String(i)), ["same", "same"], [""], ["x".repeat(192)]].map(messageIds => ({messageIds})))("rejects invalid direct batches before DB access: %j", async ({messageIds}) => {
+    const database = { $transaction: vi.fn() };
+    expect(await markMerchantSupportMessagesRead({ shopId: "shop-1", messageIds, database })).toEqual({ marked: false });
+    expect(database.$transaction).not.toHaveBeenCalled();
+  });
+  it("uses one gated locking statement for fifty IDs", async () => {
+    const tx = { $queryRaw: vi.fn().mockResolvedValue([{ marked: true }]), $executeRaw: vi.fn() };
+    const database = { $transaction: vi.fn(async callback => callback(tx)) };
+    const messageIds = Array.from({length: 50}, (_, i) => `message-${i}`);
+    expect(await markMerchantSupportMessagesRead({ shopId: "shop-1", messageIds, database })).toEqual({ marked: true });
+    expect(tx.$queryRaw).toHaveBeenCalledOnce(); expect(tx.$executeRaw).not.toHaveBeenCalled();
+    const query = tx.$queryRaw.mock.calls[0][0];
+    expect(query.sql).toContain('ORDER BY m."id" ASC FOR UPDATE OF m');
+    expect(query.values).toContain(50); expect(query.values).toContain("message-49");
+  });
+});
+
+it("catches queue acquisition failures after durable composition", async () => {
+  vi.stubEnv("REDIS_URL", "redis://fixture.invalid");
+  queuePorts.construct.mockImplementationOnce(() => { throw new Error("original constructor failure"); });
+  const {database} = databaseFor("fr");
+  try {
+    const result = await composeMerchantMessage({shopId: "shop-1", body: "Bonjour", database});
+    expect(result.translationId).toBeTruthy();
+    expect(supportObservability.recordMerchantSupportTranslationDispatchFailure).toHaveBeenCalled();
+  } finally { vi.unstubAllEnvs(); await resetMerchantSupportQueueForTests(); }
+});
+it("records missing optional configuration only when a translation is dispatched", async () => {
+  vi.stubEnv("REDIS_URL", "");
+  try { await enqueueTranslationBestEffort("translation-1");
+    expect(supportObservability.recordMerchantSupportTranslationDispatchFailure).toHaveBeenCalledWith("translation-1", expect.any(Error));
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it("catches old queue close failures after commit", async () => {
+  queuePorts.close.mockResolvedValue(undefined); queuePorts.add.mockResolvedValue(undefined);
+  vi.stubEnv("REDIS_URL", "redis://fixture-one.invalid");
+  try {
+    await enqueueTranslationBestEffort("translation-1");
+    vi.stubEnv("REDIS_URL", "redis://fixture-two.invalid");
+    const error = new Error("original close failure"); queuePorts.close.mockRejectedValueOnce(error);
+    const {database} = databaseFor("fr");
+    const result = await composeMerchantMessage({shopId: "shop-1", body: "Bonjour", database});
+    expect(result.translationId).toBeTruthy();
+    expect(supportObservability.recordMerchantSupportTranslationDispatchFailure).toHaveBeenCalledWith(result.translationId, error);
+  } finally { vi.unstubAllEnvs(); queuePorts.close.mockResolvedValue(undefined); await resetMerchantSupportQueueForTests(); }
 });

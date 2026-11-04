@@ -30,7 +30,9 @@
     "prisma:seed": "node database/prisma/seed.mjs",
     "test:merchant-request:unit": "vitest run tests/unit/merchant-request-context.test.ts tests/unit/services/shop.service.test.ts tests/unit/routes/auth-catchall.test.ts tests/unit/merchant-route-access-policy.test.ts",
     "test:merchant-request:router": "vitest run tests/integration/merchant-request-context-router.test.ts",
-    "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts"
+    "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts",
+    "test:merchant-support:unit": "vitest run tests/unit/merchant-support-service.test.ts tests/unit/merchant-support-route.test.ts tests/unit/merchant-support-observability.test.ts tests/unit/merchant-support-recovery-i18n.test.ts tests/unit/merchant-support-batch-ui.test.tsx",
+    "test:merchant-support:postgres": "MODA_DISPOSABLE_INTEGRATION=1 vitest run tests/integration/merchant-support.postgres.test.ts"
   },
   "type": "module",
   "engines": {
