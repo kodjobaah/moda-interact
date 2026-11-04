@@ -17,7 +17,6 @@ const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
 
 let fixture: BillingPostgresFixture | undefined;
-let provider: { getActiveSubscription: () => Promise<ProviderSubscription> };
 let queryLog: string[];
 
 function deferred<T = void>() {
@@ -73,9 +72,15 @@ function proxyTransactionClient(
   });
 }
 
-function billingServiceFor(database: PrismaClient, planHandle: string, meter: string) {
-  provider.getActiveSubscription = async () => paidProvider(planHandle, meter);
-  return new BillingService(provider as never, database);
+function billingServiceFor(
+  database: PrismaClient,
+  planHandle: string,
+  meter: string,
+  providerPort: { getActiveSubscription: () => Promise<ProviderSubscription> } = {
+    getActiveSubscription: async () => paidProvider(planHandle, meter),
+  },
+) {
+  return new BillingService(providerPort as never, database);
 }
 
 async function waitForDatabaseLockWait(observer: PrismaClient, applicationName: string) {
@@ -95,7 +100,6 @@ async function waitForDatabaseLockWait(observer: PrismaClient, applicationName: 
 describeWithDatabase("Billing activation PostgreSQL locks and projections", () => {
   beforeAll(async () => {
     fixture = await startBillingPostgresFixture();
-    provider = { getActiveSubscription: async () => { throw new Error("Provider fixture is not initialized"); } };
     queryLog = [];
     recordQueries(fixture.database);
   }, 240_000);
@@ -113,20 +117,25 @@ describeWithDatabase("Billing activation PostgreSQL locks and projections", () =
 
     const firstSync = fixture!.createClient("billing-same-token-first");
     const secondSync = fixture!.createClient("billing-same-token-second");
-    const providerBarrier = deferred();
+    const bothProviderRequestsArrived = deferred();
+    const releaseProviderRequests = deferred();
     let providerRequestCount = 0;
-    provider.getActiveSubscription = async () => {
+    const barrierProvider = { getActiveSubscription: async () => {
       providerRequestCount += 1;
-      if (providerRequestCount === 2) providerBarrier.resolve();
-      await providerBarrier.promise;
+      if (providerRequestCount === 2) bothProviderRequestsArrived.resolve();
+      await releaseProviderRequests.promise;
       return paidProvider(seed.planHandle, seed.usageEventHandle);
-    };
-    const concurrentResults = await Promise.all([
-      billingServiceFor(firstSync, seed.planHandle, seed.usageEventHandle)
-        .syncSubscription(seed.shopId, activation!.token!),
-      billingServiceFor(secondSync, seed.planHandle, seed.usageEventHandle)
-        .syncSubscription(seed.shopId, activation!.token!),
+    } };
+    const firstService = billingServiceFor(firstSync, seed.planHandle, seed.usageEventHandle, barrierProvider);
+    const secondService = billingServiceFor(secondSync, seed.planHandle, seed.usageEventHandle, barrierProvider);
+    const concurrentResultsPromise = Promise.all([
+      firstService.syncSubscription(seed.shopId, activation!.token!),
+      secondService.syncSubscription(seed.shopId, activation!.token!),
     ]);
+    await bothProviderRequestsArrived.promise;
+    expect(providerRequestCount).toBe(2);
+    releaseProviderRequests.resolve();
+    const concurrentResults = await concurrentResultsPromise;
     expect(concurrentResults.filter(Boolean)).toHaveLength(1);
     expect(concurrentResults.filter((result) => result === null)).toHaveLength(1);
     const finalized = concurrentResults.find((result) => result !== null)!;

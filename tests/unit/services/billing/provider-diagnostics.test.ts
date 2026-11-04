@@ -49,6 +49,28 @@ describe("Shopify billing provider diagnostics", () => {
     expect(output).not.toContain("CODE_5");
   });
 
+  it("preserves schedule timestamps while redacting an adjacent phone number", () => {
+    const records: string[] = [];
+    const diagnosticLogger = createLogger({
+      serviceName: "moda-interact",
+      environment: "test",
+      sink: (record) => records.push(JSON.stringify(record)),
+    });
+    const scheduledAt = "2026-11-04T06:00:00.000Z";
+
+    createShopifyBillingProviderError({
+      operation: "schedule_retry",
+      failureKind: "MALFORMED_RESPONSE",
+      origin: "internal",
+      message: `schedule contact +447700900123 ${scheduledAt}`,
+    }, diagnosticLogger);
+
+    const output = records.join("\n");
+    expect(output).toContain(`[REDACTED] ${scheduledAt}`);
+    expect(output).not.toContain("+447700900123");
+    expect(output).toContain('"redactionApplied":true');
+  });
+
   it("retains failure behavior when the Shared sink throws", () => {
     const sink = vi.fn(() => {
       throw new Error("sink unavailable");

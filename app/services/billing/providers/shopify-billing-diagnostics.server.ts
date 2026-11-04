@@ -26,6 +26,7 @@ export type ShopifyBillingProviderErrorInput = {
   origin: ShopifyBillingFailureOrigin;
   message: string;
   cause?: unknown;
+  diagnosticCause?: unknown;
   reasonCode?: string;
   httpStatus?: number;
   providerRequestId?: string | null;
@@ -92,8 +93,27 @@ function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): 
     (match) => ({ start: match.index!, end: match.index! + match[0].length }),
   );
   text = text.replace(/\+?\d[\d ()-]{8,}\d/g, (match, offset: number) => {
-    const overlapsTimestamp = timestamps.some((timestamp) => offset < timestamp.end && offset + match.length > timestamp.start);
-    return overlapsTimestamp ? match : "[REDACTED]";
+    const matchEnd = offset + match.length;
+    const overlappingTimestamps = timestamps.filter((timestamp) => offset < timestamp.end && matchEnd > timestamp.start);
+    if (overlappingTimestamps.length === 0) return "[REDACTED]";
+
+    const redactSpan = (span: string) => {
+      if (!span.trim()) return span;
+      const leadingWhitespace = span.match(/^\s*/)?.[0] ?? "";
+      const trailingWhitespace = span.match(/\s*$/)?.[0] ?? "";
+      return `${leadingWhitespace}[REDACTED]${trailingWhitespace}`;
+    };
+    let safeMatch = "";
+    let cursor = offset;
+    for (const timestamp of overlappingTimestamps) {
+      const start = Math.max(offset, timestamp.start);
+      const end = Math.min(matchEnd, timestamp.end);
+      if (start > cursor) safeMatch += redactSpan(text.slice(cursor, start));
+      safeMatch += text.slice(start, end);
+      cursor = end;
+    }
+    if (cursor < matchEnd) safeMatch += redactSpan(text.slice(cursor, matchEnd));
+    return safeMatch;
   });
   redacted ||= text !== beforePatterns;
   const truncated = text.length > maxLength;
@@ -176,7 +196,13 @@ export function createShopifyBillingProviderError(
   };
   const error = new ShopifyBillingProviderError(normalizedInput);
   const safeError = safeErrorValue(error, input.sensitiveValues ?? []);
-  const causes = causeChain(error, input.sensitiveValues ?? []);
+  const diagnosticError = input.diagnosticCause === undefined
+    ? error
+    : new Error("Sanitized diagnostic cause", { cause: input.diagnosticCause });
+  const causes = causeChain(
+    diagnosticError,
+    input.sensitiveValues ?? [],
+  );
   const providerErrors = safeProviderErrors(input);
   const excerpt = safeText(input.providerErrorExcerpt, input.sensitiveValues ?? []);
   const requestId = safeText(input.providerRequestId, input.sensitiveValues ?? [], 128);

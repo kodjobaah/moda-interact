@@ -431,28 +431,35 @@ describe("ShopifyBillingProvider", () => {
     expect(isolatedFetch).not.toHaveBeenCalled();
   });
 
-  it("emits JSON parse exceptions without retaining malformed response bodies", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("raw response marker {", {
+  it.each([
+    ["short complete marker", "SHORT_JSON_SECRET_SENTINEL"],
+    ["long partial marker", "LONG_JSON_SECRET_SENTINEL".repeat(16)],
+  ])("emits safe JSON parse metadata for a %s", async (_label, responseBody) => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(responseBody, {
       status: 200,
       headers: { "x-request-id": "request-json-1" },
     }));
+    let propagatedCause: unknown;
     const records = await captureSharedErrorRecords(async () => {
-      await expect(provider().getActiveSubscription({ shopifyShopId: "shop-1" })).rejects.toMatchObject({
-        failureKind: "MALFORMED_RESPONSE",
-        cause: expect.any(SyntaxError),
-      });
+      const error = await provider().getActiveSubscription({ shopifyShopId: "shop-1" })
+        .then(() => null, (failure: unknown) => failure);
+      propagatedCause = error instanceof Error ? error.cause : undefined;
     });
     const record = records.find((item) => item.event === "shopify.billing.provider_failed");
     const data = record?.data as Record<string, unknown>;
+    const serialized = JSON.stringify(record);
 
+    expect(propagatedCause).toBeInstanceOf(SyntaxError);
     expect(data).toMatchObject({
       operation: "get_active_subscription",
       origin: "provider_response",
       failureKind: "MALFORMED_RESPONSE",
       reasonCode: "INVALID_JSON_RESPONSE",
       providerRequestId: "request-json-1",
+      causeChain: [{ name: "SyntaxError", message: expect.stringMatching(/^Invalid JSON response/) }],
     });
-    expect(JSON.stringify(record)).not.toContain("raw response marker");
+    expect(serialized).not.toContain("SHORT_JSON_SECRET");
+    expect(serialized).not.toContain("LONG_JSON_SECRET");
     expect(data).not.toHaveProperty("providerErrors");
   });
 

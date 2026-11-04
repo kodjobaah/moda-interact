@@ -266,6 +266,15 @@ async function readGraphQLData(response: Response, operation: string, accessToke
   try {
     payload = JSON.parse(body) as unknown;
   } catch (cause) {
+    const parserMessage = cause instanceof Error ? cause.message : "";
+    const position = parserMessage.match(/\bposition\s+(\d+)\b/i)?.[1];
+    const line = parserMessage.match(/\bline\s+(\d+)\b/i)?.[1];
+    const column = parserMessage.match(/\bcolumn\s+(\d+)\b/i)?.[1];
+    const location = position !== undefined
+      ? ` at position ${position}`
+      : line !== undefined && column !== undefined
+        ? ` at line ${line} column ${column}`
+        : "";
     throw createShopifyBillingProviderError({
       operation,
       failureKind: "MALFORMED_RESPONSE",
@@ -273,6 +282,7 @@ async function readGraphQLData(response: Response, operation: string, accessToke
       reasonCode: "INVALID_JSON_RESPONSE",
       message: "Malformed Shopify billing response at response body",
       cause,
+      diagnosticCause: new SyntaxError(`Invalid JSON response${location}`),
       httpStatus: response.status,
       providerRequestId,
       sensitiveValues: [accessToken],
