@@ -68,6 +68,11 @@ export interface ProviderSubscription {
 
 export type BillingPeriodPhase = "ACTIVE" | "DRAINING" | "RECONCILING";
 
+export type BillingVerificationFailure = {
+  code: "PARTNER_API_ERROR" | "SUBSCRIPTION_SYNC_FAILED";
+  occurredAt: Date;
+} | null;
+
 export interface ProviderUsageSnapshot {
   handle: string;
   quantity: number | null;

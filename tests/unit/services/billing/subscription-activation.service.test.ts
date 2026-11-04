@@ -4,7 +4,7 @@ import { APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS } from "@modainteract/moda-i
 
 import { SubscriptionActivationService } from "../../../../app/services/billing/subscription-activation.service";
 import type { ProviderSubscription } from "../../../../app/services/billing/billing.types";
-import { lockInitialFreeActivationState } from "../../../../app/services/billing/subscription-locks";
+import { lockSubscriptionLifecycleRows } from "../../../../app/services/billing/subscription-locks";
 
 const plan = {
   id: "free-1",
@@ -195,7 +195,7 @@ afterEach(() => {
 });
 
 describe("SubscriptionActivationService", () => {
-  it("prepares an initial Free selection and preserves the ShopSettings then Subscription lock order", async () => {
+  it("prepares an initial Free selection and locks Shop, ShopSettings, then Subscription", async () => {
     const { service, state, subscription, transaction } = createHarness();
 
     const activation = await service.prepareFreeActivation("shop-1", "free");
@@ -210,10 +210,12 @@ describe("SubscriptionActivationService", () => {
     });
     expect(subscription.upsert).toHaveBeenCalledTimes(1);
     const lockStatements = transaction.$queryRaw.mock.calls.map(([query]) => (query as { sql?: string }).sql);
-    expect(lockStatements[0]).toContain('FROM "shopify"."ShopSettings"');
+    expect(lockStatements[0]).toContain('FROM "commerce"."Shop"');
     expect(lockStatements[0]).toContain("FOR UPDATE");
-    expect(lockStatements[1]).toContain('FROM "billing"."Subscription"');
+    expect(lockStatements[1]).toContain('FROM "shopify"."ShopSettings"');
     expect(lockStatements[1]).toContain("FOR UPDATE");
+    expect(lockStatements[2]).toContain('FROM "billing"."Subscription"');
+    expect(lockStatements[2]).toContain("FOR UPDATE");
   });
 
   it("allows a verified Free replay without replacing the current selection", async () => {
@@ -282,7 +284,10 @@ describe("SubscriptionActivationService", () => {
 
   it("records a Partner-error retry only for the matching current token", async () => {
     const nextReconcileAt = new Date("2026-09-12T00:01:00.000Z");
-    const partnerErrorAt = new Date("2026-09-12T00:00:30.000Z");
+    const verificationFailure = {
+      code: "PARTNER_API_ERROR" as const,
+      occurredAt: new Date("2026-09-12T00:00:30.000Z"),
+    };
     const expected = {
       subscriptionId: "subscription-1",
       pendingPlanId: "free-1",
@@ -298,14 +303,14 @@ describe("SubscriptionActivationService", () => {
       shopId: "shop-1",
       expected,
       nextReconcileAt,
-      partnerErrorAt,
+      verificationFailure,
     })).resolves.toEqual({ subscriptionId: "subscription-1", nextReconcileAt });
     expect(subscription.update).toHaveBeenCalledWith({
       where: { shopId: "shop-1" },
       data: {
         nextReconcileAt,
         lastSyncErrorCode: "PARTNER_API_ERROR",
-        lastSyncErrorAt: partnerErrorAt,
+        lastSyncErrorAt: verificationFailure.occurredAt,
       },
       select: { id: true, nextReconcileAt: true },
     });
@@ -348,7 +353,7 @@ describe("SubscriptionActivationService", () => {
 
   it("finalizes initial Paid activation atomically in the supplied transaction and preserves lock order", async () => {
     const harness = createPaidFinalisationHarness();
-    await lockInitialFreeActivationState(harness.transaction as never, "shop-1");
+    await lockSubscriptionLifecycleRows(harness.transaction as never, "shop-1");
 
     const result = await harness.finalize();
 
@@ -381,10 +386,11 @@ describe("SubscriptionActivationService", () => {
       }),
     });
     const lockStatements = harness.queryRaw.mock.calls.map(([query]) => (query as { sql?: string }).sql);
-    expect(lockStatements[0]).toContain('FROM "shopify"."ShopSettings"');
-    expect(lockStatements[1]).toContain('FROM "billing"."Subscription"');
-    expect(lockStatements[2]).toContain('FROM "shopify"."Shop"');
-    expect(lockStatements[2]).toContain("FOR UPDATE");
+    expect(lockStatements.map((statement) => statement?.replace(/\s+/g, " ").trim())).toEqual([
+      expect.stringContaining('FROM "commerce"."Shop"'),
+      expect.stringContaining('FROM "shopify"."ShopSettings"'),
+      expect.stringContaining('FROM "billing"."Subscription"'),
+    ]);
   });
 
   it.each([

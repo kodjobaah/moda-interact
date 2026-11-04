@@ -7,6 +7,21 @@ import {
 } from "@prisma/client";
 
 import { SubscriptionSyncService } from "../../../../app/services/billing/subscription-sync.service";
+import { ShopifyBillingProviderError } from "../../../../app/services/billing/providers/shopify-billing-diagnostics.server";
+
+async function captureSharedErrorRecords(
+  run: () => Promise<unknown>,
+  options: { throwFromSink?: boolean } = {},
+) {
+  const records: Array<Record<string, unknown>> = [];
+  const sink = vi.spyOn(console, "error").mockImplementation((line) => {
+    if (options.throwFromSink) throw new Error("test Shared sink failure");
+    if (typeof line !== "string") return;
+    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+  });
+  try { await run(); } finally { sink.mockRestore(); }
+  return records;
+}
 
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
@@ -127,10 +142,110 @@ function createSyncService({
     subscriptionActivationService,
     subscriptionEndedNotificationService,
     billingOperationService,
+    hasCommitted: () => transactionCommitted,
   };
 }
 
 describe("SubscriptionSyncService", () => {
+  it("does not start a projection transaction when provider success evidence is malformed", async () => {
+    const harness = createSyncService({
+      currentSubscription: {
+        id: "subscription-1",
+        status: SubscriptionProjectionStatus.ACTIVE,
+        planId: "paid-plan",
+        observedShopifyPlanHandle: "growth",
+        providerSubscriptionId: "provider-1",
+        currentPeriodStart: periodStart,
+        currentPeriodEnd: periodEnd,
+        trialEndsAt: null,
+      },
+    });
+    const malformed = new ShopifyBillingProviderError({
+      operation: "get_active_subscription",
+      failureKind: "MALFORMED_RESPONSE",
+      origin: "provider_response",
+      message: "Partner response missing data.activeSubscription",
+    });
+    harness.provider.getActiveSubscription.mockRejectedValue(malformed);
+
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(malformed);
+
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+    expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it("emits the local SYNC_ERROR reason and identities without fabricating provider evidence", async () => {
+    const harness = createSyncService({
+      providerSubscription: activeProviderSubscription({ usageEventHandles: [] }),
+      resolution: { kind: "INVALID_CATALOGUE_PLAN" },
+    });
+    const records = await captureSharedErrorRecords(async () => {
+      await harness.service.syncSubscription("shop-1");
+    });
+    const record = records.find((item) => item.event === "billing.subscription_sync.projection_failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "project_verified_subscription",
+      stage: "local_plan_configuration",
+      origin: "internal",
+      reasonCode: "INVALID_MERCHANT_PRICING_PLAN",
+      shopId: "shop-1",
+      identities: { providerPlanHandle: "growth" },
+    });
+    expect(data).not.toHaveProperty("error");
+    expect(data).not.toHaveProperty("providerError");
+    expect(data).not.toHaveProperty("providerErrors");
+
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(harness.service.syncSubscription("shop-1")).resolves.toMatchObject({
+        status: SubscriptionProjectionStatus.SYNC_ERROR,
+      });
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("emits original period persistence failure and leaves projection uncommitted", async () => {
+    const cause = new Error("database driver marker");
+    const databaseError = Object.assign(new Error("period write marker", { cause }), { code: "P2034" });
+    const plan = {
+      id: "plan-1",
+      name: "Growth",
+      kind: BillingPlanKind.FREE,
+      active: true,
+      shopifyPlanHandle: "growth",
+      includedRecoveryConversationAllowance: null,
+    };
+    const harness = createSyncService({
+      providerSubscription: activeProviderSubscription(),
+      resolution: { kind: "READY", plan, materialized: false },
+    });
+    harness.transaction.billingPeriod.create.mockRejectedValue(databaseError);
+
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(databaseError);
+    });
+    const record = records.find((item) => item.event === "billing.subscription_sync.failed");
+    const data = record?.data as Record<string, unknown>;
+
+    expect(data).toMatchObject({
+      operation: "sync_subscription",
+      stage: "provider_or_projection",
+      origin: "database",
+      shopId: "shop-1",
+      databaseCode: "P2034",
+      error: { name: "Error", message: "period write marker" },
+      causeChain: [{ name: "Error", message: "database driver marker" }],
+    });
+    expect(harness.hasCommitted()).toBe(false);
+    expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(databaseError);
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
+    expect(harness.hasCommitted()).toBe(false);
+  });
+
   it("rejects a Woo-owned Shop before Shopify provider access", async () => {
     const harness = createSyncService();
     harness.database.shop.findUnique.mockResolvedValueOnce({

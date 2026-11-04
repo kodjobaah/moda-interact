@@ -23,7 +23,8 @@ import {
   SubscriptionActivationService,
   type InitialFreeActivationToken,
 } from "./subscription-activation.service";
-import { lockInitialFreeActivationState } from "./subscription-locks";
+import { lockSubscriptionLifecycleRows } from "./subscription-locks";
+import { logBillingBoundaryFailure } from "./providers/shopify-billing-diagnostics.server";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import {
   deriveLifecycleIdentity,
@@ -44,6 +45,24 @@ export class SubscriptionSyncService {
   ) {}
 
   async syncSubscription(
+    shopId: string,
+    expectedInitialSelection?: InitialFreeActivationToken,
+  ): Promise<Subscription | null> {
+    try {
+      return await this.syncSubscriptionInternal(shopId, expectedInitialSelection);
+    } catch (error) {
+      logBillingBoundaryFailure({
+        event: "billing.subscription_sync.failed",
+        operation: "sync_subscription",
+        stage: "provider_or_projection",
+        shopId,
+        error,
+      });
+      throw error;
+    }
+  }
+
+  private async syncSubscriptionInternal(
     shopId: string,
     expectedInitialSelection?: InitialFreeActivationToken,
   ): Promise<Subscription | null> {
@@ -69,7 +88,7 @@ export class SubscriptionSyncService {
 
     if (!providerSubscription) {
       const lifecycle = await this.database.$transaction(async (transaction) => {
-        await lockInitialFreeActivationState(transaction, shopId);
+        await lockSubscriptionLifecycleRows(transaction, shopId);
         const current = await transaction.subscription.findUnique({
           where: { shopId },
           select: {
@@ -196,8 +215,8 @@ export class SubscriptionSyncService {
             : null;
     const now = new Date();
 
-    return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+    const projectedSubscription = await this.database.$transaction(async (transaction) => {
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const existingSubscription = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -406,5 +425,21 @@ export class SubscriptionSyncService {
       }
       return projectedSubscription;
     });
+
+    if (
+      projectedSubscription?.status === SubscriptionProjectionStatus.SYNC_ERROR &&
+      projectedSubscription.lastSyncErrorCode
+    ) {
+      logBillingBoundaryFailure({
+        event: "billing.subscription_sync.projection_failed",
+        operation: "project_verified_subscription",
+        stage: "local_plan_configuration",
+        origin: "internal",
+        reasonCode: projectedSubscription.lastSyncErrorCode,
+        shopId,
+        identities: { providerPlanHandle: providerSubscription.planHandle },
+      });
+    }
+    return projectedSubscription;
   }
 }

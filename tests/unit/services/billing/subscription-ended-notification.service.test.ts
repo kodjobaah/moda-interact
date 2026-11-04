@@ -11,6 +11,20 @@ import {
   type SubscriptionIdentityFacts,
 } from "../../../../app/services/billing/subscription-ended-notification.service";
 
+async function captureSharedErrorRecords(
+  run: () => Promise<unknown>,
+  options: { throwFromSink?: boolean } = {},
+) {
+  const records: Array<Record<string, unknown>> = [];
+  const sink = vi.spyOn(console, "error").mockImplementation((line) => {
+    if (options.throwFromSink) throw new Error("test Shared sink failure");
+    if (typeof line !== "string") return;
+    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+  });
+  try { await run(); } finally { sink.mockRestore(); }
+  return records;
+}
+
 function makeDatabase(results: unknown[]) {
   const queries: Array<{ sql: string; values: unknown[] }> = [];
   const queryRaw = vi.fn(async (query: { sql: string; values: unknown[] }) => {
@@ -46,6 +60,7 @@ function makeEndedSyncDatabase(current: Record<string, unknown>, notificationQue
   };
   const projectionTransaction = {
     subscription,
+    billingOperation: { findMany: vi.fn().mockResolvedValue([]) },
     $queryRaw: vi.fn().mockResolvedValue([]),
   };
   const notificationTransaction = {
@@ -59,6 +74,7 @@ function makeEndedSyncDatabase(current: Record<string, unknown>, notificationQue
     shop: {
       findUnique: vi.fn().mockResolvedValue({
         id: "shop-1",
+        platform: "SHOPIFY",
         status: "ACTIVE",
         shopifyShopId: "gid://shop/1",
       }),
@@ -228,14 +244,32 @@ describe("SubscriptionEndedNotificationService", () => {
   });
 
   it("keeps other persistence and translation failures best-effort", async () => {
+    const persistenceCause = new Error("support database driver marker merchant@example.com");
+    const persistenceError = Object.assign(new Error("support persistence marker password=notification-secret", { cause: persistenceCause }), { code: "P2025" });
     const failedPersistence = new SubscriptionEndedNotificationService({
-      $transaction: vi.fn().mockRejectedValue(new Error("support database unavailable")),
+      $transaction: vi.fn().mockRejectedValue(persistenceError),
     } as never, vi.fn());
-    await expect(failedPersistence.notifySubscriptionEnded("shop-1", {
-      planHandle: "growth",
-      provider: "SHOPIFY",
-      lifecycleIdentity: "provider:sub-1",
-    })).resolves.toBeUndefined();
+    const persistenceRecords = await captureSharedErrorRecords(async () => {
+      await expect(failedPersistence.notifySubscriptionEnded("shop-1", {
+        planHandle: "growth",
+        provider: "SHOPIFY",
+        lifecycleIdentity: "provider:sub-1",
+      })).resolves.toBeUndefined();
+    });
+    const persistenceRecord = persistenceRecords.find((item) => item.event === "billing.subscription_ended_notification.failed");
+    const persistenceData = persistenceRecord?.data as Record<string, unknown>;
+    expect(persistenceData).toMatchObject({
+      operation: "notify_subscription_ended",
+      stage: "notification_persistence",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { provider: "SHOPIFY", lifecycleIdentity: "provider:sub-1", planHandle: "growth" },
+      databaseCode: "P2025",
+      error: { name: "Error", message: "support persistence marker [REDACTED]" },
+      causeChain: [{ name: "Error", message: "support database driver marker [REDACTED]" }],
+    });
+    expect(JSON.stringify(persistenceRecord)).not.toContain("notification-secret");
+    expect(JSON.stringify(persistenceRecord)).not.toContain("merchant@example.com");
 
     const state = makeDatabase([
       [{ defaultLanguageTag: "fr-FR" }],
@@ -245,15 +279,53 @@ describe("SubscriptionEndedNotificationService", () => {
       [],
       [{ id: "translation-1" }],
     ]);
+    const dispatchCause = new Error("translation queue driver marker merchant@example.com");
+    const dispatchError = new Error("translation dispatch marker password=dispatch-secret", { cause: dispatchCause });
     const failedDispatch = new SubscriptionEndedNotificationService(
       state.database as never,
-      vi.fn().mockRejectedValue(new Error("queue unavailable")),
+      vi.fn().mockRejectedValue(dispatchError),
     );
-    await expect(failedDispatch.notifySubscriptionEnded("shop-1", {
-      planHandle: "growth",
-      provider: "SHOPIFY",
-      lifecycleIdentity: "provider:sub-1",
-    })).resolves.toBeUndefined();
+    const dispatchRecords = await captureSharedErrorRecords(async () => {
+      await expect(failedDispatch.notifySubscriptionEnded("shop-1", {
+        planHandle: "growth",
+        provider: "SHOPIFY",
+        lifecycleIdentity: "provider:sub-1",
+      })).resolves.toBeUndefined();
+    });
+    const dispatchRecord = dispatchRecords.find((item) => item.event === "billing.subscription_ended_notification.failed");
+    const dispatchData = dispatchRecord?.data as Record<string, unknown>;
+    expect(dispatchData).toMatchObject({
+      operation: "notify_subscription_ended",
+      stage: "translation_dispatch",
+      origin: "transport",
+      shopId: "shop-1",
+      identities: { provider: "SHOPIFY", lifecycleIdentity: "provider:sub-1", planHandle: "growth" },
+      error: { name: "Error", message: "translation dispatch marker [REDACTED]" },
+      causeChain: [{ name: "Error", message: "translation queue driver marker [REDACTED]" }],
+    });
+    expect(JSON.stringify(dispatchRecord)).not.toContain("dispatch-secret");
+    expect(JSON.stringify(dispatchRecord)).not.toContain("merchant@example.com");
     expect(state.hasCommitted()).toBe(true);
+    const isolatedDispatchRecords = await captureSharedErrorRecords(async () => {
+      await expect(failedDispatch.notifySubscriptionEnded("shop-1", {
+        planHandle: "growth",
+        provider: "SHOPIFY",
+        lifecycleIdentity: "provider:sub-1",
+      })).resolves.toBeUndefined();
+    }, { throwFromSink: true });
+    expect(isolatedDispatchRecords).toHaveLength(0);
+    expect(state.hasCommitted()).toBe(true);
+
+    const isolatedFailure = new SubscriptionEndedNotificationService({
+      $transaction: vi.fn().mockRejectedValue(persistenceError),
+    } as never, vi.fn());
+    const isolatedRecords = await captureSharedErrorRecords(async () => {
+      await expect(isolatedFailure.notifySubscriptionEnded("shop-1", {
+        planHandle: "growth",
+        provider: "SHOPIFY",
+        lifecycleIdentity: "provider:sub-1",
+      })).resolves.toBeUndefined();
+    }, { throwFromSink: true });
+    expect(isolatedRecords).toHaveLength(0);
   });
 });

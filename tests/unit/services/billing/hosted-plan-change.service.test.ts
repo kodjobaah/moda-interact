@@ -214,7 +214,10 @@ describe("HostedPlanChangeService", () => {
     const current = { ...hostedFence(), status: "ACTIVE" };
     const { service, state, subscription, transaction } = createHarness({ current });
     try {
-      const result = await service.recordHostedPlanVerificationFailure("shop-1", hostedFence());
+      const result = await service.recordHostedPlanVerificationFailure("shop-1", hostedFence(), {
+        code: "PARTNER_API_ERROR",
+        occurredAt: date,
+      });
       expect(result).toMatchObject({ subscriptionId: "subscription-1" });
       expect(state.current).toMatchObject({
         planId: "growth-id",
@@ -224,8 +227,9 @@ describe("HostedPlanChangeService", () => {
       });
       expect(subscription.updateMany).toHaveBeenCalledTimes(1);
       const lockStatements = transaction.$queryRaw.mock.calls.map(([query]) => (query as { sql?: string }).sql);
-      expect(lockStatements[0]).toContain('FROM "shopify"."ShopSettings"');
-      expect(lockStatements[1]).toContain('FROM "billing"."Subscription"');
+      expect(lockStatements[0]).toContain('FROM "commerce"."Shop"');
+      expect(lockStatements[1]).toContain('FROM "shopify"."ShopSettings"');
+      expect(lockStatements[2]).toContain('FROM "billing"."Subscription"');
     } finally {
       vi.useRealTimers();
     }
@@ -234,11 +238,17 @@ describe("HostedPlanChangeService", () => {
   it("does not retry a changed fence or manufacture state when the subscription is absent", async () => {
     const current = { ...hostedFence({ pendingPlanId: "new-pending" }), status: "ACTIVE" };
     const changed = createHarness({ current });
-    await expect(changed.service.recordHostedPlanVerificationFailure("shop-1", hostedFence())).resolves.toBeNull();
+    await expect(changed.service.recordHostedPlanVerificationFailure("shop-1", hostedFence(), {
+      code: "PARTNER_API_ERROR",
+      occurredAt: date,
+    })).resolves.toBeNull();
     expect(changed.subscription.updateMany).not.toHaveBeenCalled();
 
     const absent = createHarness();
-    await expect(absent.service.recordHostedPlanVerificationFailure("shop-1", null)).resolves.toBeNull();
+    await expect(absent.service.recordHostedPlanVerificationFailure("shop-1", null, {
+      code: "SUBSCRIPTION_SYNC_FAILED",
+      occurredAt: date,
+    })).resolves.toBeNull();
     expect(absent.subscription.updateMany).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
-import { lockInitialFreeActivationState } from "./subscription-locks";
-import type { MerchantShopifySubscriptionState } from "./billing.types";
+import { lockSubscriptionLifecycleRows } from "./subscription-locks";
+import type { BillingVerificationFailure, MerchantShopifySubscriptionState } from "./billing.types";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 
 export type HostedPlanChangeReturnResult =
@@ -115,7 +115,7 @@ export class HostedPlanChangeService {
   }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const current = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -239,10 +239,11 @@ export class HostedPlanChangeService {
   async recordHostedPlanVerificationFailure(
     shopId: string,
     verificationFence: HostedPlanVerificationFence | null,
+    verificationFailure: Exclude<BillingVerificationFailure, null>,
   ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
     const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
     return this.database.$transaction(async (transaction) => {
-      await lockInitialFreeActivationState(transaction, shopId);
+      await lockSubscriptionLifecycleRows(transaction, shopId);
       const current = await transaction.subscription.findUnique({
         where: { shopId },
         select: {
@@ -273,8 +274,8 @@ export class HostedPlanChangeService {
         where: { shopId },
         data: {
           nextReconcileAt,
-          lastSyncErrorCode: "PARTNER_API_ERROR",
-          lastSyncErrorAt: new Date(),
+          lastSyncErrorCode: verificationFailure.code,
+          lastSyncErrorAt: verificationFailure.occurredAt,
         },
       });
       if (!updated.count) return null;

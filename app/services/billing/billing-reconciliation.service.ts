@@ -1,17 +1,11 @@
 import { Queue } from "bullmq";
-import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import {
   BILLING_SUBSCRIPTION_RECONCILE_JOB_NAME,
   BILLING_SUBSCRIPTION_RECONCILE_QUEUE_NAME,
   BILLING_SUBSCRIPTION_RECONCILE_SCHEMA_VERSION,
   createBillingSubscriptionReconcileJobId,
 } from "@modainteract/moda-interact-shared/billing";
-import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
-
-const logger = createLogger({
-  serviceName: "moda-interact",
-  environment: resolveDeploymentEnvironmentName(),
-});
+import { logBillingBoundaryFailure } from "./providers/shopify-billing-diagnostics.server";
 
 type BillingReconciliationQueue = Pick<Queue, "add"> & {
   close?: () => Promise<unknown>;
@@ -56,12 +50,14 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
   injectedQueue?: BillingReconciliationQueue | null,
   injectedQueueFactory?: BillingReconciliationQueueFactory,
 ): Promise<void> {
+  let stage: "queue_acquisition" | "queue_add" = "queue_acquisition";
   try {
     const targetQueue = injectedQueue === undefined
       ? await getQueue(injectedQueueFactory)
       : injectedQueue;
     if (!targetQueue) return;
 
+    stage = "queue_add";
     const expectedNextReconcileAt = input.expectedNextReconcileAt.toISOString();
     await targetQueue.add(
       BILLING_SUBSCRIPTION_RECONCILE_JOB_NAME,
@@ -80,11 +76,17 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
       },
     );
   } catch (error) {
-    logger.error("billing.subscription_reconcile.enqueue_failed", {
+    logBillingBoundaryFailure({
+      event: "billing.subscription_reconcile.enqueue_failed",
+      operation: "enqueue_billing_subscription_reconcile",
+      stage,
+      origin: "transport",
       shopId: input.shopId,
-      subscriptionId: input.subscriptionId,
-      expectedNextReconcileAt: input.expectedNextReconcileAt.toISOString(),
-      error: error instanceof Error ? error.message : String(error),
+      identities: {
+        subscriptionId: input.subscriptionId,
+        expectedNextReconcileAt: input.expectedNextReconcileAt.toISOString(),
+      },
+      error,
     });
   }
 }

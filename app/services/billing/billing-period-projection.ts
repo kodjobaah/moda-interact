@@ -217,17 +217,19 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     existingPeriod.planNameSnapshot === null ||
     existingPeriod.planKindSnapshot === null ||
     existingPeriod.includedRecoveryCreditsGranted !== expectedGrant;
-  const repairedPeriod = await transaction.billingPeriod.update({
-    where: { id: existingPeriod.id },
-    data: {
-      planId: input.plan.id,
-      shopifyPlanHandleSnapshot: input.providerPlanHandle,
-      planNameSnapshot: input.plan.name,
-      planKindSnapshot: input.plan.kind,
-      includedRecoveryCreditsGranted: expectedGrant,
-      status: BillingPeriodStatus.OPEN,
-    },
-  });
+  const repairedPeriod = repaired
+    ? await transaction.billingPeriod.update({
+        where: { id: existingPeriod.id },
+        data: {
+          planId: input.plan.id,
+          shopifyPlanHandleSnapshot: input.providerPlanHandle,
+          planNameSnapshot: input.plan.name,
+          planKindSnapshot: input.plan.kind,
+          includedRecoveryCreditsGranted: expectedGrant,
+          status: BillingPeriodStatus.OPEN,
+        },
+      })
+    : existingPeriod;
 
   let counterRepaired = false;
   if (input.plan.kind === BillingPlanKind.PAID_METERED && !includedCounter) {
