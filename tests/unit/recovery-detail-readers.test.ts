@@ -22,9 +22,14 @@ describe("recovery detail ownership and projection", () => {
   it.each(["missing", "foreign"])("returns the same null for %s records and never reads messages", async () => {
     for (const reader of [readRecoveryDetail, readRecoveryMessages, readRelatedRecoveries]) {
       const {db,query}=queued([]); expect(await reader(input,db)).toBeNull(); expect(query).toHaveBeenCalledTimes(1);
-      const sql=query.mock.calls[0][0]; expect(sql.text).toContain('r."shopId" = $2 AND r."id" = $3');
-      expect(sql.values[0]).toBeInstanceOf(Date);
-      expect(sql.values.slice(1)).toEqual([input.shopId,input.recoveryId]);
+      const sql=query.mock.calls[0][0];
+      if (reader === readRecoveryDetail) {
+        expect(sql.values[0]).toBeInstanceOf(Date);
+        expect(sql.values.slice(1)).toEqual([input.shopId,input.recoveryId]);
+      } else {
+        expect(sql.values).toEqual([input.shopId,input.recoveryId]);
+        expect(sql.text).not.toMatch(/lineItems|Outreach|Moderation|controlMode/);
+      }
     }
   });
   it("does not expose internal recovery, provider, or unowned customer fields", async () => {

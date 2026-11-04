@@ -13,6 +13,7 @@ import {
 import {
   platformConfigurationAAD,
 } from "../../../app/services/platform-configuration/seal.server";
+import { readPlatformConfiguration } from "../../../app/services/platform-configuration/repository.server";
 import type {
   PlatformConfigurationDatabase, PlatformConfigurationRow,
 } from "../../../app/services/platform-configuration/repository.server";
@@ -198,4 +199,18 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
     });
     await fails(invalidEnv.requireShopifyPartnerCredentials(), "INVALID_ENVIRONMENT");
   });
+});
+
+
+it("preserves the original database cause without changing the configuration error contract", async () => {
+  const source = Object.assign(new Error("original configuration database marker", {cause: new Error("original database cause")}), {code: "P2010"});
+  const database: PlatformConfigurationDatabase = {platformConfiguration: {findUnique: async () => { throw source; }}};
+  let caught: unknown;
+  try { await readPlatformConfiguration(database, "test", "messaging.sender"); } catch (error) { caught = error; }
+  expect(caught).toBeInstanceOf(ShopifyPlatformConfigurationError);
+  expect(caught).toMatchObject({name: "ShopifyPlatformConfigurationError", key: "messaging.sender", code: "DATABASE_UNAVAILABLE",
+    message: "Shopify platform configuration messaging.sender: DATABASE_UNAVAILABLE"});
+  expect((caught as Error).cause).toBe(source);
+  expect(source.cause).toBeInstanceOf(Error);
+  expect(JSON.stringify(caught)).not.toContain("original configuration database marker");
 });

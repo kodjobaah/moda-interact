@@ -46,7 +46,10 @@ vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: { getSubscription: mocks.subscription },
 }));
 vi.mock("../../app/services/recoveries/recovery-detail.server", () => ({
-  readRecoveryDetail: mocks.detail,
+  createRecoveryDetailReader: async (identity: unknown) => {
+    const detail = await mocks.detail(identity);
+    return detail ? { detail, readMessages: () => mocks.messages(identity), readRelated: () => mocks.related(identity) } : null;
+  },
   readRecoveryMessages: mocks.messages,
   readRelatedRecoveries: mocks.related,
 }));

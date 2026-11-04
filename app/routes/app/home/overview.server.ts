@@ -1,3 +1,4 @@
+import { recordRecoveryFailure } from "../../../services/recoveries/recovery-observability.server";
 import {
   normalizeRecoveryQuery,
   RecoveryQueryError,
@@ -44,7 +45,8 @@ export async function loadOverviewPerformance(
   if (state === "ready") {
     try {
       overview = await readRecoveryOverview(shopId, query);
-    } catch {
+    } catch (error) {
+      recordRecoveryFailure("read_overview", shopId, error);
       state = "error";
     }
   }

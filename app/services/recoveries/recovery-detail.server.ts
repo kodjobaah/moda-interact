@@ -75,12 +75,15 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
 }
 
 /** Internal server readers: callers MUST authenticate/resolve shopId and enforce RECOVERY_HISTORY.
- * Never pass a browser-provided shopId. All three entry points independently resolve ownership.
+ * Never pass a browser-provided shopId. Public entry points independently resolve ownership.
  */
 export async function readRecoveryDetail(input: Identity, db: RecoveryDetailDatabase = prisma) {
   const now = new Date();
   const row = await ownedRecovery(db, input, now);
-  if (!row) return null;
+  return row ? projectDetail(row, now) : null;
+}
+
+function projectDetail(row: OwnedRecovery, now: Date) {
   const window = customerServiceWindow(row.initialSentAt, row.lastCustomerInboundAt, now);
   const followUpEligible = !!row.followUpAvailable && !window.open &&
     configuredFollowUpIsDue(row.initialSentAt, row.followUpDueAt, now) &&
@@ -108,6 +111,41 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
     milestones: { detectedAt: row.detectedAt.toISOString(), messageSentAt: row.messageSentAt?.toISOString() ?? null,
       engagedAt: row.engagedAt?.toISOString() ?? null, completedAt: row.completedAt?.toISOString() ?? null,
       expiredAt: row.expiredAt?.toISOString() ?? null },
+  };
+}
+
+type OwnedSection = Pick<OwnedRecovery, "id" | "customerId" | "conversationId">;
+type SectionNavigation = { cursor?: unknown; window?: unknown };
+
+async function sectionOwner(db: RecoveryDetailDatabase, { shopId, recoveryId }: Identity): Promise<OwnedSection | null> {
+  if (!validDetailId(shopId) || !validDetailId(recoveryId)) return null;
+  const rows = await db.$queryRaw<OwnedSection[]>(Prisma.sql`
+    SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId"
+    FROM "commerce"."CheckoutRecovery" r
+    LEFT JOIN "commerce"."Customer" c ON c."id" = r."customerId" AND c."shopId" = r."shopId"
+    LEFT JOIN "whatsapp"."Conversation" v ON v."checkoutRecoveryId" = r."id"
+      AND v."type"='RECOVERY' AND (v."shopId" IS NULL OR v."shopId"=r."shopId")
+    WHERE r."shopId" = ${shopId} AND r."id" = ${recoveryId} LIMIT 1`);
+  return rows[0] ?? null;
+}
+
+/** Bound methods retain server-resolved ownership and accept navigation only. */
+export async function createRecoveryDetailReader(identity: Identity, db: RecoveryDetailDatabase = prisma) {
+  const trusted = { shopId: identity.shopId, recoveryId: identity.recoveryId };
+  const now = new Date();
+  const owned = await ownedRecovery(db, trusted, now);
+  if (!owned) return null;
+  return {
+    detail: projectDetail(owned, now),
+    readMessages: async (navigation: SectionNavigation = {}) => {
+      const scope = detailCursorScope(["messages", trusted.shopId, trusted.recoveryId]);
+      return messagesForOwner(trusted, db, owned, scope, parseDetailNavigation(scope, navigation));
+    },
+    readRelated: async (navigation: SectionNavigation = {}) => {
+      if (navigation.window !== undefined) throw new InvalidRecoveryDetailQuery();
+      const scope = detailCursorScope(["related", trusted.shopId, trusted.recoveryId]);
+      return relatedForOwner(trusted, db, owned, scope, parseDetailNavigation(scope, navigation));
+    },
   };
 }
 
@@ -155,8 +193,12 @@ export async function readRecoveryMessages(input: PageInput, db: RecoveryDetailD
   const scope = detailCursorScope(["messages", input.shopId, input.recoveryId]);
   // Validate syntax independently of resource existence, so missing/foreign IDs behave identically.
   const nav = parseDetailNavigation(scope, input);
-  const owned = await ownedRecovery(db, input);
+  const owned = await sectionOwner(db, input);
   if (!owned) return null;
+  return messagesForOwner(input, db, owned, scope, nav);
+}
+
+async function messagesForOwner(input: Identity, db: RecoveryDetailDatabase, owned: OwnedSection, scope: string, nav: ReturnType<typeof parseDetailNavigation>) {
   if (!owned.conversationId) return emptyPage<ReturnType<typeof recoveryMessageDto>>();
   const fetched = await db.$queryRaw<RecoveryMessageRow[]>(recoveryMessagePageSql(input.shopId, owned.conversationId, nav));
   const rows = fetched.slice(0, 50);
@@ -187,8 +229,12 @@ export async function readRelatedRecoveries(input: PageInput, db: RecoveryDetail
   if (input.window !== undefined) throw new InvalidRecoveryDetailQuery();
   const scope = detailCursorScope(["related", input.shopId, input.recoveryId]);
   const nav = parseDetailNavigation(scope, input);
-  const owned = await ownedRecovery(db, input);
+  const owned = await sectionOwner(db, input);
   if (!owned) return null;
+  return relatedForOwner(input, db, owned, scope, nav);
+}
+
+async function relatedForOwner(input: Identity, db: RecoveryDetailDatabase, owned: OwnedSection, scope: string, nav: ReturnType<typeof parseDetailNavigation>) {
   if (!owned.customerId) return emptyPage<{ id: string; status: CheckoutRecoveryStatus | null; value: ReturnType<typeof valueDto>; detectedAt: string }>();
   const ascending = nav.direction === "previous", key = nav.boundary;
   const predicate = Prisma.sql`"shopId" = ${input.shopId} AND "customerId" = ${owned.customerId} AND "id" <> ${owned.id}`;

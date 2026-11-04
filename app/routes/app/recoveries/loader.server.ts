@@ -1,3 +1,4 @@
+import { recordRecoveryFailure } from "../../../services/recoveries/recovery-observability.server";
 import type { LoaderFunctionArgs } from "react-router";
 import db from "../../../db.server";
 import { requireRecoveryHistory } from "./access.server";
@@ -82,7 +83,8 @@ export async function loadRecoveryList({
       });
       result.state = exists ? "empty" : "never-used";
     }
-  } catch {
+  } catch (error) {
+    recordRecoveryFailure("read_list", shopId, error);
     // Recovery errors keep filters/embed context, without exposing raw DB/provider data.
     result.state = "error";
   }

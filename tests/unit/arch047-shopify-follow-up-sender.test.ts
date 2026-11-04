@@ -31,7 +31,10 @@ describe("ARCH-047 Shopify authoritative sender WABA", () => {
   it("never treats a database error as a missing record eligible for environment fallback", async () => {
     vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test");
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1234567890");
-    const broken = { platformConfiguration: { findUnique: vi.fn(async () => { throw new Error("db down"); }) } };
-    await expect(trustedRecoverySenderWaba(broken as never)).rejects.toMatchObject({ code: "DATABASE_UNAVAILABLE" });
+    const source = Object.assign(new Error("original sender database failure"), {code: "P2010"});
+    const broken = { platformConfiguration: { findUnique: vi.fn(async () => { throw source; }) } };
+    const caught = await trustedRecoverySenderWaba(broken as never).catch(error => error);
+    expect(caught).toMatchObject({ code: "DATABASE_UNAVAILABLE" });
+    expect(caught.cause).toBe(source);
   });
 });

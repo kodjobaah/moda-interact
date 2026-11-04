@@ -3,7 +3,7 @@ import { Prisma, type PrismaClient } from "@prisma/client";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import prisma from "../../db.server";
 import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
-import { readCurrentFollowUpTemplates } from "./recovery-follow-up-catalogue.server";
+import { readCurrentFollowUpTemplates, type TrustedRecoveryShop } from "./recovery-follow-up-catalogue.server";
 
 const logger = createLogger({ serviceName: "moda-interact", environment: process.env.NODE_ENV ?? "development" });
 const terminal = new Set(["COMPLETED", "CANCELLED", "EXPIRED"]);
@@ -14,8 +14,9 @@ export class RecoveryCommandError extends Error {
     public readonly code: string,
     public readonly status = 409,
     public readonly currentControl?: CurrentControl,
+    cause?: unknown,
   ) {
-    super(code);
+    super(code, cause === undefined ? undefined : { cause });
     this.name = "RecoveryCommandError";
   }
 }
@@ -24,6 +25,7 @@ const refused = (code: string, status = 409, currentControl?: CurrentControl): n
 };
 
 type Context = {
+  lockedShop: TrustedRecoveryShop;
   shopId: string;
   recovery: { id: string; status: string; customerId: string | null };
   conversation: {
@@ -44,8 +46,8 @@ async function lockedContext(tx: Prisma.TransactionClient, shopId: string, recov
     select: { id: true, status: true, customerId: true },
   });
   if (!owned) return refused("not_found", 404);
-  const shop = await tx.$queryRaw<{ id: string; status: string }[]>(Prisma.sql`
-    SELECT "id", "status"::text FROM "commerce"."Shop"
+  const shop = await tx.$queryRaw<TrustedRecoveryShop[]>(Prisma.sql`
+    SELECT "id", "status"::text, "platform"::text, "defaultLanguageTag" FROM "commerce"."Shop"
     WHERE "id"=${shopId} FOR UPDATE`);
   if (!shop.length) return refused("not_found", 404);
   const matching = await tx.$queryRaw<{ id: string; controlMode: "AI" | "HUMAN"; controlRevision: number; inboundVersion: number; languageTag: string | null }[]>(Prisma.sql`
@@ -54,14 +56,13 @@ async function lockedContext(tx: Prisma.TransactionClient, shopId: string, recov
       AND ("shopId" IS NULL OR "shopId"=${shopId}) FOR UPDATE`);
   const conversation = matching[0];
   if (!conversation) return refused("not_found", 404);
-  return { shopId, recovery: owned, conversation };
+  return { shopId, lockedShop: shop[0], recovery: owned, conversation };
 }
 
-async function assertMerchantEnabled(tx: Prisma.TransactionClient, shopId: string) {
+async function assertMerchantEnabled(tx: Prisma.TransactionClient, shopId: string, lockedShop: TrustedRecoveryShop) {
   // RECOVERY_HISTORY is a history permission, not an outbound messaging entitlement.
   // Recheck operational plan + recovery Feature under the Shop lock on each mutation.
-  const shop = await tx.shop.findUnique({ where: { id: shopId }, select: { status: true } });
-  if (shop?.status !== "ACTIVE") return refused("human_messaging_unavailable", 403);
+  if (lockedShop.status !== "ACTIVE") return refused("human_messaging_unavailable", 403);
   const subscription = await tx.subscription.findUnique({
     where: { shopId },
     select: { status: true, plan: { select: { active: true, features: {
@@ -92,7 +93,7 @@ export async function changeRecoveryControl(
     const context = await lockedContext(tx, shopId, recoveryId);
     if (input.targetMode === "HUMAN") {
       if (terminal.has(context.recovery.status)) return refused("terminal_recovery");
-      await assertMerchantEnabled(tx, shopId);
+      await assertMerchantEnabled(tx, shopId, context.lockedShop);
       await assertRestriction(tx, shopId);
     }
     const current = context.conversation;
@@ -193,7 +194,7 @@ export async function admitRecoveryHumanSend(
     // Freeze eligibility time once, after replay lookup and under the shop/conversation locks.
     const now = new Date();
     if (terminal.has(context.recovery.status)) return refused("terminal_recovery");
-    await assertMerchantEnabled(tx, shopId);
+    await assertMerchantEnabled(tx, shopId, context.lockedShop);
     await assertRestriction(tx, shopId);
     if (conversation.controlRevision !== input.expectedControlRevision) return refused("stale_control_revision", 409, {
       controlMode: conversation.controlMode, controlRevision: conversation.controlRevision,
@@ -226,7 +227,7 @@ export async function admitRecoveryHumanSend(
       }
       // Re-read the current Moda-only catalogue under the same transaction as
       // sequence-two admission. A browser variant ID cannot select Meta identity.
-      const catalogue = await readCurrentFollowUpTemplates(shopId, conversation.languageTag, tx);
+      const catalogue = await readCurrentFollowUpTemplates(shopId, conversation.languageTag, tx, context.lockedShop);
       const chosen = catalogue.find((candidate) => candidate.id === input.templateVariantId);
       if (!chosen) return refused("template_not_allowed");
       template = { providerTemplateName: chosen.name, providerLanguageCode: chosen.providerLanguageCode };

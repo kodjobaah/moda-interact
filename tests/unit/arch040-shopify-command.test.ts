@@ -25,7 +25,7 @@ function fixture(input?: { shopId?: string; recoveryId?: string; conversationId?
   const tx = {
     checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: recoveryId, shopId, status: "ENGAGED", customerId: "customer-1" } : null) },
     $queryRaw: vi.fn(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
-      ? [{ id: shopId, status: "ACTIVE" }] : [context]),
+      ? [{ id: shopId, status: "ACTIVE", platform: "SHOPIFY", defaultLanguageTag: "en" }] : [context]),
     shop: { findUnique: vi.fn(async () => ({ status: "ACTIVE", platform: "SHOPIFY", defaultLanguageTag: "en" })) },
     subscription: { findUnique: vi.fn(async () => ({ status: "ACTIVE", plan: { active: true, features: [{ featureId: "checkout_recovery" }] } })) },
     shopHumanMessagingRestriction: { findUnique: vi.fn(async () => options.suspended ? { status: "SUSPENDED" } : null) },
@@ -498,4 +498,26 @@ describe("ARCH-055 Shopify internal follow-up claim identity", () => {
     expect(vi.mocked(randomUUID).mock.calls).toHaveLength(uuidCount + 1);
     expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
   });
+});
+
+
+it("uses the locked Shop status even when the request/fallback Shop is active", async () => {
+  const { tx, db } = fixture();
+  tx.$queryRaw.mockImplementation(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
+    ? [{ id: "shop-1", status: "SUSPENDED", platform: "SHOPIFY", defaultLanguageTag: "en" }]
+    : [{ id: "conversation-1", controlMode: "HUMAN", controlRevision: 1, inboundVersion: 7, languageTag: "en" }] as never);
+  await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db)).rejects.toMatchObject({code: "human_messaging_unavailable"});
+  expect(tx.shop.findUnique).not.toHaveBeenCalled();
+  expect(tx.subscription.findUnique).not.toHaveBeenCalled();
+  expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+});
+
+it.each([sendInput, templateInput])("does not reread Shop during new command admission", async input => {
+  const { tx, db } = fixture({ inbound: input.kind === "HUMAN_TEXT" });
+  await expect(admitRecoveryHumanSend("shop-1", "recovery-1", input, db)).resolves.toMatchObject({replay: false});
+  expect(tx.shop.findUnique).not.toHaveBeenCalled();
+  expect(tx.subscription.findUnique).toHaveBeenCalledTimes(1);
+  const shopLock = tx.$queryRaw.mock.calls[0][0].strings.join("");
+  expect(shopLock).toContain('"defaultLanguageTag"');
+  expect(shopLock).toContain('FOR UPDATE');
 });
