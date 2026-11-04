@@ -8,7 +8,7 @@ vi.mock("../../app/services/shop/merchant-request-context.server", () => ({ getM
 vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({}));
 import MerchantSupport from "../../app/routes/app/merchant-support/route";
 let root: Root; let host: HTMLDivElement; let router: ReturnType<typeof createMemoryRouter>;
-let loader: ReturnType<typeof vi.fn>;
+let loader: ReturnType<typeof vi.fn<() => unknown>>;
 beforeEach(() => {
   vi.stubGlobal("React", React); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   host = document.createElement("div"); document.body.append(host); root = createRoot(host);
