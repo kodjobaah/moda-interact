@@ -7,6 +7,19 @@ const mocks = vi.hoisted(() => ({
   assertActiveShop: vi.fn(),
 }));
 
+vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({request}: {request: Request}) => {
+    const authentication = await mocks.authenticateAdmin(request);
+    const shop = await mocks.resolveShop({domain: authentication.session.shop});
+    return {
+      authentication, shop,
+      readSubscription: () => mocks.getSubscriptionProjection(shop.id),
+      readSettings: () => Promise.resolve(null),
+    };
+  },
+  merchantPageContextMiddleware: vi.fn(),
+}));
+
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
 }));

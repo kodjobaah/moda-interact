@@ -17,6 +17,19 @@ const listSelectableStoreCategories = vi.fn();
 const loadStoreProfile = vi.fn();
 const suggestStoreCategory = vi.fn();
 
+vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({request}: {request: Request}) => {
+    const authentication = await authenticateAdmin(request);
+    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    return {
+      authentication, shop,
+      readSubscription: () => getSubscriptionProjection(shop.id),
+      readSettings: () => Promise.resolve(null),
+    };
+  },
+  merchantPageContextMiddleware: vi.fn(),
+}));
+
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
 }));

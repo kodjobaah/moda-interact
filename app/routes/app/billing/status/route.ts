@@ -1,20 +1,16 @@
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import type { LoaderFunctionArgs } from "react-router";
 
-import { authenticate } from "@/shopify.server";
 import { billingService } from "@/services/billing/billing.service";
 import {
   buildMerchantBillingSetupState,
   shouldShowMerchantBillingSetup,
 } from "@/services/billing/merchant-billing-setup-state";
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 
-export async function loader({ request }: LoaderFunctionArgs) {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export async function loader({ request, context }: LoaderFunctionArgs) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop } = merchant;
   assertActiveShop(shop, {
     route: "/app/billing/status",
     capability: "sync-billing",

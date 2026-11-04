@@ -27,7 +27,10 @@
     "prisma:status": "prisma migrate status --schema database/prisma/schema.prisma",
     "prisma:migrate:dev": "prisma migrate dev --schema database/prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema database/prisma/schema.prisma",
-    "prisma:seed": "node database/prisma/seed.mjs"
+    "prisma:seed": "node database/prisma/seed.mjs",
+    "test:merchant-request:unit": "vitest run tests/unit/merchant-request-context.test.ts tests/unit/services/shop.service.test.ts tests/unit/routes/auth-catchall.test.ts tests/unit/merchant-route-access-policy.test.ts",
+    "test:merchant-request:router": "vitest run tests/integration/merchant-request-context-router.test.ts",
+    "test:merchant-request:postgres": "MODA_MERCHANT_REQUEST_POSTGRES=1 vitest run tests/integration/merchant-shop-bootstrap.postgres.test.ts"
   },
   "type": "module",
   "engines": {

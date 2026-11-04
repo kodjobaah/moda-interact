@@ -23,6 +23,19 @@ const mocks = vi.hoisted(() => ({
   messages: vi.fn(),
   related: vi.fn(),
 }));
+vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({request}: {request: Request}) => {
+    const authentication = await mocks.authenticate(request);
+    const shop = await mocks.shop({domain: authentication.session.shop});
+    return {
+      authentication, shop,
+      readSubscription: () => mocks.subscription(shop.id),
+      readSettings: () => Promise.resolve(null),
+    };
+  },
+  merchantPageContextMiddleware: vi.fn(),
+}));
+
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticate },
 }));

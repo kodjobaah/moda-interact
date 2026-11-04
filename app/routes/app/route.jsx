@@ -1,25 +1,24 @@
+import { RouterContextProvider } from "react-router";
+import { getMerchantRequestContext, merchantPageContextMiddleware } from "@/services/shop/merchant-request-context.server";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
-import { authenticate, apiKey } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { apiKey } from "@/shopify.server";
 import {
   assertActiveShop,
   assertSupportShop,
 } from "@/services/shop/shop-access-policy";
-import { billingService } from "@/services/billing/billing.service";
 import { resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 import { readMerchantSupportMessages } from "@/services/merchant-support/merchant-support.service";
 import { merchantUiContext, createMerchantI18n } from "@/utils/merchant-i18n";
 import MerchantNavigation from "@/components/dashboard/MerchantNavigation";
 
-/** @param {{ request: Request }} args */
-export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({
-    admin,
-    domain: session.shop,
-  });
+export const middleware = [merchantPageContextMiddleware];
+
+/** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
+export const loader = async ({ request, context = new RouterContextProvider() }) => {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { session } } = merchant;
   const pathname = new URL(request.url).pathname;
   const isMerchantSupport =
     pathname === "/app/merchant-support" ||
@@ -43,7 +42,7 @@ export const loader = async ({ request }) => {
     page: 1,
     pageSize: 1,
   });
-  const subscription = await billingService.getSubscriptionProjection(shop.id);
+  const subscription = await merchant.readSubscription();
   const merchantExperienceState = resolveMerchantExperienceState({
     shop,
     subscription,

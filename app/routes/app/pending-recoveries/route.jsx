@@ -1,16 +1,15 @@
-import { authenticate } from "@/shopify.server";
+import { RouterContextProvider } from "react-router";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
-import { shopService } from "@/services/shop/shop.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
-import { billingService } from "@/services/billing/billing.service";
 import { canAccessMerchantSurface, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
-/** @param {{ request: Request }} args */
-export const loader = async ({ request }) => {
-  const { admin, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+/** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
+export const loader = async ({ request, context = new RouterContextProvider() }) => {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop } = merchant;
   assertActiveShop(shop, { route: "/app/pending-recoveries", capability: "read-recoveries", redirectTo: "/app/merchant-support" });
-  const subscription = await billingService.getSubscriptionProjection(shop.id);
+  const subscription = await merchant.readSubscription();
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
   if (!canAccessMerchantSurface(merchantExperienceState, "PENDING_RECOVERIES")) {
     return Response.json({
