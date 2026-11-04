@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Existing route result fixtures. */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authenticateAdmin = vi.fn();
@@ -40,7 +41,15 @@ vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: {
     getSubscription,
     getSubscriptionProjection,
-    getMerchantRecoveryCapacityState,
+    readMerchantHomeBillingPresentation: async ({ shop, subscription }: { shop: { id: string }; subscription: Record<string, any> | null }) => ({
+      capacity: await getMerchantRecoveryCapacityState(shop.id),
+      subscription: subscription ? { status: subscription.status, planHandle: subscription.observedShopifyPlanHandle,
+        planName: subscription.plan?.name ?? subscription.observedShopifyPlanHandle,
+        cancelAtEndOfCycle: subscription.cancelAtPeriodEnd ?? false,
+        currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+        pendingPlan: subscription.pendingPlan ? { name: subscription.pendingPlan.name, effectiveAt: subscription.pendingEffectiveAt?.toISOString() ?? null } : null,
+      } : { status: "NO_CONTRACT", planHandle: null, planName: null, cancelAtEndOfCycle: false, currentPeriodEnd: null, pendingPlan: null },
+    }),
   },
 }));
 vi.mock(

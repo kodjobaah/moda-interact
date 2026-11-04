@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 const providerRead = vi.hoisted(() => vi.fn());
-vi.mock("../../../../app/services/merchant-pricing/merchant-pricing.server.js", () => ({
+vi.mock("../../../../app/services/merchant-pricing/merchant-pricing.server.js", async importOriginal => ({
+  ...await importOriginal<typeof import("../../../../app/services/merchant-pricing/merchant-pricing.server.js")>(),
   readMerchantPricingPlanForProvider: providerRead,
 }));
 
@@ -211,14 +212,14 @@ describe("BillingPlanResolutionService", () => {
   it("reads database catalogue events and falls back to provider when the model is unavailable", async () => {
     const findUnique = vi.fn().mockResolvedValue({
       shopifyPlanHandle: "growth",
-      usageEvents: [{ position: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25 }],
+      usageEvents: [{ position: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25, tiers: [] }],
     });
     const databaseService = new BillingPlanResolutionService({
       merchantPricingPlan: { findUnique },
     } as unknown as PrismaClient);
     await expect(databaseService.readMerchantPricingPlan("growth")).resolves.toEqual({
       shopifyPlanHandle: "growth",
-      usageEvents: [{ cataloguePosition: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25 }],
+      usageEvents: [{ cataloguePosition: 2, position: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25, tiers: [] }],
     });
     expect(providerRead).not.toHaveBeenCalled();
 
@@ -229,5 +230,23 @@ describe("BillingPlanResolutionService", () => {
       usageEvents: [],
     });
     expect(providerRead).toHaveBeenCalledWith({ planHandle: "growth" });
+  });
+});
+
+describe("bounded presentation catalogue batch", () => {
+  it("deduplicates the two exact handles and orders event/tier relations in one read", async () => {
+    const findMany = vi.fn(async () => []);
+    const service = new BillingPlanResolutionService({ merchantPricingPlan: { findMany } } as never);
+    await expect(service.readMerchantPricingPlansForPresentation(["growth", "growth", "free"])).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({ where: { shopifyPlanHandle: { in: ["growth", "free"] } },
+      include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+    });
+    expect(findMany).toHaveBeenCalledOnce();
+  });
+  it("rejects an unbounded presentation lookup and skips an empty lookup", async () => {
+    const findMany = vi.fn(); const service = new BillingPlanResolutionService({ merchantPricingPlan: { findMany } } as never);
+    await expect(service.readMerchantPricingPlansForPresentation(["one", "two", "three"])).rejects.toThrow("at most two");
+    await expect(service.readMerchantPricingPlansForPresentation([])).resolves.toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
   });
 });

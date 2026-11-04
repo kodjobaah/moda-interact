@@ -209,7 +209,7 @@ export async function readUsageHistory(
         : null,
   };
   const where = { shopId, billingPeriodId: selected?.id, metric };
-  const [events, total, aggregate] = selected
+  const [events, aggregate] = selected
     ? await Promise.all([
         db.usageEvent.findMany({
           where,
@@ -226,10 +226,9 @@ export async function readUsageHistory(
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
-        db.usageEvent.count({ where }),
-        db.usageEvent.aggregate({ where, _sum: { quantity: true } }),
+        db.usageEvent.aggregate({ where, _count: { _all: true }, _sum: { quantity: true } }),
       ])
-    : [[], 0, { _sum: { quantity: null } }];
+    : [[], { _count: { _all: 0 }, _sum: { quantity: null } }];
   const sources = await readUsageSources(
     shopId,
     events.flatMap((event) => (event.sourceId ? [event.sourceId] : [])),
@@ -252,7 +251,7 @@ export async function readUsageHistory(
     usagePagination: {
       page,
       pageSize,
-      total,
+      total: aggregate._count._all,
       totalQuantity: Number(aggregate._sum?.quantity ?? 0),
       billId: selected?.id ?? null,
       periodStart: selected?.periodStart.toISOString() ?? null,

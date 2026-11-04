@@ -5,7 +5,7 @@ import {
 } from "@modainteract/moda-interact-shared/merchant-knowledge";
 
 import {
-  readMerchantPricingPlanForProvider,
+  readMerchantPricingPlanForProvider, deriveRecoveryCreditTopUpConfiguration,
 } from "../merchant-pricing/merchant-pricing.server.js";
 
 export type OperationalBillingPlanResolution =
@@ -197,14 +197,20 @@ export class BillingPlanResolutionService {
         },
       },
     });
-    const usageEvents = plan?.usageEvents ?? [];
-    const credits = [...new Set(usageEvents
-      .map((event: { creditsGrantedPerUnit: number }) => event.creditsGrantedPerUnit)
-      .filter((value: number) => Number.isSafeInteger(value) && value > 0))];
-    return {
-      enabled: usageEvents.length > 0,
-      creditsPerPack: credits.length === 1 ? credits[0] : null,
-    };
+    return deriveRecoveryCreditTopUpConfiguration(plan?.usageEvents ?? []);
+  }
+
+  async readMerchantPricingPlansForPresentation(handles: readonly string[]) {
+    const distinct = [...new Set(handles.filter(Boolean))];
+    if (distinct.length > 2) throw new Error("Commercial presentation requires at most two pricing plans.");
+    if (!distinct.length) return [];
+    const plans = await this.database.merchantPricingPlan.findMany({
+      where: { shopifyPlanHandle: { in: distinct } },
+      include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+    });
+    return plans.map(plan => ({ ...plan, usageEvents: plan.usageEvents.map(event => ({
+      ...event, cataloguePosition: event.position,
+    })) }));
   }
 
   async readMerchantPricingPlan(planHandle: string) {

@@ -6,9 +6,10 @@ import type {
 import type {
   BillingProvider,
   MerchantShopifyLifecycleState,
-  MerchantRecoveryCapacityState,
   MerchantShopifySubscriptionState,
   BillingVerificationFailure,
+  MerchantBillingReadInput,
+  MerchantHomeBillingReadInput,
 } from "./billing.types";
 
 import {
@@ -27,8 +28,7 @@ import {
   type OperationalBillingPlanResolution,
 } from "./billing-plan-resolution.service";
 import { SubscriptionReadService } from "./subscription-read.service";
-import { MerchantRecoveryCapacityReadService } from "./merchant-recovery-capacity-read.service";
-import { MerchantBillingReadService } from "./merchant-billing-read.service";
+import { MerchantBillingPresentationReadService } from "./merchant-billing-presentation.server";
 import {
   HostedPlanChangeService,
   type HostedPlanChangeReturnResult,
@@ -71,8 +71,7 @@ export class BillingService {
   private readonly subscriptionActivationService: SubscriptionActivationService;
   private readonly hostedPlanChangeService: HostedPlanChangeService;
   private readonly recoveryCreditPurchaseRequestService: RecoveryCreditPurchaseRequestService;
-  private readonly recoveryCapacityReadService: MerchantRecoveryCapacityReadService;
-  private readonly merchantBillingReadService: MerchantBillingReadService;
+  private readonly presentationReadService: MerchantBillingPresentationReadService;
   private readonly subscriptionSyncService: SubscriptionSyncService;
 
   constructor(
@@ -100,15 +99,7 @@ export class BillingService {
       this.planResolutionService,
       this.billingOperationService,
     );
-    this.recoveryCapacityReadService = new MerchantRecoveryCapacityReadService(
-      database,
-      this.planResolutionService,
-    );
-    this.merchantBillingReadService = new MerchantBillingReadService(
-      provider,
-      database,
-      this.planResolutionService,
-    );
+    this.presentationReadService = new MerchantBillingPresentationReadService(provider, database);
     const subscriptionEndedNotificationService = new SubscriptionEndedNotificationService(
       database,
       dispatchTranslation,
@@ -228,20 +219,12 @@ async getSubscription(
     return this.subscriptionReadService.getMerchantShopifyLifecycleState(shopId);
   }
 
-  async getMerchantRecoveryCapacityState(
-    shopId: string,
-  ): Promise<MerchantRecoveryCapacityState> {
-    return this.recoveryCapacityReadService.getMerchantRecoveryCapacityState(shopId);
+  readMerchantBillingPresentation(input: MerchantBillingReadInput) {
+    return this.presentationReadService.readOptions(input);
   }
 
-  async getMerchantBillingState(
-    shopId: string,
-    verifiedCommercialState?: MerchantShopifySubscriptionState,
-  ) {
-    return this.merchantBillingReadService.getMerchantBillingState(
-      shopId,
-      verifiedCommercialState,
-    );
+  readMerchantHomeBillingPresentation(input: MerchantHomeBillingReadInput) {
+    return this.presentationReadService.readHome(input);
   }
 
   async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string, eventHandle: string) {

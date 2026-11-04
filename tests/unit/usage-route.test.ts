@@ -9,8 +9,19 @@ const mocks = vi.hoisted(() => ({
   events: vi.fn(),
   count: vi.fn(),
   aggregate: vi.fn(),
-  raw: vi.fn(),
+  raw: vi.fn(), records: [] as unknown[], brokenSink: false,
 }));
+vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({ request }: { request: Request }) => ({
+    authentication: await mocks.auth(request), shop: await mocks.shop(), readSubscription: () => mocks.subscription(),
+  }),
+}));
+vi.mock("@modainteract/moda-interact-shared/logging", async importOriginal => {
+  const actual = await importOriginal<typeof import("@modainteract/moda-interact-shared/logging")>();
+  return { ...actual, createLogger: (options: Parameters<typeof actual.createLogger>[0]) => actual.createLogger({ ...options,
+    sink: record => { if (mocks.brokenSink) throw new Error("sink unavailable"); mocks.records.push(JSON.parse(JSON.stringify(record))); },
+  }) };
+});
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: mocks.auth },
 }));
@@ -54,7 +65,7 @@ const event = (sourceId: string | null) => ({
   occurredAt: new Date("2026-09-20T10:00:00Z"),
 });
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.clearAllMocks(); mocks.records.length = 0; mocks.brokenSink = false;
   mocks.auth.mockResolvedValue({
     admin: {},
     session: { shop: "merchant.myshopify.com" },
@@ -70,7 +81,7 @@ beforeEach(() => {
   mocks.periods.mockResolvedValue([period()]);
   mocks.events.mockResolvedValue([]);
   mocks.count.mockResolvedValue(0);
-  mocks.aggregate.mockResolvedValue({ _sum: { quantity: null } });
+  mocks.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { quantity: null } });
   mocks.raw.mockResolvedValue([]);
 });
 const request = (query = "") => ({
@@ -103,7 +114,7 @@ describe("usage route and bounded readers", () => {
   it("scopes selected-period quantities and bounds event projections without recovery hydration", async () => {
     mocks.events.mockResolvedValue([event(null)]);
     mocks.count.mockResolvedValue(31);
-    mocks.aggregate.mockResolvedValue({ _sum: { quantity: 62 } });
+    mocks.aggregate.mockResolvedValue({ _count: { _all: 31 }, _sum: { quantity: 62 } });
     const data = await loader(
       request("?bill=past&billId=period-1&page=2&pageSize=25"),
     );
@@ -131,9 +142,10 @@ describe("usage route and bounded readers", () => {
         orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
       }),
     );
-    expect(mocks.count).toHaveBeenCalledWith({ where });
+    expect(mocks.count).not.toHaveBeenCalled();
     expect(mocks.aggregate).toHaveBeenCalledWith({
       where,
+      _count: { _all: true },
       _sum: { quantity: true },
     });
     expect(data.history?.usagePagination.totalQuantity).toBe(62);
@@ -307,5 +319,28 @@ describe("usage route and bounded readers", () => {
       },
     });
     expect(JSON.stringify(data)).not.toContain("private database");
+  });
+});
+
+
+describe("usage read diagnostic ownership", () => {
+  it.each([["data", false], ["data", true], ["source", false], ["source", true]] as const)("retains the safe %s read fallback and original error, broken sink=%s", async (stage, broken) => {
+    mocks.brokenSink = broken;
+    const failure = Object.assign(new Error("usage original marker email=person@example.test", { cause: new Error("source cause https://files.example.test/path?signature=secret-sentinel") }), { code: "P2010" });
+    if (stage === "source") { mocks.events.mockResolvedValue([event("recovery-1")]); mocks.raw.mockRejectedValue(failure); }
+    else mocks.aggregate.mockRejectedValue(failure);
+    const result = await loader(request());
+    expect(result).toMatchObject({ history: null, error: "read" });
+    expect(JSON.stringify(result)).not.toContain("usage original marker");
+    if (!broken) {
+      expect(mocks.records).toHaveLength(1);
+      for (const marker of ["usage original marker", "source cause", "P2010", "shop-1"]) expect(JSON.stringify(mocks.records)).toContain(marker);
+      for (const secret of ["person@example.test", "secret-sentinel"]) expect(JSON.stringify(mocks.records)).not.toContain(secret);
+    }
+  });
+  it("treats invalid cursors as normal control flow with no fabricated operational diagnostic", async () => {
+    expect(await loader(request("?periodCursor=invalid"))).toMatchObject({ error: "cursor", history: null });
+    expect(mocks.records).toHaveLength(0);
+    expect(mocks.period).not.toHaveBeenCalled();
   });
 });

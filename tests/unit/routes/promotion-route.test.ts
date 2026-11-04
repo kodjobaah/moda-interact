@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routeSource = await readFile(
   new URL("../../../app/routes/app/promotions/route.tsx", import.meta.url),
@@ -23,7 +23,7 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("promotions.history.title");
     expect(routeSource).toContain("promotions.history.granted");
     expect(routeSource).toContain("promotions.status.reopened");
-    expect(routeSource).toContain("getCurrentPromotionSelectionState");
+    expect(routeSource).toContain("getMerchantPromotionPage");
     expect(routeSource).toContain("promotionSelection");
     expect(routeSource).toContain("useNavigation");
     expect(routeSource).toContain("useRef");
@@ -56,8 +56,8 @@ describe("promotion merchant route", () => {
     expect(routeSource).toContain("offer.merchantDescription");
     expect(routeSource).toContain("entry.campaignTitle ?? i18n.t(\"promotions.history.titleUnavailable\")");
     expect(routeSource).toContain("const promotionLocale = createMerchantI18n(merchantUi).catalogueLocale");
-    expect(routeSource).toContain("getEligiblePromotionOffers(shop.id, promotionLocale)");
-    expect(routeSource).toContain("getPromotionHistory(shop.id, promotionLocale, historyPageValue)");
+    expect(routeSource).toContain("getMerchantPromotionPage({");
+    expect(routeSource).toContain("locale: promotionLocale, offerPage: offerPageValue, historyPage: historyPageValue");
     expect(routeSource).not.toContain("offer.name");
     expect(routeSource).not.toContain("entry.campaignName");
     for (const internalField of ["platformAdminId", "targetPlanId", "targetShopId", "requestKey", "audit"]) {
@@ -101,5 +101,43 @@ describe("promotion merchant route", () => {
     expect(routeSource).not.toContain("platformAdminId");
     expect(routeSource).not.toContain("requestKey");
     expect(routeSource).not.toContain("audit");
+  });
+});
+
+
+const ports = vi.hoisted(() => ({ context: vi.fn(), page: vi.fn(), select: vi.fn() }));
+vi.mock("@/services/shop/merchant-request-context.server", () => ({ getMerchantRequestContext: ports.context }));
+vi.mock("@/services/promotions/promotion.service", async importOriginal => ({
+  ...await importOriginal<typeof import("../../../app/services/promotions/promotion.service")>(),
+  getMerchantPromotionPage: ports.page, selectPromotionOffer: ports.select,
+}));
+import { action, loader } from "../../../app/routes/app/promotions/route";
+import { PromotionSelectionError } from "../../../app/services/promotions/promotion.service";
+describe("actual promotion route context and selection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    ports.context.mockResolvedValue({ shop: { id: "trusted", status: "ACTIVE", onboardingCompleted: true },
+      authentication: { session: { shop: "merchant.myshopify.com" } }, readSubscription: async () => ({ status: "ACTIVE", planId: "plan-1" }) });
+    ports.page.mockResolvedValue({ offers: [], offersPagination: { page: 1 }, promotionSelection: null, history: { entries: [] } });
+    ports.select.mockResolvedValue({ campaignId: "campaign-1" });
+  });
+  const args = (fields?: Record<string, string>) => ({ request: new Request("https://merchant.test/app/promotions?offerPage=2&historyPage=3", fields ? {
+    method: "POST", body: new URLSearchParams(fields),
+  } : undefined), context: {} }) as Parameters<typeof loader>[0];
+  it("passes scalar tenant/plan context once to the bounded page owner", async () => {
+    expect(await loader(args())).toMatchObject({ offers: [], promotionSelection: null });
+    expect(ports.page).toHaveBeenCalledWith(expect.objectContaining({ shopId: "trusted", planId: "plan-1", offerPage: 2, historyPage: 3, locale: "en" }));
+    expect(ports.context).toHaveBeenCalledOnce();
+  });
+  it("ignores a form tenant and retains typed normal selection outcomes", async () => {
+    expect(await action(args({ campaignId: "campaign-1", shopId: "foreign" }))).toEqual({ ok: true });
+    expect(ports.select).toHaveBeenCalledWith("trusted", "campaign-1");
+    ports.select.mockRejectedValueOnce(new PromotionSelectionError("ACTIVE_PROMOTION_ALREADY_SELECTED"));
+    expect(await action(args({ campaignId: "campaign-1" }))).toEqual({ ok: false, messageKey: "promotions.error.activeSelected" });
+  });
+  it("preserves authorization before page/selection work", async () => {
+    const redirect = new Response(null, { status: 302 }); ports.context.mockRejectedValueOnce(redirect);
+    await expect(loader(args())).rejects.toBe(redirect);
+    expect(ports.page).not.toHaveBeenCalled(); expect(ports.select).not.toHaveBeenCalled();
   });
 });

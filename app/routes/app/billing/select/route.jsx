@@ -3,24 +3,23 @@ import { useRouteError } from "react-router";
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
-import { authenticate } from "@/shopify.server";
-import { shopService } from "@/services/shop/shop.service";
+import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
-import { billingService } from "@/services/billing/billing.service";
 import { canAccessMerchantSurface, getMerchantDeniedRedirect, resolveMerchantExperienceState } from "@/services/shop/merchant-route-access-policy";
 
-export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request }) {
-  const { admin, redirect, session } = await authenticate.admin(request);
-  const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
+export async function loader(/** @type {import("react-router").LoaderFunctionArgs} */ { request, context }) {
+  const merchant = await getMerchantRequestContext({ request, context });
+  const { shop, authentication: { redirect, session } } = merchant;
   assertActiveShop(shop, { route: "/app/billing/select", capability: "manage-billing", redirectTo: "/app/merchant-support" });
-  const subscription = await billingService.getSubscription(shop.id);
+  const scalar = await merchant.readSubscription();
+  const subscription = scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
   const merchantExperienceState = resolveMerchantExperienceState({ shop, subscription });
-  if (!canAccessMerchantSurface(merchantExperienceState, "PLAN_SELECT")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "PLAN_SELECT"));
 
-  const capacity = await billingService.getMerchantRecoveryCapacityState(shop.id);
-  if (capacity.availability === "CONTRACT_FROZEN") {
+  if (scalar?.status === "FROZEN") {
     throw new Response("Shopify billing is currently being restored.", { status: 403 });
   }
+
+  if (!canAccessMerchantSurface(merchantExperienceState, "PLAN_SELECT")) throw redirect(getMerchantDeniedRedirect(merchantExperienceState, "PLAN_SELECT"));
 
   const appHandle = process.env.SHOPIFY_APP_HANDLE?.trim() || "moda-interact";
 

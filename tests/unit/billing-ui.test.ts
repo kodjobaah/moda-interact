@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- Merchant rendering fixtures. */
 import { createElement, type ReactNode } from "react";
 import { access, readFile } from "node:fs/promises";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -114,6 +115,13 @@ const billingPurchaseHubSource = await readFile(
   "utf8",
 );
 
+vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
+    const authentication = await authenticateAdmin(request);
+    const shop = await resolveShopifyShop({ admin: authentication.admin, domain: authentication.session.shop });
+    return { authentication, shop, readSubscription: () => getSubscriptionProjection(shop.id) };
+  },
+}));
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
 }));
@@ -122,8 +130,16 @@ vi.mock("../../app/services/shop/shop.service", () => ({
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: {
-    getMerchantBillingState,
-    getMerchantRecoveryCapacityState,
+    readMerchantBillingPresentation: async ({ shop, subscription }: { shop: { id: string }; subscription: Record<string, any> | null }) => {
+      const [live, capacity] = await Promise.allSettled([getMerchantShopifySubscriptionState(shop.id), getMerchantRecoveryCapacityState(shop.id)]);
+      const commercial = live.status === "fulfilled" ? live.value : null;
+      const topUp = commercial?.status === "ACTIVE_SUBSCRIPTION" ? await getMerchantBillingState(shop.id, commercial).catch(() => null) : null;
+      return { commercial, capacity: capacity.status === "fulfilled" ? capacity.value : null, topUp,
+        currentContract: subscription?.plan ? { shopifyPlanHandle: subscription.observedShopifyPlanHandle ?? subscription.plan.shopifyPlanHandle,
+          mappedModaPlanName: subscription.plan.name, mappedModaPlanKind: subscription.plan.kind,
+          currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null, currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
+          cancelAtEndOfCycle: subscription.cancelAtPeriodEnd, price: null, interval: null } : null };
+    },
     getSubscriptionProjection,
     getMerchantShopifySubscriptionState,
     getMerchantShopifyLifecycleState,
@@ -214,16 +230,16 @@ beforeEach(() => {
 describe("merchant billing UI", () => {
   it("composes production billing authority without mock or local plan fallbacks", () => {
     expect(billingOptionsRouteSource).toContain(
-      "getMerchantShopifySubscriptionState(shop.id)",
+      "readMerchantBillingPresentation({ shop, subscription, now: new Date() })",
     );
     expect(billingOptionsRouteSource).toContain(
-      "getMerchantRecoveryCapacityState(shop.id)",
+      "await merchant.readSubscription()",
     );
     expect(billingOptionsRouteSource).not.toContain(
       "getMerchantShopifyLifecycleState(shop.id)",
     );
     expect(billingOptionsRouteSource).toContain(
-      "getMerchantShopifySubscriptionState(shop.id)",
+      "readMerchantBillingPresentation({ shop, subscription, now: new Date() })",
     );
     expect(billingOptionsRouteSource).toContain(
       'managePlansHref="/app/billing/select"',
@@ -359,7 +375,8 @@ describe("merchant billing UI", () => {
     });
   });
 
-  it("denies a post-contract top-up even if provider verification momentarily reports an active subscription", async () => {
+  it("delegates post-contract new-admission rejection to the owning mutation service", async () => {
+    requestRecoveryCreditPack.mockRejectedValueOnce(new Error("Recovery credit packs are unavailable for this subscription."));
     getSubscriptionProjection.mockResolvedValue({
       status: "NO_CONTRACT",
       lastProviderLifecycleState: "CANCELED",
@@ -383,8 +400,9 @@ describe("merchant billing UI", () => {
       billingAction({
         request: new Request("https://example.test/app/billing/options", { method: "POST", body }),
       } as never),
-    ).rejects.toThrow("Recovery credit packs are unavailable while Shopify billing is restricted.");
-    expect(requestRecoveryCreditPack).not.toHaveBeenCalled();
+    ).rejects.toThrow("Recovery credit packs are unavailable for this subscription.");
+    expect(requestRecoveryCreditPack).toHaveBeenCalledWith("shop-1", "BUY_RECOVERY_CREDIT_PACK", "purchase-post-contract", "bronze-top-up-free");
+    expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
   });
 
   it("keeps the scheduled-cancellation top-up CTA enabled when normal eligibility passes", () => {

@@ -239,3 +239,11 @@ export async function readMerchantPricingPlanForProvider({ planHandle } = {}) {
     })),
   };
 }
+
+
+/** Derive presentation facts from already-read usage-event configuration. */
+export function deriveRecoveryCreditTopUpConfiguration(usageEvents = []) {
+  const credits = [...new Set(usageEvents.map(event => event.creditsGrantedPerUnit)
+    .filter(value => Number.isSafeInteger(value) && value > 0))];
+  return { enabled: usageEvents.length > 0, creditsPerPack: credits.length === 1 ? credits[0] : null };
+}

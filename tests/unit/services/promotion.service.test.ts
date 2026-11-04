@@ -1,7 +1,9 @@
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { describe, expect, it, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 
 import {
+  getMerchantPromotionPage,
   getCurrentPromotionSelectionState,
   getEligiblePromotionOffers,
   getPromotionHistory,
@@ -619,5 +621,49 @@ describe("promotion service", () => {
     await expect(selectPromotionOffer("shop-1", "campaign-1", now, database as never)).resolves.toMatchObject({ campaignId: "campaign-1" });
     expect(database.$transaction).toHaveBeenCalledTimes(2);
     expect(tx.promotionalCreditGrant.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ firstSelectedAt: now, lastSelectedAt: now }) }));
+  });
+});
+
+
+describe("promotion page and selection failure ownership", () => {
+  function sink(throws = false) {
+    const records: unknown[] = [];
+    const logger = createLogger({ serviceName: "moda-interact", environment: "test", sink: record => {
+      if (throws) throw new Error("sink unavailable"); records.push(JSON.parse(JSON.stringify(record)));
+    } });
+    return { records, logger };
+  }
+  it.each(["count", "offers", "selection", "history"])("retains original %s database errors in actual Shared JSON", async stage => {
+    const failure = Object.assign(new Error("promotion database marker email=person@example.test", { cause: new Error("promotion cause access_token=secret-sentinel") }), { code: "P2010" });
+    const database = {
+      promotionCampaign: { count: vi.fn(async () => 0), findMany: vi.fn(async () => []) },
+      merchantPromotionSelection: { findUnique: vi.fn(async () => null) },
+      promotionalCreditGrant: { count: vi.fn(async () => 0), findMany: vi.fn(async () => []) },
+      shop: { findUnique: vi.fn() },
+    };
+    const target = stage === "count" ? database.promotionCampaign.count : stage === "offers" ? database.promotionCampaign.findMany : stage === "selection" ? database.merchantPromotionSelection.findUnique : database.promotionalCreditGrant.findMany;
+    target.mockRejectedValue(failure);
+    const capture = sink();
+    await expect(getMerchantPromotionPage({ shopId: "shop-1", shopStatus: "ACTIVE", subscriptionStatus: "ACTIVE", planId: "plan-1",
+      locale: "en", offerPage: 1, historyPage: 1, now: new Date("2026-09-15") }, database as never, capture.logger)).rejects.toBe(failure);
+    expect(capture.records).toHaveLength(1);
+    for (const marker of ["promotion database marker", "promotion cause", "P2010", "shop-1", "database"]) expect(JSON.stringify(capture.records)).toContain(marker);
+    for (const secret of ["person@example.test", "secret-sentinel"]) expect(JSON.stringify(capture.records)).not.toContain(secret);
+    expect(database.shop.findUnique).not.toHaveBeenCalled();
+  });
+  it.each([false, true])("keeps bounded selection retries and the original final cause with broken sink=%s", async broken => {
+    const errors = Array.from({ length: 3 }, (_, attempt) => Object.assign(new Prisma.PrismaClientKnownRequestError(`selection conflict ${attempt}`, { code: "P2034", clientVersion: "6" }), { cause: new Error("actual conflict cause") }));
+    let attempt = 0;
+    const database = { $transaction: vi.fn(async () => { throw errors[attempt++]; }) };
+    const capture = sink(broken);
+    let thrown: unknown;
+    try { await selectPromotionOffer("shop-1", "campaign-1", new Date("2026-09-15"), database as never, capture.logger); } catch (error) { thrown = error; }
+    expect(thrown).toMatchObject({ code: "PROMOTION_SELECTION_UNAVAILABLE", cause: errors[2] });
+    expect(database.$transaction).toHaveBeenCalledTimes(3);
+    if (!broken) {
+      expect((capture.records as Array<{ level: string }>).map(record => record.level)).toEqual(["warn", "warn", "error"]);
+      process.stdout.write(JSON.stringify({ evidence: "promotion_retries", records: capture.records }) + "\n");
+      for (const marker of ["P2034", "selection conflict 2", "actual conflict cause"]) expect(JSON.stringify(capture.records)).toContain(marker);
+    }
   });
 });
