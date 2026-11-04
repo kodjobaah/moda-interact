@@ -1,4 +1,5 @@
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 
 const logger = createLogger({
@@ -11,28 +12,22 @@ function validSupportLogShopId(value: unknown): value is string {
     && /^[A-Za-z0-9_-]+$/u.test(value);
 }
 
-export function recordMerchantSupportReadFailure(shopId: unknown, error: unknown): void {
-  logger.error("merchant.support.recovery_action.read.failed", {
+function record(event: string, operation: string, shopId: unknown, error: unknown, warn = false, translationId?: string) {
+  logBillingBoundaryFailure({ event, operation, stage: operation, error,
     ...(validSupportLogShopId(shopId) ? { shopId } : {}),
-    operation: "read_support_messages",
-    errorCategory: "database_read_failed",
-    error,
-  });
+    ...(translationId ? { identities: { translationId } } : {}),
+  }, warn ? { ...logger, error: logger.warn } : logger);
 }
 
+export function recordMerchantSupportReadFailure(shopId: unknown, error: unknown, operation = "read_support_messages"): void {
+  record("merchant.support.recovery_action.read.failed", operation, shopId, error);
+}
+export function recordMerchantSupportAcknowledgementFailure(shopId: unknown, error: unknown): void {
+  record("merchant.support.acknowledgement.failed", "acknowledge_messages", shopId, error);
+}
 export function recordMerchantSupportSendFailure(shopId: unknown, error: unknown): void {
-  logger.error("merchant.support.message.send.failed", {
-    ...(validSupportLogShopId(shopId) ? { shopId } : {}),
-    operation: "compose_message",
-    errorCategory: "send_failed",
-    error,
-  });
+  record("merchant.support.message.send.failed", "compose_message", shopId, error);
 }
-
 export function recordMerchantSupportTranslationDispatchFailure(translationId: string, error: unknown): void {
-  logger.warn("merchant.support.translation.dispatch.failed", {
-    translationId: translationId.slice(0, 128),
-    errorCategory: "queue_dispatch_failed",
-    error,
-  });
+  record("merchant.support.translation.dispatch.failed", "dispatch_translation", null, error, true, translationId);
 }

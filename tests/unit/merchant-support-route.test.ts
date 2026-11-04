@@ -6,6 +6,7 @@ const resolveShopifyShop = vi.fn();
 const readMerchantSupportMessages = vi.fn();
 const composeMerchantMessage = vi.fn();
 const markMerchantSupportMessageRead = vi.fn();
+const markMerchantSupportMessagesRead = vi.fn();
 const findShopSettings = vi.fn();
 const getSubscription = vi.fn();
 const recordMerchantSupportSendFailure = vi.hoisted(() => vi.fn());
@@ -17,6 +18,13 @@ const merchantSupportRouteSource = await readFile(
   "utf8",
 );
 
+vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
+  getMerchantRequestContext: async () => {
+    const authentication = await authenticateAdmin();
+    const shop = await resolveShopifyShop({ admin: authentication.admin, domain: authentication.session.shop });
+    return { shop, authentication, readSubscription: getSubscription };
+  },
+}));
 vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: authenticateAdmin },
 }));
@@ -27,6 +35,7 @@ vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({
   readMerchantSupportMessages,
   composeMerchantMessage,
   markMerchantSupportMessageRead,
+  markMerchantSupportMessagesRead,
 }));
 vi.mock("../../app/db.server", () => ({
   default: { shopSettings: { findUnique: findShopSettings } },
@@ -51,6 +60,7 @@ describe("merchant support resource route", () => {
     readMerchantSupportMessages.mockResolvedValue({ items: [] });
     composeMerchantMessage.mockResolvedValue({ messageId: "message-1", translationId: null });
     markMerchantSupportMessageRead.mockResolvedValue(true);
+    markMerchantSupportMessagesRead.mockResolvedValue({ marked: true });
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
     getSubscription.mockResolvedValue({ status: "ACTIVE" });
   });
@@ -140,7 +150,7 @@ describe("merchant support resource route", () => {
     expect(merchantSupportRouteSource).toContain("export const countGraphemes = countUnicodeGraphemes;");
     expect(merchantSupportRouteSource).toContain("if (unreadIds.length === 0) return false;");
     expect(merchantSupportRouteSource).toContain("result?.marked !== true");
-    expect(merchantSupportRouteSource).toContain("[unreadMessageIds, revalidate]");
+    expect(merchantSupportRouteSource).toContain("[unreadMessageKey, revalidate]");
   });
 
   it("renders billing CTAs from system metadata rather than translated body URLs", () => {
@@ -167,7 +177,7 @@ describe("merchant support resource route", () => {
     expect(revalidate).not.toHaveBeenCalled();
   });
 
-  it("posts each unread ID and revalidates exactly once after successful reads", async () => {
+  it("posts one bounded set and revalidates exactly once after successful reads", async () => {
     const fetchImpl = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ marked: true }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ marked: true }), { status: 200 }));
@@ -179,7 +189,7 @@ describe("merchant support resource route", () => {
       revalidate,
     })).resolves.toBe(true);
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(revalidate).toHaveBeenCalledTimes(1);
   });
 
@@ -194,22 +204,28 @@ describe("merchant support resource route", () => {
     expect(revalidate).not.toHaveBeenCalled();
   });
 
-  it("refreshes once for durable progress before a later read failure", async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ marked: true }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ marked: false }), { status: 200 }));
+  it("stops without refresh after a transport failure", async () => {
     const revalidate = vi.fn();
-
-    await expect(markUnreadMessages({
-      messageIds: ["message-1", "message-2"],
-      fetchImpl,
-      revalidate,
-    })).resolves.toBe(false);
-
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(revalidate).toHaveBeenCalledTimes(1);
+    expect(await markUnreadMessages({ messageIds: ["one", "two"], revalidate, fetchImpl: vi.fn().mockRejectedValue(new Error("offline")) })).toBe(false);
+    expect(revalidate).not.toHaveBeenCalled();
   });
-
+  it.each(["duplicate", "extra", "empty", "invalid", "too_many", "long_id", "duplicate_field"])("rejects malformed batch %s", async kind => {
+    const form = new FormData(); form.set("intent", "read-batch");
+    form.set("messageIds", JSON.stringify(kind === "duplicate" ? ["a", "a"] : kind === "empty" ? [] : kind === "too_many" ? Array(51).fill("a") : kind === "long_id" ? ["x".repeat(192)] : ["a"]));
+    if (kind === "invalid") form.set("messageIds", "{");
+    if (kind === "extra") form.set("shopId", "foreign");
+    if (kind === "duplicate_field") form.append("intent", "read-batch");
+    const response = await action({ request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }) });
+    expect(response.status).toBe(400); expect(await response.json()).toEqual({ marked: false });
+    expect(markMerchantSupportMessagesRead).not.toHaveBeenCalled();
+  });
+  it("accepts a valid batch and rejects oversized bodies before parsing", async () => {
+    const response = await action({ request: new Request("https://example.test/app/merchant-support", {method: "POST", body: new URLSearchParams({ intent: "read-batch", messageIds: JSON.stringify(["one", "two"]) })}) });
+    expect(await response.json()).toEqual({ marked: true });
+    expect(markMerchantSupportMessagesRead).toHaveBeenCalledWith({ shopId: "internal-shop-1", messageIds: ["one", "two"] });
+    const oversized = await action({ request: new Request("https://example.test/app/merchant-support", {method: "POST", body: "x".repeat(65_537)}) });
+    expect(oversized.status).toBe(413); expect(await oversized.json()).toEqual({ marked: false, errorCode: "SEND_FAILED" });
+  });
   it("logs unexpected compose failures and returns a stable code without exposing service errors", async () => {
     const failure = new Error("Database failure");
     composeMerchantMessage.mockRejectedValue(failure);

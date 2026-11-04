@@ -16,6 +16,7 @@ import { Queue } from "bullmq";
 import prisma from "../../db.server";
 import {
   recordMerchantSupportReadFailure,
+  recordMerchantSupportAcknowledgementFailure,
   recordMerchantSupportTranslationDispatchFailure,
 } from "./merchant-support-observability.server";
 
@@ -29,6 +30,7 @@ type TransactionClient = {
 };
 
 type DatabaseClient = {
+  $queryRaw?<T>(query: Prisma.Sql): Promise<T>;
   $transaction<T>(callback: (transaction: TransactionClient) => Promise<T>): Promise<T>;
 };
 
@@ -79,8 +81,7 @@ async function getQueue(): Promise<SupportQueue | null> {
   const redisUrl = process.env.REDIS_URL?.trim();
   if (!redisUrl) return null;
   if (queue && queueUrl === redisUrl) return queue;
-  if (queue) await queue.close();
-  queueUrl = redisUrl;
+  if (queue) { await queue.close(); queue = null; queueUrl = null; }
   queue = new Queue(MERCHANT_COMMUNICATIONS_QUEUE_NAME, {
     connection: {
       url: redisUrl,
@@ -91,6 +92,7 @@ async function getQueue(): Promise<SupportQueue | null> {
       commandTimeout: 2_500,
     },
   });
+  queueUrl = redisUrl;
   return queue;
 }
 
@@ -98,9 +100,9 @@ export async function enqueueTranslationBestEffort(
   translationId: string,
   injectedQueue?: SupportQueue | null,
 ): Promise<void> {
-  const targetQueue = injectedQueue === undefined ? await getQueue() : injectedQueue;
-  if (!targetQueue) return;
   try {
+    const targetQueue = injectedQueue === undefined ? await getQueue() : injectedQueue;
+    if (!targetQueue) throw new Error("Support translation queue configuration is unavailable.");
     await targetQueue.add(
       MERCHANT_COMMUNICATIONS_JOB_NAMES.TRANSLATION_DISPATCH,
       { schemaVersion: MERCHANT_COMMUNICATIONS_SCHEMA_VERSION, translationId },
@@ -139,9 +141,12 @@ export async function composeMerchantMessage(input: ComposeMerchantMessageInput)
     const threadId = randomUUID();
     const thread = await transaction.$queryRaw<[{ id: string }]>(Prisma.sql`
       INSERT INTO "support"."MerchantSupportThread" (
-        "id", "shopId", "createdAt", "updatedAt"
-      ) VALUES (${threadId}, ${input.shopId}, ${now}, ${now})
-      ON CONFLICT ("shopId") DO UPDATE SET "updatedAt" = ${now}
+        "id", "shopId", "createdAt", "updatedAt", "lastMessageAt", "lastMerchantMessageAt", "merchantMessageVersion", "needsAdminResponse"
+      ) VALUES (${threadId}, ${input.shopId}, ${now}, ${now}, ${now}, ${now}, 1, true)
+      ON CONFLICT ("shopId") DO UPDATE SET "updatedAt" = ${now},
+        "lastMessageAt" = ${now}, "lastMerchantMessageAt" = ${now},
+        "merchantMessageVersion" = "MerchantSupportThread"."merchantMessageVersion" + 1,
+        "needsAdminResponse" = true
       RETURNING "id"
     `);
     const persistedThreadId = thread[0]?.id;
@@ -158,13 +163,7 @@ export async function composeMerchantMessage(input: ComposeMerchantMessageInput)
         ${now}, ${now}, ${now}
       )
     `);
-    await transaction.$executeRaw(Prisma.sql`
-      UPDATE "support"."MerchantSupportThread"
-      SET "lastMessageAt" = ${now}, "lastMerchantMessageAt" = ${now},
-        "merchantMessageVersion" = "merchantMessageVersion" + 1,
-        "needsAdminResponse" = true, "updatedAt" = ${now}
-      WHERE "id" = ${persistedThreadId} AND "shopId" = ${input.shopId}
-    `);
+
 
     if (!needsTranslation) return { translationId: null };
     const translationId = randomUUID();
@@ -220,6 +219,7 @@ export async function readMerchantSupportMessages(input: {
   const database = input.database ?? (prisma as unknown as DatabaseClient);
   const offset = (page - 1) * pageSize;
   let rows: { messages: MessageRow[]; total: number; unread: number };
+  let operation = "read_support_page";
   try {
     rows = await database.$transaction(async (transaction) => {
     const messages = await transaction.$queryRaw<MessageRow[]>(Prisma.sql`
@@ -247,25 +247,19 @@ export async function readMerchantSupportMessages(input: {
       ORDER BY m."createdAt" ASC, m."id" ASC
       LIMIT ${pageSize} OFFSET ${offset}
     `);
-    const [{ count }] = await transaction.$queryRaw<[{ count: bigint }]>(Prisma.sql`
-      SELECT COUNT(*)::bigint AS "count"
+    operation = "read_support_aggregate";
+    const [{ count, unread }] = await transaction.$queryRaw<[{ count: bigint; unread: bigint }]>(Prisma.sql`
+      SELECT COUNT(*)::bigint AS "count",
+        COUNT(*) FILTER (WHERE m."kind" IN ('ADMINISTRATIVE', 'SYSTEM') AND m."state" = 'AVAILABLE' AND m."readAt" IS NULL)::bigint AS "unread"
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
       WHERE t."shopId" = ${input.shopId}
         AND ${MERCHANT_VISIBLE_MESSAGE_PREDICATE}
     `);
-    const [{ unread }] = await transaction.$queryRaw<[{ unread: bigint }]>(Prisma.sql`
-      SELECT COUNT(*)::bigint AS "unread"
-      FROM "support"."MerchantSupportMessage" m
-      INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
-      WHERE t."shopId" = ${input.shopId}
-        AND m."kind" IN ('ADMINISTRATIVE', 'SYSTEM')
-        AND m."state" = 'AVAILABLE' AND m."readAt" IS NULL
-    `);
     return { messages, total: Number(count), unread: Number(unread) };
     });
   } catch (error) {
-    recordMerchantSupportReadFailure(input.shopId, error);
+    recordMerchantSupportReadFailure(input.shopId, error, operation);
     throw error;
   }
 
@@ -302,32 +296,59 @@ export async function readMerchantSupportMessages(input: {
   };
 }
 
-export async function markMerchantSupportMessageRead(input: {
-  shopId: string;
-  messageId: string;
-  database?: DatabaseClient;
-}): Promise<boolean> {
+export async function readMerchantSupportUnreadCount(input: { shopId: string; database?: DatabaseClient }): Promise<number> {
   const database = input.database ?? (prisma as unknown as DatabaseClient);
-  return database.$transaction(async (transaction) => {
-    const rows = await transaction.$queryRaw<[{ id: string }]>(Prisma.sql`
-      SELECT m."id"
+  try {
+    const query = Prisma.sql`
+      SELECT COUNT(*)::bigint AS "unread"
       FROM "support"."MerchantSupportMessage" m
       INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
-      WHERE m."id" = ${input.messageId}
-        AND t."shopId" = ${input.shopId}
-        AND m."kind" IN ('ADMINISTRATIVE', 'SYSTEM')
-        AND m."state" = 'AVAILABLE'
-    `);
-    if (!rows[0]) return false;
-    await transaction.$executeRaw(Prisma.sql`
-      UPDATE "support"."MerchantSupportMessage"
-      SET "readAt" = COALESCE("readAt", NOW()), "updatedAt" = NOW()
-      WHERE "id" = ${input.messageId}
-        AND "kind" IN ('ADMINISTRATIVE', 'SYSTEM')
-        AND "state" = 'AVAILABLE'
-    `);
-    return true;
-  });
+      WHERE t."shopId" = ${input.shopId} AND m."kind" IN ('ADMINISTRATIVE', 'SYSTEM')
+        AND m."state" = 'AVAILABLE' AND m."readAt" IS NULL
+    `;
+    const rows = database.$queryRaw
+      ? await database.$queryRaw<[{ unread: bigint }]>(query)
+      : await database.$transaction(tx => tx.$queryRaw<[{ unread: bigint }]>(query));
+    return Number(rows[0].unread);
+  } catch (error) { recordMerchantSupportReadFailure(input.shopId, error, "read_unread_count"); throw error; }
+}
+
+export async function markMerchantSupportMessagesRead(input: {
+  shopId: string; messageIds: readonly string[]; database?: DatabaseClient;
+}): Promise<{ marked: boolean }> {
+  const ids = input.messageIds;
+  if (!Array.isArray(ids) || ids.length < 1 || ids.length > 50 ||
+    ids.some(id => typeof id !== "string" || !id.trim() || id.length > 191) || new Set(ids).size !== ids.length) return { marked: false };
+  const database = input.database ?? (prisma as unknown as DatabaseClient);
+  try {
+    return await database.$transaction(async tx => {
+      const rows = await tx.$queryRaw<[{ marked: boolean }]>(Prisma.sql`
+        WITH eligible AS MATERIALIZED (
+          SELECT m."id", m."readAt"
+          FROM "support"."MerchantSupportMessage" m
+          INNER JOIN "support"."MerchantSupportThread" t ON t."id" = m."threadId"
+          WHERE t."shopId" = ${input.shopId} AND m."id" IN (${Prisma.join(ids)})
+            AND m."kind" IN ('ADMINISTRATIVE', 'SYSTEM') AND m."state" = 'AVAILABLE'
+          ORDER BY m."id" ASC FOR UPDATE OF m
+        ), changed AS (
+          UPDATE "support"."MerchantSupportMessage" m
+          SET "readAt" = NOW(), "updatedAt" = NOW()
+          FROM eligible e
+          WHERE m."id" = e."id" AND e."readAt" IS NULL AND m."readAt" IS NULL
+            AND (SELECT COUNT(*) FROM eligible) = ${ids.length}
+          RETURNING m."id"
+        )
+        SELECT ((SELECT COUNT(*) FROM eligible) = ${ids.length}) AS "marked"
+      `);
+      return { marked: rows[0]?.marked === true };
+    });
+  } catch (error) { recordMerchantSupportAcknowledgementFailure(input.shopId, error); throw error; }
+}
+
+export async function markMerchantSupportMessageRead(input: {
+  shopId: string; messageId: string; database?: DatabaseClient;
+}): Promise<boolean> {
+  return (await markMerchantSupportMessagesRead({ ...input, messageIds: [input.messageId] })).marked;
 }
 
 export async function resetMerchantSupportQueueForTests(): Promise<void> {

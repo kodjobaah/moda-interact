@@ -8,12 +8,12 @@ vi.mock("../../app/db.server", () => ({default: {
   shop: {findUnique: fixture.lookup},
   subscription: {findUnique: fixture.readSubscription}, shopSettings: {findUnique: fixture.readSettings},
 }}));
-const commercialProjection = vi.fn(async () => fixture.rows.subscription);
+const commercialProjection = vi.fn(async () => ({subscription: fixture.rows.subscription, capacity: null}));
 vi.mock("../../app/services/billing/billing.service", () => ({billingService: {
-  getSubscriptionProjection: commercialProjection, getMerchantRecoveryCapacityState: async () => null,
+  readMerchantHomeBillingPresentation: commercialProjection,
 }}));
 vi.mock("../../app/services/merchant-support/merchant-support.service", () => ({
-  readMerchantSupportMessages: async () => ({unread: 0}),
+  readMerchantSupportUnreadCount: async () => 0,
 }));
 vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
   readPendingRecoveries: async () => ({available: false, items: []}),
@@ -151,7 +151,7 @@ it("connects real migrated layout/home loaders through real profile resolver and
   expect(fixture.lookup).toHaveBeenCalledTimes(1);
   expect(fixture.readSubscription).toHaveBeenCalledTimes(1);
   expect(fixture.readSettings).toHaveBeenCalledTimes(1);
-  // The home page deliberately retains its distinct rich commercial projection.
+  // Home composes its presentation from the shared scalar context.
   expect(commercialProjection).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(body.loaderData)).not.toMatch(/private-session-sentinel|accessToken|authentication/);
 });
