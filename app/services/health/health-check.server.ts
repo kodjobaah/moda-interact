@@ -67,10 +67,10 @@ export async function checkRedisReadiness(
     retryStrategy: () => null,
   }); } catch (error) { recordProbeFailure("redis", "constructor", error); throw error; }
 
-  // Connection failures surface through the connect()/ping() outcome below.
-  // Without a listener, an ioredis 'error' event would crash the process.
-  let observed: unknown; let failed = false; let finished = false; let stage = "connect";
-  client.on("error", error => { if (finished) recordProbeFailure("redis", "error_event", error); else observed = error; });
+  // Own source events immediately: a later operation may reject with a different error.
+  // The existing boundary suppresses a repeated instance of the same source error.
+  let stage = "connect";
+  client.on("error", error => recordProbeFailure("redis", "error_event", error));
 
   try {
     await withTimeout(client.connect(), HEALTH_CHECK_TIMEOUT_MS);
@@ -78,10 +78,8 @@ export async function checkRedisReadiness(
     await withTimeout(client.ping(), HEALTH_CHECK_TIMEOUT_MS);
     return true;
   } catch (error) {
-    failed = true; recordProbeFailure("redis", stage, error); return false;
+    recordProbeFailure("redis", stage, error); return false;
   } finally {
-    finished = true;
-    if (!failed && observed !== undefined) recordProbeFailure("redis", "error_event", observed);
     try { client.disconnect(); } catch (error) {recordProbeFailure("redis", "cleanup", error);}
   }
 }
@@ -139,18 +137,16 @@ export async function checkPostgresReadiness(
   if (!databaseUrl) { recordProbeFailure("postgres", "configuration"); return false; }
   let probe: PostgresProbe;
   try { probe = createProbe(databaseUrl); } catch (error) {recordProbeFailure("postgres", "constructor", error); throw error;}
-  let observed: unknown; let failed = false; let finished = false; let stage = "connect";
-  probe.on?.("error", error => {if (finished) recordProbeFailure("postgres", "error_event", error); else observed = error;});
+  let stage = "connect";
+  probe.on?.("error", error => recordProbeFailure("postgres", "error_event", error));
 
   try {
     await probe.connect();
     stage = "query"; await probe.query("SELECT 1");
     return true;
   } catch (error) {
-    failed = true; recordProbeFailure("postgres", stage, error); return false;
+    recordProbeFailure("postgres", stage, error); return false;
   } finally {
-    finished = true;
-    if (!failed && observed !== undefined) recordProbeFailure("postgres", "error_event", observed);
     await probe.end().catch(error => {recordProbeFailure("postgres", "cleanup", error);});
   }
 }

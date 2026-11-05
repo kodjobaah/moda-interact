@@ -84,6 +84,66 @@ describe.each([false, true])("original fallback evidence, broken sink=%s", broke
     ports.close.mockRejectedValueOnce(new Error("pending cleanup marker"));
     expect((await readPendingRecoveries(pendingInput)).available).toBe(true); evidence(broken, 2);
   });
+  it.each(["redis", "postgres", "pendingRedis", "pendingQueue"] as const)("retains %s source events before a distinct generic rejection", async kind => {
+    const error = source(); const generic = new Error("Connection is closed.");
+    const listenerPort = kind === "postgres" ? ports.pgOn : kind === "pendingQueue" ? ports.queueOn : ports.redisOn;
+    const operation = kind === "postgres" ? ports.pgConnect : ports.connect;
+    operation.mockImplementationOnce(async () => {
+      const listener = listenerPort.mock.calls[0][1] as (error: Error) => void;
+      listener(error); listener(error); throw generic;
+    });
+    const result = kind === "redis" ? await checkRedisReadiness("redis://fixture") : kind === "postgres" ? await checkPostgresReadiness("postgres://fixture") : await readPendingRecoveries(pendingInput);
+    expect(result).toEqual(kind === "redis" || kind === "postgres" ? false : {available: false, page: 1, pageSize: 10, total: 0, totalPages: 0, items: []});
+    evidence(broken, 2);
+    if (!broken) {
+      expect(failures()[0].data).toMatchObject({stage: "error_event", databaseCode: "ECONNREFUSED"});
+      expect(JSON.stringify(failures()[1])).toContain("Connection is closed.");
+    }
+    expect(error.cause).toBeInstanceOf(Error); expect(generic.message).toBe("Connection is closed.");
+    expect(kind === "postgres" ? ports.pgEnd : ports.disconnect).toHaveBeenCalledOnce();
+    if (kind.startsWith("pending")) expect(ports.close).toHaveBeenCalledOnce();
+  });
+  it.each(["redis", "pendingRedis", "pendingQueue"] as const)("retains %s source events before the existing local timeout", async kind => {
+    vi.useFakeTimers(); const error = source();
+    ports.connect.mockImplementationOnce(() => {
+      const listenerPort = kind === "pendingQueue" ? ports.queueOn : ports.redisOn;
+      const listener = listenerPort.mock.calls[0][1] as (error: Error) => void;
+      listener(error); listener(error); return new Promise(() => {});
+    });
+    const result = kind === "redis" ? checkRedisReadiness("redis://fixture") : readPendingRecoveries(pendingInput);
+    await vi.advanceTimersByTimeAsync(kind === "redis" ? HEALTH_CHECK_TIMEOUT_MS : 2_500);
+    const value = await result;
+    if (kind === "redis") expect(value).toBe(false); else expect(value).toMatchObject({available: false, items: []});
+    evidence(broken, 2);
+    if (!broken) {
+      expect(failures()[0].data).toMatchObject({stage: "error_event", origin: "transport", databaseCode: "ECONNREFUSED"});
+      expect(failures()[1].data.origin).toBe("internal");
+      expect(JSON.stringify(failures()[1])).toContain("timed out");
+    }
+    expect(ports.disconnect).toHaveBeenCalledOnce();
+    if (kind !== "redis") expect(ports.close).toHaveBeenCalledOnce();
+  });
+  it("retains the PostgreSQL source event when the driver query timeout rejects", async () => {
+    const error = source(); const timeout = Object.assign(new Error("Query read timeout"), {code: "ETIMEDOUT"});
+    ports.pgQuery.mockImplementationOnce(async () => {
+      const listener = ports.pgOn.mock.calls[0][1] as (error: Error) => void; listener(error); throw timeout;
+    });
+    expect(await checkPostgresReadiness("postgres://fixture")).toBe(false); evidence(broken, 2);
+    if (!broken) {
+      expect(failures()[0].data).toMatchObject({stage: "error_event", databaseCode: "ECONNREFUSED"});
+      expect(failures()[1].data).toMatchObject({stage: "query", databaseCode: "ETIMEDOUT", error: {message: "Query read timeout"}});
+    }
+    expect(ports.pgEnd).toHaveBeenCalledOnce();
+  });
+  it.each(["postgres", "pendingRedis", "pendingQueue"] as const)("deduplicates the same %s event/rejection error instance", async kind => {
+    const error = source(); const listenerPort = kind === "postgres" ? ports.pgOn : kind === "pendingQueue" ? ports.queueOn : ports.redisOn;
+    (kind === "postgres" ? ports.pgConnect : ports.connect).mockImplementationOnce(async () => {
+      const listener = listenerPort.mock.calls[0][1] as (error: Error) => void; listener(error); listener(error); throw error;
+    });
+    if (kind === "postgres") expect(await checkPostgresReadiness("postgres://fixture")).toBe(false);
+    else expect((await readPendingRecoveries(pendingInput)).available).toBe(false);
+    evidence(broken);
+  });
   it("keeps notification persistence/dispatch best-effort and preserves the invariant exception", async () => {
     const lifecycle = {provider: "SHOPIFY", planHandle: "basic", lifecycleIdentity: "fixture-cycle"};
     for (const stage of ["persistence", "dispatch"] as const) {

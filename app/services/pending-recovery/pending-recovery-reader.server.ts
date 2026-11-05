@@ -112,8 +112,8 @@ export async function readPendingRecoveries({
       maxRetriesPerRequest: 1,
     },
   }); } catch (error) {failure(error); try {redis.disconnect();} catch (cleanup) {failure(cleanup, "redis_cleanup");} throw error;}
-  let observed: unknown; let failed = false; let finished = false;
-  const onError = (error: unknown) => {if (finished) failure(error, "error_event"); else observed = error;};
+  // Preserve connection evidence even if the read later fails with a generic error/timeout.
+  const onError = (error: unknown) => failure(error, "error_event");
   redis.on("error", onError); queue.on("error", onError);
 
   try {
@@ -165,10 +165,8 @@ export async function readPendingRecoveries({
       items: rows,
     };
   } catch (error) {
-    failed = true; failure(error); return unavailable(page);
+    failure(error); return unavailable(page);
   } finally {
-    finished = true;
-    if (!failed && observed !== undefined) failure(observed, "error_event");
     await queue.close().catch(error => {failure(error, "queue_cleanup");});
     try {redis.disconnect();} catch (error) {failure(error, "redis_cleanup");}
   }
