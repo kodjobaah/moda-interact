@@ -28,6 +28,7 @@ class FakeRedis {
 }
 
 class FakeQueue {
+  on() { return this; }
   async getJob(id: string) {
     const job = jobs.get(id);
     if (!job) return undefined;

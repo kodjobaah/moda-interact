@@ -31,3 +31,8 @@ export function recordMerchantSupportSendFailure(shopId: unknown, error: unknown
 export function recordMerchantSupportTranslationDispatchFailure(translationId: string, error: unknown): void {
   record("merchant.support.translation.dispatch.failed", "dispatch_translation", null, error, true, translationId);
 }
+
+export function recordMerchantSupportQueueFailure(queueName: string, error: unknown): void {
+  logBillingBoundaryFailure({event: "merchant.support.queue.connection_failed", operation: "translation_queue_connection",
+    stage: "connection", origin: "transport", identities: {queue: queueName}, error}, {...logger, error: logger.warn});
+}

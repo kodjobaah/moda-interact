@@ -5,13 +5,15 @@ import {
   AuthoredSupportBodySchema,
 } from "@modainteract/moda-interact-shared/merchant-communications";
 
-const queuePorts = vi.hoisted(() => ({ construct: vi.fn(), close: vi.fn(), add: vi.fn() }));
+const queuePorts = vi.hoisted(() => ({ construct: vi.fn(), close: vi.fn(), add: vi.fn(), on: vi.fn() }));
 vi.mock("bullmq", () => ({ Queue: class {
   constructor() { queuePorts.construct(); }
   add = queuePorts.add;
   close = queuePorts.close;
+  on = queuePorts.on;
 } }));
 const supportObservability = vi.hoisted(() => ({
+  recordMerchantSupportQueueFailure: vi.fn(),
   recordMerchantSupportReadFailure: vi.fn(),
   recordMerchantSupportAcknowledgementFailure: vi.fn(),
   recordMerchantSupportTranslationDispatchFailure: vi.fn(),

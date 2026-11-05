@@ -1,3 +1,5 @@
+import { recordTelemetryProbeFailure } from "@/services/observability/shopify-runtime-observability.server";
+import { safeText } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import {
   isOpenTelemetryActive,
@@ -36,22 +38,27 @@ export const loader = async () => {
     const response = await fetch(target);
     if (!response.ok) {
       status = `UNEXPECTED_STATUS_${response.status}`;
+      recordTelemetryProbeFailure({stage: "response", httpStatus: response.status});
     }
   } catch (caught) {
     status = "NETWORK_ERROR";
-    error = caught instanceof Error ? caught.message : String(caught);
+    recordTelemetryProbeFailure({stage: "network", error: caught, sensitiveValues: [target]});
+    error = safeText(caught instanceof Error ? caught.message : String(caught), [target])?.value ?? "[REDACTED]";
   }
 
+  const safeTarget = safeText(target, [target]);
   const elapsedMs = Date.now() - startedAt;
 
   // Emitted under the active server span for the probe request. When the
   // OpenTelemetry Logs SDK is installed this record is exported with the
   // active trace id attached.
   probeLogger.info("telemetry.probe", {
-    target,
+    target: safeTarget?.value ?? "[REDACTED]",
     status,
     error,
     elapsedMs,
+    redactionApplied: Boolean(safeTarget?.redacted),
+    truncated: Boolean(safeTarget?.truncated),
   });
 
   return Response.json(
@@ -60,7 +67,7 @@ export const loader = async () => {
         active: isOpenTelemetryActive(),
         environment: resolveDeploymentEnvironmentName(),
       },
-      probe: { target, status, error, elapsedMs },
+      probe: { target: safeTarget?.value ?? "[REDACTED]", status, error, elapsedMs },
     },
     {
       status: 200,

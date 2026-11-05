@@ -15,6 +15,7 @@ import { Queue } from "bullmq";
 
 import prisma from "../../db.server";
 import {
+  recordMerchantSupportQueueFailure,
   recordMerchantSupportReadFailure,
   recordMerchantSupportAcknowledgementFailure,
   recordMerchantSupportTranslationDispatchFailure,
@@ -92,6 +93,7 @@ async function getQueue(): Promise<SupportQueue | null> {
       commandTimeout: 2_500,
     },
   });
+  queue.on("error", error => recordMerchantSupportQueueFailure(MERCHANT_COMMUNICATIONS_QUEUE_NAME, error));
   queueUrl = redisUrl;
   return queue;
 }

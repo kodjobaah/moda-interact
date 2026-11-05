@@ -18,7 +18,12 @@ type BillingReconciliationQueueFactory = (
 let queue: BillingReconciliationQueue | null = null;
 let queueUrl: string | null = null;
 
-const createQueue: BillingReconciliationQueueFactory = (name, options) => new Queue(name, options);
+const createQueue: BillingReconciliationQueueFactory = (name, options) => {
+  const created = new Queue(name, options);
+  created.on("error", error => logBillingBoundaryFailure({event: "billing.subscription_reconcile.connection_failed",
+    operation: "billing_reconcile_connection", stage: "connection", origin: "transport", identities: {queue: name}, error}));
+  return created;
+};
 
 async function getQueue(
   queueFactory: BillingReconciliationQueueFactory = createQueue,
@@ -55,7 +60,11 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
     const targetQueue = injectedQueue === undefined
       ? await getQueue(injectedQueueFactory)
       : injectedQueue;
-    if (!targetQueue) return;
+    if (!targetQueue) {
+      logBillingBoundaryFailure({event: "billing.subscription_reconcile.enqueue_failed", operation: "enqueue_billing_subscription_reconcile",
+        stage: "configuration", origin: "internal", shopId: input.shopId, reasonCode: "QUEUE_NOT_CONFIGURED"});
+      return;
+    }
 
     stage = "queue_add";
     const expectedNextReconcileAt = input.expectedNextReconcileAt.toISOString();

@@ -1,3 +1,4 @@
+import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
 import Redis from "ioredis";
 import { Client } from "pg";
 
@@ -23,6 +24,8 @@ export type ReadinessResult = {
   checks: ReadinessChecks;
 };
 
+class HealthProbeTimeout extends Error {}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -34,7 +37,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     }),
     new Promise<never>((_, reject) => {
       timer = setTimeout(
-        () => reject(new Error(`Health check timed out after ${timeoutMs}ms`)),
+        () => reject(new HealthProbeTimeout(`Health check timed out after ${timeoutMs}ms`)),
         timeoutMs,
       );
     }),
@@ -52,29 +55,32 @@ export async function checkRedisReadiness(
   redisUrl: string | undefined,
 ): Promise<boolean> {
   if (!redisUrl) {
-    return false;
+    recordProbeFailure("redis", "configuration"); return false;
   }
 
-  const client = new Redis(redisUrl, {
+  let client: Redis;
+  try { client = new Redis(redisUrl, {
     connectTimeout: HEALTH_CHECK_TIMEOUT_MS,
     maxRetriesPerRequest: 1,
     enableOfflineQueue: false,
     lazyConnect: true,
     retryStrategy: () => null,
-  });
+  }); } catch (error) { recordProbeFailure("redis", "constructor", error); throw error; }
 
-  // Connection failures surface through the connect()/ping() outcome below.
-  // Without a listener, an ioredis 'error' event would crash the process.
-  client.on("error", () => {});
+  // Own source events immediately: a later operation may reject with a different error.
+  // The existing boundary suppresses a repeated instance of the same source error.
+  let stage = "connect";
+  client.on("error", error => recordProbeFailure("redis", "error_event", error));
 
   try {
     await withTimeout(client.connect(), HEALTH_CHECK_TIMEOUT_MS);
+    stage = "ping";
     await withTimeout(client.ping(), HEALTH_CHECK_TIMEOUT_MS);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    recordProbeFailure("redis", stage, error); return false;
   } finally {
-    client.disconnect();
+    try { client.disconnect(); } catch (error) {recordProbeFailure("redis", "cleanup", error);}
   }
 }
 
@@ -100,6 +106,7 @@ export type PostgresProbe = {
   connect(): Promise<unknown>;
   query(statement: string): Promise<unknown>;
   end(): Promise<void>;
+  on?(event: "error", listener: (error: Error) => void): unknown;
 };
 
 export type PostgresProbeFactory = (
@@ -127,22 +134,20 @@ export async function checkPostgresReadiness(
   databaseUrl: string | undefined = process.env.DATABASE_URL,
   createProbe: PostgresProbeFactory = createPostgresProbe,
 ): Promise<boolean> {
-  if (!databaseUrl) {
-    return false;
-  }
-
-  const probe = createProbe(databaseUrl);
+  if (!databaseUrl) { recordProbeFailure("postgres", "configuration"); return false; }
+  let probe: PostgresProbe;
+  try { probe = createProbe(databaseUrl); } catch (error) {recordProbeFailure("postgres", "constructor", error); throw error;}
+  let stage = "connect";
+  probe.on?.("error", error => recordProbeFailure("postgres", "error_event", error));
 
   try {
     await probe.connect();
-    await probe.query("SELECT 1");
+    stage = "query"; await probe.query("SELECT 1");
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    recordProbeFailure("postgres", stage, error); return false;
   } finally {
-    // Always release the probe connection. Teardown errors are swallowed so
-    // they cannot mask the readiness result.
-    await probe.end().catch(() => {});
+    await probe.end().catch(error => {recordProbeFailure("postgres", "cleanup", error);});
   }
 }
 
@@ -156,4 +161,10 @@ export async function checkReadiness(): Promise<ReadinessResult> {
     status: redis && postgres ? "ready" : "not_ready",
     checks: { redis, postgres },
   };
+}
+
+function recordProbeFailure(dependency: "redis" | "postgres", stage: string, error?: unknown): void {
+  logBillingBoundaryFailure({event: "shopify.health.dependency_failed", operation: `probe_${dependency}`, stage,
+    origin: stage === "configuration" || stage === "constructor" || error instanceof HealthProbeTimeout ? "internal" : dependency === "postgres" ? "database" : "transport",
+    identities: {dependency}, ...(error === undefined ? {reasonCode: "MISSING_CONFIGURATION"} : {error})});
 }

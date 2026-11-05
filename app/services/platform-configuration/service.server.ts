@@ -1,3 +1,5 @@
+import { createLogger } from "@modainteract/moda-interact-shared/logging";
+import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
 import type { CredentialKeyring } from "@modainteract/moda-interact-shared/security/credentials/node";
 import {
   ShopifyPlatformConfigurationError, configurationFailure,
@@ -27,18 +29,23 @@ export interface ShopifyConfigurationServiceDependencies {
 export function createShopifyPlatformConfigurationService(
   dependencies: ShopifyConfigurationServiceDependencies,
 ): ShopifyPlatformConfigurationService {
+  const sharedLogger = createLogger({serviceName: "moda-interact", environment: dependencies.environment});
+  const output = dependencies.logger ?? sharedLogger;
   function safeLog(level: "info" | "warn", data: Record<string, unknown>): void {
-    try { dependencies.logger?.[level]("shopify.platform_configuration.read", data); }
+    try { output[level]("shopify.platform_configuration.read", data); }
     catch { /* Shared logging must not become a correctness dependency. */ }
   }
 
   async function read<T>(key: ShopifyConfigurationKey, operation: string, decode: (version: number, value: unknown) => T): Promise<T> {
+    let stage = "read";
     try {
       const row = await readPlatformConfiguration(dependencies.database, dependencies.environment, key);
       if (isDisabledConfiguration(row.value)) configurationFailure(key, "DISABLED");
       let keyring: CredentialKeyring;
+      stage = "keyring";
       try { keyring = dependencies.loadUnsealKeyring(); }
-      catch { return configurationFailure(key, "UNSEAL_FAILED"); }
+      catch (error) { return configurationFailure(key, "UNSEAL_FAILED", {cause: error}); }
+      stage = "unseal";
       const payload = unsealPlatformConfiguration({
         environment: dependencies.environment,
         key,
@@ -46,15 +53,28 @@ export function createShopifyPlatformConfigurationService(
         value: row.value,
         keyring,
       });
+      stage = "decode";
       const result = decode(row.version, payload);
       safeLog("info", { key, operation, version: row.version, outcome: "success" });
       return result;
     } catch (error) {
-      const reasonCode: ShopifyConfigurationErrorCode | "UNEXPECTED" = error instanceof ShopifyPlatformConfigurationError
-        ? error.code : "UNEXPECTED";
-      safeLog("warn", { key, operation, outcome: "failed", reasonCode });
-      if (error instanceof ShopifyPlatformConfigurationError) throw error;
-      return configurationFailure(key, "INVALID_VALUE");
+      const wrapped = error instanceof ShopifyPlatformConfigurationError ? error : new ShopifyPlatformConfigurationError(key, "INVALID_VALUE", {cause: error});
+      const reasonCode: ShopifyConfigurationErrorCode = wrapped.code;
+      const source = wrapped.cause ?? wrapped;
+      const parser = source instanceof SyntaxError;
+      let diagnostic = source;
+      if (source === wrapped) {
+        const internal = new Error(wrapped.message); internal.name = wrapped.name; diagnostic = internal;
+      }
+      if (parser) {
+        const quote = source.message.search(/["'{}\r\n]/);
+        if (quote >= 0) diagnostic = new SyntaxError(`${source.message.slice(0, quote).trimEnd()} [REDACTED]`);
+      }
+      logBillingBoundaryFailure({event: "shopify.platform_configuration.read", operation,
+        stage, origin: reasonCode === "DATABASE_UNAVAILABLE" ? "database" : "internal",
+        error: wrapped, diagnosticError: diagnostic, reasonCode, redactionApplied: parser && diagnostic !== source,
+      }, {...sharedLogger, error: (_event, fields = {}) => safeLog("warn", {key, operation, outcome: "failed", ...fields})});
+      throw wrapped;
     }
   }
 

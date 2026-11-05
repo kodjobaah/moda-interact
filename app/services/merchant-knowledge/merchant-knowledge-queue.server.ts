@@ -1,4 +1,4 @@
-import { recordMerchantKnowledgeFailure } from "./merchant-knowledge-observability.server";
+import { recordMerchantKnowledgeFailure, recordMerchantKnowledgeQueueFailure } from "./merchant-knowledge-observability.server";
 import { Queue } from "bullmq";
 import {
   MERCHANT_KNOWLEDGE_PROCESS_JOB_NAME,
@@ -28,6 +28,7 @@ async function getQueue(): Promise<KnowledgeQueue | null> {
       commandTimeout: 2_500,
     },
   });
+  queue.on("error", error => recordMerchantKnowledgeQueueFailure(MERCHANT_KNOWLEDGE_QUEUE_NAME, error));
   queueUrl = redisUrl;
   return queue;
 }

@@ -1,3 +1,4 @@
+import { recordShopifyBootstrapFailure, recordShopifySdkDiagnostic } from "./services/observability/shopify-runtime-observability.server";
 import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
@@ -13,10 +14,16 @@ import { createDefaultShopifyPlatformConfigurationService } from "./services/pla
 // route module can receive the synchronous Shopify authentication exports.
 // A missing, revoked or undecryptable OAuth record rejects module evaluation
 // and fails closed before the HTTP server can accept authenticated requests.
-const oauth = await createDefaultShopifyPlatformConfigurationService()
-  .requireShopifyOAuthCredentials();
-
-const shopify = shopifyApp({
+/** @type {import("./services/platform-configuration/contracts.server").ShopifyOAuthCredentials | undefined} */
+let oauth = undefined;
+let shopify;
+/** @type {"oauth_configuration" | "sdk_construction"} */
+let bootstrapStage = "oauth_configuration";
+try {
+  oauth = await createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials();
+  bootstrapStage = "sdk_construction";
+  const credentials = oauth;
+  shopify = shopifyApp({
   apiKey: oauth.apiKey,
   apiSecretKey: oauth.apiSecret,
   apiVersion: ApiVersion.July26,
@@ -27,6 +34,8 @@ const shopify = shopifyApp({
   distribution: AppDistribution.AppStore,
   logger: {
     level: LogSeverity.Debug,
+    httpRequests: false,
+    log: (severity, message) => recordShopifySdkDiagnostic({severity, message, sensitiveValues: [credentials.apiKey, credentials.apiSecret]}),
   },
   future: {
     expiringOfflineAccessTokens: true,
@@ -34,7 +43,11 @@ const shopify = shopifyApp({
   ...(process.env.SHOP_CUSTOM_DOMAIN
     ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
     : {}),
-});
+  });
+} catch (error) {
+  recordShopifyBootstrapFailure({error, stage: bootstrapStage, sensitiveValues: oauth ? [oauth.apiKey, oauth.apiSecret] : []});
+  throw error;
+}
 
 export default shopify;
 export const apiVersion = ApiVersion.July26;
