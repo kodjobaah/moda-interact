@@ -85,7 +85,7 @@ function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): 
   }
   const beforePatterns = text;
   text = text
-    .replace(/(?:https?|postgres(?:ql)?|redis):\/\/[^\s"'<>]+/gi, "[REDACTED]")
+    .replace(/(?:https?|postgres(?:ql)?|rediss?):\/\/[^\s"'<>]+/gi, "[REDACTED]")
     .replace(/(?:Bearer\s+|(?:access[_-]?token|authorization|cookie|password|email|phone|address|customer|card|payment)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]");
   const timestamps = Array.from(

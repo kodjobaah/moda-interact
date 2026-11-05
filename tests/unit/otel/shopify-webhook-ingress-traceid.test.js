@@ -16,17 +16,17 @@ const publicationMock = {
   publishShopifyCheckoutCreatedEvent: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "checkout-created-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyCheckoutUpdatedEvent: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "checkout-updated-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyOrderCompletedEvent: vi.fn(async () => ({
     queue: "order-events",
     jobId: "order-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
 };
 

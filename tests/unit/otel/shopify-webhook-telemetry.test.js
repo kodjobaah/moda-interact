@@ -34,7 +34,7 @@ const baseEntry = {
   eventId: "event-1",
   queue: "order-events",
   jobId: "job-1",
-  outcome: "ENQUEUED",
+  outcome: "QUEUE_ACCEPTED",
   shopId: "shop_1",
   shopDomain: "shop.myshopify.com",
   ackMs: 42,
@@ -114,7 +114,7 @@ describe("Shopify webhook OpenTelemetry recording", () => {
     expect(span.attributes).toMatchObject({
       "shopify.webhook.topic": "orders/create",
       "shopify.webhook.event_type": "order.completed",
-      "shopify.webhook.outcome": "ENQUEUED",
+      "shopify.webhook.outcome": "QUEUE_ACCEPTED",
       "shopify.webhook.queue": "order-events",
       "shopify.webhook.status_code": 200,
     });
@@ -159,7 +159,7 @@ describe("Shopify webhook OpenTelemetry recording", () => {
     expect(ingress.dataPoints[0].attributes).toEqual({
       "shopify.webhook.topic": "orders/create",
       "shopify.webhook.event_type": "order.completed",
-      "shopify.webhook.outcome": "ENQUEUED",
+      "shopify.webhook.outcome": "QUEUE_ACCEPTED",
       "shopify.webhook.queue": "order-events",
       "shopify.webhook.status_code": 200,
     });

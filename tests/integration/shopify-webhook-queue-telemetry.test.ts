@@ -1,3 +1,4 @@
+import { startShopifyWebhookRedis, type ShopifyWebhookRedis } from "../helpers/shopify-webhook-redis";
 import { context, trace } from "@opentelemetry/api";
 import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
 import {
@@ -12,7 +13,7 @@ import {
   ShopifyOrderCompletedEventV2Schema,
 } from "@modainteract/moda-interact-shared/shopify";
 import { Worker } from "bullmq";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, afterEach, describe, expect, it, vi } from "vitest";
 
 const dbMock = {
   shop: {
@@ -26,9 +27,12 @@ const dbMock = {
 
 vi.mock("../../app/db.server", () => ({ default: dbMock }));
 
-const redisUrl = process.env.TEST_REDIS_URL;
+let redisUrl: string;
+let redisFixture: ShopifyWebhookRedis;
 
-describe.skipIf(!redisUrl)("Shopify Queue telemetry continuity", () => {
+describe.skipIf(process.env.MODA_SHOPIFY_WEBHOOK_REDIS !== "1")("Shopify Queue telemetry continuity", () => {
+  beforeAll(async () => {redisFixture = await startShopifyWebhookRedis(); redisUrl = redisFixture.url;}, 60_000);
+  afterAll(async () => {await redisFixture?.cleanup();}, 30_000);
   let contextManager: AsyncHooksContextManager | undefined;
   let traceProvider: NodeTracerProvider | undefined;
   let worker: Worker | undefined;
@@ -199,6 +203,6 @@ describe.skipIf(!redisUrl)("Shopify Queue telemetry continuity", () => {
       });
     await processedWithoutTelemetry;
 
-    expect(publicationWithoutTelemetry).toMatchObject({ outcome: "enqueued" });
+    expect(publicationWithoutTelemetry).toMatchObject({ outcome: "accepted" });
   });
 });
