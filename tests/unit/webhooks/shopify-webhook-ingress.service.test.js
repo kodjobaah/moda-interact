@@ -25,32 +25,32 @@ const publicationMock = {
   publishShopifyCheckoutCreatedEvent: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "checkout-created-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyCheckoutUpdatedEvent: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "checkout-updated-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyCartActivityEvent: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "cart-activity-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyOrderCompletedEvent: vi.fn(async () => ({
     queue: "order-events",
     jobId: "order-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyDiscountSyncJob: vi.fn(async () => ({
     queue: "shopify-discount-sync",
     jobId: "discount-sync-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
   publishShopifyWhatsAppConsentSyncJob: vi.fn(async () => ({
     queue: "checkout-events",
     jobId: "consent-sync-job",
-    outcome: "enqueued",
+    outcome: "accepted",
   })),
 };
 
@@ -71,7 +71,7 @@ function resetState() {
   publicationMock.publishShopifyOrderCompletedEvent.mockClear();
   publicationMock.publishShopifyDiscountSyncJob.mockClear();
   publicationMock.publishShopifyWhatsAppConsentSyncJob.mockReset();
-  publicationMock.publishShopifyWhatsAppConsentSyncJob.mockResolvedValue({ queue: "checkout-events", jobId: "consent-sync-job", outcome: "enqueued" });
+  publicationMock.publishShopifyWhatsAppConsentSyncJob.mockResolvedValue({ queue: "checkout-events", jobId: "consent-sync-job", outcome: "accepted" });
   delete process.env.REDIS_URL;
 }
 
@@ -182,7 +182,7 @@ describe("shopify webhook ingress", () => {
     expect(publicationMock.publishShopifyCartActivityEvent).not.toHaveBeenCalled();
     expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
     expect(publicationMock.publishShopifyDiscountSyncJob).not.toHaveBeenCalled();
-    expect(dbMock.shop.findUnique).toHaveBeenCalledWith({ where: { domain: "shop.myshopify.com" } });
+    expect(dbMock.shop.findUnique).toHaveBeenCalledWith({ where: { domain: "shop.myshopify.com" }, select: {id: true, domain: true, status: true} });
   });
 
   it("normalizes a canonical Customer GID to the same numeric Shopify identity", async () => {
@@ -244,7 +244,7 @@ describe("shopify webhook ingress", () => {
   it("acknowledges duplicate consent delivery without generating checkout work", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
     publicationMock.publishShopifyWhatsAppConsentSyncJob.mockResolvedValueOnce({
-      queue: "checkout-events", jobId: "consent-sync-job", outcome: "duplicate",
+      queue: "checkout-events", jobId: "consent-sync-job", outcome: "accepted",
     });
     expect((await ingestShopifyWebhook(consentInput())).status).toBe(200);
     expect(publicationMock.publishShopifyWhatsAppConsentSyncJob).toHaveBeenCalledTimes(1);
@@ -728,7 +728,7 @@ describe("shopify webhook ingress", () => {
       deliveryId: "delivery-1",
       queue: "checkout-events",
       jobId: "checkout-created-job",
-      outcome: "ENQUEUED",
+      outcome: "QUEUE_ACCEPTED",
       shopId: "shop_1",
       shopDomain: "shop.myshopify.com",
     });

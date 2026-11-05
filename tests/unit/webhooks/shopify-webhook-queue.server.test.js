@@ -48,14 +48,19 @@ class FakeQueue {
     this.options = options;
     this.jobs = new Map();
     this.addCalls = [];
+    this.getJobCalls = [];
   }
 
+  on() { return this; }
+
   async getJob(jobId) {
+    this.getJobCalls.push(jobId);
     return this.jobs.get(jobId) ?? null;
   }
 
   async add(jobName, data, opts) {
     this.addCalls.push({ jobName, data, opts });
+    if (this.jobs.has(opts.jobId)) return this.jobs.get(opts.jobId);
     const job = new FakeJob(data, opts.delay ? "delayed" : "waiting");
     this.jobs.set(opts.jobId, job);
     return job;
@@ -106,10 +111,11 @@ describe("shopify webhook queue helpers", () => {
     const second = await queueModule.publishShopifyWhatsAppConsentSyncJob({ event });
     const third = await queueModule.publishShopifyWhatsAppConsentSyncJob({ event: { ...event, deliveryId: "consent-delivery-2" } });
 
-    expect(first).toEqual({ queue: "checkout-events", jobId: createShopifyWhatsAppConsentSyncJobId(event), outcome: "enqueued" });
-    expect(second).toEqual({ ...first, outcome: "duplicate" });
+    expect(first).toEqual({ queue: "checkout-events", jobId: createShopifyWhatsAppConsentSyncJobId(event), outcome: "accepted" });
+    expect(second).toEqual({ ...first, outcome: "accepted" });
     expect(third.jobId).not.toBe(first.jobId);
-    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.addCalls).toHaveLength(3);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
     expect(queues.checkout.addCalls[0].jobName).toBe("shopify-whatsapp-consent-sync");
     expect(queues.checkout.addCalls[0].data).toEqual(event);
     expect(queues.checkout.addCalls[0].data).not.toHaveProperty("phone_number");
@@ -187,11 +193,12 @@ describe("shopify webhook queue helpers", () => {
 
     const legacyJobId = createShopifyWebhookJobId("shop_1", "d1");
     const jobId = queueModule.createTenantReadableJobId("shop_1", legacyJobId);
-    expect(first.outcome).toBe("enqueued");
+    expect(first.outcome).toBe("accepted");
     expect(first.jobId).toBe(jobId);
-    expect(second.outcome).toBe("duplicate");
+    expect(second.outcome).toBe("accepted");
     expect(second.jobId).toBe(jobId);
-    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
     expect(queues.checkout.addCalls[0].opts.jobId).toBe(jobId);
     expect(queues.checkout.addCalls[0].opts.delay).toBeUndefined();
     expect(queues.checkout.addCalls[0].data).toEqual(expect.objectContaining({
@@ -226,9 +233,10 @@ describe("shopify webhook queue helpers", () => {
       event: parseShopifyRecoveryEventV2(updateEvent),
     });
 
-    expect(first.outcome).toBe("enqueued");
-    expect(second.outcome).toBe("duplicate");
-    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(first.outcome).toBe("accepted");
+    expect(second.outcome).toBe("accepted");
+    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
     expect(queues.checkout.addCalls[0].jobName).toBe("checkout-updated");
     const legacyJobId = createShopifyWebhookJobId("shop_1", "delivery-up-1");
     expect(first.jobId).toBe(queueModule.createTenantReadableJobId("shop_1", legacyJobId));
@@ -265,12 +273,13 @@ describe("shopify webhook queue helpers", () => {
       event: { ...event, receiptId: "receipt-up-4", deliveryId: "delivery-up-4" },
     });
 
-    expect(first.outcome).toBe("enqueued");
-    expect(duplicate.outcome).toBe("duplicate");
+    expect(first.outcome).toBe("accepted");
+    expect(duplicate.outcome).toBe("accepted");
     expect(duplicate.jobId).toBe(first.jobId);
-    expect(nextDelivery.outcome).toBe("enqueued");
+    expect(nextDelivery.outcome).toBe("accepted");
     expect(nextDelivery.jobId).not.toBe(first.jobId);
-    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.addCalls).toHaveLength(3);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
     expect(queues.checkout.addCalls[0].jobName).toBe("checkout-updated");
     expect(queues.checkout.addCalls[0].data).toEqual(event);
     expect(queues.checkout.addCalls[0].data.orderingKey).toBe("shop_1:checkout_1");
@@ -300,10 +309,11 @@ describe("shopify webhook queue helpers", () => {
       event: cartEvent,
     });
 
-    expect(first.outcome).toBe("enqueued");
-    expect(second.outcome).toBe("duplicate");
+    expect(first.outcome).toBe("accepted");
+    expect(second.outcome).toBe("accepted");
     expect(first.queue).toBe("checkout-events");
-    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
     expect(queues.checkout.addCalls[0].jobName).toBe("cart-activity");
     expect(first.jobId).toBe(
       queueModule.createTenantReadableJobId(
@@ -343,15 +353,16 @@ describe("shopify webhook queue helpers", () => {
       event: parseShopifyRecoveryEventV2(orderEvent),
     });
 
-    expect(first.outcome).toBe("enqueued");
-    expect(second.outcome).toBe("duplicate");
-    expect(queues.order.addCalls).toHaveLength(1);
+    expect(first.outcome).toBe("accepted");
+    expect(second.outcome).toBe("accepted");
+    expect(queues.order.addCalls).toHaveLength(2);
+    expect(queues.order.getJobCalls).toHaveLength(0);
     const legacyJobId = createShopifyOrderJobId("shop_1", "gid://shopify/Order/1");
     expect(first.jobId).toBe(queueModule.createTenantReadableJobId("shop_1", legacyJobId));
     expect(first.jobId).toMatch(/^shop_1--/);
   });
 
-  it("suppresses checkout publication when only the legacy id exists", async () => {
+  it("retires checkout legacy-ID probes while keeping current ID bytes", async () => {
     const event = parseShopifyRecoveryEventV2({
       schemaVersion: 2,
       receiptId: "r-legacy-checkout",
@@ -380,16 +391,17 @@ describe("shopify webhook queue helpers", () => {
 
     const second = await queueModule.publishShopifyCheckoutCreatedEvent({ event });
 
-    expect(first.outcome).toBe("enqueued");
+    expect(first.outcome).toBe("accepted");
     expect(second).toEqual({
       queue: "checkout-events",
-      jobId: legacyJobId,
-      outcome: "duplicate",
+      jobId: newJobId,
+      outcome: "accepted",
     });
-    expect(queues.checkout.addCalls).toHaveLength(1);
+    expect(queues.checkout.addCalls).toHaveLength(2);
+    expect(queues.checkout.getJobCalls).toHaveLength(0);
   });
 
-  it("suppresses order publication when only the legacy id exists", async () => {
+  it("retires order legacy-ID probes while keeping current ID bytes", async () => {
     const event = parseShopifyRecoveryEventV2({
       schemaVersion: 2,
       receiptId: "r-legacy-order",
@@ -418,13 +430,14 @@ describe("shopify webhook queue helpers", () => {
 
     const second = await queueModule.publishShopifyOrderCompletedEvent({ event });
 
-    expect(first.outcome).toBe("enqueued");
+    expect(first.outcome).toBe("accepted");
     expect(second).toEqual({
       queue: "order-events",
-      jobId: legacyJobId,
-      outcome: "duplicate",
+      jobId: newJobId,
+      outcome: "accepted",
     });
-    expect(queues.order.addCalls).toHaveLength(1);
+    expect(queues.order.addCalls).toHaveLength(2);
+    expect(queues.order.getJobCalls).toHaveLength(0);
   });
 
   it("configures bounded retries and retains failed jobs", async () => {

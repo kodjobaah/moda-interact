@@ -16,6 +16,7 @@ export type ShopifyWebhookObservation = {
   eventId: string | null;
   queue: string | null;
   jobId: string | null;
+  /** QUEUE_ACCEPTED includes new and retained-ID acceptance; ignored unknown/inactive deliveries are discarded. */
   outcome: string;
   shopId: string | null;
   shopDomain: string;

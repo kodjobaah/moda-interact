@@ -20,10 +20,10 @@ export type ShopifyWebhookTelemetryEntry = ShopifyWebhookObservation & {
 
 /** Outcomes that result in an accepted (non-error) webhook response. */
 const ACCEPTED_OUTCOMES = new Set([
-  "ENQUEUED",
-  "DUPLICATE",
+  "QUEUE_ACCEPTED",
   "IGNORED",
-  "QUARANTINED",
+  "IGNORED_UNKNOWN_SHOP",
+  "IGNORED_INACTIVE_SHOP",
 ]);
 
 const tracer = trace.getTracer(OTEL_WEBHOOK_TRACER_NAME);

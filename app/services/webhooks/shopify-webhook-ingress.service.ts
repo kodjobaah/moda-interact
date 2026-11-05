@@ -1,4 +1,5 @@
 import db from "../../db.server";
+import type { Shop } from "@prisma/client";
 import {
   SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
   SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V3,
@@ -38,7 +39,7 @@ import {
   ShopifyWhatsAppConsentPayloadError,
 } from "./shopify-whatsapp-consent-normalization";
 import { buildDiscountSyncJob } from "../discounts/shopify-discount-lifecycle.service";
-import { recordShopifyWebhookOutcome } from "./shopify-webhook-observability.server";
+import { recordShopifyWebhookOutcome, recordShopifyWebhookPublicationFailure } from "./shopify-webhook-observability.server";
 import { getActiveTraceId } from "../otel/otel.runtime";
 import {
   normalizeCheckoutCreatedPayload,
@@ -131,9 +132,18 @@ export async function ingestShopifyWebhook(
     throw error;
   }
 
+  const discountWebhookTopic = normalizeDiscountWebhookTopic(metadata.providerTopic);
+  if (!plan && !consentSyncTopic && !discountWebhookTopic) {
+    recordShopifyWebhookOutcome({ topic: metadata.providerTopic, deliveryId: metadata.deliveryId,
+      eventId: metadata.eventId, queue: null, jobId: null, outcome: "IGNORED", shopId: null,
+      shopDomain: metadata.shopDomain, ackMs: Date.now() - ackStartedAt });
+    return new Response(null, { status: 200 });
+  }
+  let shop: Pick<Shop, "id" | "domain" | "status"> | null = null;
   try {
-    const shop = await db.shop.findUnique({
+    shop = await db.shop.findUnique({
       where: { domain: metadata.shopDomain },
+      select: { id: true, domain: true, status: true },
     });
 
     if (!shop || shop.status !== "ACTIVE") {
@@ -145,7 +155,7 @@ export async function ingestShopifyWebhook(
           ? SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName
           : plan?.queue ?? null,
         jobId: null,
-        outcome: "QUARANTINED",
+        outcome: shop ? "IGNORED_INACTIVE_SHOP" : "IGNORED_UNKNOWN_SHOP",
         shopId: shop?.id ?? null,
         shopDomain: metadata.shopDomain,
         ackMs: Date.now() - ackStartedAt,
@@ -222,7 +232,7 @@ export async function ingestShopifyWebhook(
         eventId: metadata.eventId,
         queue: publication.queue,
         jobId: publication.jobId,
-        outcome: publication.outcome === "duplicate" ? "DUPLICATE" : "ENQUEUED",
+        outcome: "QUEUE_ACCEPTED",
         shopId: shop.id,
         shopDomain: shop.domain,
         ackMs: Date.now() - ackStartedAt,
@@ -231,7 +241,6 @@ export async function ingestShopifyWebhook(
     }
 
     let publication;
-    const discountWebhookTopic = normalizeDiscountWebhookTopic(metadata.providerTopic);
 
     if (discountWebhookTopic) {
       publication = await publishShopifyDiscountSyncJob({
@@ -244,27 +253,9 @@ export async function ingestShopifyWebhook(
           webhookTopic: discountWebhookTopic,
         }),
       });
-    } else if (!plan) {
-      recordShopifyWebhookOutcome({
-        topic: metadata.providerTopic,
-        deliveryId: metadata.deliveryId,
-        eventId: metadata.eventId,
-        queue: null,
-        jobId: null,
-        outcome: isCartTopic(metadata.providerTopic) ? "IGNORED" : "IGNORED",
-        shopId: shop.id,
-        shopDomain: shop.domain,
-        ackMs: Date.now() - ackStartedAt,
-      });
-
-      return new Response(null, { status: 200 });
     }
 
-    if (!plan) {
-      return new Response(null, { status: 200 });
-    }
-
-    if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
+    if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -294,7 +285,7 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCartActivityEvent({
         event: ShopifyCartActivityEventV2Schema.parse(event),
       });
-    } else if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
+    } else if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -325,7 +316,7 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCheckoutCreatedEvent({
         event: ShopifyCheckoutCreatedEventV2Schema.parse(event),
       });
-    } else if (!publication && plan.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
+    } else if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -362,8 +353,8 @@ export async function ingestShopifyWebhook(
         event: ShopifyCheckoutUpdatedEventV3Schema.parse(event),
       });
     } else if (!publication) {
-      if (plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED) {
-        return new Response(null, { status: 200 });
+      if (!plan || plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED) {
+        throw new Error("Unsupported webhook publication plan");
       }
 
       const normalizedPayload = plan.normalize(input.payload);
@@ -404,8 +395,7 @@ export async function ingestShopifyWebhook(
       eventId: metadata.eventId,
       queue: publication.queue,
       jobId: publication.jobId,
-      outcome:
-        publication.outcome === "duplicate" ? "DUPLICATE" : "ENQUEUED",
+      outcome: "QUEUE_ACCEPTED",
       shopId: shop.id,
       shopDomain: shop.domain,
       ackMs: Date.now() - ackStartedAt,
@@ -414,16 +404,18 @@ export async function ingestShopifyWebhook(
     return new Response(null, { status: 200 });
   } catch (error) {
     if (error instanceof ShopifyWebhookPublicationError) {
+      recordShopifyWebhookPublicationFailure({ error, topic: metadata.providerTopic, deliveryId: metadata.deliveryId,
+        shopId: shop?.id, queue: error.queue, jobId: error.jobId });
       recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
         eventId: metadata.eventId,
-        queue: consentSyncTopic
+        queue: error.queue ?? (consentSyncTopic
           ? SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC.queueName
-          : plan?.queue ?? null,
-        jobId: null,
+          : plan?.queue ?? null),
+        jobId: error.jobId ?? null,
         outcome: error.code,
-        shopId: null,
+        shopId: shop?.id ?? null,
         shopDomain: metadata.shopDomain,
         ackMs: Date.now() - ackStartedAt,
       });
@@ -544,16 +536,6 @@ function classifyWebhookTopic(
   }
 
   return null;
-}
-
-function isCartTopic(providerTopic: string): boolean {
-  return providerTopic
-    .trim()
-    .toUpperCase()
-    .replaceAll("/", "_")
-    .replaceAll(".", "_")
-    .replaceAll("-", "_")
-    .startsWith("CART");
 }
 
 function normalizeDiscountWebhookTopic(
