@@ -8,7 +8,7 @@ import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 const WABA = /^\d{4,32}$/;
 
 /** The authenticated Shopify shop is NOT authority for the Meta sender.
- * Reuse the ARCH-043 sealed configuration reader and its AAD/keyring contract.
+ * Reuse the platform-owned sealed configuration reader and its AAD/keyring contract.
  * Environment fallback is permitted only when the sealed record is absent.
  */
 export async function trustedRecoverySenderWaba(db: Pick<Prisma.TransactionClient, "platformConfiguration">): Promise<string> {

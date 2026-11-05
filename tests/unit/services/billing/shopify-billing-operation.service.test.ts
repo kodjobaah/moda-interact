@@ -171,7 +171,8 @@ describe("ShopifyBillingOperationService", () => {
       quotedBillingPeriod: MerchantPricingBillingPeriod.EVERY_30_DAYS,
       providerReference: null,
     });
-    expect(Buffer.from(first.requestFingerprint)).toHaveLength(32);
+    expect(first.requestKey).toBe("shopify:subscription_create:24b694f788fe41b14950e6f1ded601371c368a67ae467c5582090b57f4032276");
+    expect(Buffer.from(first.requestFingerprint).toString("hex")).toBe("1dd0fe07b66c7d14d94d37fcd03fd3b7222c621d286f37e92285cba00e95139a");
     expect(first).not.toHaveProperty("subscriptionId");
     expect(first).not.toHaveProperty("provider");
   });

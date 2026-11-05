@@ -37,7 +37,7 @@ type Context = {
   };
 };
 
-/** DATABASE-001 ordering contract: Shop -> Conversation -> command / outreach attempt.
+/** Lock ordering: Shop -> Conversation -> command / outreach attempt.
  * Every command originates from a trusted Shopify session shopId, never from submitted JSON.
  */
 async function lockedContext(tx: Prisma.TransactionClient, shopId: string, recoveryId: string): Promise<Context> {

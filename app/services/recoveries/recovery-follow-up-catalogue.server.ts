@@ -55,7 +55,7 @@ function isCurrentModaPublication(row: CatalogueVariant, wabaId: string): boolea
   const locale = registration.locale;
   const definition = locale.definition;
   const expectedOffer = row.purpose.slice("FOLLOW_UP_".length);
-  // The immutable English source is saved as SOURCE_SAVED by ADMIN-003;
+  // The immutable English source is saved with SOURCE_SAVED draft provenance;
   // translations require a completed review. Provider approval and a
   // SUCCEEDED shop target are separate, mandatory checks for both paths.
   const reviewed = locale.status === "REVIEWED" ||

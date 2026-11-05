@@ -1,6 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { startBillingPostgresFixture, type BillingPostgresFixture } from "../helpers/billing-postgres";
+import {ShopifyBillingOperationService} from "../../app/services/billing/shopify-billing-operation.service";
 import { barrier, createPurchaseFixture, transactionPort } from "../fixtures/recovery-credit-purchases";
 
 describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("purchase admission on migrated PostgreSQL", () => {
@@ -40,9 +41,20 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("purchase admis
     const operations = await fixture.database.billingOperation.findMany({ where: { shopId: data.shopId } });
     expect(operations).toHaveLength(1);
     expect(operations[0].requestKey).toBe(`shopify:one-time-charge:${purchases[0].id}`);
+    expect(Buffer.from(operations[0].requestFingerprint).toString("hex")).toBe(createHash("sha256").update(`shopify-billing-topup-v1\nONE_TIME_CHARGE\n${data.shopId}\n${operations[0].merchantPricingUsageEventId}\n500\nUSD\n`, "utf8").digest("hex"));
     const observations = data.lifecycle.mock.calls.length;
     await expect(data.request(data.service(), purchases[0].id)).resolves.toMatchObject({ id: purchases[0].id });
     expect(data.lifecycle).toHaveBeenCalledTimes(observations);
+    expect(await fixture.database.recoveryCreditPurchase.count({where: {shopId: data.shopId}})).toBe(1);
+    expect(await fixture.database.usageEvent.count({where: {shopId: data.shopId}})).toBe(1);
+    expect(await fixture.database.billingOperation.count({where: {shopId: data.shopId}})).toBe(1);
+    await expect(data.service().requestRecoveryCreditPack("foreign-tenant", "BUY_RECOVERY_CREDIT_PACK", purchases[0].id, data.eventHandle)).rejects.toThrow("belongs to another shop");
+    await expect(fixture.database.$transaction(tx => new ShopifyBillingOperationService(fixture.database).recordOneTimeChargeIntent(tx, {
+      shopId: data.shopId, purchaseId: purchases[0].id, providerQuantityBefore: 0,
+      usageEvent: {id: operations[0].merchantPricingUsageEventId!, pricingMode: "FIXED", currency: "USD", fixedUnitAmountMinor: 501, tiers: []},
+    }))).rejects.toThrow("idempotency conflict");
+    expect(await fixture.database.billingOperation.findUniqueOrThrow({where: {id: operations[0].id}})).toMatchObject({quotedAmountMinor: 500, requestFingerprint: operations[0].requestFingerprint});
+    expect(await fixture.database.recoveryCreditPurchase.count({where: {shopId: data.shopId}})).toBe(1);
   });
 
   it("rejects a cycle change committed after observations and before final admission", async () => {
