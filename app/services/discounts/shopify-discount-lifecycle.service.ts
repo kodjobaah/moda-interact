@@ -6,6 +6,7 @@ import {
 
 import db from "../../db.server";
 import { publishShopifyDiscountSyncJob } from "../webhooks/shopify-webhook-queue.server";
+import { recordShopifyLifecycleFailure } from "../webhooks/shopify-webhook-observability.server";
 
 export type DiscountSyncTrigger = ShopifyDiscountSyncJob["reason"];
 
@@ -89,7 +90,7 @@ export async function markDiscountCatalogueUnavailable(
     },
   });
   await transaction.shopifyDiscount.updateMany({
-    where: { shopId },
+    where: { shopId, isAvailable: true },
     data: { isAvailable: false },
   });
   await transaction.shopifyDiscount.updateMany({
@@ -169,9 +170,12 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
       }),
     });
   } catch (error) {
-    console.error("Failed to enqueue subscription-activated discount sync", {
+    recordShopifyLifecycleFailure({
+      operation: "subscription_activated_discount_sync",
+      stage: "publish",
+      origin: "best_effort",
       shopId,
-      error: error instanceof Error ? error.message : String(error),
+      error,
     });
   }
 }

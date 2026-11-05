@@ -19,6 +19,10 @@ const dbMock = {
     update: vi.fn(),
     updateMany: vi.fn(),
   },
+  session: {
+    deleteMany: vi.fn(),
+    findFirst: vi.fn(),
+  },
   subscription: {
     findUnique: vi.fn(),
     upsert: vi.fn(),
@@ -66,6 +70,12 @@ beforeEach(() => {
   dbMock.shop.upsert.mockReset();
   dbMock.shop.update.mockReset();
   dbMock.shop.updateMany.mockReset();
+  dbMock.session.deleteMany.mockReset().mockResolvedValue({ count: 2 });
+  dbMock.session.findFirst.mockReset().mockResolvedValue({
+    accessToken: "fixture-access-token",
+    expires: null,
+    refreshToken: null,
+  });
   dbMock.subscription.updateMany.mockReset();
   dbMock.subscription.findUnique.mockReset().mockResolvedValue(null);
   dbMock.subscription.upsert.mockReset();
@@ -97,13 +107,18 @@ describe("ShopService.markUninstalled", () => {
       .mockResolvedValueOnce({ id: shop.id, uninstalledAt: null });
     const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
 
-    await new ShopService().markUninstalled(shop.domain, uninstalledAt);
+    await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
+      kind: "UNINSTALLED",
+      shopId: shop.id,
+      deletedSessionCount: 2,
+    });
 
     expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
       where: { id: shop.id, uninstalledAt: null },
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
     expect(dbMock.subscription.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.session.deleteMany).toHaveBeenCalledWith({ where: { shop: shop.domain } });
     expect(dbMock.shopifyDiscountCatalogue.upsert).toHaveBeenCalledWith({
       where: { shopId: shop.id },
       create: {
@@ -121,7 +136,7 @@ describe("ShopService.markUninstalled", () => {
       },
     });
     expect(dbMock.shopifyDiscount.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { shopId: shop.id },
+      where: { shopId: shop.id, isAvailable: true },
       data: { isAvailable: false },
     });
     expect(dbMock.shopifyDiscount.updateMany).toHaveBeenNthCalledWith(2, {
@@ -130,20 +145,26 @@ describe("ShopService.markUninstalled", () => {
     });
   });
 
-  it("uses a conditional cutoff write for duplicate delivery", async () => {
+  it("preserves replacement sessions and the first timestamp for duplicate delivery", async () => {
+    const persistedAt = new Date("2026-09-08T10:00:00.000Z");
     dbMock.shop.findUnique
       .mockResolvedValueOnce({ id: shop.id })
-      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: null });
-    dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
+      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: persistedAt });
     const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
 
-    await new ShopService().markUninstalled(shop.domain, uninstalledAt);
-
-    expect(dbMock.shop.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: shop.id, uninstalledAt: null },
-      data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
+    await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
+      kind: "ALREADY_UNINSTALLED",
+      shopId: shop.id,
     });
-    expect(dbMock.shop.updateMany).toHaveBeenCalledTimes(1);
+
+    expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.session.deleteMany).not.toHaveBeenCalled();
+    expect(dbMock.shopifyDiscountCatalogue.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ unavailableAt: persistedAt }),
+        update: expect.objectContaining({ unavailableAt: persistedAt }),
+      }),
+    );
   });
 
   it("reuses the persisted uninstall timestamp for duplicate invalidation", async () => {
@@ -175,10 +196,13 @@ describe("ShopService.beginReinstallReconciliation", () => {
     const result = await new ShopService().beginReinstallReconciliation(shop.id, now);
 
     expect(result).toEqual({
-      shopId: shop.id,
-      subscriptionId: "subscription-1",
-      reinstallPendingAt: now,
-      expectedNextReconcileAt: now,
+      kind: "SCHEDULED",
+      schedule: {
+        shopId: shop.id,
+        subscriptionId: "subscription-1",
+        reinstallPendingAt: now,
+        expectedNextReconcileAt: now,
+      },
     });
     expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
       where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: null },
@@ -199,8 +223,10 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
     const result = await new ShopService().beginReinstallReconciliation(shop.id, new Date("2026-09-08T13:00:00.000Z"));
 
-    expect(result?.reinstallPendingAt).toBe(pendingAt);
-    expect(result?.expectedNextReconcileAt).toBe(nextReconcileAt);
+    expect(result).toMatchObject({
+      kind: "SCHEDULED",
+      schedule: { reinstallPendingAt: pendingAt, expectedNextReconcileAt: nextReconcileAt },
+    });
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
@@ -212,7 +238,7 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
     await expect(
       new ShopService().beginReinstallReconciliation(shop.id),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: "NO_CHANGE" });
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
@@ -231,10 +257,13 @@ describe("ShopService.beginReinstallReconciliation", () => {
     await expect(
       new ShopService().beginReinstallReconciliation(shop.id),
     ).resolves.toEqual({
-      shopId: shop.id,
-      subscriptionId: "subscription-1",
-      reinstallPendingAt: pendingAt,
-      expectedNextReconcileAt: nextReconcileAt,
+      kind: "SCHEDULED",
+      schedule: {
+        shopId: shop.id,
+        subscriptionId: "subscription-1",
+        reinstallPendingAt: pendingAt,
+        expectedNextReconcileAt: nextReconcileAt,
+      },
     });
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
@@ -246,7 +275,7 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: "NO_CHANGE" });
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
   });
@@ -259,7 +288,7 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id),
-    ).resolves.toBeNull();
+    ).resolves.toEqual({ kind: "NO_CHANGE" });
     expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
       where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: pendingAt },
       data: { reinstallPendingAt: expect.any(Date) },
@@ -278,10 +307,13 @@ describe("ShopService.beginReinstallReconciliation", () => {
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id, now),
     ).resolves.toEqual({
-      shopId: shop.id,
-      subscriptionId: "subscription-1",
-      reinstallPendingAt: now,
-      expectedNextReconcileAt: now,
+      kind: "SCHEDULED",
+      schedule: {
+        shopId: shop.id,
+        subscriptionId: "subscription-1",
+        reinstallPendingAt: now,
+        expectedNextReconcileAt: now,
+      },
     });
     expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
       where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: oldPendingAt },
@@ -291,6 +323,87 @@ describe("ShopService.beginReinstallReconciliation", () => {
       where: { shopId: shop.id },
       update: { nextReconcileAt: now },
     }));
+  });
+
+  it("requires durable credentials before creating a marker or schedule", async () => {
+    dbMock.shop.findUnique.mockResolvedValue({
+      domain: shop.domain,
+      status: "UNINSTALLED",
+      reinstallPendingAt: null,
+    });
+    dbMock.session.findFirst.mockResolvedValue(null);
+
+    await expect(new ShopService().beginReinstallReconciliation(shop.id)).resolves.toEqual({
+      kind: "AUTHENTICATION_REQUIRED",
+    });
+    expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+    expect(dbMock.subscription.findUnique).not.toHaveBeenCalled();
+    expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["empty access token", { accessToken: "   ", expires: null, refreshToken: null }, false],
+    ["expired token without refresh", { accessToken: "expired", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: " " }, false],
+    ["non-expiring token", { accessToken: "valid", expires: null, refreshToken: null }, true],
+    ["unexpired token", { accessToken: "valid", expires: new Date("2026-09-09T00:00:00.000Z"), refreshToken: null }, true],
+    ["expired but refreshable token", { accessToken: "valid", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: "refresh" }, true],
+  ] as const)("applies the durable credential predicate to %s", async (_caseName, credentials, usable) => {
+    const now = new Date("2026-09-08T12:00:00.000Z");
+    const nextReconcileAt = new Date("2026-09-08T12:01:00.000Z");
+    dbMock.shop.findUnique.mockResolvedValue({
+      domain: shop.domain,
+      status: "UNINSTALLED",
+      reinstallPendingAt: null,
+    });
+    dbMock.session.findFirst.mockResolvedValue(credentials);
+    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
+
+    const result = await new ShopService().beginReinstallReconciliation(shop.id, now);
+
+    expect(result.kind).toBe(usable ? "SCHEDULED" : "AUTHENTICATION_REQUIRED");
+    expect(dbMock.session.findFirst).toHaveBeenCalledWith({
+      where: { shop: shop.domain, isOnline: false },
+      select: { accessToken: true, expires: true, refreshToken: true },
+      orderBy: { expires: "desc" },
+    });
+    if (usable) {
+      expect(dbMock.shop.updateMany).toHaveBeenCalledOnce();
+      expect(dbMock.subscription.upsert).toHaveBeenCalledOnce();
+    } else {
+      expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+      expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+    }
+  });
+});
+
+describe("reinstall admission failure diagnostics", () => {
+  it.each([
+    ["beginReinstallReconciliation", "begin_reinstall_reconciliation"],
+    ["retryReinstallReconciliation", "retry_reinstall_reconciliation"],
+  ] as const)("emits original database evidence for %s and rethrows the same error", async (method, operation) => {
+    const records: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((record) => { records.push(String(record)); });
+    const error = Object.assign(new Error("reinstall database failure marker", {
+      cause: new Error("reinstall database cause marker"),
+    }), { code: "P2034" });
+    dbMock.$transaction.mockRejectedValue(error);
+
+    try {
+      await expect(new ShopService()[method](shop.id)).rejects.toBe(error);
+      const record = JSON.parse(records[0] ?? "{}");
+      expect(record.event).toBe("shopify.lifecycle.failed");
+      expect(record.data).toMatchObject({
+        operation,
+        stage: "transaction",
+        origin: "database",
+        shopId: shop.id,
+        databaseCode: "P2034",
+        error: { message: "reinstall database failure marker" },
+        causeChain: [{ message: "reinstall database cause marker" }],
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 

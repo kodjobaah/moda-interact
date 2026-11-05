@@ -121,7 +121,7 @@ describe("reinstalling route", () => {
       reinstallPendingAt: new Date("2026-09-14T00:10:00.000Z"),
       expectedNextReconcileAt: new Date("2026-09-14T00:10:00.000Z"),
     };
-    retryReinstallReconciliation.mockResolvedValue(reconciliation);
+    retryReinstallReconciliation.mockResolvedValue({ kind: "SCHEDULED", schedule: reconciliation });
     const formData = new FormData();
     formData.set("intent", "retry");
 
@@ -142,7 +142,7 @@ describe("reinstalling route", () => {
   });
 
   it("does not enqueue when retry is rejected by the service", async () => {
-    retryReinstallReconciliation.mockResolvedValue(null);
+    retryReinstallReconciliation.mockResolvedValue({ kind: "NO_CHANGE" });
     const formData = new FormData();
     formData.set("intent", "retry");
 

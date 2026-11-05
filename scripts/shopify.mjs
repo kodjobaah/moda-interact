@@ -109,7 +109,7 @@ ngrok is ready:
 
 Starting Shopify:
 
-  npx shopify app dev --tunnel-url=${tunnelUrl}
+  npx shopify app dev --config moda-interact --tunnel-url=${tunnelUrl}
 `);
 
   shopify = spawn(
@@ -118,6 +118,8 @@ Starting Shopify:
     "shopify",
     "app",
     "dev",
+    "--config",
+    "moda-interact",
     "--tunnel-url",
     tunnelUrl,
   ],

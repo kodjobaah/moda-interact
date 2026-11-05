@@ -11,9 +11,12 @@ export const loader = async (/** @type {import("react-router").LoaderFunctionArg
     // Authentication entry explicitly refreshes provider profile and provisioning.
     const shop = await shopService.resolveShopifyShop({ admin, domain: session.shop });
     if (shop.status === "UNINSTALLED") {
-      const reconciliation = await shopService.beginReinstallReconciliation(shop.id);
-      if (reconciliation) {
-        await enqueueBillingSubscriptionReconcileBestEffort(reconciliation);
+      const admission = await shopService.beginReinstallReconciliation(shop.id);
+      if (admission.kind === "SCHEDULED") {
+        await enqueueBillingSubscriptionReconcileBestEffort(admission.schedule);
+      } else if (admission.kind === "AUTHENTICATION_REQUIRED") {
+        const query = new URLSearchParams({ shop: session.shop });
+        throw redirect(`/auth/login?${query.toString()}`);
       }
       throw redirect("/app/reinstalling");
     }

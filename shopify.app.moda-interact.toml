@@ -17,9 +17,15 @@ api_version = "2026-07"
   topics = [
   "orders/create",
   "carts/create",
-  "checkouts/create",
   "carts/update",
-  "checkouts/update"
+  "checkouts/create",
+  "checkouts/update",
+  "customers_whats_app_marketing_consent/update",
+  "discounts/create",
+  "discounts/update",
+  "discounts/delete",
+  "discounts/redeemcode_added",
+  "discounts/redeemcode_removed"
 ]
 
   [[webhooks.subscriptions]]
@@ -37,6 +43,10 @@ api_version = "2026-07"
   [[webhooks.subscriptions]]
   uri = "/webhooks/app/scopes_update"
   topics = [ "app/scopes_update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes

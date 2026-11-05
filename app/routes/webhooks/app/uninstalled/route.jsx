@@ -1,5 +1,4 @@
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
 import { shopService } from "@/services/shop/shop.service";
 import {
   recordShopifyWebhookAuthenticationFailure,
@@ -28,20 +27,19 @@ export const action = async ({ request }) => {
     throw error;
   }
 
-  const { shop, session, triggeredAt, topic, eventId } = authenticated;
+  const { shop, triggeredAt, topic, eventId } = authenticated;
 
   try {
     const eventTime = triggeredAt ? new Date(triggeredAt) : new Date();
-    await shopService.markUninstalled(
+    const result = await shopService.markUninstalled(
       shop,
       Number.isNaN(eventTime.getTime()) ? new Date() : eventTime,
     );
-
-    // Webhook requests can trigger multiple times and after an app has already been uninstalled.
-    // If this webhook already ran, the session may have been deleted previously.
-    if (session) {
-      await db.session.deleteMany({ where: { shop } });
-    }
+    const outcome = result.kind === "UNINSTALLED"
+      ? "PROCESSED_APP_UNINSTALLED"
+      : result.kind === "ALREADY_UNINSTALLED"
+        ? "DUPLICATE_APP_UNINSTALLED"
+        : "APP_UNINSTALLED_SHOP_NOT_FOUND";
 
     recordShopifyWebhookRouteOutcome({
       request,
@@ -49,7 +47,7 @@ export const action = async ({ request }) => {
       topic: topic ?? "APP_UNINSTALLED",
       eventId: eventId ?? null,
       shopDomain: shop,
-      outcome: "PROCESSED_APP_UNINSTALLED",
+      outcome,
       ackMs: Date.now() - startedAt,
     });
 
@@ -61,6 +59,9 @@ export const action = async ({ request }) => {
       topic: topic ?? "APP_UNINSTALLED",
       eventId: eventId ?? null,
       shopDomain: shop,
+      operation: "mark_uninstalled",
+      stage: "transaction",
+      origin: "database",
       error,
       ackMs: Date.now() - startedAt,
     });

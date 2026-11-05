@@ -65,6 +65,8 @@ const child = spawn(
     "shopify",
     "app",
     "dev",
+    "--config",
+    "moda-interact",
     "--tunnel-url",
     shopifyTunnelUrl,
   ],
