@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const queuePorts = vi.hoisted(() => ({ construct: vi.fn(), close: vi.fn(), add: vi.fn() }));
-vi.mock("bullmq", () => ({ Queue: class { constructor() { queuePorts.construct(); } close = queuePorts.close; add = queuePorts.add; } }));
+const queuePorts = vi.hoisted(() => ({ construct: vi.fn(), close: vi.fn(), add: vi.fn(), on: vi.fn() }));
+vi.mock("bullmq", () => ({ Queue: class { constructor() { queuePorts.construct(); } close = queuePorts.close; add = queuePorts.add; on = queuePorts.on; } }));
 const output = vi.hoisted(() => ({ records: [] as unknown[], broken: false }));
 vi.mock("@modainteract/moda-interact-shared/logging", async importOriginal => {
   const actual = await importOriginal<typeof import("@modainteract/moda-interact-shared/logging")>();
@@ -59,4 +59,15 @@ it.each(["constructor", "close", "add"])("emits the actual safe postcommit %s fa
     const json = JSON.stringify(output.records); expect(json).toContain("original database marker"); expect(json).toContain("original cause");
     expect(json).not.toContain("private-token"); expect(json).not.toContain("secret-host");
   } finally { queuePorts.close.mockResolvedValue(undefined); await resetMerchantSupportQueueForTests(); vi.unstubAllEnvs(); }
+});
+
+it("owns idle translation queue emitter errors and isolates a throwing sink", async () => {
+  vi.stubEnv("REDIS_URL", "redis://fixture.invalid"); queuePorts.add.mockResolvedValue(undefined); queuePorts.close.mockResolvedValue(undefined);
+  try {
+    await enqueueTranslationBestEffort("translation-fixture"); output.records.length = 0;
+    const listener = queuePorts.on.mock.calls.at(-1)![1] as (error: Error) => void;
+    listener(failure()); expect(output.records).toHaveLength(1); const json = JSON.stringify(output.records);
+    expect(json).toContain("original database marker"); expect(json).toContain("original cause"); expect(json).not.toContain("private-token");
+    output.broken = true; expect(() => listener(new Error("sink isolated"))).not.toThrow();
+  } finally {await resetMerchantSupportQueueForTests(); vi.unstubAllEnvs();}
 });

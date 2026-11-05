@@ -68,12 +68,11 @@ export class SubscriptionEndedNotificationService {
         await this.dispatchTranslation(translationId);
       }
     } catch (error) {
-      const hasDatabaseCode = typeof error === "object" && error !== null && "code" in error;
       logBillingBoundaryFailure({
         event: "billing.subscription_ended_notification.failed",
         operation: "notify_subscription_ended",
         stage,
-        origin: stage === "notification_persistence" || hasDatabaseCode ? "database" : "transport",
+        origin: error instanceof Error && error.message === MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY ? "internal" : stage === "notification_persistence" ? "database" : "transport",
         shopId,
         identities: {
           provider: lifecycle.provider,

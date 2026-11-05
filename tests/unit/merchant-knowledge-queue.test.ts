@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, expect, it, vi} from "vitest";
-const mocks = vi.hoisted(() => ({construct: vi.fn(), add: vi.fn(), close: vi.fn(), records: [] as unknown[], broken: false}));
-vi.mock("bullmq", () => ({Queue: class {constructor() {mocks.construct();} add = mocks.add; close = mocks.close;}}));
+const mocks = vi.hoisted(() => ({construct: vi.fn(), add: vi.fn(), close: vi.fn(), on: vi.fn(), records: [] as unknown[], broken: false}));
+vi.mock("bullmq", () => ({Queue: class {constructor() {mocks.construct();} add = mocks.add; close = mocks.close; on = mocks.on;}}));
 vi.mock("@modainteract/moda-interact-shared/logging", async original => {
  const real = await original<typeof import("@modainteract/moda-interact-shared/logging")>();
  return {...real, createLogger: (options: Parameters<typeof real.createLogger>[0]) => real.createLogger({...options, sink: record => {if (mocks.broken) throw new Error("sink"); mocks.records.push(JSON.parse(JSON.stringify(record)));}})};
@@ -25,4 +25,13 @@ it("contains publication failure even if the actual Shared sink throws", async (
 });
 it("reports successful publication without diagnostics", async () => {
  expect(await enqueueMerchantKnowledgeRevisionBestEffort(input)).toBe(true); expect(mocks.add).toHaveBeenCalledOnce(); expect(mocks.records).toEqual([]);
+});
+
+it("owns an idle queue emitter error through real Shared output", async () => {
+  expect(await enqueueMerchantKnowledgeRevisionBestEffort(input)).toBe(true); mocks.records.length = 0;
+  const error = Object.assign(new Error("idle queue source marker", {cause: new Error("idle queue cause")}), {code: "ECONNREFUSED"});
+  const listener = mocks.on.mock.calls.at(-1)![1] as (error: Error) => void;
+  listener(error); const json = JSON.stringify(mocks.records);
+  expect(mocks.records).toHaveLength(1); for (const marker of ["idle queue source marker", "idle queue cause", "ECONNREFUSED", "transport"]) expect(json).toContain(marker);
+  mocks.broken = true; expect(() => listener(new Error("sink isolated"))).not.toThrow();
 });

@@ -43,7 +43,8 @@
     "test:merchant-knowledge:router": "vitest run tests/integration/merchant-knowledge-router.test.tsx",
     "test:merchant-knowledge:postgres": "MODA_DISPOSABLE_INTEGRATION=1 vitest run tests/integration/merchant-knowledge-source-lifecycle.integration.test.ts tests/integration/merchant-knowledge-upload.integration.test.ts tests/integration/merchant-knowledge-ordering.postgres.test.ts tests/integration/merchant-knowledge-finalization.postgres.test.ts",
     "test:shopify-webhooks": "vitest run tests/unit/webhooks tests/unit/otel/shopify-webhook-ingress-traceid.test.js tests/unit/otel/shopify-webhook-telemetry.test.js",
-    "test:shopify-webhooks:redis": "MODA_SHOPIFY_WEBHOOK_REDIS=1 vitest run tests/integration/shopify-webhook-publication.redis.integration.test.ts tests/integration/shopify-webhook-queue-telemetry.test.ts"
+    "test:shopify-webhooks:redis": "MODA_SHOPIFY_WEBHOOK_REDIS=1 vitest run tests/integration/shopify-webhook-publication.redis.integration.test.ts tests/integration/shopify-webhook-queue-telemetry.test.ts",
+    "test:server-diagnostics": "vitest run tests/unit/server-error-boundaries.test.ts tests/unit/server-error-fallbacks.test.ts tests/unit/server-error-privacy.test.ts tests/unit/platform-configuration/service.test.ts tests/unit/platform-configuration/shopify-oauth-bootstrap.test.ts tests/unit/pending-recovery-reader.test.ts tests/unit/health/health-check.server.test.ts"
   },
   "type": "module",
   "engines": {

@@ -1,3 +1,4 @@
+import { recordServerRenderFailure, recordUnhandledRequestFailure } from "./services/observability/shopify-runtime-observability.server";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter } from "react-router";
@@ -7,6 +8,12 @@ import { addDocumentResponseHeaders } from "./shopify.server";
 
 export const streamTimeout = 5000;
 
+/**
+ * @param {Request} request
+ * @param {number} responseStatusCode
+ * @param {Headers} responseHeaders
+ * @param {import("react-router").EntryContext} reactRouterContext
+ */
 export default async function handleRequest(
   request,
   responseStatusCode,
@@ -35,11 +42,12 @@ export default async function handleRequest(
           pipe(body);
         },
         onShellError(error) {
+          recordServerRenderFailure({error, stage: "shell"});
           reject(error);
         },
         onError(error) {
           responseStatusCode = 500;
-          console.error(error);
+          recordServerRenderFailure({error, stage: "render"});
         },
       },
     );
@@ -48,4 +56,9 @@ export default async function handleRequest(
     // React has enough time to flush down the rejected boundary contents
     setTimeout(abort, streamTimeout + 1000);
   });
+}
+
+/** @param {unknown} error @param {{request: Request}} context */
+export function handleError(error, { request }) {
+  recordUnhandledRequestFailure({error, method: request.method});
 }

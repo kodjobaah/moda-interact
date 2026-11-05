@@ -73,7 +73,7 @@ export function classifyBillingVerificationFailure(
   };
 }
 
-function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): SafeText | null {
+export function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): SafeText | null {
   if (typeof value !== "string") return null;
   let text = value;
   let redacted = false;
@@ -240,6 +240,10 @@ export function logBillingBoundaryFailure(input: {
   error?: unknown;
   origin?: ShopifyBillingFailureOrigin;
   reasonCode?: string;
+  diagnosticError?: unknown;
+  sensitiveValues?: string[];
+  redactionApplied?: boolean;
+  truncated?: boolean;
 }, diagnosticLogger: StructuredLogger = logger): void {
   if (input.error instanceof ShopifyBillingProviderError && input.error.sourceDiagnosticEmitted) return;
   if (typeof input.error === "object" && input.error !== null) {
@@ -252,13 +256,15 @@ export function logBillingBoundaryFailure(input: {
     }
   }
 
-  const safeError = input.error === undefined ? null : safeErrorValue(input.error, []);
-  const causes = input.error === undefined ? null : causeChain(input.error, []);
+  const diagnostic = input.diagnosticError === undefined ? input.error : input.diagnosticError;
+  const sensitive = input.sensitiveValues ?? [];
+  const safeError = diagnostic === undefined ? null : safeErrorValue(diagnostic, sensitive);
+  const causes = diagnostic === undefined ? null : causeChain(diagnostic, sensitive);
   const identities = Object.fromEntries(Object.entries(input.identities ?? {}).map(([key, value]) => {
-    const safe = safeText(value, [], 256);
+    const safe = safeText(value, sensitive, 256);
     return [key, safe?.value ?? null];
   }));
-  const code = input.error === undefined ? undefined : databaseCode(input.error);
+  const code = diagnostic === undefined ? undefined : databaseCode(diagnostic);
   try {
     diagnosticLogger.error(input.event, {
       operation: input.operation,
@@ -270,8 +276,8 @@ export function logBillingBoundaryFailure(input: {
       ...(safeError ? { error: safeError.value } : {}),
       ...(causes ? { causeChain: causes.causes } : {}),
       ...(code ? { databaseCode: code } : {}),
-      redactionApplied: Boolean(safeError?.redacted || causes?.redacted),
-      truncated: Boolean(safeError?.truncated || causes?.truncated),
+      redactionApplied: Boolean(input.redactionApplied || safeError?.redacted || causes?.redacted),
+      truncated: Boolean(input.truncated || safeError?.truncated || causes?.truncated),
     });
   } catch {
     // Diagnostics must not change the failure or best-effort policy of the caller.

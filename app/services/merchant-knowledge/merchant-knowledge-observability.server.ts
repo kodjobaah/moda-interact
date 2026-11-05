@@ -116,3 +116,8 @@ export function recordMerchantKnowledgeFailure(input: {
       emit(event, evidence);
     } });
 }
+
+export function recordMerchantKnowledgeQueueFailure(queueName: string, error: unknown): void {
+  logBillingBoundaryFailure({event: "merchant_knowledge.queue.connection_failed", operation: "knowledge_queue_connection",
+    stage: "connection", origin: "transport", identities: {queue: queueName}, error}, {...logger, error: logger.warn});
+}
