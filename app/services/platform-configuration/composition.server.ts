@@ -8,8 +8,8 @@ import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { createShopifyPlatformConfigurationService } from "./service.server";
 
 /**
- * Server-only composition for SHOPIFY-002. The Shopify app's synchronous
- * shopifyApp construction and every current runtime consumer are unchanged.
+ * Server-only composition of operation-scoped sealed configuration reads,
+ * deployment environment and the unseal keyring for Shopify runtime consumers.
  */
 export function createDefaultShopifyPlatformConfigurationService() {
   const environment = resolveDeploymentEnvironmentName();

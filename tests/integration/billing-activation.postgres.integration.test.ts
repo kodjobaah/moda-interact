@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -112,8 +113,16 @@ describeWithDatabase("Billing activation PostgreSQL locks and projections", () =
     const database = fixture!.database;
     const seed = await createPaidActivationFixture(database, "paid-replay");
     const service = billingServiceFor(database, seed.planHandle, seed.usageEventHandle);
-    const activation = await service.preparePaidActivation(seed.shopId, seed.planHandle);
+    expect(await database.billingOperation.count({where: {shopId: seed.shopId}})).toBe(0);
+    let activation = await service.preparePaidActivation(seed.shopId, seed.planHandle);
     expect(activation?.token).toBeTruthy();
+    const operation = await database.billingOperation.findFirstOrThrow({where: {shopId: seed.shopId}});
+    const digest = createHash("sha256").update(`shopify-billing-operation-key-v1\nSUBSCRIPTION_CREATE\n${activation!.token!.subscriptionId}\n${seed.merchantPricingPlanId}\n`, "utf8").digest("hex");
+    expect(operation.requestKey).toBe(`shopify:subscription_create:${digest}`);
+    expect(Buffer.from(operation.requestFingerprint).toString("hex")).toBe(createHash("sha256").update(`shopify-billing-recurring-v1\nSUBSCRIPTION_CREATE\n${seed.shopId}\n${seed.merchantPricingPlanId}\n1200\nUSD\nEVERY_30_DAYS\n`, "utf8").digest("hex"));
+    activation = await service.preparePaidActivation(seed.shopId, seed.planHandle);
+    expect(activation?.token).toBeTruthy();
+    expect(await database.billingOperation.findMany({where: {shopId: seed.shopId}, select: {id: true}})).toEqual([{id: operation.id}]);
 
     const firstSync = fixture!.createClient("billing-same-token-first");
     const secondSync = fixture!.createClient("billing-same-token-second");
@@ -145,6 +154,9 @@ describeWithDatabase("Billing activation PostgreSQL locks and projections", () =
     expect(await database.billingPeriodEntitlementCounter.count({ where: { billingPeriodId: period.id } })).toBe(1);
     expect(await database.shopEntitlementCounter.count({ where: { shopId: seed.shopId, counter: "LIFETIME_FREE_RECOVERY_CREDITS" } })).toBe(1);
 
+    expect(await database.billingOperation.findMany({where: {shopId: seed.shopId}, select: {id: true, state: true}})).toEqual([{id: operation.id, state: "CONFIRMED"}]);
+    expect(period.includedRecoveryCreditsGranted).toBe(25);
+    expect(await database.billingPeriodEntitlementCounter.findFirstOrThrow({where: {billingPeriodId: period.id}})).toMatchObject({grantedQuantity: 25});
     const updatedAt = period.updatedAt;
     await database.billingPeriodEntitlementCounter.deleteMany({ where: { billingPeriodId: period.id } });
     queryLog = [];
@@ -156,6 +168,8 @@ describeWithDatabase("Billing activation PostgreSQL locks and projections", () =
 
     const replayedPeriod = await database.billingPeriod.findUniqueOrThrow({ where: { id: period.id } });
     expect(replayedPeriod.updatedAt).toEqual(updatedAt);
+    expect(replayedPeriod.includedRecoveryCreditsGranted).toBe(25);
+    expect(await database.billingOperation.count({where: {shopId: seed.shopId}})).toBe(1);
     expect(await database.billingPeriodEntitlementCounter.count({ where: { billingPeriodId: period.id } })).toBe(1);
     expect(queryLog.some((query) => /UPDATE\s+"billing"\."BillingPeriod"/i.test(query))).toBe(false);
     expect(queryLog.some((query) => /INSERT INTO\s+"billing"\."BillingPeriodEntitlementCounter"/i.test(query))).toBe(true);

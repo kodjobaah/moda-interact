@@ -1,5 +1,5 @@
 // Repository-local timestamp normalisation shared by the recovery-focused
-// webhook normalizers (ARCH-001-SHOPIFY-001).
+// webhook normalizers.
 //
 // Shopify delivers provider timestamps that may carry an explicit UTC offset
 // (e.g. "2021-12-31T19:00:00-05:00"), while the canonical v2 contract expects

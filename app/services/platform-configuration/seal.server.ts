@@ -44,7 +44,8 @@ export function parseSealedEnvelope(key: ShopifyConfigurationKey, value: unknown
   return { keyId: value.wrappingKeyId as string, nonce, ciphertext, authTag };
 }
 
-/** Byte-for-byte ADMIN-002 AAD, not Shopify provider or grant AAD. */
+/** AAD is the JSON array [namespace, environment, key, version, envelopeVersion], in that order.
+ * This platform-configuration contract is separate from provider and grant AAD. */
 export function platformConfigurationAAD(
   environment: string, key: ShopifyConfigurationKey, version: number,
 ): string {

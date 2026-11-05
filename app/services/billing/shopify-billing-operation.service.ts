@@ -58,7 +58,7 @@ function assertCanonicalField(value: string): void {
 function operationRequestKey(kind: BillingOperationKind, fields: readonly string[]): string {
   for (const value of fields) assertCanonicalField(value);
   const digest = createHash("sha256")
-    .update(`arch027-shopify-operation-key-v1\n${kind}\n${fields.join("\n")}\n`, "utf8")
+    .update(`shopify-billing-operation-key-v1\n${kind}\n${fields.join("\n")}\n`, "utf8")
     .digest("hex");
   return `shopify:${kind.toLowerCase()}:${digest}`;
 }
@@ -72,7 +72,7 @@ export function shopifyRecurringRequestFingerprint(input: {
   quotedBillingPeriod?: MerchantPricingBillingPeriod | null;
 }): Buffer {
   assertCanonicalField(input.shopId);
-  const fields = ["arch027-recurring-v1", input.kind, input.shopId];
+  const fields = ["shopify-billing-recurring-v1", input.kind, input.shopId];
   if (input.kind !== BillingOperationKind.CANCEL) {
     if (
       !input.merchantPricingPlanId ||
@@ -113,7 +113,7 @@ export function shopifyOneTimeChargeRequestFingerprint(input: {
     throw new TypeError("Shopify one-time charge quote must be a positive safe integer.");
   }
   return createHash("sha256").update(
-    `arch027-topup-v1\nONE_TIME_CHARGE\n${input.shopId}\n${input.merchantPricingUsageEventId}\n${input.quotedAmountMinor}\n${input.quotedCurrency}\n`,
+    `shopify-billing-topup-v1\nONE_TIME_CHARGE\n${input.shopId}\n${input.merchantPricingUsageEventId}\n${input.quotedAmountMinor}\n${input.quotedCurrency}\n`,
     "utf8",
   ).digest();
 }

@@ -1,4 +1,4 @@
-/** ARCH-043 Shopify-owned, server-only contracts. Never serialize returned secrets. */
+/** Shopify-owned, server-only configuration contracts. Never serialize returned secrets. */
 export type ShopifyConfigurationKey = "merchant.knowledge.r2" | "shopify.oauth" | "shopify.partner" | "messaging.sender";
 export type ShopifyConfigurationErrorCode =
   | "INVALID_ENVIRONMENT" | "DATABASE_UNAVAILABLE" | "MISSING" | "DISABLED"
