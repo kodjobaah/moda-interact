@@ -1,5 +1,5 @@
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
+import { shopifyOfflineCoordination } from "@/services/shopify-offline-coordination.server";
 import { shopifyBrandReadGrant } from "@/services/shopify-brand/shopify-brand-read-scope";
 import {
   buildDiscountSyncJob,
@@ -7,7 +7,6 @@ import {
   isDiscountSyncEligible,
   markDiscountCatalogueSyncRequired,
   markDiscountCatalogueUnavailable,
-  lockShopLifecycleRow,
 } from "@/services/discounts/shopify-discount-lifecycle.service";
 import { publishShopifyDiscountSyncJob } from "@/services/webhooks/shopify-webhook-queue.server";
 import {
@@ -44,24 +43,20 @@ export const action = async ({ request }) => {
     const current = payload.current.toString();
     const requestedAt = new Date();
 
-    const syncRequest = await db.$transaction(async (transaction) => {
-      const shopIdentity = await transaction.shop.findUnique({
-        where: { domain: shop },
-        select: { id: true },
-      });
-      if (!shopIdentity) return null;
-
-      await lockShopLifecycleRow(transaction, shopIdentity.id);
+    const syncRequest = await shopifyOfflineCoordination.withLifecycleLock(
+      shop,
+      async ({ transaction, shop: currentShop }) => {
+      if (!currentShop) return null;
       if (session) {
         const sessionUpdate = await transaction.session.updateMany({
-          where: { id: session.id, shop: shop.trim().toLowerCase() },
+          where: { id: session.id, shop: currentShop.domain },
           data: { scope: current },
         });
         missingAuthenticatedSession = sessionUpdate.count === 0;
       }
 
       const shopRecord = await transaction.shop.findUnique({
-        where: { id: shopIdentity.id },
+        where: { id: currentShop.id },
         select: {
           id: true,
           domain: true,
@@ -92,7 +87,9 @@ export const action = async ({ request }) => {
 
       await markDiscountCatalogueSyncRequired(transaction, shopRecord.id, requestedAt);
       return { shopId: shopRecord.id, shopDomain: shopRecord.domain };
-    });
+      },
+      { sessionId: session?.id ?? null },
+    );
 
     if (syncRequest) {
       await publishShopifyDiscountSyncJob({

@@ -18,6 +18,7 @@ import {createShopifyPlatformConfigurationService} from "../../app/services/plat
 import {platformConfigurationAAD} from "../../app/services/platform-configuration/seal.server";
 import {encryptCredential, parseCredentialKeyring} from "@modainteract/moda-interact-shared/security/credentials/node";
 import {logBillingBoundaryFailure} from "../../app/services/billing/providers/shopify-billing-diagnostics.server";
+import {recordShopifySdkDiagnostic} from "../../app/services/observability/shopify-runtime-observability.server";
 const credentials = {version: 1, apiKey: "oauth-public-sentinel", apiSecret: "oauth-private-sentinel"};
 const client = {authenticate: {}, unauthenticated: {}, sessionStorage: {}, addDocumentResponseHeaders: vi.fn(), login: vi.fn(), registerWebhooks: vi.fn()};
 beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); output.records.length = 0; output.broken = false; ports.read.mockResolvedValue(credentials); ports.construct.mockReturnValue(client);});
@@ -67,6 +68,18 @@ it("omits opaque SDK prefix JSON honestly instead of logging arbitrary provider 
   await import("../../app/shopify.server.js");
   ports.construct.mock.calls[0][0].logger.log(0, '[sdk/ERROR] body: {"opaque-secret":"customer-sentinel"}');
   expect(JSON.stringify(output.records)).not.toContain("customer-sentinel"); expect(JSON.stringify(output.records)).toContain("OPAQUE_SDK_CONTENT_OMITTED");
+});
+it("omits all SDK diagnostic text during coordinated auth, including token and JWT canaries", () => {
+  const canaries = ["access-token-canary", "refresh-token-canary", "jwt-canary", "oauth-client-secret-canary"];
+  recordShopifySdkDiagnostic({
+    severity: LogSeverity.Error,
+    message: `OAuth failed ${canaries.join(" ")}`,
+    sensitiveValues: canaries,
+    redactEntireMessage: true,
+  });
+  const json = JSON.stringify(output.records);
+  for (const canary of canaries) expect(json).not.toContain(canary);
+  expect(json).toContain("COORDINATED_AUTH_DIAGNOSTIC_OMITTED");
 });
 it("central optional diagnostic projection/sensitive values preserve wrapper identity and existing ownership", () => {
   const cause = new Error("source original marker", {cause: new Error("source cause marker")});

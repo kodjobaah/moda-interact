@@ -13,6 +13,8 @@ const shop = {
 const dbMock = {
   $transaction: vi.fn(),
   $queryRaw: vi.fn(),
+  $queryRawUnsafe: vi.fn(),
+  $executeRawUnsafe: vi.fn(),
   shop: {
     findUnique: vi.fn(),
     upsert: vi.fn(),
@@ -22,6 +24,7 @@ const dbMock = {
   session: {
     deleteMany: vi.fn(),
     findFirst: vi.fn(),
+    findMany: vi.fn(),
   },
   subscription: {
     findUnique: vi.fn(),
@@ -66,6 +69,8 @@ function adminFor(shopData: Record<string, unknown>) {
 beforeEach(() => {
   dbMock.$transaction.mockReset();
   dbMock.$queryRaw.mockReset();
+  dbMock.$queryRawUnsafe.mockReset().mockResolvedValue([]);
+  dbMock.$executeRawUnsafe.mockReset().mockResolvedValue(1);
   dbMock.shop.findUnique.mockReset().mockResolvedValue(null);
   dbMock.shop.upsert.mockReset();
   dbMock.shop.update.mockReset();
@@ -76,6 +81,7 @@ beforeEach(() => {
     expires: null,
     refreshToken: null,
   });
+  dbMock.session.findMany.mockReset().mockResolvedValue([]);
   dbMock.subscription.updateMany.mockReset();
   dbMock.subscription.findUnique.mockReset().mockResolvedValue(null);
   dbMock.subscription.upsert.mockReset();
@@ -103,8 +109,8 @@ beforeEach(() => {
 describe("ShopService.markUninstalled", () => {
   it("marks the shop while preserving the subscription projection", async () => {
     dbMock.shop.findUnique
-      .mockResolvedValueOnce({ id: shop.id })
-      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: null });
+      .mockResolvedValueOnce(shop)
+      .mockResolvedValueOnce({ ...shop, uninstalledAt: null });
     const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
 
     await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
@@ -148,8 +154,8 @@ describe("ShopService.markUninstalled", () => {
   it("preserves replacement sessions and the first timestamp for duplicate delivery", async () => {
     const persistedAt = new Date("2026-09-08T10:00:00.000Z");
     dbMock.shop.findUnique
-      .mockResolvedValueOnce({ id: shop.id })
-      .mockResolvedValueOnce({ id: shop.id, uninstalledAt: persistedAt });
+      .mockResolvedValueOnce(shop)
+      .mockResolvedValueOnce({ ...shop, uninstalledAt: persistedAt });
     const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
 
     await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
@@ -171,7 +177,8 @@ describe("ShopService.markUninstalled", () => {
     const persistedAt = new Date("2026-09-08T10:00:00.000Z");
     const retryAt = new Date("2026-09-08T11:00:00.000Z");
     dbMock.shop.findUnique
-      .mockResolvedValueOnce({ id: shop.id })
+      .mockResolvedValueOnce(shop)
+      .mockResolvedValueOnce({ ...shop, uninstalledAt: null })
       .mockResolvedValueOnce({ id: shop.id, uninstalledAt: persistedAt });
     dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
 

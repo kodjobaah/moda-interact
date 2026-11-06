@@ -24,7 +24,16 @@ export function recordShopifyBootstrapFailure(input: {error: unknown; stage: "oa
 }
 
 /** Installed SDK supplies severity and formatted text only; never reconstruct opaque context fields. */
-export function recordShopifySdkDiagnostic(input: {severity: number; message: string; sensitiveValues?: string[]}): void {
+export function recordShopifySdkDiagnostic(input: {severity: number; message: string; sensitiveValues?: string[]; redactEntireMessage?: boolean}): void {
+  if (input.redactEntireMessage) {
+    const level = input.severity === 0 ? "error" : input.severity === 1 ? "warn" : input.severity === 2 ? "info" : "debug";
+    logger[level]("shopify.sdk.diagnostic", sanitizeLogFields({
+      operation: "sdk_log", stage: "coordinated_auth", origin: "sdk_exception", sdkSeverity: input.severity,
+      message: "Shopify SDK diagnostic omitted during coordinated authentication.",
+      reasonCode: "COORDINATED_AUTH_DIAGNOSTIC_OMITTED", redactionApplied: true,
+    }));
+    return;
+  }
   const suffix = input.message.indexOf(" | {");
   let message = suffix >= 0 ? input.message.slice(0, suffix) : input.message;
   const opaque = message.search(/[{}\r\n]|\[\s*["{]|\b(?:request|response|session|headers|body|payload|variables|data)\s*[:=]/i);
