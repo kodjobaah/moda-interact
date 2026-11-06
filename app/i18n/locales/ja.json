@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "マーチャントと顧客のAI支援会話です。",
   "merchantFeatures.features.product_search.name": "商品検索",
   "merchantFeatures.features.product_search.description": "顧客との会話中にストアの商品を検索します。",
-  "merchantFeatures.features.order_support.name": "注文サポート",
-  "merchantFeatures.features.order_support.description": "注文に関する顧客との会話をサポートします。",
   "storeProfile.title": "ストアプロフィール",
   "storeProfile.description": "ストアを最もよく表すカテゴリを選択してください。変更すると、今後の会話で使用されるアシスタントの指示が更新されます。",
   "storeProfile.activeCategory": "現在のカテゴリ",

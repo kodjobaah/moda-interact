@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "Conversas com lojistas e clientes assistidas por IA.",
   "merchantFeatures.features.product_search.name": "Pesquisa de produtos",
   "merchantFeatures.features.product_search.description": "Pesquise produtos da loja durante conversas com clientes.",
-  "merchantFeatures.features.order_support.name": "Suporte a pedidos",
-  "merchantFeatures.features.order_support.description": "Atenda conversas de clientes relacionadas a pedidos.",
   "storeProfile.title": "Perfil da loja",
   "storeProfile.description": "Escolha a categoria que melhor descreve sua loja. As alterações atualizam as instruções do assistente usadas em conversas futuras.",
   "storeProfile.activeCategory": "Categoria ativa",

@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "판매자와 고객을 위한 AI 지원 대화입니다.",
   "merchantFeatures.features.product_search.name": "상품 검색",
   "merchantFeatures.features.product_search.description": "고객 대화 중에 스토어 상품을 검색합니다.",
-  "merchantFeatures.features.order_support.name": "주문 지원",
-  "merchantFeatures.features.order_support.description": "주문 관련 고객 대화를 지원합니다.",
   "storeProfile.title": "스토어 프로필",
   "storeProfile.description": "스토어를 가장 잘 설명하는 카테고리를 선택하세요. 변경하면 이후 대화에 사용되는 어시스턴트 지침이 업데이트됩니다.",
   "storeProfile.activeCategory": "활성 카테고리",

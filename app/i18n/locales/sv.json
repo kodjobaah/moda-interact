@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "AI-assisterade samtal med handlare och kunder.",
   "merchantFeatures.features.product_search.name": "Produktsökning",
   "merchantFeatures.features.product_search.description": "Sök efter butikens produkter under kundsamtal.",
-  "merchantFeatures.features.order_support.name": "Ordersupport",
-  "merchantFeatures.features.order_support.description": "Stöd kundsamtal som rör beställningar.",
   "storeProfile.title": "Butiksprofil",
   "storeProfile.description": "Välj den kategori som bäst beskriver din butik. Ändringar uppdaterar assistentens instruktioner för framtida konversationer.",
   "storeProfile.activeCategory": "Aktiv kategori",

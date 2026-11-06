@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "由 AI 辅助的商家和客户对话。",
   "merchantFeatures.features.product_search.name": "商品搜索",
   "merchantFeatures.features.product_search.description": "在客户对话期间搜索店铺商品。",
-  "merchantFeatures.features.order_support.name": "订单支持",
-  "merchantFeatures.features.order_support.description": "支持与订单相关的客户对话。",
   "storeProfile.title": "店铺资料",
   "storeProfile.description": "选择最能描述您店铺的类别。更改会更新用于后续对话的助手指令。",
   "storeProfile.activeCategory": "当前类别",

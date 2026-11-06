@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "การสนทนากับผู้ค้าและลูกค้าโดยมี AI ช่วย",
   "merchantFeatures.features.product_search.name": "ค้นหาสินค้า",
   "merchantFeatures.features.product_search.description": "ค้นหาสินค้าในร้านระหว่างการสนทนากับลูกค้า",
-  "merchantFeatures.features.order_support.name": "การช่วยเหลือเรื่องคำสั่งซื้อ",
-  "merchantFeatures.features.order_support.description": "ช่วยเหลือการสนทนากับลูกค้าที่เกี่ยวกับคำสั่งซื้อ",
   "storeProfile.title": "โปรไฟล์ร้านค้า",
   "storeProfile.description": "เลือกหมวดหมู่ที่อธิบายร้านค้าของคุณได้ดีที่สุด การเปลี่ยนแปลงจะอัปเดตคำแนะนำของผู้ช่วยที่ใช้ในการสนทนาในอนาคต",
   "storeProfile.activeCategory": "หมวดหมู่ที่ใช้งานอยู่",

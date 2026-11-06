@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "由 AI 輔助的商家與顧客對話。",
   "merchantFeatures.features.product_search.name": "商品搜尋",
   "merchantFeatures.features.product_search.description": "在顧客對話期間搜尋商店商品。",
-  "merchantFeatures.features.order_support.name": "訂單支援",
-  "merchantFeatures.features.order_support.description": "支援與訂單相關的顧客對話。",
   "storeProfile.title": "商店資料",
   "storeProfile.description": "選擇最能描述您商店的類別。變更會更新用於後續對話的助理指示。",
   "storeProfile.activeCategory": "目前類別",
