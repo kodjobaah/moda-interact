@@ -441,11 +441,11 @@ describe("ShopService.resolveShopifyShop", () => {
     const service = new ShopService();
     await service.resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
     await service.resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
 
     expect(dbMock.subscription.upsert).toHaveBeenCalledTimes(1);
@@ -496,7 +496,7 @@ describe("ShopService.resolveShopifyShop", () => {
 
       await new ShopService().resolveShopifyShop({
         admin,
-        domain: shop.domain,
+        sessionShop: shop.domain,
       });
 
       expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
@@ -518,7 +518,7 @@ describe("ShopService.resolveShopifyShop", () => {
 
     await new ShopService().resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
 
     expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith({
@@ -591,7 +591,7 @@ describe("ShopService.resolveShopifyShop", () => {
 
     await new ShopService().resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
 
     expect(dbMock.shop.update).toHaveBeenCalledWith({
@@ -622,7 +622,7 @@ describe("ShopService.resolveShopifyShop", () => {
       shopLocales: [{ locale: "haw-US", primary: true, published: true }],
     });
 
-    await new ShopService().resolveShopifyShop({ admin, domain: shop.domain });
+    await new ShopService().resolveShopifyShop({ admin, sessionShop: shop.domain });
 
     expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
       create: expect.objectContaining({
@@ -647,7 +647,7 @@ describe("ShopService.resolveShopifyShop", () => {
 
     await new ShopService().resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
 
     expect(dbMock.shop.upsert).toHaveBeenCalledWith({
@@ -680,7 +680,7 @@ describe("ShopService.resolveShopifyShop", () => {
 
     await new ShopService().resolveShopifyShop({
       admin,
-      domain: shop.domain,
+      sessionShop: shop.domain,
     });
 
     expect(dbMock.shopSettings.upsert).toHaveBeenCalledWith(
@@ -710,7 +710,7 @@ describe("merchant snapshot source diagnostics", () => {
     dbMock.subscription.findUnique.mockResolvedValue({id: "subscription", status: "FROZEN"});
     dbMock.shopSettings.findUnique.mockResolvedValue({id: "settings"});
     const snapshot = await new ShopService().resolveShopifyMerchantSnapshot({
-      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
     });
     expect(snapshot.subscription.status).toBe("FROZEN");
     expect(dbMock.subscription.findUnique).toHaveBeenCalledExactlyOnceWith({where: {shopId: shop.id}});
@@ -723,7 +723,7 @@ describe("merchant snapshot source diagnostics", () => {
         extensions: {code: "PROFILE_DENIED"}}],
     }, {headers: {"x-request-id": "provider-request-marker"}}))} as unknown as AdminApiContext;
     try {
-      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, domain: shop.domain}))
+      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, sessionShop: shop.domain}))
         .rejects.toThrow("profile-original-marker");
       const emitted = records.join("\n");
       expect(emitted).toContain("profile-original-marker");
@@ -747,7 +747,7 @@ describe("merchant snapshot source diagnostics", () => {
       }),
     } as unknown as AdminApiContext;
     try {
-      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, domain: shop.domain})).rejects.toThrow();
+      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, sessionShop: shop.domain})).rejects.toThrow();
       const data = JSON.parse(records[0]).data;
       expect(data.origin).toBe(kind === "network" ? "transport" : "internal");
       expect(data.providerError).toBeUndefined();
@@ -768,7 +768,7 @@ describe("merchant snapshot source diagnostics", () => {
     dbMock.shop.findUnique.mockRejectedValue(error);
     try {
       await expect(new ShopService().resolveShopifyShop({
-        admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+        admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
       })).rejects.toBe(error);
       const emitted = records.join("\n");
       expect(emitted).toContain("original-database-marker");
@@ -784,8 +784,8 @@ describe("merchant snapshot source diagnostics", () => {
     dbMock.shop.findUnique.mockRejectedValueOnce(error);
     const admin = adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain});
     try {
-      await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(error);
-      await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).resolves.toEqual(shop);
+      await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(error);
+      await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).resolves.toEqual(shop);
     } finally {vi.restoreAllMocks();}
   });
 });
@@ -802,7 +802,7 @@ it("retains installed SDK GraphqlQueryError evidence without exposing its data b
   });
   const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
   try {
-    await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(source);
+    await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(source);
     const data = JSON.parse(records[0]).data;
     expect(data.origin).toBe("provider_response");
     expect(data.error.message).toBe("sdk-original-marker");
@@ -818,7 +818,7 @@ it("rejects an authenticated provider identity that conflicts with an existing l
   dbMock.shop.findUnique.mockResolvedValue({...shop, shopifyShopId: "gid://shopify/Shop/999"});
   try {
     await expect(new ShopService().resolveShopifyShop({
-      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), domain: shop.domain,
+      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
     })).rejects.toThrow("conflicts with local tenant identity");
     expect(dbMock.shop.upsert).not.toHaveBeenCalled();
     expect(dbMock.shop.update).not.toHaveBeenCalled();
@@ -838,7 +838,7 @@ it("retains actual SDK HTTP provider status and safe error excerpt", async () =>
   });
   const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
   try {
-    await expect(new ShopService().resolveShopifyShop({admin, domain: shop.domain})).rejects.toBe(source);
+    await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(source);
     const data = JSON.parse(records[0]).data;
     expect(data.origin).toBe("provider_response");
     expect(data.httpStatus).toBe(503);
@@ -854,7 +854,7 @@ it("retains actual SDK HTTP provider status and safe error excerpt", async () =>
 describe("merchant bootstrap unique-index race", () => {
   const input = () => ({admin: adminFor({
     shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain,
-  }), domain: shop.domain});
+  }), sessionShop: shop.domain});
   it("retries once against an exact committed tenant without another provider observation", async () => {
     const records: string[] = [];
     vi.spyOn(console, "warn").mockImplementation(record => {records.push(String(record));});
