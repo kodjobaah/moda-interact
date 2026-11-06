@@ -9,7 +9,7 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("knowledge fina
  beforeAll(async () => {f = await knowledgePostgres();}, 240000);
  afterAll(async () => {await f?.close();}, 60000);
  async function intent(shopId: string) {
-  return createMerchantKnowledgeUploadIntent({shopId, shopDomain: `${shopId}.myshopify.com`, purposeKey: "PRODUCT_INFORMATION", dataFormatKey: "CSV", originalFileName: "fixture.csv", contentType: "text/csv", sizeBytes: 10, database: f.db, config, r2});
+  return createMerchantKnowledgeUploadIntent({shopId, purposeKey: "PRODUCT_INFORMATION", dataFormatKey: "CSV", originalFileName: "fixture.csv", contentType: "text/csv", sizeBytes: 10, database: f.db, config, r2});
  }
  function input(shopId: string, assetId: string) { return {shopId, assetId, purposeKey: "PRODUCT_INFORMATION", name: "Fixture", languageTag: "en", sizeBytes: 10, sha256: "a".repeat(64), contentType: "text/csv", config, r2, queue: null}; }
  it("two separate finalizations have one committed source/revision and one existing conflict", async () => {

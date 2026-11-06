@@ -97,7 +97,7 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
   });
   it("first install creates one Shop, scalar subscription and settings atomically", async () => {
     resetCounts();
-    const shop = await service.resolveShopifyShop({admin, domain});
+    const shop = await service.resolveShopifyShop({admin, sessionShop: domain});
     expect(shop.domain).toBe(domain);
     const result = evidence(baseline ? "before-first-install" : "after-first-install");
     expect(result.providerCalls).toBe(1);
@@ -109,7 +109,7 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
     resetCounts();
     const outcomes = baseline
       ? await Promise.all([0, 1].map(async () => {
-        const shop = await service.resolveShopifyShop({admin, domain});
+        const shop = await service.resolveShopifyShop({admin, sessionShop: domain});
         const subscription = await database.subscription.findUnique({where: {shopId: shop.id}});
         return {id: shop.id, status: subscription?.status};
       }))
@@ -145,12 +145,12 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
   it("profile change updates only profile rows; unchanged replay performs no writes", async () => {
     provider.mockImplementation(async () => Response.json(profile("fr-CA")));
     resetCounts();
-    const shop = await service.resolveShopifyShop({admin, domain});
+    const shop = await service.resolveShopifyShop({admin, sessionShop: domain});
     expect(shop.defaultLanguageTag).toBe("fr-CA");
     expect(calls).not.toContain("Subscription.upsert");
     expect(evidence("profile-change").writes).toBe(2);
     resetCounts();
-    await service.resolveShopifyShop({admin, domain});
+    await service.resolveShopifyShop({admin, sessionShop: domain});
     expect(evidence("unchanged-replay").writes).toBe(0);
   });
   it.skipIf(baseline)("repairs both missing rows once across concurrent lazy callers", async () => {
@@ -198,7 +198,7 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
       const pids = await Promise.all(clients.map(client => client.$queryRaw<Array<{pid: number}>>`SELECT pg_backend_pid() AS pid`));
       expect(pids[0][0].pid).not.toBe(pids[1][0].pid);
       const shops = await Promise.all(clients.map(client =>
-        clientScope.run(client, () => service.resolveShopifyShop({admin, domain}))));
+        clientScope.run(client, () => service.resolveShopifyShop({admin, sessionShop: domain}))));
       expect(localReads).toBe(2);
       expect(shops[0].id).toBe(shops[1].id);
       expect(await database.shop.count({where: {domain}})).toBe(1);
@@ -214,7 +214,7 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
     breakBootstrap = true;
     resetCounts();
     try {
-      await expect(service.resolveShopifyShop({admin, domain})).rejects.toMatchObject({code: "P2003"});
+      await expect(service.resolveShopifyShop({admin, sessionShop: domain})).rejects.toMatchObject({code: "P2003"});
       expect(sql.some(text => /^ROLLBACK/.test(text))).toBe(true);
       expect(await database.shop.count({where: {domain}})).toBe(0);
     } finally {breakBootstrap = false;}

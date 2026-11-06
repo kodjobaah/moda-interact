@@ -30,7 +30,7 @@ import { recordShopifyLifecycleFailure } from "../webhooks/shopify-webhook-obser
 
 export interface ResolveShopifyShopInput {
   admin: AdminApiContext;
-  domain: string;
+  sessionShop: string;
 }
 
 export type ReinstallSchedule = {
@@ -50,7 +50,7 @@ const profileSchema = z.object({
   data: z.object({
     shop: z.object({
       shopifyShopId: z.string().regex(/^gid:\/\/shopify\/Shop\/[1-9][0-9]*$/),
-      myshopifyDomain: z.string().regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i),
+      myshopifyDomain: z.string().trim().min(1).max(255),
       ianaTimezone: z.string().nullish(),
       shopAddress: z.object({countryCodeV2: z.string().nullish()}).nullish(),
     }),
@@ -154,7 +154,7 @@ export class ShopService {
 
   private async resolveMerchantSnapshot({
     admin,
-    domain,
+    sessionShop,
   }: ResolveShopifyShopInput): Promise<{shop: Shop; subscription: Subscription; settings: ShopSettings}> {
     let origin: "transport" | "internal" | "provider_response" = "transport";
     let response: Response | undefined;
@@ -204,7 +204,7 @@ export class ShopService {
       const parsed = profileSchema.safeParse(body);
       if (!parsed.success) throw new Error("Malformed Shopify merchant profile identity");
       result = parsed.data;
-      if (normalizeShopDomain(result.data.shop.myshopifyDomain) !== normalizeShopDomain(domain)) {
+      if (normalizeShopDomain(result.data.shop.myshopifyDomain) !== normalizeShopDomain(sessionShop)) {
         throw new Error("Shop domain mismatch in authenticated merchant profile");
       }
     } catch (error) {

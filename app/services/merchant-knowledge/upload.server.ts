@@ -114,12 +114,6 @@ async function dependencies(input: {
   }
 }
 
-function parseShopDomain(value: unknown): string {
-  const domain = typeof value === "string" ? value.trim().toLowerCase() : "";
-  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(domain)) throw INVALID();
-  return domain;
-}
-
 function merchantKnowledgeStorageEnvironment(): string {
   const environment = resolveDeploymentEnvironmentName();
   if (!/^[a-z0-9][a-z0-9-]*$/.test(environment)) {
@@ -130,7 +124,6 @@ function merchantKnowledgeStorageEnvironment(): string {
 
 export async function createMerchantKnowledgeUploadIntent(input: {
   shopId: string;
-  shopDomain: unknown;
   purposeKey: unknown;
   dataFormatKey: unknown;
   originalFileName: unknown;
@@ -142,7 +135,6 @@ export async function createMerchantKnowledgeUploadIntent(input: {
   now?: () => Date;
 }) {
   const deps = await dependencies(input);
-  const shopDomain = parseShopDomain(input.shopDomain);
   const deploymentEnvironment = merchantKnowledgeStorageEnvironment();
   const purposeKey = parsePurpose(input.purposeKey);
   const formatKey = parseFormat(input.dataFormatKey);
@@ -172,7 +164,7 @@ export async function createMerchantKnowledgeUploadIntent(input: {
       const id = randomUUID();
       const now = input.now?.() ?? new Date();
       const uploadExpiresAt = new Date(now.getTime() + SIGNED_PUT_SECONDS * 1000);
-      const objectKey = `merchant-knowledge/${deploymentEnvironment}/${shopDomain}/${id}/source.${formatKey.toLowerCase()}`;
+      const objectKey = `merchant-knowledge/${deploymentEnvironment}/${encodeURIComponent(input.shopId)}/${id}/source.${formatKey.toLowerCase()}`;
       await transaction.merchantKnowledgeUploadedAsset.create({
         data: {
           id,

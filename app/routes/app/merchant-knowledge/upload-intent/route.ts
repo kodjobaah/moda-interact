@@ -33,7 +33,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   try {
     const intent = await createMerchantKnowledgeUploadIntent({
       shopId: shop.id,
-      shopDomain: shop.domain,
       ...body,
     });
     return Response.json(intent, { headers: { "Cache-Control": "no-store" } });

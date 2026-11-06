@@ -47,7 +47,6 @@ describe("public home route", () => {
       "accept-language": "en-GB,en;q=0.9",
     }));
 
-    expect(result).toMatchObject({ detectedShop: null });
     expect(result.pricingCatalogue).toHaveLength(1);
     expect(JSON.stringify(result.pricingCatalogue)).not.toContain("shopifyPlanHandle");
     expect(JSON.stringify(result.pricingCatalogue)).not.toContain("usageEvents");
@@ -71,17 +70,14 @@ describe("public home route", () => {
     expect(readActiveMerchantPricingCatalogue).not.toHaveBeenCalled();
   });
 
-  it("preserves the existing direct-shop redirect outside the embedded surface", async () => {
-    let response: Response | undefined;
-    try {
-      await loader(loaderArgs("https://example.test/?shop=eugene-bdx7mzhn.myshopify.com"));
-    } catch (error) {
-      response = error as Response;
-    }
+  it("does not discover or redirect an unknown custom storefront input", async () => {
+    const result = await loader(loaderArgs("https://example.test/?shop=store.custom.example"));
 
-    expect(response).toBeInstanceOf(Response);
-    expect(response?.headers.get("Location")).toContain("/app?shop=eugene-bdx7mzhn.myshopify.com");
-    expect(readActiveMerchantPricingCatalogue).not.toHaveBeenCalled();
+    expect(result).not.toHaveProperty("detectedShop");
+    expect(readActiveMerchantPricingCatalogue).toHaveBeenCalledOnce();
+    expect(routeSource).toContain("Start installation from your Shopify admin");
+    expect(routeSource).not.toMatch(/dns|lookup|resolve.*domain|MYSHOPIFY_DOMAIN/i);
+    expect(routeSource).not.toContain("detectedShopFromUrl");
   });
 
   it("renders contextual connection copy, canonical pricing, and the public Moda Interact link", () => {
