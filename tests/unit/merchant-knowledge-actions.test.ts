@@ -192,7 +192,6 @@ it("returns only the signed intent contract and derives tenant identity from Sho
   });
   expect(mocks.createMerchantKnowledgeUploadIntent).toHaveBeenCalledWith({
     shopId: "authenticated-shop",
-    shopDomain: "authenticated-shop.myshopify.com",
     purposeKey: "FAQ",
     dataFormatKey: "CSV",
     originalFileName: "help.csv",
