@@ -9,6 +9,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testconta
 import { Session } from "@shopify/shopify-api";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { ShopService } from "../../app/services/shop/shop.service";
+import { createCoordinatedShopifyAuthentication } from "../../app/services/shopify-offline-coordination.server";
 
 const execFileAsync = promisify(execFile);
 const repositoryRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -68,7 +69,10 @@ export async function startLifecyclePostgres(testName: string): Promise<Lifecycl
       queryLog,
       storage,
       storageSecond,
-      service(client = primary) { return new ShopService(client); },
+      service(client = primary) {
+        const coordination = createCoordinatedShopifyAuthentication({ database: client });
+        return new ShopService(client, coordination);
+      },
       async createShop(suffix, status = "ACTIVE") {
         const shop = { id: `${prefix}-${suffix}`, domain: `${prefix}-${suffix}.myshopify.com` };
         await primary.shop.create({ data: { ...shop, status } });

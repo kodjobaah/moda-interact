@@ -2,11 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   authenticateWebhook: vi.fn(),
-  transaction: vi.fn(),
+  lifecycleLock: vi.fn(),
   shopFindUnique: vi.fn(),
   sessionUpdateMany: vi.fn(),
   sessionFindFirst: vi.fn(),
-  lock: vi.fn(),
   isEligible: vi.fn(),
   hasScope: vi.fn(),
   markRequired: vi.fn(),
@@ -22,14 +21,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { webhook: mocks.authenticateWebhook },
 }));
-vi.mock("../../../app/db.server", () => ({
-  default: { $transaction: mocks.transaction },
+vi.mock("../../../app/services/shopify-offline-coordination.server", () => ({
+  shopifyOfflineCoordination: { withLifecycleLock: mocks.lifecycleLock },
 }));
 vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", () => ({
   buildDiscountSyncJob: mocks.buildJob,
   hasReadDiscountsScope: mocks.hasScope,
   isDiscountSyncEligible: mocks.isEligible,
-  lockShopLifecycleRow: mocks.lock,
   markDiscountCatalogueSyncRequired: mocks.markRequired,
   markDiscountCatalogueUnavailable: mocks.markUnavailable,
 }));
@@ -66,50 +64,36 @@ beforeEach(() => {
     shop: shopRecord.domain,
   });
   mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
-  mocks.shopFindUnique
-    .mockResolvedValueOnce({ id: shopRecord.id })
-    .mockResolvedValueOnce(shopRecord);
+  mocks.shopFindUnique.mockResolvedValue(shopRecord);
   mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });
   mocks.hasScope.mockReturnValue(true);
   mocks.isEligible.mockReturnValue(true);
   mocks.buildJob.mockReturnValue({ reason: "SCOPES_UPDATED" });
   mocks.publish.mockResolvedValue({ outcome: "enqueued" });
-  mocks.transaction.mockImplementation(async (callback) => callback({
-    shop: { findUnique: mocks.shopFindUnique },
-    session: {
-      updateMany: mocks.sessionUpdateMany,
-      findFirst: mocks.sessionFindFirst,
+  mocks.lifecycleLock.mockImplementation(async (_domain, callback) => callback({
+    transaction: {
+      shop: { findUnique: mocks.shopFindUnique },
+      session: { updateMany: mocks.sessionUpdateMany, findFirst: mocks.sessionFindFirst },
     },
+    shop: { ...shopRecord, platform: "SHOPIFY", uninstalledAt: null },
+    sessionId: "session-1",
   }));
 });
 
 describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
   it("locks Shop before persisting scope and publishes after the transaction", async () => {
-    let transactionResolved = false;
-    mocks.transaction.mockImplementation(async (callback) => {
-      const result = await callback({
-        shop: { findUnique: mocks.shopFindUnique },
-        session: {
-          updateMany: mocks.sessionUpdateMany,
-          findFirst: mocks.sessionFindFirst,
-        },
-      });
-      transactionResolved = true;
-      return result;
-    });
-
     await action({ request: request() });
 
-    expect(mocks.lock.mock.invocationCallOrder[0]).toBeLessThan(
+    expect(mocks.lifecycleLock.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.sessionUpdateMany.mock.invocationCallOrder[0],
     );
     expect(mocks.sessionUpdateMany.mock.invocationCallOrder[0]).toBeLessThan(
       mocks.sessionFindFirst.mock.invocationCallOrder[0],
     );
     expect(mocks.markRequired.mock.invocationCallOrder[0]).toBeGreaterThan(
-      mocks.lock.mock.invocationCallOrder[0],
+      mocks.lifecycleLock.mock.invocationCallOrder[0],
     );
-    expect(transactionResolved).toBe(true);
+    expect(mocks.lifecycleLock).toHaveBeenCalledWith(shopRecord.domain, expect.any(Function), { sessionId: "session-1" });
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     expect(mocks.webhookReceived).toHaveBeenCalledWith({
       request: expect.any(Request),
@@ -215,20 +199,11 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
 
   it("reports a queue failure only after scope intent commits and rethrows the original cause", async () => {
     const error = new Error("scope queue failure marker", { cause: new Error("scope queue cause") });
-    let transactionCommitted = false;
-    mocks.transaction.mockImplementation(async (callback) => {
-      const result = await callback({
-        shop: { findUnique: mocks.shopFindUnique },
-        session: { updateMany: mocks.sessionUpdateMany, findFirst: mocks.sessionFindFirst },
-      });
-      transactionCommitted = true;
-      return result;
-    });
     mocks.publish.mockRejectedValue(error);
 
     await expect(action({ request: request() })).rejects.toBe(error);
 
-    expect(transactionCommitted).toBe(true);
+    expect(mocks.lifecycleLock).toHaveBeenCalledTimes(1);
     expect(mocks.webhookRouteFailure).toHaveBeenCalledWith(expect.objectContaining({
       route: "/webhooks/app/scopes_update",
       shopDomain: shopRecord.domain,

@@ -1,5 +1,5 @@
 import { authenticate } from "@/shopify.server";
-import db from "@/db.server";
+import { shopifyOfflineCoordination } from "@/services/shopify-offline-coordination.server";
 import {
   recordShopifyWebhookAuthenticationFailure,
   recordShopifyWebhookReceived,
@@ -30,14 +30,17 @@ export const action = async ({ request }) => {
   const { shop, topic, eventId } = authenticated;
 
   try {
-    // Session is keyed by shop domain rather than shopId, so it isn't covered
-    // by the Shop row's cascading deletes and must be cleaned up separately.
-    await db.session.deleteMany({ where: { shop } });
+    await shopifyOfflineCoordination.withLifecycleLock(shop, async ({ transaction, shop: currentShop }) => {
+      const storedDomain = currentShop?.domain ?? shop;
+      // Session is keyed by shop domain rather than shopId, so it is not covered
+      // by the Shop row's cascading deletes and must be cleaned up separately.
+      await transaction.session.deleteMany({ where: { shop: storedDomain } });
 
-    // Deleting Shop cascades to ShopSettings, ShopBrand, Subscription,
-    // UsageEvent, BillingPeriod, Customer, CustomerPhone, CheckoutRecovery,
-    // Conversation and ConversationMessage.
-    await db.shop.deleteMany({ where: { domain: shop } });
+      // Deleting Shop cascades to its related merchant data.
+      await transaction.shop.deleteMany({
+        where: currentShop ? { id: currentShop.id } : { domain: shop },
+      });
+    });
 
     recordShopifyWebhookRouteOutcome({
       request,

@@ -20,6 +20,7 @@ import {
 } from "@modainteract/moda-interact-shared/internationalization";
 
 import prisma from "../../db.server";
+import { shopifyOfflineCoordination, type CoordinatedShopifyAuthentication } from "../shopify-offline-coordination.server";
 import {
   lockShopLifecycleRow,
   markDiscountCatalogueUnavailable,
@@ -116,7 +117,10 @@ class MerchantProfileFailure extends Error {
 }
 
 export class ShopService {
-  constructor(private readonly database: PrismaClient = prisma) {}
+  constructor(
+    private readonly database: PrismaClient = prisma,
+    private readonly coordination: Pick<CoordinatedShopifyAuthentication, "withLifecycleLock"> = shopifyOfflineCoordination,
+  ) {}
 
   private async hasUsableOfflineSession(
     transaction: Prisma.TransactionClient,
@@ -631,24 +635,12 @@ export class ShopService {
   ): Promise<ShopifyUninstallResult> {
     const normalizedDomain = normalizeShopDomain(domain);
 
-    return this.database.$transaction<ShopifyUninstallResult>(async (transaction: Prisma.TransactionClient) => {
-      const shopIdentity = await transaction.shop.findUnique({
-        where: { domain: normalizedDomain },
-        select: { id: true },
-      });
-
-      if (!shopIdentity) {
+    return this.coordination.withLifecycleLock<ShopifyUninstallResult>(normalizedDomain, async ({ transaction, shop }) => {
+      if (!shop) {
         return { kind: "SHOP_NOT_FOUND" };
       }
 
-      await lockShopLifecycleRow(transaction, shopIdentity.id);
-      const shop = await transaction.shop.findUnique({
-        where: { id: shopIdentity.id },
-        select: { id: true, uninstalledAt: true },
-      });
-      if (!shop) return { kind: "SHOP_NOT_FOUND" };
-
-      let firstUninstalledAt = shop.uninstalledAt;
+      let firstUninstalledAt = shop.uninstalledAt ?? null;
       let deletedSessionCount: number | null = null;
       if (!firstUninstalledAt) {
         const transition = await transaction.shop.updateMany({
@@ -666,7 +658,7 @@ export class ShopService {
         if (transition.count === 1) {
           firstUninstalledAt = uninstalledAt;
           const deletion = await transaction.session.deleteMany({
-            where: { shop: normalizedDomain },
+            where: { shop: shop.domain },
           });
           deletedSessionCount = deletion.count;
         } else {
