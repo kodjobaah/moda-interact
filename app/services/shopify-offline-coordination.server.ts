@@ -10,6 +10,7 @@ import {
   getShopifySessionBinding,
   runWithShopifySessionBinding,
   ShopifySessionCoordinationRequiredError,
+  recordShopifyOAuthCredentialResponse,
   type ShopifySessionCoordinationContext,
 } from "./shopify-session-storage.server";
 
@@ -216,7 +217,10 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
         throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
       }
       const bodyBuffer = body === null ? null : new ArrayBuffer(body.byteLength);
-      if (body !== null && bodyBuffer !== null) new Uint8Array(bodyBuffer).set(body);
+      if (body !== null && bodyBuffer !== null) {
+        recordShopifyOAuthCredentialResponse(body);
+        new Uint8Array(bodyBuffer).set(body);
+      }
       return new Response(bodyBuffer, {
         status: response.status,
         statusText: response.statusText,

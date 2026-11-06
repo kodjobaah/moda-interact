@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import { createHash } from "node:crypto";
 import { Session } from "@shopify/shopify-api";
 import type { SessionStorage } from "@shopify/shopify-app-session-storage";
 import {
@@ -20,7 +21,8 @@ type SessionBinding = {
   sessionId: string | null;
   closed: boolean;
   successfulOfflineStores: number;
-  loadedOfflineSessions: WeakSet<Session>;
+  persistedCredentialFingerprint: string | null;
+  pendingCredentialFingerprints: Set<string>;
   tokenOutcome: "none" | "rejected" | "succeeded" | "unknown";
 };
 
@@ -45,6 +47,35 @@ type ShopifyStoredSessionRow = {
 };
 
 const sessionBinding = new AsyncLocalStorage<SessionBinding>();
+
+function credentialFingerprint(input: {
+  shop: string;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+}): string {
+  return createHash("sha256")
+    .update(JSON.stringify([input.shop, input.accessToken ?? "", input.refreshToken ?? null]))
+    .digest("hex");
+}
+
+export function recordShopifyOAuthCredentialResponse(responseBody: Uint8Array): void {
+  const binding = sessionBinding.getStore();
+  if (!binding || binding.closed) throw new ShopifySessionCoordinationRequiredError();
+  try {
+    const payload = JSON.parse(new TextDecoder().decode(responseBody)) as {
+      access_token?: unknown;
+      refresh_token?: unknown;
+    };
+    if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") return;
+    binding.pendingCredentialFingerprints.add(credentialFingerprint({
+      shop: binding.context.shop,
+      accessToken: payload.access_token,
+      refreshToken: payload.refresh_token,
+    }));
+  } catch {
+    // The SDK owns response parsing and its failure is reported as an unknown refresh outcome.
+  }
+}
 
 export class ShopifySessionCoordinationRequiredError extends Error {
   readonly code = "COORDINATION_REQUIRED";
@@ -77,7 +108,8 @@ export function runWithShopifySessionBinding<T>(
     sessionId: context.sessionId,
     closed: false,
     successfulOfflineStores: 0,
-    loadedOfflineSessions: new WeakSet(),
+    persistedCredentialFingerprint: null,
+    pendingCredentialFingerprints: new Set(),
     tokenOutcome: "none",
   };
   const closeOnAbort = () => { binding.closed = true; };
@@ -92,6 +124,13 @@ export function runWithShopifySessionBinding<T>(
       else signal.addEventListener("abort", onAbort, { once: true });
     });
     try {
+      if (context.sessionId !== null) {
+        const row = await context.transaction.session.findUnique({ where: { id: context.sessionId } }) as unknown as ShopifyStoredSessionRow | null;
+        if (!row || row.id !== context.sessionId || row.shop !== context.shop || row.isOnline) {
+          throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+        }
+        binding.persistedCredentialFingerprint = credentialFingerprint(row);
+      }
       const value = await Promise.race([
         signal.aborted
           ? Promise.reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"))
@@ -130,8 +169,11 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
       if (!row) return undefined;
       if (row.isOnline) return this.onlineStorage.loadSession(id);
       this.assertOfflineRow(binding, row);
+      const fingerprint = credentialFingerprint(row);
+      if (fingerprint !== binding.persistedCredentialFingerprint) {
+        throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+      }
       const session = this.rowToSession(row);
-      binding.loadedOfflineSessions.add(session);
       return session;
     }
 
@@ -162,10 +204,20 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     if (existing && existing.shop !== binding.context.shop) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
-    if (existing && (binding.sessionId !== session.id || !binding.loadedOfflineSessions.has(session))) {
+    if (existing && binding.sessionId !== session.id) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
     if (!existing && binding.sessionId !== null) {
+      throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+    }
+    if (existing && credentialFingerprint(existing) !== binding.persistedCredentialFingerprint) {
+      throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+    }
+    const candidateFingerprint = credentialFingerprint(session);
+    if (
+      candidateFingerprint !== binding.persistedCredentialFingerprint &&
+      !binding.pendingCredentialFingerprints.has(candidateFingerprint)
+    ) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
 
@@ -176,7 +228,8 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     });
     if (binding.sessionId === null) binding.sessionId = session.id;
     binding.successfulOfflineStores += 1;
-    binding.loadedOfflineSessions.add(session);
+    binding.persistedCredentialFingerprint = candidateFingerprint;
+    binding.pendingCredentialFingerprints.clear();
     return true;
   }
 

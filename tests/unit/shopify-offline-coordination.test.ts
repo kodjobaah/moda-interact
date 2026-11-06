@@ -119,7 +119,10 @@ describe("App Shopify offline authentication coordination", () => {
   });
 
   it("commits a successful SDK token store before rethrowing its redirect", async () => {
-    const app = fixture();
+    const app = fixture({ tokenResponse: async () => Response.json({
+      access_token: "refreshed-access-token",
+      refresh_token: "refreshed-refresh-token",
+    }) });
     const redirect = new Response(null, { status: 302, headers: { location: "/auth/callback" } });
 
     await expect(app.coordination.withAdminAuthentication(request(app.domain), async () => {
@@ -149,13 +152,44 @@ describe("App Shopify offline authentication coordination", () => {
 
     await expect(app.coordination.withAdminAuthentication(request(app.domain), async () => {
       const session = await app.coordination.sessionStorage.loadSession("sdk-session-id");
-      session!.accessToken = "must-roll-back";
       await app.coordination.sessionStorage.storeSession(session!);
       throw failure;
     })).rejects.toBe(failure);
 
     expect(app.counts).toEqual({ commits: 0, rollbacks: 1, refreshRequests: 0 });
     expect(app.rows.get("sdk-session-id")?.accessToken).toBe("old-access-token");
+  });
+
+  it("accepts a newly constructed Session only when its token pair came from this locked OAuth response", async () => {
+    const app = fixture();
+
+    await expect(app.coordination.withAdminAuthentication(request(app.domain), async () => {
+      const response = await app.coordination.fetch(`https://${app.domain}/admin/oauth/access_token`, { method: "POST" });
+      const payload = await response.json() as { access_token: string; refresh_token: string };
+      const refreshed = new Session({
+        id: "sdk-session-id",
+        shop: app.domain,
+        state: "state",
+        isOnline: false,
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+        expires: new Date(Date.now() + 3_600_000),
+        refreshTokenExpires: new Date(Date.now() + 86_400_000),
+      });
+      await app.coordination.sessionStorage.storeSession(refreshed);
+      await expect(app.coordination.sessionStorage.storeSession(new Session({
+        id: "sdk-session-id",
+        shop: app.domain,
+        state: "state",
+        isOnline: false,
+        accessToken: "old-access-token",
+        refreshToken: "old-refresh-token",
+      }))).rejects.toMatchObject({ code: "SESSION_IDENTITY_CONFLICT" });
+      return refreshed;
+    })).resolves.toMatchObject({ accessToken: "new-access", refreshToken: "new-refresh" });
+
+    expect(app.rows.get("sdk-session-id")).toMatchObject({ accessToken: "new-access", refreshToken: "new-refresh" });
+    expect(app.counts).toEqual({ commits: 1, rollbacks: 0, refreshRequests: 1 });
   });
 
   it("rejects a session for a different authenticated shop before any OAuth request", async () => {
@@ -249,17 +283,26 @@ describe("App Shopify offline authentication coordination", () => {
 
     await app.coordination.withAdminAuthentication(request(app.domain), async () => {
       stale = await app.coordination.sessionStorage.loadSession("sdk-session-id");
+      await app.coordination.fetch(`https://${app.domain}/admin/oauth/access_token`, { method: "POST" });
+      await app.coordination.sessionStorage.storeSession(new Session({
+        id: "sdk-session-id",
+        shop: app.domain,
+        state: "state",
+        isOnline: false,
+        accessToken: "new-access",
+        refreshToken: "new-refresh",
+        expires: new Date(Date.now() + 3_600_000),
+        refreshTokenExpires: new Date(Date.now() + 86_400_000),
+      }));
     });
-    stale!.accessToken = "stale-access-token";
-    stale!.refreshToken = "stale-refresh-token";
 
     await expect(app.coordination.withAdminAuthentication(request(app.domain), () =>
       app.coordination.sessionStorage.storeSession(stale!),
     )).rejects.toMatchObject({ code: "SESSION_IDENTITY_CONFLICT" });
 
     expect(app.rows.get("sdk-session-id")).toMatchObject({
-      accessToken: "old-access-token",
-      refreshToken: "old-refresh-token",
+      accessToken: "new-access",
+      refreshToken: "new-refresh",
     });
   });
 });
