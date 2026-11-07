@@ -38,7 +38,7 @@ async function resolveContext(
   const { admin, session } = authentication;
   let snapshot: ReturnType<typeof shopService.resolveShopifyMerchantSnapshot> | undefined;
   const repair = () => snapshot ??= shopService.resolveShopifyMerchantSnapshot({
-    admin, domain: session.shop,
+    admin, sessionShop: session.shop,
   });
   const seed = refresh ? await repair() : undefined;
   const shop = seed?.shop ?? await shopService.getByDomain(session.shop) ?? (await repair()).shop;

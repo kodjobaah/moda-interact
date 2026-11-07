@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "KI-gestützte Gespräche mit Händlern und Kunden.",
   "merchantFeatures.features.product_search.name": "Produktsuche",
   "merchantFeatures.features.product_search.description": "Suchen Sie während Kundengesprächen nach Produkten im Shop.",
-  "merchantFeatures.features.order_support.name": "Bestell-Support",
-  "merchantFeatures.features.order_support.description": "Unterstützen Sie Kunden bei Gesprächen zu Bestellungen.",
   "storeProfile.title": "Shop-Profil",
   "storeProfile.description": "Wählen Sie die Kategorie, die Ihren Shop am besten beschreibt. Änderungen aktualisieren die Assistentenanweisungen für zukünftige Gespräche.",
   "storeProfile.activeCategory": "Aktive Kategorie",

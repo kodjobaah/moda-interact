@@ -95,7 +95,6 @@ async function setEnabled(shopId: string, enabled: boolean): Promise<void> {
 async function intent(shopId: string, r2 = makeR2(), now = new Date("2026-10-01T12:00:00.000Z")) {
   return createMerchantKnowledgeUploadIntent({
     shopId,
-    shopDomain: `${shopId}.myshopify.com`,
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -189,7 +188,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
     expect(asset).toMatchObject({
       shopId,
       status: "PENDING_UPLOAD",
-      objectKey: `merchant-knowledge/test/${shopId}.myshopify.com/${asset.id}/source.csv`,
+      objectKey: `merchant-knowledge/test/${encodeURIComponent(shopId)}/${asset.id}/source.csv`,
       originalFileName: "catalog.csv",
       contentType: null,
       sizeBytes: null,

@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "Satıcılar ve müşteriler için AI destekli sohbetler.",
   "merchantFeatures.features.product_search.name": "Ürün arama",
   "merchantFeatures.features.product_search.description": "Müşteri sohbetleri sırasında mağaza ürünlerini arayın.",
-  "merchantFeatures.features.order_support.name": "Sipariş desteği",
-  "merchantFeatures.features.order_support.description": "Siparişlerle ilgili müşteri sohbetlerini destekleyin.",
   "storeProfile.title": "Mağaza profili",
   "storeProfile.description": "Mağazanızı en iyi açıklayan kategoriyi seçin. Değişiklikler, gelecekteki sohbetlerde kullanılacak asistan talimatlarını günceller.",
   "storeProfile.activeCategory": "Etkin kategori",

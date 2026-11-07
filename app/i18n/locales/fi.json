@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "Tekoälyavusteiset keskustelut kauppiaiden ja asiakkaiden kanssa.",
   "merchantFeatures.features.product_search.name": "Tuotehaku",
   "merchantFeatures.features.product_search.description": "Hae kaupan tuotteita asiakaskeskustelujen aikana.",
-  "merchantFeatures.features.order_support.name": "Tilaustuki",
-  "merchantFeatures.features.order_support.description": "Tue tilauksiin liittyviä asiakaskeskusteluja.",
   "storeProfile.title": "Kaupan profiili",
   "storeProfile.description": "Valitse kauppaasi parhaiten kuvaava luokka. Muutokset päivittävät avustajan ohjeet tulevia keskusteluja varten.",
   "storeProfile.activeCategory": "Aktiivinen luokka",

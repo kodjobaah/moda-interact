@@ -17,10 +17,6 @@ const PLATFORM_FEATURE_COPY_KEYS: Record<string, { name: string; description: st
     name: "merchantFeatures.features.product_search.name",
     description: "merchantFeatures.features.product_search.description",
   },
-  order_support: {
-    name: "merchantFeatures.features.order_support.name",
-    description: "merchantFeatures.features.order_support.description",
-  },
   merchant_knowledge: {
     name: "merchantKnowledge.title",
     description: "merchantKnowledge.description",

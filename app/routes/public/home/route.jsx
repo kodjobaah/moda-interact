@@ -4,29 +4,20 @@ import MerchantPricingCatalogue from "@/components/merchant-pricing/MerchantPric
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
 import styles from "./styles.module.css";
 
-const MYSHOPIFY_DOMAIN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/i;
-
 /** @param {Request} request */
 function requestLocale(request) {
   const accepted = request.headers.get("accept-language")?.split(",")[0]?.split(";")[0]?.trim();
   return accepted || "en-GB";
 }
 
-/** @param {URL} url */
-function detectedShopFromUrl(url) {
-  const raw = url.searchParams.get("shop")?.trim().toLowerCase() ?? "";
-  return MYSHOPIFY_DOMAIN.test(raw) ? raw : null;
-}
-
 /** @param {{ request: Request }} args */
 export const loader = async ({ request }) => {
   const url = new URL(request.url);
-  const detectedShop = detectedShopFromUrl(url);
 
   // The public home page is intentionally the standalone connection/pricing
-  // surface. Any Shopify launch that identifies a valid shop must enter the
-  // authenticated /app layout so AppProvider and MerchantNavigation are mounted.
-  if (detectedShop) {
+  // surface. Shopify launches carrying the platform host enter the authenticated
+  // /app layout; the SDK remains the authority for installation identity.
+  if (url.searchParams.has("shop") && url.searchParams.has("host")) {
     throw redirect(`/app?${url.searchParams.toString()}`);
   }
 
@@ -47,7 +38,6 @@ export const loader = async ({ request }) => {
 
   return {
     showForm: Boolean(login),
-    detectedShop: null,
     merchantUi: {
       locale,
       timeZone: "UTC",
@@ -58,8 +48,7 @@ export const loader = async ({ request }) => {
 };
 
 export default function App() {
-  const { showForm, detectedShop, merchantUi, pricingCatalogue } = useLoaderData();
-  const hasDetectedShop = Boolean(detectedShop);
+  const { showForm, merchantUi, pricingCatalogue } = useLoaderData();
 
   return (
     <div className={`${styles.page} bg-forest-50 text-forest-900`}>
@@ -93,44 +82,30 @@ export default function App() {
           <section className={styles.connectionCard} aria-labelledby="connection-title">
             <span className={styles.connectionPill}>Shopify connection</span>
             <h2 id="connection-title">
-              {hasDetectedShop ? "Connect this Shopify store" : "Connect your Shopify store"}
+              Connect your Shopify store
             </h2>
             <p className={styles.connectionText}>
-              {hasDetectedShop
-                ? "We detected the store that opened Moda Interact. Confirm to continue securely."
-                : "Enter your .myshopify.com domain to begin the secure Shopify connection flow."}
+              Start installation from your Shopify admin or the Moda Interact app listing. Shopify
+              will verify the store and its Admin connection.
             </p>
 
             {showForm && (
               <Form className={styles.form} method="post" action="/auth/login">
-                {hasDetectedShop ? (
-                  <>
-                    <div className={styles.detectedStore}>
-                      <span className={styles.storeStatus} aria-hidden="true" />
-                      <div>
-                        <span className={styles.storeLabel}>Shopify store</span>
-                        <strong>{detectedShop}</strong>
-                      </div>
-                    </div>
-                    <input type="hidden" name="shop" value={detectedShop} />
-                  </>
-                ) : (
-                  <label className={styles.label}>
-                    <span>Shop domain</span>
-                    <input
-                      className={styles.input}
-                      type="text"
-                      name="shop"
-                      placeholder="your-store.myshopify.com"
-                      autoComplete="url"
-                      required
-                    />
-                    <small>For example: your-store.myshopify.com</small>
-                  </label>
-                )}
+                <label className={styles.label}>
+                  <span>Shop domain</span>
+                  <input
+                    className={styles.input}
+                    type="text"
+                    name="shop"
+                    placeholder="your-store.myshopify.com"
+                    autoComplete="url"
+                    required
+                  />
+                  <small>Shopify checks the installation domain when you continue.</small>
+                </label>
 
                 <button className={`${styles.button} bg-forest-800 text-white`} type="submit">
-                  {hasDetectedShop ? "Connect this store" : "Connect your Shopify store"}
+                  Connect your Shopify store
                 </button>
               </Form>
             )}

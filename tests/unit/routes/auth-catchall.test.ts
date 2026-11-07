@@ -41,7 +41,7 @@ describe("auth catchall reinstall gate", () => {
     await expect(loader(loaderArgs("https://example.test/auth/callback"))).resolves.toBeNull();
 
     expect(resolveShopifyShop).toHaveBeenCalledWith({
-      admin: {id: "shopify-admin"}, domain: "merchant.myshopify.com",
+      admin: {id: "shopify-admin"}, sessionShop: "merchant.myshopify.com",
     });
     expect(beginReinstallReconciliation).not.toHaveBeenCalled();
     expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();

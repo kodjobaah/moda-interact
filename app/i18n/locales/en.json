@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "AI-assisted merchant and customer conversations.",
   "merchantFeatures.features.product_search.name": "Product Search",
   "merchantFeatures.features.product_search.description": "Search store products during customer conversations.",
-  "merchantFeatures.features.order_support.name": "Order Support",
-  "merchantFeatures.features.order_support.description": "Support order-related customer conversations.",
   "storeProfile.title": "Store profile",
   "storeProfile.description": "Choose the category that best describes your store. Changes update the assistant instructions used for future conversations.",
   "storeProfile.activeCategory": "Active category",

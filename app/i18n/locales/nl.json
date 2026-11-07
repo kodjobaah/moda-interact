@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "Door AI ondersteunde gesprekken met verkopers en klanten.",
   "merchantFeatures.features.product_search.name": "Product zoeken",
   "merchantFeatures.features.product_search.description": "Zoek winkelproducten tijdens gesprekken met klanten.",
-  "merchantFeatures.features.order_support.name": "Bestelondersteuning",
-  "merchantFeatures.features.order_support.description": "Ondersteun klantgesprekken over bestellingen.",
   "storeProfile.title": "Winkelprofiel",
   "storeProfile.description": "Kies de categorie die uw winkel het best beschrijft. Wijzigingen werken de assistentinstructies bij die voor toekomstige gesprekken worden gebruikt.",
   "storeProfile.activeCategory": "Actieve categorie",

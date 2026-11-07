@@ -544,8 +544,6 @@
   "merchantFeatures.features.ai_conversations.description": "Konverzace obchodníků a zákazníků s podporou AI.",
   "merchantFeatures.features.product_search.name": "Vyhledávání produktů",
   "merchantFeatures.features.product_search.description": "Vyhledávejte produkty obchodu během konverzací se zákazníky.",
-  "merchantFeatures.features.order_support.name": "Podpora objednávek",
-  "merchantFeatures.features.order_support.description": "Podporujte konverzace se zákazníky týkající se objednávek.",
   "storeProfile.title": "Profil obchodu",
   "storeProfile.description": "Vyberte kategorii, která nejlépe vystihuje váš obchod. Změny aktualizují pokyny asistenta používané v budoucích konverzacích.",
   "storeProfile.activeCategory": "Aktivní kategorie",

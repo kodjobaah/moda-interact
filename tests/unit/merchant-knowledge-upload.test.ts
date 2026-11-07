@@ -111,7 +111,6 @@ afterEach(() => {
 it("persists a server-generated object key before signing one 600-second PUT", async () => {
   const result = await createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: " catalog.csv ",
@@ -128,7 +127,7 @@ it("persists a server-generated object key before signing one 600-second PUT", a
     shopId: "shop-1",
     dataFormatId: "format-csv",
     status: "PENDING_UPLOAD",
-    objectKey: expect.stringMatching(/^merchant-knowledge\/test\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/),
+    objectKey: expect.stringMatching(/^merchant-knowledge\/test\/shop-1\/[^/]+\/source\.csv$/),
     originalFileName: "catalog.csv",
     uploadExpiresAt: new Date("2026-10-01T12:10:00.000Z"),
   });
@@ -158,7 +157,6 @@ it("reads one current sealed R2 policy per intent and never mixes environment cr
   });
   const result = await createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -178,7 +176,6 @@ it("fails closed before creating upload intents when R2 config is revoked", asyn
   serviceMocks.requireR2.mockRejectedValueOnce(new Error("DISABLED"));
   await expect(createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -196,7 +193,6 @@ it("uses the configured deployment environment as the R2 namespace", async () =>
 
   await createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -209,7 +205,7 @@ it("uses the configured deployment environment as the R2 namespace", async () =>
 
   const created = serviceMocks.transaction.merchantKnowledgeUploadedAsset.create.mock.calls[0]?.[0];
   expect(created.data.objectKey).toMatch(
-    /^merchant-knowledge\/staging\/eugene-bdx7mzhn\.myshopify\.com\/[^/]+\/source\.csv$/,
+    /^merchant-knowledge\/staging\/shop-1\/[^/]+\/source\.csv$/,
   );
 });
 
@@ -218,7 +214,6 @@ it("rejects an unsafe deployment environment before allocating an asset", async 
 
   await expect(createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -247,27 +242,9 @@ it("includes the lowercase if-none-match header in the signed PUT request", asyn
   expect(signedHeaders).toContain("if-none-match");
 });
 
-it("rejects a non-canonical Shopify domain before allocating an asset", async () => {
-  await expect(createMerchantKnowledgeUploadIntent({
-    shopId: "shop-1",
-    shopDomain: "https://attacker.example/path",
-    purposeKey: "PRODUCT_INFORMATION",
-    dataFormatKey: "CSV",
-    originalFileName: "catalog.csv",
-    contentType: "text/csv",
-    sizeBytes: 32,
-    database: serviceMocks.database as never,
-    r2: { signPut: serviceMocks.signPut, headObject: serviceMocks.headObject },
-    config: testConfig,
-  })).rejects.toMatchObject({ code: "INVALID_INPUT" });
-  expect(serviceMocks.database.$transaction).not.toHaveBeenCalled();
-  expect(serviceMocks.signPut).not.toHaveBeenCalled();
-});
-
 it("rejects unsupported file pair and size before allocating an asset", async () => {
   await expect(createMerchantKnowledgeUploadIntent({
     shopId: "shop-1",
-    shopDomain: "eugene-bdx7mzhn.myshopify.com",
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "CSV",
     originalFileName: "catalog.csv",
@@ -359,7 +336,7 @@ it("normalization logs the real P2025 and cause before preserving the typed deni
  serviceMocks.database.$transaction.mockRejectedValueOnce(original);
  const output = vi.spyOn(console, "error").mockImplementation(() => {});
  try {
-  await expect(createMerchantKnowledgeUploadIntent({shopId: "shop-1", shopDomain: "shop.myshopify.com", purposeKey: "PRODUCT_INFORMATION", dataFormatKey: "CSV", originalFileName: "fixture.csv", contentType: "text/csv", sizeBytes: 32,
+ await expect(createMerchantKnowledgeUploadIntent({shopId: "shop-1", purposeKey: "PRODUCT_INFORMATION", dataFormatKey: "CSV", originalFileName: "fixture.csv", contentType: "text/csv", sizeBytes: 32,
    database: serviceMocks.database as never, config: testConfig, r2: {signPut: serviceMocks.signPut, headObject: serviceMocks.headObject}})).rejects.toMatchObject({code: "DENIED", cause: original});
   const json = output.mock.calls.map(call => String(call[0])).join("\n");
   expect(json).toContain("P2025"); expect(json).toContain("original missing record cause"); expect(json).toContain("original missing upload record");
