@@ -1,9 +1,18 @@
-import { ShopifyOfflineTokenError, createShopifyOfflineTokenProvider, type ShopifyOfflineDatabase } from "@modainteract/moda-interact-shared/shopify/node";
+import { randomUUID } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import {
+  ShopifyOfflineTokenError,
+  createShopifyOfflineTokenProvider,
+  type ShopifyOfflineDatabase,
+  type ShopifyOfflineRefreshEvent,
+  type ShopifyOfflineTokenErrorCode,
+} from "@modainteract/moda-interact-shared/shopify/node";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type { SessionStorage } from "@shopify/shopify-app-session-storage";
 import type { AbstractFetchFunc } from "@shopify/shopify-api/runtime";
 import { lockShopLifecycleRow } from "./discounts/shopify-discount-lifecycle.service";
 import { createDefaultShopifyPlatformConfigurationService } from "./platform-configuration/composition.server";
+import { recordShopifyOfflineRefreshEvent } from "./observability/shopify-runtime-observability.server";
 import prisma from "../db.server";
 import {
   CoordinatedShopifySessionStorage,
@@ -17,6 +26,7 @@ import {
 const NETWORK_BUDGET_MS = 8_000;
 const AUTH_CALLBACK_BUDGET_MS = 15_000;
 const MAX_OAUTH_RESPONSE_BYTES = 16_384;
+type SdkRefreshAttempt = { operationId: string; startedAt: number; shopId: string | null };
 
 type ShopIdentity = Readonly<{
   id: string;
@@ -59,6 +69,7 @@ function createOfflineProvider(database: PrismaClient, fetchImpl: typeof fetch) 
     prisma: structuralDatabase,
     readOAuth: () => createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials(),
     fetch: fetchImpl,
+    onEvent: recordShopifyOfflineRefreshEvent,
   });
 }
 
@@ -115,6 +126,53 @@ function tokenRequestUrl(input: RequestInfo | URL): URL | undefined {
   }
 }
 
+async function isRefreshTokenGrant(input: RequestInfo | URL, init?: RequestInit): Promise<boolean> {
+  let body: BodyInit | null | undefined = init?.body;
+  if (body === undefined && input instanceof Request) {
+    try { body = await input.clone().text(); } catch { return false; }
+  }
+  if (body instanceof URLSearchParams) return body.get("grant_type") === "refresh_token";
+  if (typeof body !== "string") return false;
+  try {
+    const form = new URLSearchParams(body);
+    if (form.has("grant_type")) return form.get("grant_type") === "refresh_token";
+    const payload = JSON.parse(body) as { grant_type?: unknown };
+    return payload.grant_type === "refresh_token";
+  } catch {
+    return false;
+  }
+}
+
+function emitSdkRefreshEvent(
+  attempt: SdkRefreshAttempt,
+  event: ShopifyOfflineRefreshEvent["event"],
+  outcome: ShopifyOfflineRefreshEvent["outcome"],
+  reasonCode: ShopifyOfflineTokenErrorCode | null,
+): void {
+  const record: ShopifyOfflineRefreshEvent = Object.freeze({
+    event,
+    operationId: attempt.operationId,
+    shopId: attempt.shopId,
+    source: "SDK" as const,
+    durationMs: Math.min(60_000, Math.max(0, Math.round(performance.now() - attempt.startedAt))),
+    outcome,
+    reasonCode,
+  });
+  try { void Promise.resolve(recordShopifyOfflineRefreshEvent(record)).catch(() => undefined); } catch { /* Telemetry cannot change authentication outcomes. */ }
+}
+
+function sdkRefreshFailure(error: unknown, tokenOutcome: "none" | "rejected" | "succeeded" | "unknown"):
+  { outcome: "REJECTED" | "UNKNOWN" | "CANCELLED" | "UNAVAILABLE"; reasonCode: ShopifyOfflineTokenErrorCode } {
+  const code = error instanceof ShopifyOfflineTokenError ? error.code : null;
+  if (code === "REFRESH_REJECTED" || tokenOutcome === "rejected") return { outcome: "REJECTED", reasonCode: "REFRESH_REJECTED" };
+  if (code === "CANCELLED") return { outcome: "CANCELLED", reasonCode: "CANCELLED" };
+  if (code === "DEADLINE") return { outcome: "CANCELLED", reasonCode: "DEADLINE" };
+  if (tokenOutcome === "unknown" || tokenOutcome === "succeeded" || code === "REFRESH_OUTCOME_UNKNOWN") {
+    return { outcome: "UNKNOWN", reasonCode: "REFRESH_OUTCOME_UNKNOWN" };
+  }
+  return { outcome: "UNAVAILABLE", reasonCode: code ?? "PERSISTENCE_UNAVAILABLE" };
+}
+
 async function readBoundedBody(response: Response, signal: AbortSignal): Promise<Uint8Array | null> {
   if (!response.body) return null;
   const length = Number(response.headers.get("content-length"));
@@ -127,7 +185,7 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
   const chunks: Uint8Array[] = [];
   let size = 0;
   try {
-    while (true) {
+    for (;;) {
       if (signal.aborted) throw new ShopifyOfflineTokenError("DEADLINE");
       const { done, value } = await reader.read();
       if (done) break;
@@ -175,6 +233,7 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
     const timeout = setTimeout(() => timeoutController.abort(), budgetMs);
     const signal = combineSignals([callerSignal, binding.signal, timeoutController.signal]);
     let tokenDispatched = false;
+    let sdkRefreshAttempt: SdkRefreshAttempt | null = null;
 
     try {
       if (tokenUrl) {
@@ -184,6 +243,16 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
           (init?.method ?? request?.method ?? "GET").toUpperCase() !== "POST"
         ) {
           throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+        }
+        if (await isRefreshTokenGrant(input, init)) {
+          sdkRefreshAttempt = {
+            operationId: randomUUID(),
+            startedAt: performance.now(),
+            shopId: binding.context.shopId,
+          };
+          binding.sdkRefreshAttempt = sdkRefreshAttempt;
+          binding.onSdkRefreshAttempt?.(sdkRefreshAttempt);
+          emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.started", "STARTED", null);
         }
         tokenDispatched = true;
       }
@@ -261,7 +330,12 @@ export function createCoordinatedShopifyAuthentication(input: {
     authenticate: () => Promise<T>,
     callerSignal?: AbortSignal,
   ): Promise<T> {
-    const committedResponse = await run<CapturedResult<T>>(async (context) => {
+    let sdkRefreshAttempt: SdkRefreshAttempt | null = null;
+    let sdkRefreshTokenOutcome: "none" | "rejected" | "succeeded" | "unknown" = "none";
+    let persistedRefreshCredentialPair = false;
+    let committedResponse: CapturedResult<T>;
+    try {
+      committedResponse = await run<CapturedResult<T>>(async (context) => {
       const bound = await runWithShopifySessionBinding(context, async () => {
         try {
           const value = await authenticate();
@@ -272,7 +346,10 @@ export function createCoordinatedShopifyAuthentication(input: {
           if (error instanceof Response) return { kind: "response", response: error } as CapturedResult<T>;
           return { kind: "error", error } as CapturedResult<T>;
         }
-      }, callerSignal);
+      }, callerSignal, 15_000, (attempt) => { sdkRefreshAttempt = attempt; });
+      sdkRefreshAttempt = bound.sdkRefreshAttempt;
+      sdkRefreshTokenOutcome = bound.tokenOutcome;
+      persistedRefreshCredentialPair = bound.persistedRefreshCredentialPair;
       const result = bound.value;
       if (canCommitResponse(result, bound.successfulOfflineStores)) return result;
       if (result.kind === "error") {
@@ -290,7 +367,21 @@ export function createCoordinatedShopifyAuthentication(input: {
         throw result.response;
       }
       return result;
-    });
+      });
+    } catch (error) {
+      if (sdkRefreshAttempt) {
+        const failure = sdkRefreshFailure(error, sdkRefreshTokenOutcome);
+        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
+      }
+      throw error;
+    }
+    if (sdkRefreshAttempt) {
+      if (persistedRefreshCredentialPair) {
+        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.committed", "COMMITTED", null);
+      } else {
+        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.failed", "UNKNOWN", "REFRESH_OUTCOME_UNKNOWN");
+      }
+    }
     if (committedResponse.kind === "error") throw committedResponse.error;
     if (committedResponse.kind === "response") throw committedResponse.response;
     return committedResponse.value;

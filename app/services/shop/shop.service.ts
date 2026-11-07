@@ -68,6 +68,7 @@ const providerErrorsSchema = z.object({
 const merchantLogger = createLogger({
   serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName(),
 });
+const SHOPIFY_ACCESS_TOKEN_REFRESH_SKEW_MS = 320_000;
 
 // Only profile-boundary error text is extracted; never emit GraphQL data or bodies.
 function safeProfileErrorText(text: string): string {
@@ -129,11 +130,19 @@ export class ShopService {
   ): Promise<boolean> {
     const session = await transaction.session.findFirst({
       where: { shop: shopDomain, isOnline: false },
-      select: { accessToken: true, expires: true, refreshToken: true },
+      select: { accessToken: true, expires: true, refreshToken: true, refreshTokenExpires: true },
       orderBy: { expires: "desc" },
     });
     if (!session?.accessToken?.trim()) return false;
-    return session.expires === null || session.expires > now || Boolean(session.refreshToken?.trim());
+    const refreshToken = session.refreshToken?.trim();
+    if (session.expires === null) return !refreshToken;
+    if (session.expires.getTime() > now.getTime() + SHOPIFY_ACCESS_TOKEN_REFRESH_SKEW_MS) return true;
+    return Boolean(
+      refreshToken &&
+      session.refreshTokenExpires instanceof Date &&
+      Number.isFinite(session.refreshTokenExpires.getTime()) &&
+      session.refreshTokenExpires > now,
+    );
   }
 
   async resolveShopifyShop(input: ResolveShopifyShopInput): Promise<Shop> {
