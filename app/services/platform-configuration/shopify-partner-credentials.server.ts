@@ -1,6 +1,8 @@
 import { configurationFailure, type ShopifyPartnerCredentials } from "./contracts.server";
 
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
+// Match the Admin shopify.partner writer: preserve App GIDs and legacy short IDs.
+const SHOPIFY_APP_ID = /^(?:[A-Za-z0-9_-]{1,128}|gid:\/\/shopify\/App\/[1-9][0-9]{0,19})$/;
 const VERSION = /^20\d{2}-(?:01|04|07|10)$/;
 
 export function decodeShopifyPartnerCredentials(version: number, value: unknown): ShopifyPartnerCredentials {
@@ -13,7 +15,7 @@ export function decodeShopifyPartnerCredentials(version: number, value: unknown)
       required.some((field) => !Object.hasOwn(record, field)) ||
       !isToken(record.accessToken) || typeof record.organizationId !== "string" ||
       !ID.test(record.organizationId) || typeof record.appId !== "string" ||
-      !ID.test(record.appId) ||
+      !SHOPIFY_APP_ID.test(record.appId) ||
       (record.apiVersion !== undefined && (typeof record.apiVersion !== "string" || !VERSION.test(record.apiVersion)))) {
     configurationFailure(key, "INVALID_VALUE");
   }

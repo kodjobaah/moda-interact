@@ -139,6 +139,20 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
     await fails(service.requireShopifyOAuthCredentials(), "UNSEAL_FAILED");
   });
 
+  it("reads Admin-compatible App GIDs intact from the sealed Partner tuple", async () => {
+    const { service, set } = fixture();
+    for (const appId of ["123", "app_2", "gid://shopify/App/123", "gid://shopify/App/12345678901234567890"]) {
+      const credentials = { ...partner, appId, apiVersion: "2026-10" };
+      set("shopify.partner", sealed("shopify.partner", credentials, 3), 3);
+      expect(await service.requireShopifyPartnerCredentials()).toEqual({ version: 3, ...credentials });
+    }
+    for (const appId of ["gid://shopify/Shop/123", "gid://shopify/App/0", "gid://shopify/App/01",
+      "gid://shopify/App/123456789012345678901", "gid://shopify/App/123?x=1", " gid://shopify/App/123"]) {
+      set("shopify.partner", sealed("shopify.partner", { ...partner, appId }));
+      await fails(service.requireShopifyPartnerCredentials(), "INVALID_VALUE");
+    }
+  });
+
   it("rejects incomplete, hostile and non-atomic Partner tuples", async () => {
     const { service, set } = fixture();
     for (const invalid of [
