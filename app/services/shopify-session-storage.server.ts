@@ -8,12 +8,17 @@ import {
   type SdkInstallationSessionContext,
   type ShopifyOfflineSessionCreateData,
   type ShopifyOfflineSessionRecord,
-  type ShopifyOfflineTransaction,
 } from "@modainteract/moda-interact-shared/shopify/node";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import type { PrismaClient } from "@prisma/client";
 
 export type ShopifySessionCoordinationContext = LockedSessionContext | SdkInstallationSessionContext;
+
+export type SdkRefreshAttempt = {
+  operationId: string; startedAt: number; shopId: string | null;
+  tokenOutcome: "none" | "rejected" | "succeeded" | "unknown";
+  credentialFingerprint: string | null; persisted: boolean;
+};
 
 type SessionBinding = {
   context: ShopifySessionCoordinationContext;
@@ -21,9 +26,12 @@ type SessionBinding = {
   sessionId: string | null;
   closed: boolean;
   successfulOfflineStores: number;
+  persistedRefreshCredentialPair: boolean;
   persistedCredentialFingerprint: string | null;
   pendingCredentialFingerprints: Set<string>;
   tokenOutcome: "none" | "rejected" | "succeeded" | "unknown";
+  sdkRefreshAttempts: SdkRefreshAttempt[];
+  onSdkRefreshAttempt?: (attempt: SdkRefreshAttempt) => void;
 };
 
 type ShopifyStoredSessionRow = {
@@ -58,7 +66,7 @@ function credentialFingerprint(input: {
     .digest("hex");
 }
 
-export function recordShopifyOAuthCredentialResponse(responseBody: Uint8Array): void {
+export function recordShopifyOAuthCredentialResponse(responseBody: Uint8Array, attempt?: SdkRefreshAttempt): void {
   const binding = sessionBinding.getStore();
   if (!binding || binding.closed) throw new ShopifySessionCoordinationRequiredError();
   try {
@@ -67,11 +75,13 @@ export function recordShopifyOAuthCredentialResponse(responseBody: Uint8Array): 
       refresh_token?: unknown;
     };
     if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") return;
-    binding.pendingCredentialFingerprints.add(credentialFingerprint({
+    const fingerprint = credentialFingerprint({
       shop: binding.context.shop,
       accessToken: payload.access_token,
       refreshToken: payload.refresh_token,
-    }));
+    });
+    binding.pendingCredentialFingerprints.add(fingerprint);
+    if (attempt) attempt.credentialFingerprint = fingerprint;
   } catch {
     // The SDK owns response parsing and its failure is reported as an unknown refresh outcome.
   }
@@ -95,7 +105,14 @@ export function runWithShopifySessionBinding<T>(
   work: () => Promise<T>,
   callerSignal?: AbortSignal,
   timeoutMs = 15_000,
-): Promise<{ value: T; successfulOfflineStores: number; tokenOutcome: SessionBinding["tokenOutcome"] }> {
+  onSdkRefreshAttempt?: (attempt: SdkRefreshAttempt) => void,
+): Promise<{
+  value: T;
+  successfulOfflineStores: number;
+  persistedRefreshCredentialPair: boolean;
+  tokenOutcome: SessionBinding["tokenOutcome"];
+  sdkRefreshAttempts: SdkRefreshAttempt[];
+}> {
   const timeoutController = new AbortController();
   const timeout = setTimeout(() => timeoutController.abort(), timeoutMs);
   const signals = [context.signal, callerSignal, timeoutController.signal].filter(
@@ -108,9 +125,12 @@ export function runWithShopifySessionBinding<T>(
     sessionId: context.sessionId,
     closed: false,
     successfulOfflineStores: 0,
+    persistedRefreshCredentialPair: false,
     persistedCredentialFingerprint: null,
     pendingCredentialFingerprints: new Set(),
     tokenOutcome: "none",
+    sdkRefreshAttempts: [],
+    onSdkRefreshAttempt,
   };
   const closeOnAbort = () => { binding.closed = true; };
   signal.addEventListener("abort", closeOnAbort, { once: true });
@@ -137,7 +157,13 @@ export function runWithShopifySessionBinding<T>(
           : work(),
         aborted,
       ]);
-      return { value, successfulOfflineStores: binding.successfulOfflineStores, tokenOutcome: binding.tokenOutcome };
+      return {
+        value,
+        successfulOfflineStores: binding.successfulOfflineStores,
+        persistedRefreshCredentialPair: binding.persistedRefreshCredentialPair,
+        tokenOutcome: binding.tokenOutcome,
+        sdkRefreshAttempts: binding.sdkRefreshAttempts,
+      };
     } finally {
       binding.closed = true;
       signal.removeEventListener("abort", closeOnAbort);
@@ -226,6 +252,12 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
       create: sessionRow,
       update: sessionRow,
     });
+    if (binding.pendingCredentialFingerprints.has(candidateFingerprint)) {
+      binding.persistedRefreshCredentialPair = true;
+      for (const attempt of binding.sdkRefreshAttempts) {
+        if (attempt.credentialFingerprint === candidateFingerprint) attempt.persisted = true;
+      }
+    }
     if (binding.sessionId === null) binding.sessionId = session.id;
     binding.successfulOfflineStores += 1;
     binding.persistedCredentialFingerprint = candidateFingerprint;

@@ -349,11 +349,16 @@ describe("ShopService.beginReinstallReconciliation", () => {
   });
 
   it.each([
-    ["empty access token", { accessToken: "   ", expires: null, refreshToken: null }, false],
-    ["expired token without refresh", { accessToken: "expired", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: " " }, false],
-    ["non-expiring token", { accessToken: "valid", expires: null, refreshToken: null }, true],
-    ["unexpired token", { accessToken: "valid", expires: new Date("2026-09-09T00:00:00.000Z"), refreshToken: null }, true],
-    ["expired but refreshable token", { accessToken: "valid", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: "refresh" }, true],
+    ["empty access token", { accessToken: "   ", expires: null, refreshToken: null, refreshTokenExpires: null }, false],
+    ["expired token without refresh", { accessToken: "expired", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: " ", refreshTokenExpires: null }, false],
+    ["non-expiring token", { accessToken: "valid", expires: null, refreshToken: null, refreshTokenExpires: null }, true],
+    ["non-expiring token with refresh metadata", { accessToken: "valid", expires: null, refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-09T00:00:00.000Z") }, false],
+    ["access token beyond refresh skew", { accessToken: "valid", expires: new Date("2026-09-08T12:05:20.001Z"), refreshToken: null, refreshTokenExpires: null }, true],
+    ["access token at refresh skew without refresh", { accessToken: "valid", expires: new Date("2026-09-08T12:05:20.000Z"), refreshToken: null, refreshTokenExpires: null }, false],
+    ["refresh token with missing expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: null }, false],
+    ["refresh token expiring exactly now", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T12:00:00.000Z") }, false],
+    ["refresh token with past expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T11:59:59.999Z") }, false],
+    ["refresh token with future expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T12:00:00.001Z") }, true],
   ] as const)("applies the durable credential predicate to %s", async (_caseName, credentials, usable) => {
     const now = new Date("2026-09-08T12:00:00.000Z");
     const nextReconcileAt = new Date("2026-09-08T12:01:00.000Z");
@@ -370,7 +375,7 @@ describe("ShopService.beginReinstallReconciliation", () => {
     expect(result.kind).toBe(usable ? "SCHEDULED" : "AUTHENTICATION_REQUIRED");
     expect(dbMock.session.findFirst).toHaveBeenCalledWith({
       where: { shop: shop.domain, isOnline: false },
-      select: { accessToken: true, expires: true, refreshToken: true },
+      select: { accessToken: true, expires: true, refreshToken: true, refreshTokenExpires: true },
       orderBy: { expires: "desc" },
     });
     if (usable) {

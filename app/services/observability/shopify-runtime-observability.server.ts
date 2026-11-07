@@ -1,4 +1,5 @@
 import { createLogger, sanitizeLogFields } from "@modainteract/moda-interact-shared/logging";
+import type { ShopifyOfflineRefreshEvent } from "@modainteract/moda-interact-shared/shopify/node";
 import { isRouteErrorResponse } from "react-router";
 import { logBillingBoundaryFailure, safeText } from "../billing/providers/shopify-billing-diagnostics.server";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
@@ -46,6 +47,19 @@ export function recordShopifySdkDiagnostic(input: {severity: number; message: st
     message: safe?.value ?? "[REDACTED]", redactionApplied: suffix >= 0 || privacyOmitted || Boolean(safe?.redacted),
     truncated: Boolean(safe?.truncated), ...(privacyOmitted ? {reasonCode: "OPAQUE_SDK_CONTENT_OMITTED"} : {}),
   }));
+}
+
+export function recordShopifyOfflineRefreshEvent(event: ShopifyOfflineRefreshEvent): void {
+  const fields = {
+    operationId: event.operationId,
+    shopId: event.shopId,
+    source: event.source,
+    durationMs: event.durationMs,
+    outcome: event.outcome,
+    reasonCode: event.reasonCode,
+  };
+  if (event.event === "shopify.offline_refresh.failed") logger.warn(event.event, fields);
+  else logger.info(event.event, fields);
 }
 
 export function recordTelemetryProbeFailure(input: {error?: unknown; stage: "network" | "response"; httpStatus?: number; sensitiveValues?: string[]}): void {
