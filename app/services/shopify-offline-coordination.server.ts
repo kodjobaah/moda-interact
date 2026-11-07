@@ -21,12 +21,13 @@ import {
   ShopifySessionCoordinationRequiredError,
   recordShopifyOAuthCredentialResponse,
   type ShopifySessionCoordinationContext,
+  type SdkRefreshAttempt,
 } from "./shopify-session-storage.server";
 
 const NETWORK_BUDGET_MS = 8_000;
 const AUTH_CALLBACK_BUDGET_MS = 15_000;
 const MAX_OAUTH_RESPONSE_BYTES = 16_384;
-type SdkRefreshAttempt = { operationId: string; startedAt: number; shopId: string | null };
+const MAX_OAUTH_INTENT_BYTES = 16_384;
 
 type ShopIdentity = Readonly<{
   id: string;
@@ -126,21 +127,54 @@ function tokenRequestUrl(input: RequestInfo | URL): URL | undefined {
   }
 }
 
-async function isRefreshTokenGrant(input: RequestInfo | URL, init?: RequestInit): Promise<boolean> {
-  let body: BodyInit | null | undefined = init?.body;
-  if (body === undefined && input instanceof Request) {
-    try { body = await input.clone().text(); } catch { return false; }
-  }
-  if (body instanceof URLSearchParams) return body.get("grant_type") === "refresh_token";
-  if (typeof body !== "string") return false;
+async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit | undefined, signal: AbortSignal): Promise<boolean> {
+  signal.throwIfAborted();
+  let body = init?.body;
+  let text: string;
+  if (body instanceof URLSearchParams) {
+    // Count without serializing an unbounded form. Encoding only expands this bound.
+    let size = 0;
+    for (const [key, value] of body) {
+      size += Buffer.byteLength(key) + Buffer.byteLength(value);
+      if (size > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
+    }
+    text = body.toString();
+  } else if (typeof body === "string") text = body;
+  else if (body === undefined && input instanceof Request) {
+    const clone = input.clone();
+    const reader = clone.body?.getReader();
+    if (!reader) return false;
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let onAbort: (() => void) | undefined;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(new ShopifyOfflineTokenError("DEADLINE"));
+      signal.addEventListener("abort", onAbort, { once: true });
+      if (signal.aborted) onAbort();
+    });
+    try {
+      for (;;) {
+        const { done, value } = await Promise.race([reader.read(), aborted]);
+        if (done) break;
+        size += value.byteLength;
+        if (size > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
+        chunks.push(value);
+      }
+      text = Buffer.concat(chunks).toString("utf8");
+    } finally {
+      if (onAbort) signal.removeEventListener("abort", onAbort);
+      // A tee's cancellation can wait for its original branch; never await it.
+      void reader.cancel().catch(() => undefined);
+      reader.releaseLock();
+    }
+  } else return false;
+  signal.throwIfAborted();
+  if (Buffer.byteLength(text) > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
   try {
-    const form = new URLSearchParams(body);
+    const form = new URLSearchParams(text);
     if (form.has("grant_type")) return form.get("grant_type") === "refresh_token";
-    const payload = JSON.parse(body) as { grant_type?: unknown };
-    return payload.grant_type === "refresh_token";
-  } catch {
-    return false;
-  }
+    return (JSON.parse(text) as { grant_type?: unknown }).grant_type === "refresh_token";
+  } catch { return false; }
 }
 
 function emitSdkRefreshEvent(
@@ -164,12 +198,12 @@ function emitSdkRefreshEvent(
 function sdkRefreshFailure(error: unknown, tokenOutcome: "none" | "rejected" | "succeeded" | "unknown"):
   { outcome: "REJECTED" | "UNKNOWN" | "CANCELLED" | "UNAVAILABLE"; reasonCode: ShopifyOfflineTokenErrorCode } {
   const code = error instanceof ShopifyOfflineTokenError ? error.code : null;
-  if (code === "REFRESH_REJECTED" || tokenOutcome === "rejected") return { outcome: "REJECTED", reasonCode: "REFRESH_REJECTED" };
-  if (code === "CANCELLED") return { outcome: "CANCELLED", reasonCode: "CANCELLED" };
-  if (code === "DEADLINE") return { outcome: "CANCELLED", reasonCode: "DEADLINE" };
   if (tokenOutcome === "unknown" || tokenOutcome === "succeeded" || code === "REFRESH_OUTCOME_UNKNOWN") {
     return { outcome: "UNKNOWN", reasonCode: "REFRESH_OUTCOME_UNKNOWN" };
   }
+  if (code === "REFRESH_REJECTED" || tokenOutcome === "rejected") return { outcome: "REJECTED", reasonCode: "REFRESH_REJECTED" };
+  if (code === "CANCELLED") return { outcome: "CANCELLED", reasonCode: "CANCELLED" };
+  if (code === "DEADLINE") return { outcome: "CANCELLED", reasonCode: "DEADLINE" };
   return { outcome: "UNAVAILABLE", reasonCode: code ?? "PERSISTENCE_UNAVAILABLE" };
 }
 
@@ -244,13 +278,16 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
         ) {
           throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
         }
-        if (await isRefreshTokenGrant(input, init)) {
+        const isRefresh = await isRefreshTokenGrant(input, init, signal ?? timeoutController.signal);
+        if (binding.closed || signal?.aborted) throw new ShopifyOfflineTokenError("DEADLINE");
+        if (isRefresh) {
           sdkRefreshAttempt = {
             operationId: randomUUID(),
             startedAt: performance.now(),
             shopId: binding.context.shopId,
+            tokenOutcome: "none", credentialFingerprint: null, persisted: false,
           };
-          binding.sdkRefreshAttempt = sdkRefreshAttempt;
+          binding.sdkRefreshAttempts.push(sdkRefreshAttempt);
           binding.onSdkRefreshAttempt?.(sdkRefreshAttempt);
           emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.started", "STARTED", null);
         }
@@ -266,15 +303,18 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
 
       if (response.status >= 400 && response.status < 500) {
         binding.tokenOutcome = "rejected";
+        if (sdkRefreshAttempt) sdkRefreshAttempt.tokenOutcome = "rejected";
         await response.body?.cancel().catch(() => undefined);
         throw new ShopifyOfflineTokenError("REFRESH_REJECTED");
       }
       if (!response.ok) {
         binding.tokenOutcome = "unknown";
+        if (sdkRefreshAttempt) sdkRefreshAttempt.tokenOutcome = "unknown";
         await response.body?.cancel().catch(() => undefined);
         throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
       }
       binding.tokenOutcome = "succeeded";
+      if (sdkRefreshAttempt) sdkRefreshAttempt.tokenOutcome = "succeeded";
 
       let body: Uint8Array | null;
       try {
@@ -287,7 +327,7 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
       }
       const bodyBuffer = body === null ? null : new ArrayBuffer(body.byteLength);
       if (body !== null && bodyBuffer !== null) {
-        recordShopifyOAuthCredentialResponse(body);
+        recordShopifyOAuthCredentialResponse(body, sdkRefreshAttempt ?? undefined);
         new Uint8Array(bodyBuffer).set(body);
       }
       return new Response(bodyBuffer, {
@@ -297,6 +337,7 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
       });
     } catch (error) {
       if (tokenUrl && tokenDispatched && binding.tokenOutcome === "none") binding.tokenOutcome = "unknown";
+      if (sdkRefreshAttempt?.tokenOutcome === "none") sdkRefreshAttempt.tokenOutcome = "unknown";
       if (callerSignal?.aborted) throw new ShopifyOfflineTokenError("CANCELLED");
       if (binding.signal.aborted) throw new ShopifyOfflineTokenError("DEADLINE");
       if (timeoutController.signal.aborted) {
@@ -330,9 +371,7 @@ export function createCoordinatedShopifyAuthentication(input: {
     authenticate: () => Promise<T>,
     callerSignal?: AbortSignal,
   ): Promise<T> {
-    let sdkRefreshAttempt: SdkRefreshAttempt | null = null;
-    let sdkRefreshTokenOutcome: "none" | "rejected" | "succeeded" | "unknown" = "none";
-    let persistedRefreshCredentialPair = false;
+    const sdkRefreshAttempts: SdkRefreshAttempt[] = [];
     let committedResponse: CapturedResult<T>;
     try {
       committedResponse = await run<CapturedResult<T>>(async (context) => {
@@ -346,10 +385,7 @@ export function createCoordinatedShopifyAuthentication(input: {
           if (error instanceof Response) return { kind: "response", response: error } as CapturedResult<T>;
           return { kind: "error", error } as CapturedResult<T>;
         }
-      }, callerSignal, 15_000, (attempt) => { sdkRefreshAttempt = attempt; });
-      sdkRefreshAttempt = bound.sdkRefreshAttempt;
-      sdkRefreshTokenOutcome = bound.tokenOutcome;
-      persistedRefreshCredentialPair = bound.persistedRefreshCredentialPair;
+      }, callerSignal, 15_000, (attempt) => { sdkRefreshAttempts.push(attempt); });
       const result = bound.value;
       if (canCommitResponse(result, bound.successfulOfflineStores)) return result;
       if (result.kind === "error") {
@@ -369,17 +405,18 @@ export function createCoordinatedShopifyAuthentication(input: {
       return result;
       });
     } catch (error) {
-      if (sdkRefreshAttempt) {
-        const failure = sdkRefreshFailure(error, sdkRefreshTokenOutcome);
-        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
+      for (const attempt of sdkRefreshAttempts) {
+        const failure = sdkRefreshFailure(error, attempt.tokenOutcome);
+        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
       }
       throw error;
     }
-    if (sdkRefreshAttempt) {
-      if (persistedRefreshCredentialPair) {
-        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.committed", "COMMITTED", null);
+    for (const attempt of sdkRefreshAttempts) {
+      if (attempt.persisted && attempt.tokenOutcome === "succeeded") {
+        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.committed", "COMMITTED", null);
       } else {
-        emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.failed", "UNKNOWN", "REFRESH_OUTCOME_UNKNOWN");
+        const failure = sdkRefreshFailure(undefined, attempt.tokenOutcome);
+        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
       }
     }
     if (committedResponse.kind === "error") throw committedResponse.error;
