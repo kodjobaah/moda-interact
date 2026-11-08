@@ -13,20 +13,28 @@ automatically_update_urls_on_dev = true
 api_version = "2026-07"
 
   [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
   uri = "/webhooks"
   topics = [
-  "orders/create",
-  "carts/create",
-  "carts/update",
-  "checkouts/create",
   "checkouts/update",
-  "customers_whats_app_marketing_consent/update",
-  "discounts/create",
+  "discounts/redeemcode_removed",
+  "orders/create",
   "discounts/update",
   "discounts/delete",
+  "discounts/create",
+  "checkouts/create",
+  "carts/update",
+  "carts/create",
   "discounts/redeemcode_added",
-  "discounts/redeemcode_removed"
+  "customers_whats_app_marketing_consent/update"
 ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
 
   [[webhooks.subscriptions]]
   uri = "/webhooks/customers/data_request"
@@ -40,17 +48,9 @@ api_version = "2026-07"
   uri = "/webhooks/shop/redact"
   compliance_topics = [ "shop/redact" ]
 
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/scopes_update"
-  topics = [ "app/scopes_update" ]
-
-  [[webhooks.subscriptions]]
-  uri = "/webhooks/app/uninstalled"
-  topics = [ "app/uninstalled" ]
-
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand,read_legal_policies"
+scopes = "read_customers,read_discounts,read_legal_policies,read_locales,read_markets,read_orders,read_products"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
