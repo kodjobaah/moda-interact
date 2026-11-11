@@ -24,8 +24,8 @@ export async function trustedRecoverySenderWaba(db: Pick<Prisma.TransactionClien
     return configured;
   }
   // A present but invalid/disabled row must never fall back to an older env value.
-  const keyring = parseCredentialKeyring(process.env.MODA_CONFIG_UNSEAL_KEY);
-  resolveActiveCredentialKey(keyring, process.env.MODA_CONFIG_UNSEAL_ACTIVE_KEY_ID);
+  const keyring = parseCredentialKeyring(process.env.MODA_ENCRYPTION_KEYS_JSON);
+  resolveActiveCredentialKey(keyring, process.env.MODA_ENCRYPTION_ACTIVE_KEY_ID);
   const value = unsealPlatformConfiguration({
     environment, key, version: record.version, value: record.value, keyring,
   });

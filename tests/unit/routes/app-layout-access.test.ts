@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const authenticateAdmin = vi.fn();
 const resolveShopifyShop = vi.fn();
-const readMerchantSupportMessages = vi.fn();
+const readMerchantSupportUnreadCount = vi.fn();
 const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
@@ -26,7 +26,7 @@ vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
 vi.mock("../../../app/services/merchant-support/merchant-support.service", () => ({
-  readMerchantSupportMessages,
+  readMerchantSupportUnreadCount,
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: { getSubscriptionProjection },
@@ -54,7 +54,7 @@ beforeEach(() => {
     admin: { id: "shopify-admin" },
     session: { shop: "merchant.myshopify.com", locale: "en-GB" },
   });
-  readMerchantSupportMessages.mockResolvedValue({ unread: 2 });
+  readMerchantSupportUnreadCount.mockResolvedValue(2);
   getSubscriptionProjection.mockResolvedValue(null);
 });
 
@@ -69,7 +69,7 @@ describe("app layout access", () => {
       });
 
       await expectRedirect(pathname, "/app/reinstalling");
-      expect(readMerchantSupportMessages).not.toHaveBeenCalled();
+      expect(readMerchantSupportUnreadCount).not.toHaveBeenCalled();
     },
   );
 
@@ -77,7 +77,7 @@ describe("app layout access", () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "SUSPENDED" });
 
     await expectRedirect("/app/promotions", "/app/merchant-support");
-    expect(readMerchantSupportMessages).not.toHaveBeenCalled();
+    expect(readMerchantSupportUnreadCount).not.toHaveBeenCalled();
   });
 
   it("keeps pending reinstall merchant support reachable", async () => {
@@ -91,10 +91,8 @@ describe("app layout access", () => {
       unreadMessages: 2,
       apiKey: "database-public-key",
     });
-    expect(readMerchantSupportMessages).toHaveBeenCalledWith({
+    expect(readMerchantSupportUnreadCount).toHaveBeenCalledWith({
       shopId: "shop-1",
-      page: 1,
-      pageSize: 1,
     });
   });
 
@@ -102,7 +100,7 @@ describe("app layout access", () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED", reinstallPendingAt: null });
 
     await expectRedirect("/app/merchant-support", "/auth/login");
-    expect(readMerchantSupportMessages).not.toHaveBeenCalled();
+    expect(readMerchantSupportUnreadCount).not.toHaveBeenCalled();
   });
 
   it("allows active merchant app shell", async () => {
@@ -117,10 +115,8 @@ describe("app layout access", () => {
       unreadMessages: 2,
       merchantExperienceState: "ACTIVE",
     });
-    expect(readMerchantSupportMessages).toHaveBeenCalledWith({
+    expect(readMerchantSupportUnreadCount).toHaveBeenCalledWith({
       shopId: "shop-1",
-      page: 1,
-      pageSize: 1,
     });
   });
 

@@ -5,7 +5,7 @@
 - `shopify.oauth`: `apiKey`, `apiSecret` are loaded together through `SHOPIFY-001` before `shopifyApp` construction; there is **no** runtime `SHOPIFY_API_KEY` or `SHOPIFY_API_SECRET` fallback. The `apiKey` exported to embedded-app routes and webhook deduplication is the same SDK key, and only this non-secret value may reach the browser.
 - `shopify.partner`: both Partner GraphQL operations call `requireShopifyPartnerCredentials()` independently, using one `organizationId`, `accessToken`, `appId`, and optional `apiVersion` from the same configuration revision. Optional version defaults to the previously used `2026-07`. Revocation or database failure stops the operation before a Partner HTTP request.
 - `merchant.knowledge.r2`: upload intent, upload finalisation and the settings upload-limit presentation use the SHOPIFY-001 validated six-field record. Every intent/finalisation obtains one fresh immutable snapshot; signing and HEAD operations use the endpoint, bucket, access credentials and limits from that same snapshot. No legacy R2 environment values are merged.
-- `SCOPES`, `SHOPIFY_APP_URL`, `SHOP_CUSTOM_DOMAIN`, deployment identity, PostgreSQL connection and `MODA_CONFIG_UNSEAL_KEY` / `MODA_CONFIG_UNSEAL_ACTIVE_KEY_ID` remain external bootstrap/infrastructure settings. Shopify CLI deployment files and standalone diagnostic scripts are not modified in this task.
+- `SCOPES`, `SHOPIFY_APP_URL`, `SHOP_CUSTOM_DOMAIN`, deployment identity, PostgreSQL connection and `MODA_ENCRYPTION_KEYS_JSON` / `MODA_ENCRYPTION_ACTIVE_KEY_ID` remain external bootstrap/infrastructure settings. Shopify CLI deployment files and standalone diagnostic scripts are not modified in this task.
 
 ## Gateway environment-variable retirement handoff
 
@@ -46,3 +46,6 @@ git diff --check
 ```
 
 Record positive and negative results from the automated OAuth bootstrap/fail-closed, webhook-route, Partner billing, R2 signing/finalisation, configuration-revocation and secret-redaction tests. Do not include decrypted secrets in assertions, browser output, error messages or logs. Live deployment checks remain operational follow-up and must be recorded separately if later performed.
+
+
+Encryption uses the same deployment-owned `MODA_ENCRYPTION_KEYS_JSON` map and `MODA_ENCRYPTION_ACTIVE_KEY_ID` selector as the hosted services. During cutover, preserve the union of historical wrapping and provider keys under their existing IDs; ciphertext and authenticated data do not change. Encryption maps must not be stored in platform settings or exposed to merchant/browser code. Command-signing secrets remain separate from encryption keys.

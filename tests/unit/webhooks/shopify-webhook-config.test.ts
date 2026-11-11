@@ -5,6 +5,10 @@ const configPath = new URL("../../../shopify.app.moda-interact.toml", import.met
 const templatePath = new URL("../../../shopify.app.toml", import.meta.url);
 const packagePath = new URL("../../../package.json", import.meta.url);
 
+function orderedSubscriptions(items: Array<{ uri: string | undefined; topics: string[] }>) {
+  return items.map(item => ({ ...item, topics: [...item.topics].sort() })).sort((a, b) => (a.uri ?? "").localeCompare(b.uri ?? ""));
+}
+
 function subscriptions(source: string) {
   return source.split("[[webhooks.subscriptions]]").slice(1).map((section) => {
     const uri = section.match(/^\s*uri\s*=\s*"([^"]+)"/m)?.[1];
@@ -24,7 +28,7 @@ describe("intended Shopify app configuration", () => {
     expect(source).toContain("read_customers");
     expect(source).toContain("read_discounts");
     expect(source).toContain("read_brand");
-    expect(subscriptions(source)).toEqual([
+    expect(orderedSubscriptions(subscriptions(source))).toEqual(orderedSubscriptions([
       { uri: "/webhooks", topics: [
         "orders/create", "carts/create", "carts/update", "checkouts/create",
         "checkouts/update", "customers_whats_app_marketing_consent/update",
@@ -36,7 +40,7 @@ describe("intended Shopify app configuration", () => {
       { uri: "/webhooks/shop/redact", topics: ["shop/redact"] },
       { uri: "/webhooks/app/scopes_update", topics: ["app/scopes_update"] },
       { uri: "/webhooks/app/uninstalled", topics: ["app/uninstalled"] },
-    ]);
+    ]));
   });
 
   it("keeps the template identity separate and selects moda-interact in app commands", async () => {

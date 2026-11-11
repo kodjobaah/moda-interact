@@ -1,3 +1,4 @@
+import { RouterContextProvider } from "react-router";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const dependencies = vi.hoisted(() => ({
@@ -11,7 +12,7 @@ vi.mock("../../app/shopify.server", () => ({
   authenticate: { admin: dependencies.authenticate },
 }));
 vi.mock("../../app/services/shop/shop.service", () => ({
-  shopService: { resolveShopifyShop: dependencies.resolveShop },
+  shopService: { getByDomain: dependencies.resolveShop },
 }));
 vi.mock("../../app/services/shop/shop-access-policy", () => ({
   assertActiveShop: dependencies.assertActiveShop,
@@ -50,7 +51,7 @@ describe("Store Category selection action", () => {
       ]),
     });
 
-    const response = await action({ request } as never);
+    const response = await action({ request, context: new RouterContextProvider() } as never);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -59,7 +60,7 @@ describe("Store Category selection action", () => {
       pendingPromptRevisionId: "draft-1",
       pendingSelectionGeneration: 5,
     });
-    expect(dependencies.resolveShop).toHaveBeenCalledWith({ admin: {}, domain: "merchant.myshopify.com" });
+    expect(dependencies.resolveShop).toHaveBeenCalledWith("merchant.myshopify.com");
     expect(dependencies.assertActiveShop).toHaveBeenCalledOnce();
     expect(dependencies.selectPendingStoreCategory).toHaveBeenCalledWith({
       shopId: "shop-123",
@@ -86,6 +87,7 @@ describe("Store Category selection action", () => {
     ]),
   ])("rejects malformed or untrusted form fields", async (body) => {
     const response = await action({
+      context: new RouterContextProvider(),
       request: new Request("https://app.example/app/store-profile/category", { method: "POST", body }),
     } as never);
 

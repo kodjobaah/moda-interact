@@ -129,7 +129,7 @@ function tokenRequestUrl(input: RequestInfo | URL): URL | undefined {
 
 async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit | undefined, signal: AbortSignal): Promise<boolean> {
   signal.throwIfAborted();
-  let body = init?.body;
+  const body = init?.body;
   let text: string;
   if (body instanceof URLSearchParams) {
     // Count without serializing an unbounded form. Encoding only expands this bound.

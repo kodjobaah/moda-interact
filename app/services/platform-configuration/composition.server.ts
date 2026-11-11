@@ -17,8 +17,8 @@ export function createDefaultShopifyPlatformConfigurationService() {
     database: prisma,
     environment,
     loadUnsealKeyring: () => {
-      const keyring = parseCredentialKeyring(process.env.MODA_CONFIG_UNSEAL_KEY);
-      resolveActiveCredentialKey(keyring, process.env.MODA_CONFIG_UNSEAL_ACTIVE_KEY_ID);
+      const keyring = parseCredentialKeyring(process.env.MODA_ENCRYPTION_KEYS_JSON);
+      resolveActiveCredentialKey(keyring, process.env.MODA_ENCRYPTION_ACTIVE_KEY_ID);
       return keyring;
     },
     logger: createLogger({ serviceName: "moda-interact", environment }),
