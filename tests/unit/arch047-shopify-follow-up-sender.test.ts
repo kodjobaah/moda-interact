@@ -24,7 +24,7 @@ describe("ARCH-047 Shopify authoritative sender WABA", () => {
   it("does not fall back after a configured but unavailable sealed sender", async () => {
     vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test");
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1234567890");
-    vi.stubEnv("MODA_CONFIG_UNSEAL_KEY", "");
+    vi.stubEnv("MODA_ENCRYPTION_KEYS_JSON", "");
     await expect(trustedRecoverySenderWaba(db({ environment: "test", key: "messaging.sender",
       version: 1, value: { kind: "disabled", schemaVersion: 1 } }))).rejects.toThrow();
   });
