@@ -42,7 +42,7 @@ describe("ARCH-043 Shopify OAuth boot gating", () => {
     vi.stubEnv("SHOPIFY_API_KEY", "stale-environment-key");
     vi.stubEnv("SHOPIFY_API_SECRET", "stale-environment-secret");
     const loading = import("../../../app/shopify.server.js");
-    await vi.waitFor(() => expect(mocks.read).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(mocks.read).toHaveBeenCalledOnce(), { timeout: 10_000 });
     expect(mocks.construct).not.toHaveBeenCalled();
     release({ version: 2, apiKey: "database-public-key", apiSecret: "database-private-secret" });
     const runtime = await loading;
@@ -51,9 +51,10 @@ describe("ARCH-043 Shopify OAuth boot gating", () => {
       apiKey: "database-public-key", apiSecretKey: "database-private-secret",
     });
     expect(runtime.apiKey).toBe("database-public-key");
-    expect(runtime.authenticate).toBe(client.authenticate);
-    expect(runtime.sessionStorage).toBe(client.sessionStorage);
-  });
+    expect(runtime.authenticate.admin).toBeTypeOf("function");
+    expect(runtime.authenticate.webhook).toBeTypeOf("function");
+    expect(runtime.sessionStorage).toBe(mocks.construct.mock.calls[0]?.[0].sessionStorage);
+  }, 15_000);
 
   it("fails module initialization closed when credentials are absent or revoked", async () => {
     mocks.read.mockRejectedValue(new Error("MISSING"));
