@@ -129,7 +129,7 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
     if (error instanceof ConsentReceiptServiceError) {
       return cors(failureResponse(
         error.code,
-        error.code === "SIGNING_KEY_UNAVAILABLE" ? 503 : 400,
+        error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
       ));
     }
     return cors(failureResponse("CONSENT_UNAVAILABLE", 503));

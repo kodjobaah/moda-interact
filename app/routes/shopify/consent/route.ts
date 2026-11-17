@@ -14,8 +14,8 @@ import {
 
 const APP_PROXY_SCOPE = "write_app_proxy";
 const BASE_PATH = "/shopify/consent/";
-const APPROVED_PATH_PREFIX = "/apps/moda-consent";
 const SIGNED_QUERY_KEYS = ["shop", "signature", "timestamp", "path_prefix", "logged_in_customer_id"] as const;
+const MAX_PATH_PREFIX_LENGTH = 256;
 const RESPONSE_HEADERS = {
   "Cache-Control": "no-store",
   "Content-Type": "application/json; charset=utf-8",
@@ -46,7 +46,15 @@ function oneValue(url: URL, name: string): string | null {
 }
 
 function validPathPrefix(value: string | null): value is string {
-  return value === APPROVED_PATH_PREFIX;
+  if (!value || value.length > MAX_PATH_PREFIX_LENGTH) return false;
+  const match = /^\/(?:a|apps|community|tools)\/(.+)$/.exec(value);
+  if (!match) return false;
+  return match[1].split("/").every(segment =>
+    segment.length > 0 &&
+    segment !== "." &&
+    segment !== ".." &&
+    /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(segment),
+  );
 }
 
 function validTimestamp(value: string | null): value is string {
@@ -170,7 +178,7 @@ function serviceFailure(
   if (error instanceof ConsentReceiptServiceError) {
     return failureResponse(
       error.code,
-      error.code === "SIGNING_KEY_UNAVAILABLE" ? 503 : 400,
+      error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
     );
   }
   return failureResponse("CONSENT_UNAVAILABLE", 503);

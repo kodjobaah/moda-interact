@@ -22,7 +22,7 @@ vi.mock("../../../app/db.server", () => ({
 }));
 vi.mock("../../../app/services/shopify-consent/consent-receipt.server", () => ({
   ConsentReceiptServiceError: class ConsentReceiptServiceError extends Error {
-    code = "SIGNING_KEY_UNAVAILABLE";
+    code = "CREDENTIAL_CONFIGURATION_UNAVAILABLE";
   },
   issueConsentReceipt,
   logShopifyConsentFailure,
@@ -34,7 +34,7 @@ const checkoutRoute = await import("../../../app/routes/shopify/checkout-receipt
 
 const SHOP_ID = "cmwexample000000000000001";
 const PROXY_SIGNATURE = "a".repeat(64);
-const APP_PROXY_PREFIX = "/apps/moda-consent";
+const APP_PROXY_PREFIX = "/apps/consent";
 
 function routeArgs(request: Request, pattern: string) {
   return {
@@ -211,11 +211,35 @@ describe("Shopify consent App Proxy route", () => {
     ));
     expect(stale.status).toBe(400);
 
-    const wrongPrefix = await cartRoute.loader(routeArgs(
-      new Request(proxyUrl("/shopify/consent/cart/status", { pathPrefix: "/apps/merchant-custom" })),
+    const future = await cartRoute.loader(routeArgs(
+      new Request(proxyUrl("/shopify/consent/cart/status", {
+        timestamp: Math.floor(Date.now() / 1000) + 301,
+      })),
       "/shopify/consent/*",
     ));
-    expect(wrongPrefix.status).toBe(400);
+    expect(future.status).toBe(400);
+
+    for (const pathPrefix of [
+      "/admin/consent",
+      "/apps",
+      "/apps/../consent",
+      "/community//consent",
+      "/tools/consent?extra=true",
+    ]) {
+      const invalidPrefix = await cartRoute.loader(routeArgs(
+        new Request(proxyUrl("/shopify/consent/cart/status", { pathPrefix })),
+        "/shopify/consent/*",
+      ));
+      expect(invalidPrefix.status).toBe(400);
+    }
+
+    const missingPrefixUrl = new URL(proxyUrl("/shopify/consent/cart/status"));
+    missingPrefixUrl.searchParams.delete("path_prefix");
+    const missingPrefix = await cartRoute.loader(routeArgs(
+      new Request(missingPrefixUrl),
+      "/shopify/consent/*",
+    ));
+    expect(missingPrefix.status).toBe(400);
 
     const duplicateCustomer = await cartRoute.loader(routeArgs(
       new Request(proxyUrl("/shopify/consent/cart/status", { extraQuery: "logged_in_customer_id=456" })),
@@ -223,6 +247,32 @@ describe("Shopify consent App Proxy route", () => {
     ));
     expect(duplicateCustomer.status).toBe(400);
     expect(appProxyAuthenticate).not.toHaveBeenCalled();
+    expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+  });
+
+  it("accepts each supported signed App Proxy prefix and safe merchant subpath with an SDK-boundary mock", async () => {
+    for (const pathPrefix of [
+      "/a/cart-consent",
+      "/apps/moda/consent",
+      "/community/storefront/consent",
+      "/tools/checkout/consent",
+    ]) {
+      const response = await cartRoute.loader(routeArgs(
+        new Request(proxyUrl("/shopify/consent/cart/status", { pathPrefix })),
+        "/shopify/consent/*",
+      ));
+      expect(response.status).toBe(200);
+    }
+    expect(appProxyAuthenticate).toHaveBeenCalledTimes(4);
+  });
+
+  it("returns unauthenticated when Shopify SDK signature verification rejects the proxy request", async () => {
+    appProxyAuthenticate.mockRejectedValueOnce(new Response(null, { status: 401 }));
+    const response = await cartRoute.loader(routeArgs(
+      new Request(proxyUrl("/shopify/consent/cart/status")),
+      "/shopify/consent/*",
+    ));
+    expect(response.status).toBe(401);
     expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
   });
 

@@ -20,9 +20,8 @@ import {encryptCredential, parseCredentialKeyring} from "@modainteract/moda-inte
 import {logBillingBoundaryFailure} from "../../app/services/billing/providers/shopify-billing-diagnostics.server";
 import {recordShopifySdkDiagnostic} from "../../app/services/observability/shopify-runtime-observability.server";
 const credentials = {version: 1, apiKey: "oauth-public-sentinel", apiSecret: "oauth-private-sentinel"};
-const receiptKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 const client = {authenticate: {}, unauthenticated: {}, sessionStorage: {}, addDocumentResponseHeaders: vi.fn(), login: vi.fn(), registerWebhooks: vi.fn()};
-beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); output.records.length = 0; output.broken = false; vi.stubEnv("SHOPIFY_CONSENT_RECEIPT_KEY_V1", receiptKey); ports.read.mockResolvedValue(credentials); ports.construct.mockReturnValue(client);});
+beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); output.records.length = 0; output.broken = false; ports.read.mockResolvedValue(credentials); ports.construct.mockReturnValue(client);});
 afterEach(() => vi.unstubAllEnvs());
 describe.each([false, true])("actual SDK/configuration privacy, broken sink=%s", broken => {
   beforeEach(() => {output.broken = broken;});

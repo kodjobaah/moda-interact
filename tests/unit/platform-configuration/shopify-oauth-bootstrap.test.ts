@@ -27,13 +27,11 @@ const client = Object.freeze({
   unauthenticated: {}, login: vi.fn(), registerWebhooks: vi.fn(),
   sessionStorage: {}, addDocumentResponseHeaders: vi.fn(),
 });
-const receiptKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 
 beforeEach(() => {
   vi.resetModules();
   vi.clearAllMocks();
   mocks.construct.mockReturnValue(client);
-  vi.stubEnv("SHOPIFY_CONSENT_RECEIPT_KEY_V1", receiptKey);
 });
 afterEach(() => vi.unstubAllEnvs());
 
@@ -61,13 +59,6 @@ describe("ARCH-043 Shopify OAuth boot gating", () => {
   it("fails module initialization closed when credentials are absent or revoked", async () => {
     mocks.read.mockRejectedValue(new Error("MISSING"));
     await expect(import("../../../app/shopify.server.js")).rejects.toThrow("MISSING");
-    expect(mocks.construct).not.toHaveBeenCalled();
-  });
-
-  it("fails before credential lookup when the consent receipt key is missing", async () => {
-    vi.stubEnv("SHOPIFY_CONSENT_RECEIPT_KEY_V1", "");
-    await expect(import("../../../app/shopify.server.js")).rejects.toThrow("SHOPIFY_CONSENT_RECEIPT_KEY_V1");
-    expect(mocks.read).not.toHaveBeenCalled();
     expect(mocks.construct).not.toHaveBeenCalled();
   });
 

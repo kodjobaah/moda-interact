@@ -10,7 +10,6 @@ import { setAbstractFetchFunc } from "@shopify/shopify-api/runtime";
 import { createDefaultShopifyPlatformConfigurationService } from "./services/platform-configuration/composition.server";
 import { shopifyOfflineCoordination } from "./services/shopify-offline-coordination.server";
 import { getShopifySessionBinding } from "./services/shopify-session-storage.server";
-import { initializeConsentReceiptSigningKey } from "./services/shopify-consent/consent-receipt.server";
 
 // React Router's Node ESM server import waits for top-level await before any
 // route module can receive the synchronous Shopify authentication exports.
@@ -20,11 +19,9 @@ import { initializeConsentReceiptSigningKey } from "./services/shopify-consent/c
 let oauth = undefined;
 /** @type {ReturnType<typeof shopifyApp>} */
 let shopify;
-/** @type {"consent_receipt_configuration" | "oauth_configuration" | "sdk_construction"} */
-let bootstrapStage = "consent_receipt_configuration";
+/** @type {"oauth_configuration" | "sdk_construction"} */
+let bootstrapStage = "oauth_configuration";
 try {
-  initializeConsentReceiptSigningKey();
-  bootstrapStage = "oauth_configuration";
   oauth = await createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials();
   bootstrapStage = "sdk_construction";
   const credentials = oauth;
