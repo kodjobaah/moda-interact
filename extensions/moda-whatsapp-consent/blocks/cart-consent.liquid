@@ -1,0 +1,33 @@
+<div
+  id="ModaWhatsappConsent-{{ block.id }}"
+  class="moda-whatsapp-consent"
+  data-moda-whatsapp-consent
+  data-status-url="/apps/moda-consent/cart/status"
+  data-receipt-url="/apps/moda-consent/cart/receipt"
+  data-locale="{{ localization.language.iso_code | escape }}"
+  hidden
+>
+  <label class="moda-whatsapp-consent__label" for="ModaWhatsappConsentCheckbox-{{ block.id }}">
+    <input
+      id="ModaWhatsappConsentCheckbox-{{ block.id }}"
+      class="moda-whatsapp-consent__checkbox"
+      type="checkbox"
+      data-consent-checkbox
+    >
+    <span>{{ 'consent.checkbox.label' | t }}</span>
+  </label>
+</div>
+
+{% schema %}
+{
+  "name": "WhatsApp consent",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["cart"]
+  },
+  "available_if": "{{ app.metafields.moda_interact.cart_consent_enabled }}",
+  "javascript": "cart-consent.js",
+  "stylesheet": "cart-consent.css",
+  "settings": []
+}
+{% endschema %}
