@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  CheckoutCreatedPayloadV2Schema,
+  CheckoutUpdatedPayloadV3Schema,
+} from "@modainteract/moda-interact-shared/shopify";
+import {
   normalizeCheckoutCreatedPayload,
   normalizeCheckoutUpdatedPayload,
 } from "../../../app/services/webhooks/checkout-normalization";
@@ -80,6 +84,8 @@ describe("normalizeCartActivityPayload", () => {
 });
 
 describe("normalizeCheckoutCreatedPayload", () => {
+  const marker = `m1_${"A".repeat(43)}`;
+
   it("returns a stable target payload shape", () => {
     const payload = normalizeCheckoutCreatedPayload({
       token: "checkout-token-1",
@@ -126,24 +132,74 @@ describe("normalizeCheckoutCreatedPayload", () => {
   it("returns null when the checkout token is missing", () => {
     expect(normalizeCheckoutCreatedPayload({})).toBeNull();
   });
+
+  it("forwards only a validated marker from the exact checkout note attribute", () => {
+    const payload = normalizeCheckoutCreatedPayload({
+      token: "checkout-token-1",
+      note_attributes: [
+        { name: "unrelated", value: "private-value" },
+        { name: "moda_cart_correlation_v1", value: marker },
+      ],
+    });
+
+    expect(payload).toEqual({
+      checkoutToken: "checkout-token-1",
+      cartToken: null,
+      abandonedCheckoutUrl: null,
+      checkoutCreatedAt: null,
+      cartCorrelationMarker: marker,
+      cartCorrelationMarkerStatus: "PRESENT",
+    });
+    expect(CheckoutCreatedPayloadV2Schema.safeParse(payload).success).toBe(true);
+  });
+
+  it("distinguishes malformed, duplicate, verified-absent, and unobserved markers", () => {
+    const normalize = (note_attributes) =>
+      normalizeCheckoutCreatedPayload({ token: "checkout-token-1", note_attributes });
+
+    expect(normalize([{ name: "moda_cart_correlation_v1", value: "m1_bad" }]))
+      .toEqual(expect.objectContaining({ cartCorrelationMarkerStatus: "INVALID" }));
+    expect(normalize([
+      { name: "moda_cart_correlation_v1", value: marker },
+      { name: "moda_cart_correlation_v1", value: marker },
+    ])).toEqual(expect.objectContaining({ cartCorrelationMarkerStatus: "AMBIGUOUS" }));
+    expect(normalize([])).toEqual(expect.objectContaining({ cartCorrelationMarkerStatus: "ABSENT" }));
+    expect(normalizeCheckoutCreatedPayload({ token: "checkout-token-1" }))
+      .not.toHaveProperty("cartCorrelationMarkerStatus");
+  });
 });
 
 describe("normalizeCheckoutUpdatedPayload", () => {
+  const marker = `m1_${"A".repeat(43)}`;
+
   it("retains only validated v3 lookup hints and normalises offset timestamps", () => {
-    expect(
-      normalizeCheckoutUpdatedPayload({
+    const payload = normalizeCheckoutUpdatedPayload({
         token: "checkout-token-1",
         cart_token: "cart-token-1",
         created_at: "2021-12-31T19:00:00-05:00",
         abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
         line_items: [{ title: "ignored" }],
-      }),
-    ).toEqual({
+      });
+
+    expect(payload).toEqual({
       checkoutToken: "checkout-token-1",
       cartToken: "cart-token-1",
       checkoutCreatedAt: "2022-01-01T00:00:00.000Z",
       abandonedCheckoutUrl: "https://shop.example/checkout/1?key=abc",
     });
+  });
+
+  it("emits marker status accepted by the strict Shared v3 payload schema", () => {
+    const payload = normalizeCheckoutUpdatedPayload({
+      token: "checkout-token-1",
+      note_attributes: [{ name: "moda_cart_correlation_v1", value: marker }],
+    });
+
+    expect(payload).toMatchObject({
+      cartCorrelationMarker: marker,
+      cartCorrelationMarkerStatus: "PRESENT",
+    });
+    expect(CheckoutUpdatedPayloadV3Schema.safeParse(payload).success).toBe(true);
   });
 
   it("emits a token-only event when optional lookup context is absent", () => {
@@ -202,6 +258,17 @@ describe("normalizeCheckoutUpdatedPayload", () => {
     expect(normalizeCheckoutUpdatedPayload({})).toBeNull();
     expect(normalizeCheckoutUpdatedPayload({ token: 123 })).toBeNull();
     expect(normalizeCheckoutUpdatedPayload({ token: "" })).toBeNull();
+  });
+
+  it("carries a validated marker and observation status in the strict v3 payload", () => {
+    expect(normalizeCheckoutUpdatedPayload({
+      token: "checkout-token-1",
+      note_attributes: { moda_cart_correlation_v1: marker },
+    })).toEqual({
+      checkoutToken: "checkout-token-1",
+      cartCorrelationMarker: marker,
+      cartCorrelationMarkerStatus: "PRESENT",
+    });
   });
 });
 

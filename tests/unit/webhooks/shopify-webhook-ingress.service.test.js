@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import process from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ShopifyCheckoutCreatedEventV2Schema,
+  ShopifyCheckoutUpdatedEventV3Schema,
+} from "@modainteract/moda-interact-shared/shopify";
 
 class TestPublicationError extends Error {
   constructor(message, code) {
@@ -314,6 +318,48 @@ describe("shopify webhook ingress", () => {
         }),
       }),
     );
+  });
+
+  it("carries the validated marker/status pair in strict events under the authenticated shop", async () => {
+    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+    const marker = `m1_${"A".repeat(43)}`;
+
+    const createdResponse = await ingestShopifyWebhook(checkoutInput({
+      payload: {
+        token: "checkout-token-1",
+        note_attributes: [{ name: "moda_cart_correlation_v1", value: marker }],
+      },
+    }));
+    const createdEvent = publicationMock.publishShopifyCheckoutCreatedEvent.mock.calls[0][0].event;
+    expect(createdResponse.status).toBe(200);
+    expect(createdEvent.tenant).toEqual({
+      shopId: "shop_1",
+      shopDomain: "shop.myshopify.com",
+    });
+    expect(createdEvent.payload).toMatchObject({
+      cartCorrelationMarker: marker,
+      cartCorrelationMarkerStatus: "PRESENT",
+    });
+    expect(ShopifyCheckoutCreatedEventV2Schema.safeParse(createdEvent).success).toBe(true);
+
+    const updatedResponse = await ingestShopifyWebhook(checkoutInput({
+      topic: "CHECKOUTS_UPDATE",
+      payload: {
+        token: "checkout-token-1",
+        note_attributes: [{ name: "moda_cart_correlation_v1", value: marker }],
+      },
+    }));
+    const updatedEvent = publicationMock.publishShopifyCheckoutUpdatedEvent.mock.calls[0][0].event;
+    expect(updatedResponse.status).toBe(200);
+    expect(updatedEvent.tenant).toEqual({
+      shopId: "shop_1",
+      shopDomain: "shop.myshopify.com",
+    });
+    expect(updatedEvent.payload).toMatchObject({
+      cartCorrelationMarker: marker,
+      cartCorrelationMarkerStatus: "PRESENT",
+    });
+    expect(ShopifyCheckoutUpdatedEventV3Schema.safeParse(updatedEvent).success).toBe(true);
   });
 
   it("publishes checkout-created with a provider offset timestamp normalised to UTC ISO", async () => {
