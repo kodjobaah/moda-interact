@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { authenticate, apiKey } from "@/shopify.server";
 import { ingestShopifyWebhook, isShopifyWhatsAppConsentTopic } from "@/services/webhooks/shopify-webhook-ingress.service";
 import {
@@ -7,6 +8,33 @@ import {
 } from "@/services/webhooks/shopify-webhook-observability.server";
 
 const WEBHOOK_ROUTE = "/webhooks";
+
+// Temporary, opt-in ARCH-077/S001 diagnostics for authenticated cart/checkout
+// webhooks. Never log raw tokens, private cart keys, or webhook payloads.
+function logS001CartCheckoutTokenFingerprints(topic, payload) {
+  if (process.env.ARCH077_S001_DIAGNOSTICS !== "1" ||
+      !/^(?:CARTS|CHECKOUTS)[_/]/i.test(String(topic))) return;
+
+  try {
+    const hash = (token) => typeof token === "string" && token.length > 0
+      ? createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16)
+      : null;
+    // Ajax cart tokens may include ?key=..., while webhook tokens may not.
+    const base = (token) => typeof token === "string" ? token.split("?")[0] : null;
+    console.info("arch077.s001.webhook", {
+      topic: String(topic),
+      tokenHash: hash(payload?.token),
+      tokenWithoutKeyHash: hash(base(payload?.token)),
+      checkoutCartTokenHash: hash(payload?.cart_token),
+      checkoutCartTokenWithoutKeyHash: hash(base(payload?.cart_token)),
+    });
+  } catch (error) {
+    // Optional diagnostics must never interrupt webhook processing.
+    console.warn("arch077.s001.diagnostics_failed", {
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 // @ts-ignore
 export const action = async ({ request }) => {
@@ -52,6 +80,9 @@ export const action = async ({ request }) => {
 
   const { topic, shop, payload, apiVersion, eventId, triggeredAt, name } =
     authenticated;
+
+  // Only after Shopify has authenticated this webhook. Disabled by default.
+  logS001CartCheckoutTokenFingerprints(topic, payload);
 
   // Fail closed if an authenticated consent topic was not advertised in the
   // request header and therefore its exact numeric customer ID is unavailable.
