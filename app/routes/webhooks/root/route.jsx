@@ -21,12 +21,24 @@ function logS001CartCheckoutTokenFingerprints(topic, payload) {
       : null;
     // Ajax cart tokens may include ?key=..., while webhook tokens may not.
     const base = (token) => typeof token === "string" ? token.split("?")[0] : null;
+    // Cart webhooks may expose attributes as an object, while checkout
+    // webhooks typically expose note_attributes as name/value entries.
+    // Read only our diagnostic marker; never print its raw value.
+    const readMarker = (attributes) => Array.isArray(attributes)
+      ? attributes.find((item) => item?.name === "moda_s001_probe")?.value
+      : attributes && typeof attributes === "object"
+        ? attributes.moda_s001_probe
+        : null;
+    const marker = readMarker(payload?.note_attributes) ??
+      readMarker(payload?.attributes);
     console.info("arch077.s001.webhook", {
       topic: String(topic),
       tokenHash: hash(payload?.token),
       tokenWithoutKeyHash: hash(base(payload?.token)),
       checkoutCartTokenHash: hash(payload?.cart_token),
       checkoutCartTokenWithoutKeyHash: hash(base(payload?.cart_token)),
+      correlationMarkerPresent: typeof marker === "string" && marker.length > 0,
+      correlationMarkerHash: hash(marker),
     });
   } catch (error) {
     // Optional diagnostics must never interrupt webhook processing.
