@@ -81,6 +81,17 @@ it("omits all SDK diagnostic text during coordinated auth, including token and J
   for (const canary of canaries) expect(json).not.toContain(canary);
   expect(json).toContain("COORDINATED_AUTH_DIAGNOSTIC_OMITTED");
 });
+it("redacts session-token values echoed in installed Shopify SDK errors", () => {
+  const sessionToken = "eyJhbGciOiJIUzI1NiJ9.checkout-session-payload.signature";
+  recordShopifySdkDiagnostic({
+    severity: LogSeverity.Error,
+    message: `Failed to validate session token: Failed to parse session token '${sessionToken}': invalid signature`,
+  });
+  const json = JSON.stringify(output.records);
+  expect(json).not.toContain(sessionToken);
+  expect(json).toContain("[REDACTED]");
+  expect(json).toContain('"redactionApplied":true');
+});
 it("central optional diagnostic projection/sensitive values preserve wrapper identity and existing ownership", () => {
   const cause = new Error("source original marker", {cause: new Error("source cause marker")});
   const wrapper = Object.assign(new Error("safe wrapper", {cause}), {code: "INTERNAL_WRAPPER"});

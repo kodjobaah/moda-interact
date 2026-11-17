@@ -126,19 +126,20 @@ describe("normalizeCheckoutCreatedPayload", () => {
   it("returns null when the checkout token is missing", () => {
     expect(normalizeCheckoutCreatedPayload({})).toBeNull();
   });
+
 });
 
 describe("normalizeCheckoutUpdatedPayload", () => {
   it("retains only validated v3 lookup hints and normalises offset timestamps", () => {
-    expect(
-      normalizeCheckoutUpdatedPayload({
+    const payload = normalizeCheckoutUpdatedPayload({
         token: "checkout-token-1",
         cart_token: "cart-token-1",
         created_at: "2021-12-31T19:00:00-05:00",
         abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
         line_items: [{ title: "ignored" }],
-      }),
-    ).toEqual({
+      });
+
+    expect(payload).toEqual({
       checkoutToken: "checkout-token-1",
       cartToken: "cart-token-1",
       checkoutCreatedAt: "2022-01-01T00:00:00.000Z",
@@ -203,6 +204,7 @@ describe("normalizeCheckoutUpdatedPayload", () => {
     expect(normalizeCheckoutUpdatedPayload({ token: 123 })).toBeNull();
     expect(normalizeCheckoutUpdatedPayload({ token: "" })).toBeNull();
   });
+
 });
 
 describe("normalizeOrderCompletedPayload", () => {

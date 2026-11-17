@@ -45,7 +45,10 @@ describe("Shopify shipping-policy read permission", () => {
   it.each(configurations)("appends the required scope once in $filename", ({ filename, priorScopes }) => {
     const toml = source(filename);
     const scopes = requiredScopes(toml);
-    expect(scopes).toEqual([...priorScopes, "read_legal_policies"]);
+    const taskScopes = filename === "shopify.app.moda-interact.toml"
+      ? ["read_legal_policies", "write_app_proxy"]
+      : ["read_legal_policies"];
+    expect(scopes).toEqual([...priorScopes, ...taskScopes]);
     expect(scopes.filter((scope) => scope === "read_legal_policies")).toHaveLength(1);
     expect(new Set(scopes).size).toBe(scopes.length);
     expect(section(toml, "access_scopes")).not.toMatch(/optional_scopes\s*=\s*\[[^\]]*"read_legal_policies"/);

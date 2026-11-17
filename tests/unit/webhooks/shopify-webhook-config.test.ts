@@ -10,7 +10,8 @@ function orderedSubscriptions(items: Array<{ uri: string | undefined; topics: st
 }
 
 function subscriptions(source: string) {
-  return source.split("[[webhooks.subscriptions]]").slice(1).map((section) => {
+  return source.split("[[webhooks.subscriptions]]").slice(1).map((rawSection) => {
+    const section = rawSection.split(/\n\s*\[/, 1)[0];
     const uri = section.match(/^\s*uri\s*=\s*"([^"]+)"/m)?.[1];
     const topics = [...section.matchAll(/"([a-z_]+(?:\/[a-z_]+)?)"/g)]
       .map((match) => match[1])
@@ -28,6 +29,8 @@ describe("intended Shopify app configuration", () => {
     expect(source).toContain("read_customers");
     expect(source).toContain("read_discounts");
     expect(source).toContain("read_brand");
+    expect(source).toContain('scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand,read_legal_policies,write_app_proxy"');
+    expect(source).toContain('[app_proxy]\nurl = "/shopify/consent"\nprefix = "apps"\nsubpath = "moda-consent"');
     expect(orderedSubscriptions(subscriptions(source))).toEqual(orderedSubscriptions([
       { uri: "/webhooks", topics: [
         "orders/create", "carts/create", "carts/update", "checkouts/create",

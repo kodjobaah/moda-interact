@@ -37,8 +37,25 @@ export async function startShopifyWebhookRedis() {
       client.on("error", () => {}); clients.push(client); return client;
     };
     control = createClient();
+    const waitForRedis = async () => {
+      const deadline = Date.now() + 7000;
+      let lastError: unknown;
+      while (Date.now() < deadline) {
+        try {
+          if (control!.status === "wait") await control!.connect();
+          await control!.ping();
+          return;
+        } catch (error) {
+          lastError = error;
+          control!.disconnect();
+          control = createClient();
+          await new Promise(resolve => setTimeout(resolve, 250));
+        }
+      }
+      throw lastError ?? new Error("Isolated Redis readiness deadline exceeded");
+    };
     let timer: ReturnType<typeof setTimeout> | undefined;
-    try { await Promise.race([control.connect().then(() => control!.ping()), new Promise((_, reject) => {
+    try { await Promise.race([waitForRedis(), new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error("Isolated Redis readiness deadline exceeded")), 7000);
     })]); } finally { clearTimeout(timer); }
     const version = (await control.info("server")).match(/^redis_version:(.+)$/m)?.[1].trim();
