@@ -1,0 +1,38 @@
+# Learn more about configuring your checkout UI extension:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest/configuration
+
+# The version of APIs your extension will receive. Learn more:
+# https://shopify.dev/docs/api/usage/versioning
+api_version = "2026-10"
+
+[[extensions]]
+name = "moda-whatsapp-checkout-consent"
+handle = "moda-whatsapp-checkout-consent"
+type = "ui_extension"
+uid = "c566baa5-ef8b-7885-d4d2-2c08885d330ca1ce129e"
+
+# Controls where in Shopify your extension will be injected,
+# and the file that contains your extension’s source code. Learn more:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest/targets
+
+[[extensions.targeting]]
+module = "./src/Checkout.jsx"
+target = "purchase.checkout.contact.render-after"
+
+[extensions.capabilities]
+network_access = true
+
+# Learn more about loading metafields on checkout resources, including the cart,
+# products, and customers:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest#configuration
+
+# Defines settings that will be collected from merchants installing
+# your extension. Learn more:
+# https://shopify.dev/docs/api/checkout-ui-extensions/latest#configuration
+
+# [extensions.settings]
+# [[extensions.settings.fields]]
+# key = "banner_title"
+# type = "single_line_text_field"
+# name = "Banner title"
+# description = "Enter a title for the banner"

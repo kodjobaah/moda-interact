@@ -6,6 +6,7 @@ const checkoutAuthenticate = vi.fn();
 const findShop = vi.fn();
 const readReturningShopperConsentStatus = vi.fn();
 const issueConsentReceipt = vi.fn();
+const verifyConsentReceipt = vi.fn();
 const logShopifyConsentFailure = vi.fn();
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -27,6 +28,7 @@ vi.mock("../../../app/services/shopify-consent/consent-receipt.server", () => ({
   issueConsentReceipt,
   logShopifyConsentFailure,
   readReturningShopperConsentStatus,
+  verifyConsentReceipt,
 }));
 
 const cartRoute = await import("../../../app/routes/shopify/consent/route");
@@ -136,6 +138,7 @@ beforeEach(() => {
     source: "postgresql",
   });
   issueConsentReceipt.mockReturnValue("signed-receipt");
+  verifyConsentReceipt.mockReturnValue({ decision: "G" });
 });
 
 describe("Shopify consent App Proxy route", () => {
@@ -319,6 +322,106 @@ describe("Shopify consent App Proxy route", () => {
 });
 
 describe("Shopify checkout receipt route", () => {
+  it("verifies the current checkout receipt before returning its decision", async () => {
+    const response = await checkoutRoute.action(routeArgs(
+      checkoutRequest({
+        mode: "status",
+        checkoutToken: "current-checkout-token",
+        receipt: "signed-receipt",
+      }),
+      "/shopify/checkout/receipt",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      checked: true,
+      decision: "G",
+      source: "checkout",
+    });
+    expect(verifyConsentReceipt).toHaveBeenCalledWith("signed-receipt", {
+      shopId: SHOP_ID,
+      kind: "x",
+      token: "current-checkout-token",
+      customerId: "123",
+    });
+    expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+  });
+
+  it("uses SQL status only when the checkout has no consent receipt", async () => {
+    const response = await checkoutRoute.action(routeArgs(
+      checkoutRequest({
+        mode: "status",
+        checkoutToken: "current-checkout-token",
+        receipt: null,
+      }),
+      "/shopify/checkout/receipt",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      checked: true,
+      decision: "GRANTED",
+      source: "postgresql",
+    });
+    expect(readReturningShopperConsentStatus).toHaveBeenCalledWith({
+      shopId: SHOP_ID,
+      shopifyCustomerId: "123",
+    });
+    expect(verifyConsentReceipt).not.toHaveBeenCalled();
+  });
+
+  it("rejects an empty or overlong checkout locator even when no receipt exists", async () => {
+    for (const checkoutToken of ["", "x".repeat(513)]) {
+      const response = await checkoutRoute.action(routeArgs(
+        checkoutRequest({
+          mode: "status",
+          checkoutToken,
+          receipt: null,
+        }),
+        "/shopify/checkout/receipt",
+      ));
+      expect(response.status).toBe(400);
+    }
+    expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+  });
+
+  it("uses a verified checkout REVOKE as the current display state", async () => {
+    verifyConsentReceipt.mockReturnValueOnce({ decision: "R" });
+    const response = await checkoutRoute.action(routeArgs(
+      checkoutRequest({
+        mode: "status",
+        checkoutToken: "current-checkout-token",
+        receipt: "signed-revoke-receipt",
+      }),
+      "/shopify/checkout/receipt",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      checked: false,
+      decision: "R",
+      source: "checkout",
+    });
+  });
+
+  it("fails closed when checkout receipt verification is unavailable", async () => {
+    verifyConsentReceipt.mockImplementationOnce(() => {
+      throw new Error("invalid receipt");
+    });
+    const response = await checkoutRoute.action(routeArgs(
+      checkoutRequest({
+        mode: "status",
+        checkoutToken: "current-checkout-token",
+        receipt: "copied-or-malformed-receipt",
+      }),
+      "/shopify/checkout/receipt",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "CONSENT_UNAVAILABLE" });
+    expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+  });
+
   it("authenticates checkout claims, verifies app audience, resolves shop and issues kind x", async () => {
     const request = checkoutRequest({
       checkoutToken: "current-checkout-token",
