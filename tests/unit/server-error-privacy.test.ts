@@ -20,8 +20,9 @@ import {encryptCredential, parseCredentialKeyring} from "@modainteract/moda-inte
 import {logBillingBoundaryFailure} from "../../app/services/billing/providers/shopify-billing-diagnostics.server";
 import {recordShopifySdkDiagnostic} from "../../app/services/observability/shopify-runtime-observability.server";
 const credentials = {version: 1, apiKey: "oauth-public-sentinel", apiSecret: "oauth-private-sentinel"};
+const receiptKey = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8";
 const client = {authenticate: {}, unauthenticated: {}, sessionStorage: {}, addDocumentResponseHeaders: vi.fn(), login: vi.fn(), registerWebhooks: vi.fn()};
-beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); output.records.length = 0; output.broken = false; ports.read.mockResolvedValue(credentials); ports.construct.mockReturnValue(client);});
+beforeEach(() => {vi.resetModules(); vi.clearAllMocks(); output.records.length = 0; output.broken = false; vi.stubEnv("SHOPIFY_CONSENT_RECEIPT_KEY_V1", receiptKey); ports.read.mockResolvedValue(credentials); ports.construct.mockReturnValue(client);});
 afterEach(() => vi.unstubAllEnvs());
 describe.each([false, true])("actual SDK/configuration privacy, broken sink=%s", broken => {
   beforeEach(() => {output.broken = broken;});
@@ -80,6 +81,17 @@ it("omits all SDK diagnostic text during coordinated auth, including token and J
   const json = JSON.stringify(output.records);
   for (const canary of canaries) expect(json).not.toContain(canary);
   expect(json).toContain("COORDINATED_AUTH_DIAGNOSTIC_OMITTED");
+});
+it("redacts session-token values echoed in installed Shopify SDK errors", () => {
+  const sessionToken = "eyJhbGciOiJIUzI1NiJ9.checkout-session-payload.signature";
+  recordShopifySdkDiagnostic({
+    severity: LogSeverity.Error,
+    message: `Failed to validate session token: Failed to parse session token '${sessionToken}': invalid signature`,
+  });
+  const json = JSON.stringify(output.records);
+  expect(json).not.toContain(sessionToken);
+  expect(json).toContain("[REDACTED]");
+  expect(json).toContain('"redactionApplied":true');
 });
 it("central optional diagnostic projection/sensitive values preserve wrapper identity and existing ownership", () => {
   const cause = new Error("source original marker", {cause: new Error("source cause marker")});

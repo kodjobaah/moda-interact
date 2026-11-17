@@ -17,6 +17,7 @@ export default [
   route("privacy", "./routes/public/privacy/route.tsx"),
 
   route("shopify/consent/*", "./routes/shopify/consent/route.ts"),
+  route("shopify/checkout/receipt", "./routes/shopify/checkout-receipt/route.ts"),
 
   route("health", "./routes/system/health/route.ts"),
   route("ready", "./routes/system/ready/route.ts"),

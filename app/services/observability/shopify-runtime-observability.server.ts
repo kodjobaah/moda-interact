@@ -19,7 +19,7 @@ export function recordServerRenderFailure(input: {error: unknown; stage: "shell"
   if (expected(input.error)) return;
   logBillingBoundaryFailure({event: "shopify.server.render_failed", operation: "server_render", stage: input.stage, origin: "internal", error: input.error}, logger);
 }
-export function recordShopifyBootstrapFailure(input: {error: unknown; stage: "oauth_configuration" | "sdk_construction"; sensitiveValues?: string[]}): void {
+export function recordShopifyBootstrapFailure(input: {error: unknown; stage: "consent_receipt_configuration" | "oauth_configuration" | "sdk_construction"; sensitiveValues?: string[]}): void {
   logBillingBoundaryFailure({event: "shopify.bootstrap.failed", operation: "shopify_bootstrap", stage: input.stage,
     origin: "internal", error: input.error, sensitiveValues: input.sensitiveValues}, logger);
 }
@@ -37,6 +37,8 @@ export function recordShopifySdkDiagnostic(input: {severity: number; message: st
   }
   const suffix = input.message.indexOf(" | {");
   let message = suffix >= 0 ? input.message.slice(0, suffix) : input.message;
+  const sessionTokenRedacted = /session token\s+['"`][^'"`]*['"`]/i.test(message);
+  message = message.replace(/(session token\s+['"`])[^'"`]*(['"`])/gi, "$1[REDACTED]$2");
   const opaque = message.search(/[{}\r\n]|\[\s*["{]|\b(?:request|response|session|headers|body|payload|variables|data)\s*[:=]/i);
   const privacyOmitted = opaque >= 0;
   if (privacyOmitted) message = `${message.slice(0, opaque).trimEnd()} [REDACTED]`;
@@ -44,7 +46,7 @@ export function recordShopifySdkDiagnostic(input: {severity: number; message: st
   const level = input.severity === 0 ? "error" : input.severity === 1 ? "warn" : input.severity === 2 ? "info" : "debug";
   logger[level]("shopify.sdk.diagnostic", sanitizeLogFields({
     operation: "sdk_log", stage: "sdk_callback", origin: "sdk_exception", sdkSeverity: input.severity,
-    message: safe?.value ?? "[REDACTED]", redactionApplied: suffix >= 0 || privacyOmitted || Boolean(safe?.redacted),
+    message: safe?.value ?? "[REDACTED]", redactionApplied: suffix >= 0 || privacyOmitted || sessionTokenRedacted || Boolean(safe?.redacted),
     truncated: Boolean(safe?.truncated), ...(privacyOmitted ? {reasonCode: "OPAQUE_SDK_CONTENT_OMITTED"} : {}),
   }));
 }
