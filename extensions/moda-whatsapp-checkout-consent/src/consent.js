@@ -1,7 +1,26 @@
 export const CONSENT_ATTRIBUTE_KEY = "moda_wa_consent_v1";
 export const CHECKOUT_TARGET = "purchase.checkout.contact.render-after";
+
+const DEFAULT_RECEIPT_ORIGIN = "https://app-test.modainteract.com";
+
+// The Shopify CLI statically replaces `process.env.*` from the app `.env`
+// during extension builds. The try/catch keeps the checkout worker safe when
+// the variable is absent and the expression is left unreplaced.
+/* global process */
+function configuredReceiptOrigin() {
+  let origin;
+  try {
+    origin = process.env.MODA_CHECKOUT_RECEIPT_ORIGIN;
+  } catch {
+    origin = undefined;
+  }
+  return typeof origin === "string" && /^https:\/\/[^\s/]+$/.test(origin)
+    ? origin
+    : DEFAULT_RECEIPT_ORIGIN;
+}
+
 export const CHECKOUT_RECEIPT_ENDPOINT =
-  "https://app-test.modainteract.com/shopify/checkout/receipt";
+  `${configuredReceiptOrigin()}/shopify/checkout/receipt`;
 
 export function readConsentReceipt(attributes) {
   if (!Array.isArray(attributes)) return undefined;

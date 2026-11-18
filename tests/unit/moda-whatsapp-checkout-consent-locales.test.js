@@ -26,8 +26,8 @@ const expectedLocales = [
   "sv.json",
   "th.json",
   "tr.json",
-  "zh-Hans.json",
-  "zh-Hant.json",
+  "zh-CN.json",
+  "zh-TW.json",
 ];
 
 describe("Plus checkout consent translations", () => {

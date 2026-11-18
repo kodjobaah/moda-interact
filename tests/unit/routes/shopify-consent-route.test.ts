@@ -29,7 +29,6 @@ vi.mock("../../../app/services/shopify-consent/consent-receipt.server", () => ({
   verifyConsentReceipt,
   logShopifyConsentFailure,
   readReturningShopperConsentStatus,
-  verifyConsentReceipt,
 }));
 
 const cartRoute = await import("../../../app/routes/shopify/consent/route");
