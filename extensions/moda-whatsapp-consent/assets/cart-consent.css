@@ -1,0 +1,16 @@
+.moda-whatsapp-consent {
+  margin-block: 1rem;
+}
+
+.moda-whatsapp-consent__label {
+  align-items: flex-start;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 0.6rem;
+  line-height: 1.4;
+}
+
+.moda-whatsapp-consent__checkbox {
+  flex: 0 0 auto;
+  margin-block-start: 0.2em;
+}

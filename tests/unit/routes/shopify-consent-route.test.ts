@@ -26,6 +26,7 @@ vi.mock("../../../app/services/shopify-consent/consent-receipt.server", () => ({
     code = "CREDENTIAL_CONFIGURATION_UNAVAILABLE";
   },
   issueConsentReceipt,
+  verifyConsentReceipt,
   logShopifyConsentFailure,
   readReturningShopperConsentStatus,
   verifyConsentReceipt,
@@ -161,6 +162,73 @@ describe("Shopify consent App Proxy route", () => {
       customerId: "123",
     });
     expect(appProxyAuthenticate).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ["G", "GRANT", "123"],
+    ["R", "REVOKE", "123"],
+    ["G", "GRANT", null],
+  ])("verifies the existing cart receipt for a signed customer context", async (signedDecision, decision, customerId) => {
+    verifyConsentReceipt.mockReturnValueOnce({ decision: signedDecision });
+    const request = new Request(proxyUrl("/shopify/consent/cart/verify", {
+      customerId: customerId ?? "",
+    }), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://custom.store.example",
+      },
+      body: JSON.stringify({
+        cartToken: "current-cart-token?key=private",
+        receipt: "current-cart-receipt",
+      }),
+    });
+    const response = await cartRoute.action(routeArgs(request, "/shopify/consent/*"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      source: "verified_receipt",
+      decision,
+    });
+    expect(verifyConsentReceipt).toHaveBeenCalledWith("current-cart-receipt", {
+      shopId: SHOP_ID,
+      kind: "c",
+      token: "current-cart-token?key=private",
+      customerId,
+    });
+    expect(issueConsentReceipt).not.toHaveBeenCalled();
+  });
+
+  it("rejects extra client-supplied verification identities and returns bounded verification errors", async () => {
+    const forgedBody = await cartRoute.action(routeArgs(postRequest(
+      "/shopify/consent/cart/verify",
+      {
+        cartToken: "cart-token",
+        receipt: "opaque-receipt",
+        shopId: "forged-shop",
+        customerId: "456",
+      },
+    ), "/shopify/consent/*"));
+    expect(forgedBody.status).toBe(400);
+    expect(verifyConsentReceipt).not.toHaveBeenCalled();
+
+    verifyConsentReceipt.mockImplementationOnce(() => {
+      throw new Error("receipt verification failed");
+    });
+    const failed = await cartRoute.action(routeArgs(postRequest(
+      "/shopify/consent/cart/verify",
+      { cartToken: "private-cart-token", receipt: "private-receipt" },
+    ), "/shopify/consent/*"));
+    expect(failed.status).toBe(503);
+    const body = await failed.text();
+    expect(body).not.toContain("private-cart-token");
+    expect(body).not.toContain("private-receipt");
+    expect(logShopifyConsentFailure).toHaveBeenCalledWith(expect.objectContaining({
+      operation: "cart_verify",
+      stage: "consent_operation",
+      shopId: SHOP_ID,
+    }));
   });
 
   it("allows custom HTTPS Origins and absent Origins without treating Origin as authentication", async () => {

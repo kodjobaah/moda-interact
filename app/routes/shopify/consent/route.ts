@@ -6,6 +6,7 @@ import {
   logShopifyConsentFailure,
   readReturningShopperConsentStatus,
   issueConsentReceipt,
+  verifyConsentReceipt,
 } from "@/services/shopify-consent/consent-receipt.server";
 import {
   hasOnlyKeys,
@@ -166,7 +167,7 @@ async function authenticateAppProxyRequest(request: Request): Promise<AuthResult
 
 function serviceFailure(
   error: unknown,
-  operation: "status_read" | "cart_receipt",
+  operation: "status_read" | "cart_receipt" | "cart_verify",
   shopId: string,
 ): Response {
   logShopifyConsentFailure({
@@ -211,6 +212,31 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
   if (!validHttpsOrigin(request)) return failureResponse("INVALID_ORIGIN", 400);
 
   const url = new URL(request.url);
+  if (url.pathname === `${BASE_PATH}cart/verify`) {
+    const body = await readBoundedJsonObject(request);
+    if (
+      !body ||
+      !hasOnlyKeys(body, ["cartToken", "receipt"]) ||
+      typeof body.cartToken !== "string" ||
+      typeof body.receipt !== "string"
+    ) {
+      return failureResponse("INVALID_RECEIPT_VERIFICATION_REQUEST", 400);
+    }
+    try {
+      const claims = verifyConsentReceipt(body.receipt, {
+        shopId: auth.context.shopId,
+        kind: "c",
+        token: body.cartToken,
+        customerId: auth.context.shopifyCustomerId,
+      });
+      return jsonResponse({
+        source: "verified_receipt",
+        decision: claims.decision === "G" ? "GRANT" : "REVOKE",
+      });
+    } catch (error) {
+      return serviceFailure(error, "cart_verify", auth.context.shopId);
+    }
+  }
   if (url.pathname !== `${BASE_PATH}cart/receipt`) {
     return failureResponse("NOT_FOUND", 404);
   }
