@@ -4,25 +4,42 @@ import { describe, expect, it } from "vitest";
 import { readFile } from "node:fs/promises";
 import { createMerchantI18n, SUPPORTED_ADMIN_LOCALES, sourceCatalogues } from "../../app/utils/merchant-i18n";
 import WhatsAppCustomerConsent, {
-  SHOPIFY_WHATSAPP_CONSENT_GUIDES,
+  type WhatsAppConsentActivation,
 } from "../../app/routes/app/recovery-settings/WhatsAppCustomerConsent";
 
 const keys = [
-  "title", "marketing", "setupTitle", "setup", "setupLink", "earlyTitle", "early",
-  "formsLink", "noConsentTitle", "noConsent", "unavailable", "laterTitle", "later",
+  "title", "marketing", "noConsentTitle", "noConsent", "unavailable",
   "stopTitle", "stop",
+  "plusTitle", "plusBody", "plusVerify",
+  "cartTitle", "cartBody", "cartVerify", "cartOpenEditor",
+  "proxyTitle", "proxyBody", "proxyRules",
+  "returningTitle", "returning",
+  "unknownPlanTitle", "unknownPlan",
+  "statusActive", "statusInactive", "statusUnsupported",
+  "statusUnavailable", "statusUnverified",
 ].map((suffix) => `recoverySettings.whatsappConsent.${suffix}`);
 
-function render(locale: string) {
+const nonPlusActivation: WhatsAppConsentActivation = {
+  placement: "non_plus_cart",
+  cartStatus: "inactive",
+  plusStatus: "unsupported",
+  cartThemeEditorUrl:
+    "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
+  appProxyDefaultRoot: "/apps/moda-consent",
+};
+
+function render(locale: string, activation: WhatsAppConsentActivation = nonPlusActivation) {
   const i18n = createMerchantI18n({ locale, fallbackLocale: "en", timeZone: "UTC" });
-  return renderToStaticMarkup(createElement(WhatsAppCustomerConsent, { t: i18n.t }));
+  return renderToStaticMarkup(
+    createElement(WhatsAppCustomerConsent, { t: i18n.t, activation }),
+  );
 }
 
-describe("ARCH-045 Shopify WhatsApp Customer Consent guidance", () => {
+describe("WhatsApp Customer Consent guidance (ARCH-045, superseded placement setup by ARCH-077 S005)", () => {
   it("is a discoverable, informational section in Recovery Settings, not a consent control", async () => {
     const view = await readFile(new URL("../../app/routes/app/recovery-settings/RecoverySettingsView.tsx", import.meta.url), "utf8");
-    expect(view).toContain('<WhatsAppCustomerConsent t={i18n.t} />');
-    expect(view.indexOf('<WhatsAppCustomerConsent t={i18n.t} />')).toBeGreaterThan(view.indexOf('</SettingsForm>'));
+    expect(view).toContain("<WhatsAppCustomerConsent t={i18n.t} activation={data.whatsappActivation} />");
+    expect(view.indexOf("<WhatsAppCustomerConsent")).toBeGreaterThan(view.indexOf("</SettingsForm>"));
     const html = render("en");
     expect(html).toContain('aria-labelledby="recovery-whatsapp-consent-heading"');
     expect(html).toContain('id="recovery-whatsapp-consent-heading"');
@@ -30,29 +47,25 @@ describe("ARCH-045 Shopify WhatsApp Customer Consent guidance", () => {
     expect(html).not.toMatch(/<(input|form|button|select)\b/i);
   });
 
-  it("links only to established Shopify public documentation with accessible labels", () => {
+  it("replaces Shopify-native WhatsApp opt-in instructions with Moda placement activation", () => {
     const html = render("en");
-    expect(html).toContain(`href="${SHOPIFY_WHATSAPP_CONSENT_GUIDES.checkout}"`);
-    expect(html).toContain(`href="${SHOPIFY_WHATSAPP_CONSENT_GUIDES.forms}"`);
-    expect((html.match(/target="_blank" rel="noopener noreferrer"/g) ?? [])).toHaveLength(2);
-    expect(html).toContain("Shopify guide: checkout marketing opt-in");
-    expect(html).toContain("Shopify guide: WhatsApp opt-in forms");
+    expect(html).not.toContain("help.shopify.com");
+    expect(html).toContain("theme editor");
+    expect(html).toContain("/apps/moda-consent");
+    expect(html).toContain('href="https://merchant.myshopify.com/admin/themes/current/editor?template=cart"');
+    expect(html).toContain('target="_blank" rel="noopener noreferrer"');
   });
 
-  it("does not mistake tracking or a phone number for messaging opt-in, or promise a consent-driven replay", () => {
+  it("does not mistake tracking or a phone number for messaging opt-in, and keeps STOP authoritative", () => {
     const html = render("en");
     expect(html).toContain("marketing messages, not order confirmations or utility updates");
     expect(html).toContain("Collecting a phone number or accepting Shopify Customer Privacy tracking consent is not WhatsApp marketing consent");
-    expect(html).toContain("only after checkout submission");
-    expect(html).toContain("guest checkout");
-    expect(html).toContain("Shopify Forms");
     expect(html).toContain("does not create a CheckoutRecovery");
     expect(html).toContain("charge a recovery credit");
     expect(html).toContain("checkout-keyed notice in Moda Support");
     expect(html).toContain("A verification outage does not mean that the customer declined");
-    expect(html).toContain("Only a later normal checkout reconciliation might create a recovery");
-    expect(html).toContain("does not impose a 72-hour consent expiry");
     expect(html).toContain("a later Shopify consent grant cannot override this STOP");
+    expect(html).toContain("without writing anything");
     expect(html).not.toContain("DETECTED");
     expect(html).not.toContain("consent-triggered retry");
   });

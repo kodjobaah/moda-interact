@@ -452,7 +452,7 @@ export default function RecoverySettingsView({
             t={i18n.t}
           />
         </div>
-        <WhatsAppCustomerConsent t={i18n.t} />
+        <WhatsAppCustomerConsent t={i18n.t} activation={data.whatsappActivation} />
         <FeaturePreferences snapshot={data.features} t={i18n.t} />
 
         <section
