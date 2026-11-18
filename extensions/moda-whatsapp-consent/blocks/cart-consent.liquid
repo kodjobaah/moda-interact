@@ -1,0 +1,44 @@
+{% assign app_proxy_root = block.settings.app_proxy_root | default: '/apps/moda-consent' %}
+
+<div
+  id="ModaWhatsappConsent-{{ block.id }}"
+  class="moda-whatsapp-consent"
+  data-moda-whatsapp-consent
+  data-proxy-root="{{ app_proxy_root | escape }}"
+  data-status-url="{{ app_proxy_root | append: '/cart/status' | escape }}"
+  data-receipt-url="{{ app_proxy_root | append: '/cart/receipt' | escape }}"
+  data-verify-url="{{ app_proxy_root | append: '/cart/verify' | escape }}"
+  data-locale="{{ localization.language.iso_code | escape }}"
+  hidden
+>
+  <label class="moda-whatsapp-consent__label" for="ModaWhatsappConsentCheckbox-{{ block.id }}">
+    <input
+      id="ModaWhatsappConsentCheckbox-{{ block.id }}"
+      class="moda-whatsapp-consent__checkbox"
+      type="checkbox"
+      data-consent-checkbox
+    >
+    <span>{{ 'consent.checkbox.label' | t }}</span>
+  </label>
+</div>
+
+{% schema %}
+{
+  "name": "WhatsApp consent",
+  "target": "section",
+  "enabled_on": {
+    "templates": ["cart"]
+  },
+  "available_if": "{{ app.metafields.moda_interact.cart_consent_enabled }}",
+  "javascript": "cart-consent.js",
+  "stylesheet": "cart-consent.css",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_proxy_root",
+      "label": "Moda app proxy path",
+      "default": "/apps/moda-consent"
+    }
+  ]
+}
+{% endschema %}
