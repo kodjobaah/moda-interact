@@ -108,6 +108,27 @@
     return data.receipt;
   }
 
+  async function verifyReceipt(fetcher, root, cartToken, receipt) {
+    const data = await responseJson(fetcher, sameOriginUrl(root.dataset.verifyUrl), {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ cartToken, receipt }),
+    });
+    if (
+      !isObject(data) ||
+      data.source !== "verified_receipt" ||
+      (data.decision !== "GRANT" && data.decision !== "REVOKE")
+    ) {
+      throw new Error("Shopify consent receipt could not be verified.");
+    }
+    return data.decision === "GRANT";
+  }
+
   function matchesReceipt(cart, expectedBaseToken, receipt) {
     return cart.baseToken === expectedBaseToken &&
       cart.attributes[RECEIPT_ATTRIBUTE] === receipt;
@@ -186,9 +207,16 @@
     try {
       const cart = await readCart(fetcher);
       const currentReceiptExists = hasCurrentReceipt(cart.attributes);
-      const initialChecked = currentReceiptExists
-        ? false
-        : await readSqlStatus(fetcher, root);
+      let initialChecked;
+      if (currentReceiptExists) {
+        const receipt = cart.attributes[RECEIPT_ATTRIBUTE];
+        if (typeof receipt !== "string") {
+          throw new Error("Shopify consent receipt is unavailable.");
+        }
+        initialChecked = await verifyReceipt(fetcher, root, cart.token, receipt);
+      } else {
+        initialChecked = await readSqlStatus(fetcher, root);
+      }
 
       let lastConfirmed = initialChecked;
       checkbox.checked = initialChecked;
@@ -225,6 +253,17 @@
       void initialize(root);
     });
   };
+  document.addEventListener("shopify:section:load", event => {
+    const section = event.target;
+    if (section instanceof Element && section.matches("[data-moda-whatsapp-consent]")) {
+      void initialize(section);
+    }
+    if (section && typeof section.querySelectorAll === "function") {
+      section.querySelectorAll("[data-moda-whatsapp-consent]").forEach(root => {
+        void initialize(root);
+      });
+    }
+  });
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initializeBlocks, { once: true });
   } else {

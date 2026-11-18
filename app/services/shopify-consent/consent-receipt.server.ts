@@ -513,7 +513,7 @@ export async function readReturningShopperConsentStatus(input: {
 }
 
 export function logShopifyConsentFailure(input: {
-  operation: "app_proxy_authentication" | "shop_resolution" | "status_read" | "cart_receipt" | "checkout_receipt";
+  operation: "app_proxy_authentication" | "shop_resolution" | "status_read" | "cart_receipt" | "cart_verify" | "checkout_receipt";
   stage: string;
   error: unknown;
   shopId?: string;
