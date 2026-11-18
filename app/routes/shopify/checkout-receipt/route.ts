@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import type { ActionFunctionArgs } from "react-router";
 import db from "@/db.server";
 import { apiKey, authenticate } from "@/shopify.server";
@@ -5,6 +6,8 @@ import {
   ConsentReceiptServiceError,
   issueConsentReceipt,
   logShopifyConsentFailure,
+  readReturningShopperConsentStatus,
+  verifyConsentReceipt,
 } from "@/services/shopify-consent/consent-receipt.server";
 import {
   hasOnlyKeys,
@@ -101,8 +104,67 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
   const body = await readBoundedJsonObject(request);
   if (
     !body ||
+    typeof body.checkoutToken !== "string"
+  ) {
+    return cors(failureResponse("INVALID_RECEIPT_REQUEST", 400));
+  }
+  const checkoutTokenBytes = Buffer.byteLength(body.checkoutToken, "utf8");
+  if (checkoutTokenBytes < 1 || checkoutTokenBytes > 512) {
+    return cors(failureResponse("INVALID_RECEIPT_REQUEST", 400));
+  }
+
+  if (body.mode === "status") {
+    if (
+      !hasOnlyKeys(body, ["mode", "checkoutToken", "receipt"]) ||
+      !Object.hasOwn(body, "receipt") ||
+      (body.receipt !== null && typeof body.receipt !== "string")
+    ) {
+      return cors(failureResponse("INVALID_RECEIPT_REQUEST", 400));
+    }
+
+    try {
+      if (body.receipt === null) {
+        const status = await readReturningShopperConsentStatus({
+          shopId: shop.id,
+          shopifyCustomerId: customerId,
+        });
+        return cors(jsonResponse({
+          checked: status.checked,
+          decision: status.decision,
+          source: "postgresql",
+        }));
+      }
+
+      const claims = verifyConsentReceipt(body.receipt, {
+        shopId: shop.id,
+        kind: "x",
+        token: body.checkoutToken,
+        customerId,
+      });
+      return cors(jsonResponse({
+        checked: claims.decision === "G",
+        decision: claims.decision,
+        source: "checkout",
+      }));
+    } catch (error) {
+      logShopifyConsentFailure({
+        operation: "checkout_receipt",
+        stage: body.receipt === null ? "status_read" : "receipt_verification",
+        error,
+        shopId: shop.id,
+      });
+      if (error instanceof ConsentReceiptServiceError) {
+        return cors(failureResponse(
+          error.code,
+          error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
+        ));
+      }
+      return cors(failureResponse("CONSENT_UNAVAILABLE", 503));
+    }
+  }
+
+  if (
     !hasOnlyKeys(body, ["checkoutToken", "decision", "locale"]) ||
-    typeof body.checkoutToken !== "string" ||
     (body.decision !== "GRANT" && body.decision !== "REVOKE") ||
     typeof body.locale !== "string"
   ) {

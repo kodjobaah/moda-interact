@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "c323c5bd8585d875719db7570b91460e"
-name = "moda-interact"
-application_url = "https://app-test.modainteract.com"
+name = "Moda Interact Production"
+application_url = "https://app.modainteract.com"
 embedded = true
 handle = "moda-interact"
 
@@ -50,12 +50,12 @@ api_version = "2026-07"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand,read_legal_policies,write_app_proxy"
+scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_legal_policies,write_app_proxy"
 optional_scopes = [ ]
 use_legacy_install_flow = false
 
 [auth]
-redirect_urls = [ "https://app-test.modainteract.com" ]
+redirect_urls = [ "https://app.modainteract.com" ]
 
 [app_proxy]
 url = "/shopify/consent"
