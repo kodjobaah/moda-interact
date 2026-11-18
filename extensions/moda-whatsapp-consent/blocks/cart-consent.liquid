@@ -1,10 +1,13 @@
+{% assign app_proxy_root = block.settings.app_proxy_root | default: '/apps/moda-consent' %}
+
 <div
   id="ModaWhatsappConsent-{{ block.id }}"
   class="moda-whatsapp-consent"
   data-moda-whatsapp-consent
-  data-status-url="/apps/moda-consent/cart/status"
-  data-receipt-url="/apps/moda-consent/cart/receipt"
-  data-verify-url="/apps/moda-consent/cart/verify"
+  data-proxy-root="{{ app_proxy_root | escape }}"
+  data-status-url="{{ app_proxy_root | append: '/cart/status' | escape }}"
+  data-receipt-url="{{ app_proxy_root | append: '/cart/receipt' | escape }}"
+  data-verify-url="{{ app_proxy_root | append: '/cart/verify' | escape }}"
   data-locale="{{ localization.language.iso_code | escape }}"
   hidden
 >
@@ -29,6 +32,13 @@
   "available_if": "{{ app.metafields.moda_interact.cart_consent_enabled }}",
   "javascript": "cart-consent.js",
   "stylesheet": "cart-consent.css",
-  "settings": []
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_proxy_root",
+      "label": "Moda app proxy path",
+      "default": "/apps/moda-consent"
+    }
+  ]
 }
 {% endschema %}

@@ -2,6 +2,7 @@
   if (window.modaWhatsappConsent) return;
 
   const RECEIPT_ATTRIBUTE = "moda_wa_consent_v1";
+  const DEFAULT_APP_PROXY_ROOT = "/apps/moda-consent";
   const initializedRoots = new WeakSet();
 
   function isObject(value) {
@@ -24,6 +25,25 @@
       throw new Error("Invalid same-origin path.");
     }
     return url.toString();
+  }
+
+  function appProxyPaths(root) {
+    const proxyRoot = root.dataset.proxyRoot || DEFAULT_APP_PROXY_ROOT;
+    const match = /^\/(?:a|apps|community|tools)\/([A-Za-z0-9_-]{1,30})$/.exec(proxyRoot);
+    if (!match || ["admin", "services", "password", "login"].includes(match[1].toLowerCase())) {
+      throw new Error("The Shopify app proxy path is invalid.");
+    }
+
+    const suffixes = ["status", "receipt", "verify"];
+    const paths = suffixes.map(suffix => `${proxyRoot}/cart/${suffix}`);
+    if (suffixes.some((suffix, index) => root.dataset[`${suffix}Url`] !== paths[index])) {
+      throw new Error("The Shopify app proxy paths are inconsistent.");
+    }
+
+    return Object.fromEntries(suffixes.map((suffix, index) => [
+      suffix,
+      sameOriginUrl(paths[index]),
+    ]));
   }
 
   function cartUrl() {
@@ -88,12 +108,12 @@
     return readCartShape(data);
   }
 
-  async function issueReceipt(fetcher, root, cartToken, decision) {
+  async function issueReceipt(fetcher, proxyPaths, root, cartToken, decision) {
     const locale = root.dataset.locale;
     if (typeof locale !== "string" || locale.length < 2 || locale.length > 35) {
       throw new Error("Shopper locale is unavailable.");
     }
-    const data = await responseJson(fetcher, sameOriginUrl(root.dataset.receiptUrl), {
+    const data = await responseJson(fetcher, proxyPaths.receipt, {
       method: "POST",
       credentials: "same-origin",
       headers: {
@@ -108,8 +128,8 @@
     return data.receipt;
   }
 
-  async function verifyReceipt(fetcher, root, cartToken, receipt) {
-    const data = await responseJson(fetcher, sameOriginUrl(root.dataset.verifyUrl), {
+  async function verifyReceipt(fetcher, proxyPaths, cartToken, receipt) {
+    const data = await responseJson(fetcher, proxyPaths.verify, {
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -173,8 +193,8 @@
     }
   }
 
-  async function readSqlStatus(fetcher, root) {
-    const data = await responseJson(fetcher, sameOriginUrl(root.dataset.statusUrl), {
+  async function readSqlStatus(fetcher, proxyPaths) {
+    const data = await responseJson(fetcher, proxyPaths.status, {
       method: "GET",
       credentials: "same-origin",
       cache: "no-store",
@@ -210,6 +230,7 @@
     if (!(checkbox instanceof HTMLInputElement)) return;
 
     try {
+      const proxyPaths = appProxyPaths(root);
       const cart = await readCart(fetcher);
       const currentReceiptExists = hasCurrentReceipt(cart.attributes);
       let initialChecked;
@@ -218,9 +239,9 @@
         if (typeof receipt !== "string") {
           throw new Error("Shopify consent receipt is unavailable.");
         }
-        initialChecked = await verifyReceipt(fetcher, root, cart.token, receipt);
+        initialChecked = await verifyReceipt(fetcher, proxyPaths, cart.token, receipt);
       } else {
-        initialChecked = await readSqlStatus(fetcher, root);
+        initialChecked = await readSqlStatus(fetcher, proxyPaths);
       }
 
       let lastConfirmed = initialChecked;
@@ -232,6 +253,7 @@
           const currentCart = await readCart(fetcher);
           const receipt = await issueReceipt(
             fetcher,
+            proxyPaths,
             root,
             currentCart.token,
             requestedChoice ? "GRANT" : "REVOKE",

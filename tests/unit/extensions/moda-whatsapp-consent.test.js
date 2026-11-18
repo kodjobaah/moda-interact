@@ -13,10 +13,12 @@ function response(data, status = 200) {
   });
 }
 
-function makeBlock() {
+function makeBlock(proxyRoot = "/apps/moda-consent") {
+  const renderedProxyRoot = proxyRoot || "/apps/moda-consent";
   document.body.innerHTML = `
     <div
       data-moda-whatsapp-consent
+      data-proxy-root="/apps/moda-consent"
       data-status-url="/apps/moda-consent/cart/status"
       data-receipt-url="/apps/moda-consent/cart/receipt"
       data-verify-url="/apps/moda-consent/cart/verify"
@@ -26,7 +28,12 @@ function makeBlock() {
       <input type="checkbox" data-consent-checkbox>
     </div>
   `;
-  return document.querySelector("[data-moda-whatsapp-consent]");
+  const root = document.querySelector("[data-moda-whatsapp-consent]");
+  root.dataset.proxyRoot = proxyRoot;
+  root.dataset.statusUrl = `${renderedProxyRoot}/cart/status`;
+  root.dataset.receiptUrl = `${renderedProxyRoot}/cart/receipt`;
+  root.dataset.verifyUrl = `${renderedProxyRoot}/cart/verify`;
+  return root;
 }
 
 function cart(token, attributes = {}) {
@@ -44,6 +51,96 @@ beforeEach(() => {
 });
 
 describe("cart WhatsApp consent block", () => {
+  it.each([
+    "/apps/moda-consent",
+    "/tools/custom-consent",
+    "/a/custom-consent",
+    "/community/custom-consent",
+  ])("derives status, receipt, and verification URLs from proxy root %s", async proxyRoot => {
+    const root = makeBlock(proxyRoot);
+    let currentCart = cart("proxy-cart");
+    const fetcher = vi.fn(async (url, init = {}) => {
+      const path = new URL(String(url)).pathname;
+      if (path.endsWith("/fr/cart.js")) return response(currentCart);
+      if (path === `${proxyRoot}/cart/status`) {
+        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+      }
+      if (path === `${proxyRoot}/cart/receipt`) {
+        expect(JSON.parse(init.body)).toMatchObject({
+          cartToken: "proxy-cart",
+          decision: "GRANT",
+        });
+        return response({ receipt: RECEIPT });
+      }
+      if (path.endsWith("/fr/cart/update.js")) {
+        currentCart = cart("proxy-cart", { moda_wa_consent_v1: RECEIPT });
+        return response(currentCart);
+      }
+      if (path === `${proxyRoot}/cart/verify`) {
+        return response({ source: "verified_receipt", decision: "GRANT" });
+      }
+      throw new Error("Unexpected request");
+    });
+
+    await window.modaWhatsappConsent.initialize(root, fetcher);
+    const checkbox = root.querySelector("[data-consent-checkbox]");
+    clickCheckbox(checkbox, true);
+    await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
+
+    const reloadedRoot = makeBlock(proxyRoot);
+    await window.modaWhatsappConsent.initialize(reloadedRoot, fetcher);
+
+    const requestedPaths = fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname);
+    expect(requestedPaths).toContain(`${proxyRoot}/cart/status`);
+    expect(requestedPaths).toContain(`${proxyRoot}/cart/receipt`);
+    expect(requestedPaths).toContain(`${proxyRoot}/cart/verify`);
+    expect(reloadedRoot.querySelector("[data-consent-checkbox]").checked).toBe(true);
+  });
+
+  it("uses the default proxy root when the block setting is empty", async () => {
+    const root = makeBlock("");
+    const fetcher = vi.fn(async url => {
+      if (String(url).endsWith("/fr/cart.js")) return response(cart("empty-setting-cart"));
+      if (String(url).endsWith("/apps/moda-consent/cart/status")) {
+        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+      }
+      throw new Error("Unexpected request");
+    });
+
+    await window.modaWhatsappConsent.initialize(root, fetcher);
+
+    expect(root.hidden).toBe(false);
+    expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname))
+      .toContain("/apps/moda-consent/cart/status");
+  });
+
+  it.each([
+    "https://attacker.example/apps/consent",
+    "/apps/consent?next=https://attacker.example",
+    "/tools/consent#fragment",
+    "/tools/consent/extra",
+    "/tools/../consent",
+    "/tools/consent/",
+    "/tools/admin",
+    "/apps/services",
+    "/community/password",
+    "/a/login",
+    "/tools/invalid.name",
+    "/tools/has space",
+    "//attacker.example/tools/consent",
+    "/apps/",
+    `/tools/${"x".repeat(31)}`,
+  ])("hides the block without a request for invalid proxy root %s", async proxyRoot => {
+    const root = makeBlock(proxyRoot);
+    const fetcher = vi.fn();
+
+    await window.modaWhatsappConsent.initialize(root, fetcher);
+
+    expect(root.hidden).toBe(true);
+    expect(root.querySelector("[data-consent-checkbox]").disabled).toBe(true);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("shows a new cart unchecked without issuing a receipt", async () => {
     const root = makeBlock();
     const fetcher = vi.fn(async url => {
@@ -334,6 +431,7 @@ describe("cart WhatsApp consent block", () => {
     section.innerHTML = `
       <div
         data-moda-whatsapp-consent
+        data-proxy-root="/apps/moda-consent"
         data-status-url="/apps/moda-consent/cart/status"
         data-receipt-url="/apps/moda-consent/cart/receipt"
         data-verify-url="/apps/moda-consent/cart/verify"
