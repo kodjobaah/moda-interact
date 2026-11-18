@@ -4,7 +4,7 @@ client_id = "c323c5bd8585d875719db7570b91460e"
 name = "Moda Interact Production"
 application_url = "https://app.modainteract.com"
 embedded = true
-handle = "Moda Interact Production"
+handle = "moda-interact"
 
 [build]
 automatically_update_urls_on_dev = true
