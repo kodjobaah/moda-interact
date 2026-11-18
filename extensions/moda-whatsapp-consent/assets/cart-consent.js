@@ -135,6 +135,11 @@
   }
 
   async function updateAndConfirm(fetcher, expectedBaseToken, receipt) {
+    const currentCart = await readCart(fetcher);
+    if (currentCart.baseToken !== expectedBaseToken) {
+      throw new Error("The current Shopify cart changed before the receipt could be saved.");
+    }
+
     let updateError;
     try {
       const updatedCart = readCartShape(await responseJson(

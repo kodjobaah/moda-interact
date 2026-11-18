@@ -280,8 +280,40 @@ describe("cart WhatsApp consent block", () => {
     await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
 
     expect(checkbox.checked).toBe(false);
-    expect(cartReads).toBe(3);
+    expect(cartReads).toBe(4);
     expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/cart/receipt"))).toHaveLength(1);
+  });
+
+  it("does not save a receipt if the browser cart changes while the issuer request is pending", async () => {
+    const root = makeBlock();
+    let currentCart = cart("original-cart");
+    const fetcher = vi.fn(async (url, init = {}) => {
+      const path = String(url);
+      if (path.endsWith("/fr/cart.js")) return response(currentCart);
+      if (path.endsWith("/apps/moda-consent/cart/status")) {
+        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+      }
+      if (path.endsWith("/apps/moda-consent/cart/receipt")) {
+        expect(JSON.parse(init.body)).toMatchObject({
+          cartToken: "original-cart",
+          decision: "GRANT",
+        });
+        currentCart = cart("replacement-cart");
+        return response({ receipt: RECEIPT });
+      }
+      if (path.endsWith("/fr/cart/update.js")) {
+        throw new Error("A receipt must not be written to the replacement cart.");
+      }
+      throw new Error("Unexpected request");
+    });
+
+    await window.modaWhatsappConsent.initialize(root, fetcher);
+    const checkbox = root.querySelector("[data-consent-checkbox]");
+    clickCheckbox(checkbox, true);
+    await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
+
+    expect(checkbox.checked).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/update.js"))).toBe(false);
   });
 
   it("initializes a newly loaded theme editor section once without duplicating existing handlers", async () => {
