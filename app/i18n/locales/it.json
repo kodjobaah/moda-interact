@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Il modello selezionato non è più approvato o disponibile.",
   "recoveryDetail.sendNotHumanControlled": "Assumi il controllo della conversazione prima di rispondere.",
   "recoverySettings.initialOutreachNotification.title": "Notifica del primo messaggio di recupero",
-  "recoverySettings.initialOutreachNotification.description": "Avvisarti quando Moda invia il primo messaggio per recuperare un checkout abbandonato. Questo non modifica i messaggi ai clienti né l’utilizzo dei crediti di recupero."
+  "recoverySettings.initialOutreachNotification.description": "Avvisarti quando Moda invia il primo messaggio per recuperare un checkout abbandonato. Questo non modifica i messaggi ai clienti né l’utilizzo dei crediti di recupero.",
+  "recoverySettings.whatsappConsent.activationAction": "Attiva il consenso WhatsApp",
+  "recoverySettings.whatsappConsent.activationPreparing": "Preparazione dell’attivazione…",
+  "recoverySettings.whatsappConsent.activationFailed": "Impossibile preparare l’attivazione Shopify. Riprova.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Continua nell’editor Shopify",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Non attivo nel checkout pubblicato"
 }

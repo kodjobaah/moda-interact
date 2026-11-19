@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Seçilen şablon artık onaylı ya da kullanılabilir değil.",
   "recoveryDetail.sendNotHumanControlled": "Yanıt göndermeden önce konuşmayı devralın.",
   "recoverySettings.initialOutreachNotification.title": "İlk kurtarma mesajı bildirimi",
-  "recoverySettings.initialOutreachNotification.description": "Moda terk edilmiş bir ödeme işlemi için ilk kurtarma mesajını gönderdiğinde sizi bilgilendirir. Bu ayar müşteri mesajlarını veya kurtarma kredisi kullanımını değiştirmez."
+  "recoverySettings.initialOutreachNotification.description": "Moda terk edilmiş bir ödeme işlemi için ilk kurtarma mesajını gönderdiğinde sizi bilgilendirir. Bu ayar müşteri mesajlarını veya kurtarma kredisi kullanımını değiştirmez.",
+  "recoverySettings.whatsappConsent.activationAction": "WhatsApp iznini etkinleştir",
+  "recoverySettings.whatsappConsent.activationPreparing": "Etkinleştirme hazırlanıyor…",
+  "recoverySettings.whatsappConsent.activationFailed": "Shopify etkinleştirmesi hazırlanamadı. Tekrar deneyin.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Shopify düzenleyicisine devam et",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Yayındaki ödeme sayfasında etkin değil"
 }

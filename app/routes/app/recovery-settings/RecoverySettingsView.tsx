@@ -6,7 +6,7 @@ import SettingsForm from "@/components/settings/SettingsForm";
 import FeaturePreferences from "@/components/settings/FeaturePreferences";
 import StoreProfileSection from "@/components/settings/StoreProfileSection";
 import MerchantKnowledgeSection from "@/components/settings/MerchantKnowledgeSection";
-import WhatsAppCustomerConsent from "./WhatsAppCustomerConsent";
+import WhatsAppConsentActivationController from "./WhatsAppConsentActivationController";
 import AiResponseDelaySettings from "./AiResponseDelaySettings";
 import "./RecoverySettingsRoute.css";
 type DiscountRow = Awaited<ReturnType<typeof loader>>["discounts"][number];
@@ -452,7 +452,7 @@ export default function RecoverySettingsView({
             t={i18n.t}
           />
         </div>
-        <WhatsAppCustomerConsent t={i18n.t} activation={data.whatsappActivation} />
+        <WhatsAppConsentActivationController t={i18n.t} activation={data.whatsappActivation} />
         <FeaturePreferences snapshot={data.features} t={i18n.t} />
 
         <section

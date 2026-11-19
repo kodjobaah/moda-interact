@@ -55,6 +55,9 @@ describe("Plus checkout WhatsApp consent extension helpers", () => {
   it("accepts only a well-shaped server status", () => {
     expect(isConsentStatus({ checked: true, source: "checkout" })).toBe(true);
     expect(isConsentStatus({ checked: false, source: "postgresql" })).toBe(true);
+    expect(isConsentStatus({ checked: false, decision: "UNKNOWN", source: "invalid_checkout_receipt" })).toBe(true);
+    expect(isConsentStatus({ checked: true, decision: "UNKNOWN", source: "invalid_checkout_receipt" })).toBe(false);
+    expect(isConsentStatus({ checked: false, decision: "GRANTED", source: "invalid_checkout_receipt" })).toBe(false);
     expect(isConsentStatus({ checked: "true", source: "checkout" })).toBe(false);
     expect(isConsentStatus({ checked: true, source: "client" })).toBe(false);
   });

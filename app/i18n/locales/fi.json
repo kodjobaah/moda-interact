@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Valittu mallipohja ei ole enää hyväksytty tai saatavilla.",
   "recoveryDetail.sendNotHumanControlled": "Ota keskustelu haltuun ennen vastauksen lähettämistä.",
   "recoverySettings.initialOutreachNotification.title": "Ilmoitus ensimmäisestä palautusviestistä",
-  "recoverySettings.initialOutreachNotification.description": "Ilmoita, kun Moda lähettää ensimmäisen viestin kesken jääneen kassalla käynnin palauttamiseksi. Tämä ei muuta asiakasviestejä tai palautuskrediittien käyttöä."
+  "recoverySettings.initialOutreachNotification.description": "Ilmoita, kun Moda lähettää ensimmäisen viestin kesken jääneen kassalla käynnin palauttamiseksi. Tämä ei muuta asiakasviestejä tai palautuskrediittien käyttöä.",
+  "recoverySettings.whatsappConsent.activationAction": "Ota WhatsApp-suostumus käyttöön",
+  "recoverySettings.whatsappConsent.activationPreparing": "Valmistellaan käyttöönottoa…",
+  "recoverySettings.whatsappConsent.activationFailed": "Shopify-käyttöönottoa ei voitu valmistella. Yritä uudelleen.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Jatka Shopify-editoriin",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ei aktiivinen julkaistussa kassassa"
 }

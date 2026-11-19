@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Den valgte skabelon er ikke længere godkendt eller tilgængelig.",
   "recoveryDetail.sendNotHumanControlled": "Overtag samtalen, før du sender et svar.",
   "recoverySettings.initialOutreachNotification.title": "Notifikation om første gendannelsesbesked",
-  "recoverySettings.initialOutreachNotification.description": "Giv dig besked, når Moda sender den første besked om gendannelse af et forladt køb. Dette ændrer ikke kundebeskeder eller brugen af gendannelseskreditter."
+  "recoverySettings.initialOutreachNotification.description": "Giv dig besked, når Moda sender den første besked om gendannelse af et forladt køb. Dette ændrer ikke kundebeskeder eller brugen af gendannelseskreditter.",
+  "recoverySettings.whatsappConsent.activationAction": "Aktivér WhatsApp-samtykke",
+  "recoverySettings.whatsappConsent.activationPreparing": "Forbereder aktivering…",
+  "recoverySettings.whatsappConsent.activationFailed": "Shopify-aktivering kunne ikke forberedes. Prøv igen.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Fortsæt til Shopify-editoren",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i den offentliggjorte checkout"
 }

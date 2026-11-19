@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Wybrany szablon nie jest już zatwierdzony lub dostępny.",
   "recoveryDetail.sendNotHumanControlled": "Przejmij rozmowę przed wysłaniem odpowiedzi.",
   "recoverySettings.initialOutreachNotification.title": "Powiadomienie o pierwszej wiadomości odzyskiwania",
-  "recoverySettings.initialOutreachNotification.description": "Powiadom, gdy Moda wyśle pierwszą wiadomość odzyskiwania dla porzuconego procesu płatności. Nie zmienia to wiadomości do klientów ani zużycia kredytów odzyskiwania."
+  "recoverySettings.initialOutreachNotification.description": "Powiadom, gdy Moda wyśle pierwszą wiadomość odzyskiwania dla porzuconego procesu płatności. Nie zmienia to wiadomości do klientów ani zużycia kredytów odzyskiwania.",
+  "recoverySettings.whatsappConsent.activationAction": "Aktywuj zgodę na WhatsApp",
+  "recoverySettings.whatsappConsent.activationPreparing": "Przygotowywanie aktywacji…",
+  "recoverySettings.whatsappConsent.activationFailed": "Nie można przygotować aktywacji Shopify. Spróbuj ponownie.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Przejdź do edytora Shopify",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Nieaktywne w opublikowanej kasie"
 }

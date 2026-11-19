@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Het gekozen sjabloon is niet meer goedgekeurd of beschikbaar.",
   "recoveryDetail.sendNotHumanControlled": "Neem eerst het gesprek over om te antwoorden.",
   "recoverySettings.initialOutreachNotification.title": "Melding bij het eerste herstelbericht",
-  "recoverySettings.initialOutreachNotification.description": "Laat het je weten wanneer Moda het eerste bericht verstuurt om een afgebroken checkout te herstellen. Dit verandert niets aan klantberichten of het gebruik van herstelcredits."
+  "recoverySettings.initialOutreachNotification.description": "Laat het je weten wanneer Moda het eerste bericht verstuurt om een afgebroken checkout te herstellen. Dit verandert niets aan klantberichten of het gebruik van herstelcredits.",
+  "recoverySettings.whatsappConsent.activationAction": "WhatsApp-toestemming activeren",
+  "recoverySettings.whatsappConsent.activationPreparing": "Activering voorbereiden…",
+  "recoverySettings.whatsappConsent.activationFailed": "Kan Shopify-activering niet voorbereiden. Probeer opnieuw.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Doorgaan naar Shopify-editor",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Niet actief in gepubliceerde checkout"
 }

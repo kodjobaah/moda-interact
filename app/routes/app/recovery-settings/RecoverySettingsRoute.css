@@ -1464,3 +1464,26 @@
     grid-column: auto;
   }
 }
+
+/* Minimal, single-path consent activation. Shopify owns the final Save. */
+.moda-recovery-consent-grid { grid-template-columns: minmax(0, 1fr); }
+.moda-recovery-consent-action,
+.moda-recovery-consent-card button {
+  min-height: 42px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: 1px solid var(--recovery-green-600);
+  border-radius: 9px;
+  background: var(--recovery-green-800);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+}
+.moda-recovery-consent-card button:disabled { opacity: .6; cursor: wait; }
+.moda-recovery-consent-card button:focus-visible,
+.moda-recovery-consent-guidance summary:focus-visible {
+  outline: 3px solid var(--recovery-green-600);
+  outline-offset: 3px;
+}
+.moda-recovery-consent-guidance { margin-top: 12px; font-size: 13px; }
+.moda-recovery-consent-guidance p { line-height: 1.6; }

@@ -17,12 +17,16 @@ const keys = [
   "unknownPlanTitle", "unknownPlan",
   "statusActive", "statusInactive", "statusUnsupported",
   "statusUnavailable", "statusUnverified",
+  "activationAction", "activationPreparing", "activationFailed",
+  "activationOpenEditor", "statusCheckoutInactive",
 ].map((suffix) => `recoverySettings.whatsappConsent.${suffix}`);
 
 const nonPlusActivation: WhatsAppConsentActivation = {
   placement: "non_plus_cart",
   cartStatus: "inactive",
   plusStatus: "unsupported",
+  gateState: "disabled",
+  checkoutEditorUrl: null,
   cartThemeEditorUrl:
     "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
   appProxyDefaultRoot: "/apps/moda-consent",
@@ -38,35 +42,35 @@ function render(locale: string, activation: WhatsAppConsentActivation = nonPlusA
 describe("WhatsApp Customer Consent guidance (ARCH-045, superseded placement setup by ARCH-077 S005)", () => {
   it("is a discoverable, informational section in Recovery Settings, not a consent control", async () => {
     const view = await readFile(new URL("../../app/routes/app/recovery-settings/RecoverySettingsView.tsx", import.meta.url), "utf8");
-    expect(view).toContain("<WhatsAppCustomerConsent t={i18n.t} activation={data.whatsappActivation} />");
-    expect(view.indexOf("<WhatsAppCustomerConsent")).toBeGreaterThan(view.indexOf("</SettingsForm>"));
+    expect(view).toContain("<WhatsAppConsentActivationController t={i18n.t} activation={data.whatsappActivation} />");
+    expect(view.indexOf("<WhatsAppConsentActivationController")).toBeGreaterThan(view.indexOf("</SettingsForm>"));
     const html = render("en");
     expect(html).toContain('aria-labelledby="recovery-whatsapp-consent-heading"');
     expect(html).toContain('id="recovery-whatsapp-consent-heading"');
     expect(html).toContain("WhatsApp Customer Consent");
-    expect(html).not.toMatch(/<(input|form|button|select)\b/i);
+    expect(html).not.toMatch(/<(input|form|select)\b/i);
+    expect(html).toContain('data-consent-card="cart-block"');
+    expect(html).toContain("Activate WhatsApp Consent");
+    expect((html.match(/<button\b/g) ?? []).length).toBe(1);
   });
 
   it("replaces Shopify-native WhatsApp opt-in instructions with Moda placement activation", () => {
     const html = render("en");
     expect(html).not.toContain("help.shopify.com");
     expect(html).toContain("theme editor");
-    expect(html).toContain("/apps/moda-consent");
-    expect(html).toContain('href="https://merchant.myshopify.com/admin/themes/current/editor?template=cart"');
-    expect(html).toContain('target="_blank" rel="noopener noreferrer"');
+    expect(html).toContain("Activate WhatsApp Consent");
+    // The destination is returned only after an authenticated activation POST.
+    expect(html).not.toContain('href="https://merchant.myshopify.com/admin/themes/current/editor?template=cart"');
+    expect(html).not.toContain('data-consent-card="plus-checkout"');
   });
 
   it("does not mistake tracking or a phone number for messaging opt-in, and keeps STOP authoritative", () => {
     const html = render("en");
     expect(html).toContain("marketing messages, not order confirmations or utility updates");
     expect(html).toContain("Collecting a phone number or accepting Shopify Customer Privacy tracking consent is not WhatsApp marketing consent");
-    expect(html).toContain("does not create a CheckoutRecovery");
-    expect(html).toContain("charge a recovery credit");
-    expect(html).toContain("checkout-keyed notice in Moda Support");
-    expect(html).toContain("A verification outage does not mean that the customer declined");
     expect(html).toContain("a later Shopify consent grant cannot override this STOP");
     expect(html).toContain("without writing anything");
-    expect(html).not.toContain("DETECTED");
+    expect(html).toContain("reminders always follow the permission stored at send time");
     expect(html).not.toContain("consent-triggered retry");
   });
 
@@ -83,7 +87,11 @@ describe("WhatsApp Customer Consent guidance (ARCH-045, superseded placement set
       }
       const html = render(locale);
       expect(html).toContain(catalogues[locale]["recoverySettings.whatsappConsent.title"]);
-      expect(html).toContain(catalogues[locale]["recoverySettings.whatsappConsent.stopTitle"]);
+      // The compact S005 panel renders STOP guidance inside a details section,
+      // not the legacy standalone STOP heading. React escapes apostrophes in text.
+      expect(html.replaceAll("&#x27;", "'")).toContain(
+        catalogues[locale]["recoverySettings.whatsappConsent.stop"],
+      );
     }
   });
 });

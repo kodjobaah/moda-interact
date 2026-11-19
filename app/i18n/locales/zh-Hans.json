@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "所选模板不再获得批准或不可用。",
   "recoveryDetail.sendNotHumanControlled": "请先接管对话，再发送回复。",
   "recoverySettings.initialOutreachNotification.title": "首次挽回消息通知",
-  "recoverySettings.initialOutreachNotification.description": "Moda 为未完成的结账发送首条挽回消息时通知你。此设置不会更改发送给客户的消息，也不会影响挽回额度的使用。"
+  "recoverySettings.initialOutreachNotification.description": "Moda 为未完成的结账发送首条挽回消息时通知你。此设置不会更改发送给客户的消息，也不会影响挽回额度的使用。",
+  "recoverySettings.whatsappConsent.activationAction": "启用 WhatsApp 同意选项",
+  "recoverySettings.whatsappConsent.activationPreparing": "正在准备启用…",
+  "recoverySettings.whatsappConsent.activationFailed": "无法准备 Shopify 启用操作。请重试。",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "继续前往 Shopify 编辑器",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "未在已发布的结账页面启用"
 }

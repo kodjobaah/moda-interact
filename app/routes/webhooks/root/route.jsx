@@ -11,32 +11,47 @@ const WEBHOOK_ROUTE = "/webhooks";
 
 // Temporary, opt-in ARCH-077/S001 diagnostics for authenticated cart/checkout
 // webhooks. Never log raw tokens, private cart keys, or webhook payloads.
+/**
+ * @param {string} topic
+ * @param {unknown} payload
+ */
 function logS001CartCheckoutTokenFingerprints(topic, payload) {
   if (process.env.ARCH077_S001_DIAGNOSTICS !== "1" ||
       !/^(?:CARTS|CHECKOUTS)[_/]/i.test(String(topic))) return;
 
   try {
+    /** @type {{token?: unknown, cart_token?: unknown, note_attributes?: unknown, attributes?: unknown}} */
+    const data = payload !== null && typeof payload === "object" ? payload : {};
+    /** @param {unknown} token */
     const hash = (token) => typeof token === "string" && token.length > 0
       ? createHash("sha256").update(token, "utf8").digest("hex").slice(0, 16)
       : null;
     // Ajax cart tokens may include ?key=..., while webhook tokens may not.
+    /** @param {unknown} token */
     const base = (token) => typeof token === "string" ? token.split("?")[0] : null;
     // Cart webhooks may expose attributes as an object, while checkout
     // webhooks typically expose note_attributes as name/value entries.
     // Read only our diagnostic marker; never print its raw value.
-    const readMarker = (attributes) => Array.isArray(attributes)
-      ? attributes.find((item) => item?.name === "moda_s001_probe")?.value
-      : attributes && typeof attributes === "object"
-        ? attributes.moda_s001_probe
-        : null;
-    const marker = readMarker(payload?.note_attributes) ??
-      readMarker(payload?.attributes);
+    /** @param {unknown} attributes */
+    const readMarker = (attributes) => {
+      let value = null;
+      if (Array.isArray(attributes)) {
+        const entry = attributes.find((item) =>
+          item !== null && typeof item === "object" && item.name === "moda_s001_probe");
+        value = entry?.value;
+      } else if (attributes !== null && typeof attributes === "object") {
+        value = /** @type {Record<string, unknown>} */ (attributes).moda_s001_probe;
+      }
+      return typeof value === "string" ? value : null;
+    };
+    const marker = readMarker(data.note_attributes) ??
+      readMarker(data.attributes);
     console.info("arch077.s001.webhook", {
       topic: String(topic),
-      tokenHash: hash(payload?.token),
-      tokenWithoutKeyHash: hash(base(payload?.token)),
-      checkoutCartTokenHash: hash(payload?.cart_token),
-      checkoutCartTokenWithoutKeyHash: hash(base(payload?.cart_token)),
+      tokenHash: hash(data.token),
+      tokenWithoutKeyHash: hash(base(data.token)),
+      checkoutCartTokenHash: hash(data.cart_token),
+      checkoutCartTokenWithoutKeyHash: hash(base(data.cart_token)),
       correlationMarkerPresent: typeof marker === "string" && marker.length > 0,
       correlationMarkerHash: hash(marker),
     });

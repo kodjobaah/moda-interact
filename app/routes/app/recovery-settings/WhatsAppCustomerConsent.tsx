@@ -7,7 +7,9 @@ export type WhatsAppConsentActivation = Readonly<{
   placement: ShopifyConsentPlacement;
   cartStatus: ThemeActivationStatus;
   plusStatus: ThemeActivationStatus;
+  gateState: "enabled" | "disabled" | "unknown";
   cartThemeEditorUrl: string | null;
+  checkoutEditorUrl: string | null;
   appProxyDefaultRoot: string;
 }>;
 
@@ -19,47 +21,35 @@ const STATUS_KEYS: Record<ThemeActivationStatus, string> = {
   unverified: "recoverySettings.whatsappConsent.statusUnverified",
 };
 
-function StatusBadge({
-  status,
-  t,
-  id,
-}: {
-  status: ThemeActivationStatus;
-  t: Translate;
-  id: string;
-}) {
-  return (
-    <p
-      id={id}
-      className={`moda-recovery-consent-status moda-recovery-consent-status-${status}`}
-      data-activation-status={status}
-    >
-      {t(STATUS_KEYS[status])}
-    </p>
-  );
-}
-
-/**
- * Plan-exclusive Moda consent placement setup. Non-Plus merchants activate the
- * cart App Block (with the S003 app proxy path setting); Plus merchants use
- * only the checkout extension. Exactly one placement is ever offered, and
- * unverifiable states are reported truthfully.
- */
 export default function WhatsAppCustomerConsent({
-  t,
-  activation,
+  t, activation, plusStatusOverride, onActivate, busy = false,
+  actionFailed = false, editorFallbackUrl = null,
 }: {
   t: Translate;
   activation: WhatsAppConsentActivation;
+  plusStatusOverride?: ThemeActivationStatus;
+  onActivate?: () => void;
+  busy?: boolean;
+  actionFailed?: boolean;
+  editorFallbackUrl?: string | null;
 }) {
-  const showCart = activation.placement === "non_plus_cart";
-  const showPlus = activation.placement === "plus_checkout";
+  const isPlus = activation.placement === "plus_checkout";
+  const isCart = activation.placement === "non_plus_cart";
+  const isKnown = isPlus || isCart;
+  const status = isPlus
+    ? plusStatusOverride ?? activation.plusStatus
+    : isCart ? activation.cartStatus : "unavailable";
+  const canActivate = isCart
+    ? Boolean(activation.cartThemeEditorUrl)
+    : Boolean(activation.checkoutEditorUrl);
+  const active = status === "active";
+  const statusLabel = isPlus && status === "inactive"
+    ? "recoverySettings.whatsappConsent.statusCheckoutInactive"
+    : STATUS_KEYS[status];
 
   return (
-    <section
-      className="moda-recovery-panel moda-recovery-consent-panel"
-      aria-labelledby="recovery-whatsapp-consent-heading"
-    >
+    <section className="moda-recovery-panel moda-recovery-consent-panel"
+      aria-labelledby="recovery-whatsapp-consent-heading">
       <div className="moda-recovery-panel-heading">
         <div>
           <h2 id="recovery-whatsapp-consent-heading">
@@ -69,78 +59,60 @@ export default function WhatsAppCustomerConsent({
         </div>
       </div>
       <div className="moda-recovery-consent-grid">
-        {activation.placement === "unknown" ? (
+        {!isKnown ? (
           <article className="moda-recovery-consent-card" data-consent-card="unknown-plan">
             <h3>{t("recoverySettings.whatsappConsent.unknownPlanTitle")}</h3>
             <p>{t("recoverySettings.whatsappConsent.unknownPlan")}</p>
-            <StatusBadge
-              status="unavailable"
-              t={t}
-              id="recovery-whatsapp-consent-plan-status"
-            />
+            <p role="status" data-activation-status="unavailable">
+              {t("recoverySettings.whatsappConsent.statusUnavailable")}
+            </p>
+            <button type="button" onClick={() => window.location.reload()}>
+              {t("reinstalling.retry")}
+            </button>
           </article>
-        ) : null}
-
-        {showPlus ? (
-          <article className="moda-recovery-consent-card" data-consent-card="plus-checkout">
-            <h3>{t("recoverySettings.whatsappConsent.plusTitle")}</h3>
-            <p>{t("recoverySettings.whatsappConsent.plusBody")}</p>
-            <p>{t("recoverySettings.whatsappConsent.plusVerify")}</p>
-            <StatusBadge
-              status={activation.plusStatus}
-              t={t}
-              id="recovery-whatsapp-consent-plus-status"
-            />
-          </article>
-        ) : null}
-
-        {showCart ? (
-          <article className="moda-recovery-consent-card" data-consent-card="cart-block">
-            <h3>{t("recoverySettings.whatsappConsent.cartTitle")}</h3>
-            <p>{t("recoverySettings.whatsappConsent.cartBody")}</p>
-            <p>{t("recoverySettings.whatsappConsent.cartVerify")}</p>
-            {activation.cartThemeEditorUrl ? (
-              <a
-                href={activation.cartThemeEditorUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {t("recoverySettings.whatsappConsent.cartOpenEditor")}
+        ) : (
+          <article className="moda-recovery-consent-card" data-consent-card={isPlus ? "plus-checkout" : "cart-block"}>
+            <h3>{t(isPlus
+              ? "recoverySettings.whatsappConsent.plusTitle"
+              : "recoverySettings.whatsappConsent.cartTitle")}</h3>
+            <p>{t(isPlus
+              ? "recoverySettings.whatsappConsent.plusBody"
+              : "recoverySettings.whatsappConsent.cartBody")}</p>
+            <p role="status" data-activation-status={status}
+              className={`moda-recovery-consent-status moda-recovery-consent-status-${status}`}>
+              {t(statusLabel)}
+            </p>
+            {!active && canActivate ? (
+              <button className="moda-recovery-consent-action" type="button"
+                onClick={onActivate} disabled={busy || !onActivate}>
+                {t(busy
+                  ? "recoverySettings.whatsappConsent.activationPreparing"
+                  : "recoverySettings.whatsappConsent.activationAction")}
+              </button>
+            ) : null}
+            {!active && !canActivate ? (
+              <p role="status">{t("recoverySettings.whatsappConsent.statusUnavailable")}</p>
+            ) : null}
+            {actionFailed ? (
+              <p role="alert">{t("recoverySettings.whatsappConsent.activationFailed")}</p>
+            ) : null}
+            {editorFallbackUrl ? (
+              <a href={editorFallbackUrl} target="_blank" rel="noopener noreferrer">
+                {t("recoverySettings.whatsappConsent.activationOpenEditor")}
               </a>
             ) : null}
-            <StatusBadge
-              status={activation.cartStatus}
-              t={t}
-              id="recovery-whatsapp-consent-cart-status"
-            />
+            <p>{t(isPlus
+              ? "recoverySettings.whatsappConsent.plusVerify"
+              : "recoverySettings.whatsappConsent.cartVerify")}</p>
           </article>
-        ) : null}
-
-        {showCart ? (
-          <article className="moda-recovery-consent-card" data-consent-card="app-proxy">
-            <h3>{t("recoverySettings.whatsappConsent.proxyTitle")}</h3>
-            <p>{t("recoverySettings.whatsappConsent.proxyBody")}</p>
-            <p>
-              <code>{activation.appProxyDefaultRoot}</code>
-            </p>
-            <p>{t("recoverySettings.whatsappConsent.proxyRules")}</p>
-          </article>
-        ) : null}
-
-        <article className="moda-recovery-consent-card" data-consent-card="returning">
-          <h3>{t("recoverySettings.whatsappConsent.returningTitle")}</h3>
-          <p>{t("recoverySettings.whatsappConsent.returning")}</p>
-        </article>
-        <article className="moda-recovery-consent-card" data-consent-card="no-consent">
-          <h3>{t("recoverySettings.whatsappConsent.noConsentTitle")}</h3>
-          <p>{t("recoverySettings.whatsappConsent.noConsent")}</p>
-          <p>{t("recoverySettings.whatsappConsent.unavailable")}</p>
-        </article>
-        <article className="moda-recovery-consent-card moda-recovery-consent-stop" data-consent-card="stop">
-          <h3>{t("recoverySettings.whatsappConsent.stopTitle")}</h3>
-          <p>{t("recoverySettings.whatsappConsent.stop")}</p>
-        </article>
+        )}
       </div>
+      <details className="moda-recovery-consent-guidance">
+        <summary>{t("recoverySettings.whatsappConsent.returningTitle")}</summary>
+        <p>{t("recoverySettings.whatsappConsent.returning")}</p>
+        <p>{t("recoverySettings.whatsappConsent.stop")}</p>
+        {isCart ? <p>{t("recoverySettings.whatsappConsent.proxyBody")}</p> : null}
+      </details>
     </section>
   );
 }

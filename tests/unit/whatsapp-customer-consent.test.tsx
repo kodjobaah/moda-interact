@@ -8,67 +8,76 @@ const t = (key: string) => key;
 
 function render(activation: WhatsAppConsentActivation) {
   return renderToStaticMarkup(
-    <WhatsAppCustomerConsent t={t} activation={activation} />,
+    <WhatsAppCustomerConsent t={t} activation={activation} onActivate={() => undefined} />,
   );
 }
 
-describe("WhatsApp customer consent merchant panel", () => {
-  it("shows only the cart placement, proxy guidance and truthful status on non-Plus", () => {
+const base = {
+  gateState: "disabled" as const,
+  appProxyDefaultRoot: "/apps/moda-consent",
+};
+
+describe("Shopify merchant consent activation", () => {
+  it("offers exactly one cart activation on non-Plus, no Plus action or technical proxy card", () => {
     const html = render({
+      ...base,
       placement: "non_plus_cart",
       cartStatus: "inactive",
       plusStatus: "unsupported",
-      cartThemeEditorUrl:
-        "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
-      appProxyDefaultRoot: "/apps/moda-consent",
+      cartThemeEditorUrl: "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
+      checkoutEditorUrl: null,
     });
     expect(html).toContain('data-consent-card="cart-block"');
-    expect(html).toContain('data-consent-card="app-proxy"');
-    expect(html).toContain("/apps/moda-consent");
     expect(html).toContain('data-activation-status="inactive"');
-    expect(html).toContain("recoverySettings.whatsappConsent.statusInactive");
-    expect(html).toContain("admin/themes/current/editor");
+    expect(html).toContain("recoverySettings.whatsappConsent.activationAction");
+    expect((html.match(/activationAction/g) ?? []).length).toBe(1);
     expect(html).not.toContain('data-consent-card="plus-checkout"');
+    expect(html).not.toContain('data-consent-card="app-proxy"');
   });
 
-  it("shows only the checkout placement on Plus with an unverified badge", () => {
+  it("offers only checkout activation to Plus merchants and no cart workflow", () => {
     const html = render({
+      ...base,
       placement: "plus_checkout",
       cartStatus: "unsupported",
       plusStatus: "unverified",
       cartThemeEditorUrl: null,
-      appProxyDefaultRoot: "/apps/moda-consent",
+      checkoutEditorUrl: "https://merchant.myshopify.com/admin/settings/checkout",
     });
     expect(html).toContain('data-consent-card="plus-checkout"');
-    expect(html).toContain("recoverySettings.whatsappConsent.statusUnverified");
+    expect(html).toContain("recoverySettings.whatsappConsent.activationAction");
     expect(html).not.toContain('data-consent-card="cart-block"');
     expect(html).not.toContain('data-consent-card="app-proxy"');
   });
 
-  it("offers neither activation and reports unavailable on an unverified plan", () => {
+  it("offers neither activation when plan evidence is unknown", () => {
     const html = render({
+      ...base,
       placement: "unknown",
       cartStatus: "unverified",
       plusStatus: "unavailable",
       cartThemeEditorUrl: null,
-      appProxyDefaultRoot: "/apps/moda-consent",
+      checkoutEditorUrl: null,
+      gateState: "unknown",
     });
     expect(html).toContain('data-consent-card="unknown-plan"');
-    expect(html).toContain("recoverySettings.whatsappConsent.statusUnavailable");
+    expect(html).not.toContain("recoverySettings.whatsappConsent.activationAction");
     expect(html).not.toContain('data-consent-card="cart-block"');
     expect(html).not.toContain('data-consent-card="plus-checkout"');
   });
 
-  it("keeps Moda-owned returning-customer and STOP guidance without Shopify-native opt-in links", () => {
+  it("shows verified active status without another activation action", () => {
     const html = render({
+      ...base, gateState: "enabled",
       placement: "non_plus_cart",
       cartStatus: "active",
       plusStatus: "unsupported",
-      cartThemeEditorUrl: null,
-      appProxyDefaultRoot: "/apps/moda-consent",
+      cartThemeEditorUrl: "https://merchant.myshopify.com/admin/themes/current/editor",
+      checkoutEditorUrl: null,
     });
+    expect(html).toContain('data-activation-status="active"');
+    expect(html).not.toContain("recoverySettings.whatsappConsent.activationAction");
     expect(html).toContain("recoverySettings.whatsappConsent.returning");
     expect(html).toContain("recoverySettings.whatsappConsent.stop");
-    expect(html).not.toContain("help.shopify.com");
   });
 });

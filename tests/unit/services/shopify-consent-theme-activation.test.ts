@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCartConsentThemeActivationUrl } from "../../../app/services/shopify-consent/theme-activation-url.server";
 import * as activationStatusModule from "../../../app/services/shopify-consent/theme-activation-status";
-import { getCartConsentThemeActivationStatus } from "../../../app/services/shopify-consent/theme-activation-status";
+import { getCartConsentThemeActivationStatus, CART_CONSENT_EXTENSION_UID } from "../../../app/services/shopify-consent/theme-activation-status";
 
 describe("cart consent theme activation URL", () => {
   it("creates the cart template editor link only for non-Plus placement", () => {
@@ -133,7 +133,7 @@ describe("published cart template evidence", () => {
           type: "apps",
           blocks: {
             consent: {
-              type: "shopify://apps/moda-interact/blocks/cart-consent/0000",
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${CART_CONSENT_EXTENSION_UID}`,
             },
           },
         },
@@ -152,7 +152,7 @@ describe("published cart template evidence", () => {
           type: "apps",
           blocks: {
             consent: {
-              type: "shopify://apps/moda-interact/blocks/cart-consent/0000",
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${CART_CONSENT_EXTENSION_UID}`,
               disabled: true,
             },
           },
@@ -167,5 +167,27 @@ describe("published cart template evidence", () => {
       cartTemplateSupported: true,
       blockEnabledInPublishedTheme: false,
     });
+  });
+});
+
+describe("published Plus checkout extension evidence", () => {
+  const { matchPlusCheckoutExtensionEvidence } = activationStatusModule;
+  it("recognises only the matching contact-target checkout UI extension", () => {
+    expect(matchPlusCheckoutExtensionEvidence([
+      { handle: "moda-whatsapp-checkout-consent", type: "ui_extension",
+        activations: [{ target: "purchase.checkout.contact.render-after" }] },
+    ])).toBe("active");
+    expect(matchPlusCheckoutExtensionEvidence([
+      { handle: "some-other-extension", type: "ui_extension",
+        activations: [{ target: "purchase.checkout.contact.render-after" }] },
+    ])).toBe("inactive");
+    expect(matchPlusCheckoutExtensionEvidence([
+      { handle: "moda-whatsapp-checkout-consent", type: "ui_extension",
+        activations: [{ target: "purchase.thank-you.block.render" }] },
+    ])).toBe("unverified");
+    expect(matchPlusCheckoutExtensionEvidence([
+      { handle: "moda-whatsapp-checkout-consent", type: "ui_extension",
+        activations: [{ target: "purchase.checkout.contact.render-after", draft: true }] },
+    ])).toBe("unverified");
   });
 });

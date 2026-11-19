@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Den valgte malen er ikke lenger godkjent eller tilgjengelig.",
   "recoveryDetail.sendNotHumanControlled": "Overta samtalen før du sender et svar.",
   "recoverySettings.initialOutreachNotification.title": "Varsel om første gjenopprettingsmelding",
-  "recoverySettings.initialOutreachNotification.description": "Varsle deg når Moda sender den første meldingen for å gjenopprette en forlatt utsjekking. Dette endrer ikke kundemeldinger eller bruk av gjenopprettingskreditter."
+  "recoverySettings.initialOutreachNotification.description": "Varsle deg når Moda sender den første meldingen for å gjenopprette en forlatt utsjekking. Dette endrer ikke kundemeldinger eller bruk av gjenopprettingskreditter.",
+  "recoverySettings.whatsappConsent.activationAction": "Aktiver WhatsApp-samtykke",
+  "recoverySettings.whatsappConsent.activationPreparing": "Forbereder aktivering…",
+  "recoverySettings.whatsappConsent.activationFailed": "Kunne ikke forberede Shopify-aktivering. Prøv igjen.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Fortsett til Shopify-redigereren",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i publisert kasse"
 }

@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "เทมเพลตที่เลือกไม่ได้รับอนุมัติหรือไม่พร้อมใช้งานอีกต่อไป",
   "recoveryDetail.sendNotHumanControlled": "โปรดรับช่วงการสนทนาก่อนส่งข้อความตอบกลับ",
   "recoverySettings.initialOutreachNotification.title": "การแจ้งเตือนข้อความกู้คืนครั้งแรก",
-  "recoverySettings.initialOutreachNotification.description": "แจ้งให้คุณทราบเมื่อ Moda ส่งข้อความกู้คืนครั้งแรกสำหรับการชำระเงินที่ถูกละทิ้ง การตั้งค่านี้ไม่มีผลต่อข้อความถึงลูกค้าหรือการใช้เครดิตกู้คืน"
+  "recoverySettings.initialOutreachNotification.description": "แจ้งให้คุณทราบเมื่อ Moda ส่งข้อความกู้คืนครั้งแรกสำหรับการชำระเงินที่ถูกละทิ้ง การตั้งค่านี้ไม่มีผลต่อข้อความถึงลูกค้าหรือการใช้เครดิตกู้คืน",
+  "recoverySettings.whatsappConsent.activationAction": "เปิดใช้งานความยินยอม WhatsApp",
+  "recoverySettings.whatsappConsent.activationPreparing": "กำลังเตรียมการเปิดใช้งาน…",
+  "recoverySettings.whatsappConsent.activationFailed": "ไม่สามารถเตรียมการเปิดใช้งาน Shopify ได้ โปรดลองอีกครั้ง",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "ไปยังตัวแก้ไข Shopify",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "ยังไม่เปิดใช้งานในขั้นตอนชำระเงินที่เผยแพร่"
 }

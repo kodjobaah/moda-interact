@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { configureShopifyCheckoutReceiptOrigin, loadShopifyPlatformEnvironment } from "./shopify-dev-settings.mjs";
+
+loadShopifyPlatformEnvironment();
 
 const PORT = 50620;
 const CLOUDFLARED_URL_PATTERN = /https:\/\/[-a-z0-9]+\.trycloudflare\.com/;
@@ -29,10 +32,12 @@ function shutdown(exitCode = 0) {
   }, 250);
 }
 
-function startShopify(tunnelUrl) {
+function startShopify(tunnelUrl, receiptOrigin) {
+  configureShopifyCheckoutReceiptOrigin(receiptOrigin);
   console.log(`
 Cloudflared tunnel detected:
   ${tunnelUrl}
+  Checkout receipt endpoint: ${receiptOrigin}/shopify/checkout/receipt
 
 Starting Shopify with:
   --tunnel-url=${tunnelUrl}
@@ -40,7 +45,7 @@ Starting Shopify with:
 
   shopify = spawn(
     "npx",
-    ["shopify", "app", "dev", "--config", "moda-interact", "--tunnel-url", tunnelUrl],
+    ["shopify", "app", "dev", "--config", "moda-interact", "--tunnel-url", tunnelUrl, ...process.argv.slice(2)],
     { stdio: "inherit" },
   );
 
@@ -78,7 +83,7 @@ function handleOutput(chunk) {
 
     if (tunnelMatch) {
       tunnelStarted = true;
-      startShopify(`${tunnelMatch[0]}:${PORT}`);
+      startShopify(`${tunnelMatch[0]}:${PORT}`, tunnelMatch[0]);
     }
   }
 

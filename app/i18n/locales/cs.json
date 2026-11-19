@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Vybraná šablona již není schválená nebo dostupná.",
   "recoveryDetail.sendNotHumanControlled": "Nejprve převezměte konverzaci a pak odpovězte.",
   "recoverySettings.initialOutreachNotification.title": "Upozornění na první zprávu k obnovení",
-  "recoverySettings.initialOutreachNotification.description": "Upozornit vás, když Moda odešle první zprávu k obnovení opuštěného nákupu. Toto nemění zprávy zákazníkům ani čerpání kreditů na obnovení."
+  "recoverySettings.initialOutreachNotification.description": "Upozornit vás, když Moda odešle první zprávu k obnovení opuštěného nákupu. Toto nemění zprávy zákazníkům ani čerpání kreditů na obnovení.",
+  "recoverySettings.whatsappConsent.activationAction": "Aktivovat souhlas pro WhatsApp",
+  "recoverySettings.whatsappConsent.activationPreparing": "Připravuje se aktivace…",
+  "recoverySettings.whatsappConsent.activationFailed": "Aktivaci Shopify nelze připravit. Zkuste to znovu.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Pokračovat do editoru Shopify",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Není aktivní v publikované pokladně"
 }

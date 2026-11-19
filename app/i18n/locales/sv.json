@@ -724,5 +724,10 @@
   "recoveryDetail.templateRejected": "Den valda mallen är inte längre godkänd eller tillgänglig.",
   "recoveryDetail.sendNotHumanControlled": "Ta över samtalet innan du svarar.",
   "recoverySettings.initialOutreachNotification.title": "Avisering om första återställningsmeddelandet",
-  "recoverySettings.initialOutreachNotification.description": "Meddela dig när Moda skickar det första meddelandet för att återställa en övergiven kassa. Detta ändrar inte kundmeddelanden eller användningen av återställningskrediter."
+  "recoverySettings.initialOutreachNotification.description": "Meddela dig när Moda skickar det första meddelandet för att återställa en övergiven kassa. Detta ändrar inte kundmeddelanden eller användningen av återställningskrediter.",
+  "recoverySettings.whatsappConsent.activationAction": "Aktivera WhatsApp-samtycke",
+  "recoverySettings.whatsappConsent.activationPreparing": "Förbereder aktivering…",
+  "recoverySettings.whatsappConsent.activationFailed": "Det gick inte att förbereda Shopify-aktiveringen. Försök igen.",
+  "recoverySettings.whatsappConsent.activationOpenEditor": "Fortsätt till Shopify-redigeraren",
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Inte aktiv i publicerad kassa"
 }
