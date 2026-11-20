@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Shopify 여는 중…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopify 활성화를 준비할 수 없습니다. 다시 시도하세요.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Shopify 편집기로 계속",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "게시된 결제에서 비활성 상태"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "게시된 결제에서 비활성 상태",
+  "recoverySettings.whatsappConsent.drawerTitle": "장바구니 서랍 동의",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "앱 임베드가 활성화되었습니다. 장바구니 서랍에서 확인란을 테스트하세요.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "장바구니 서랍 동의가 아직 확인되지 않았습니다. 테마 편집기에서 활성화하고 저장하세요.",
+  "recoverySettings.whatsappConsent.drawerEnable": "장바구니 서랍 동의 활성화",
+  "recoverySettings.whatsappConsent.drawerManage": "장바구니 서랍 동의 관리"
 }

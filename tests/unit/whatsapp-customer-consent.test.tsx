@@ -99,3 +99,22 @@ describe("single-action Shopify merchant consent activation", () => {
     expect(html).not.toContain('data-consent-card="cart-block"');
   });
 });
+
+
+describe("non-Plus cart drawer setup", () => {
+  const enabledCart = { ...cartBase, cartStatus: "active" as const,
+    cartBlockPresence: "enabled" as const, setupPhase: "active" as const,
+    gateState: "enabled" as const,
+    drawerThemeActivationUrl: "https://merchant.myshopify.com/admin/themes/current/editor?context=apps&template=cart&activateAppId=client-id%2Fcart-drawer-consent",
+  };
+  it("offers one drawer enable link after the cart page is active", () => {
+    const html = render(enabledCart);
+    expect(html).toContain("recoverySettings.whatsappConsent.drawerTitle");
+    expect(html).toContain("recoverySettings.whatsappConsent.drawerEnable");
+    expect(html).toContain("activateAppId=");
+  });
+  it("does not present drawer activation on Plus or before cart activation", () => {
+    expect(render({ ...enabledCart, cartStatus: "unverified" })).not.toContain("drawerEnable");
+    expect(render({ ...enabledCart, placement: "plus_checkout" })).not.toContain("drawerEnable");
+  });
+});

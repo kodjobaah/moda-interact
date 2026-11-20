@@ -12,6 +12,7 @@ export type WhatsAppConsentActivation = Readonly<{
   gateState: "enabled" | "disabled" | "unknown";
   setupPhase?: CartConsentSetupPhase;
   cartThemeEditorUrl: string | null;
+  drawerThemeActivationUrl?: string | null;
   checkoutEditorUrl: string | null;
   appProxyDefaultRoot: string;
 }>;
@@ -56,12 +57,13 @@ export function getCartPrimaryAction(
 }
 
 export default function WhatsAppCustomerConsent({
-  t, activation, plusStatusOverride, onActivate, busy = false, preparing = false,
+  t, activation, plusStatusOverride, drawerStatus = "unverified", onActivate, busy = false, preparing = false,
   actionFailed = false, verificationFailed = false, editorFallbackUrl = null,
 }: {
   t: Translate;
   activation: WhatsAppConsentActivation;
   plusStatusOverride?: ThemeActivationStatus;
+  drawerStatus?: "active" | "inactive" | "unverified";
   onActivate?: () => void;
   busy?: boolean;
   preparing?: boolean;
@@ -157,6 +159,20 @@ export default function WhatsAppCustomerConsent({
             <p>{t(isPlus
               ? "recoverySettings.whatsappConsent.plusVerify"
               : "recoverySettings.whatsappConsent.cartVerify")}</p>
+            {isCart && status === "active" && activation.drawerThemeActivationUrl ? (
+              <div data-consent-drawer-activation>
+                <h4>{t("recoverySettings.whatsappConsent.drawerTitle")}</h4>
+                <p role="status">{t(drawerStatus === "active"
+                  ? "recoverySettings.whatsappConsent.drawerEmbedEnabled"
+                  : "recoverySettings.whatsappConsent.drawerNotVerified")}</p>
+                <a href={drawerStatus === "active" ? editorUrl! : activation.drawerThemeActivationUrl}
+                  target="_blank" rel="noopener noreferrer">
+                  {t(drawerStatus === "active"
+                    ? "recoverySettings.whatsappConsent.drawerManage"
+                    : "recoverySettings.whatsappConsent.drawerEnable")}
+                </a>
+              </div>
+            ) : null}
           </article>
         )}
       </div>

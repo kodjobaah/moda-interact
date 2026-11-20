@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Shopify açılıyor…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopify etkinleştirmesi hazırlanamadı. Tekrar deneyin.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Shopify düzenleyicisine devam et",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Yayındaki ödeme sayfasında etkin değil"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Yayındaki ödeme sayfasında etkin değil",
+  "recoverySettings.whatsappConsent.drawerTitle": "Sepet çekmecesi onayı",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Uygulama yerleştirmesi etkin. Onay kutusunu doğrulamak için sepet çekmecesini test edin.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Sepet çekmecesi onayı doğrulanmadı. Tema düzenleyicisinde etkinleştirip kaydedin.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Sepet çekmecesi onayını etkinleştir",
+  "recoverySettings.whatsappConsent.drawerManage": "Sepet çekmecesi onayını yönet"
 }

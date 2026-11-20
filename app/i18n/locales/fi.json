@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Avataan Shopifyta…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopify-käyttöönottoa ei voitu valmistella. Yritä uudelleen.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Jatka Shopify-editoriin",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ei aktiivinen julkaistussa kassassa"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ei aktiivinen julkaistussa kassassa",
+  "recoverySettings.whatsappConsent.drawerTitle": "Ostoskorin sivupaneelin suostumus",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Sovellusupotus on käytössä. Testaa sivupaneelia varmistaaksesi valintaruudun.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Sivupaneelin suostumusta ei ole vahvistettu. Ota se käyttöön teemaeditorissa ja tallenna.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Ota sivupaneelin suostumus käyttöön",
+  "recoverySettings.whatsappConsent.drawerManage": "Hallinnoi sivupaneelin suostumusta"
 }

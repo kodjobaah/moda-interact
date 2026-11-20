@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Åbner Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopify-aktivering kunne ikke forberedes. Prøv igen.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Fortsæt til Shopify-editoren",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i den offentliggjorte checkout"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i den offentliggjorte checkout",
+  "recoverySettings.whatsappConsent.drawerTitle": "Samtykke i kurvskuffen",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Appintegrationen er aktiveret. Test kurvskuffen for at bekræfte afkrydsningsfeltet.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Samtykke i kurvskuffen er ikke bekræftet. Aktivér det i temaeditoren, og gem.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Aktivér samtykke i kurvskuffen",
+  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i kurvskuffen"
 }

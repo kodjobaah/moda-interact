@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "กำลังเปิด Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "ไม่สามารถเตรียมการเปิดใช้งาน Shopify ได้ โปรดลองอีกครั้ง",
   "recoverySettings.whatsappConsent.activationOpenEditor": "ไปยังตัวแก้ไข Shopify",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "ยังไม่เปิดใช้งานในขั้นตอนชำระเงินที่เผยแพร่"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "ยังไม่เปิดใช้งานในขั้นตอนชำระเงินที่เผยแพร่",
+  "recoverySettings.whatsappConsent.drawerTitle": "ความยินยอมในลิ้นชักตะกร้า",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "เปิดใช้งานแอปฝังแล้ว ทดสอบลิ้นชักตะกร้าเพื่อตรวจสอบช่องทำเครื่องหมาย",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "ยังไม่ได้ยืนยันความยินยอมในลิ้นชักตะกร้า เปิดใช้งานในตัวแก้ไขธีมและบันทึก",
+  "recoverySettings.whatsappConsent.drawerEnable": "เปิดใช้ความยินยอมในลิ้นชักตะกร้า",
+  "recoverySettings.whatsappConsent.drawerManage": "จัดการความยินยอมในลิ้นชักตะกร้า"
 }

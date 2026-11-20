@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFetcher, useRevalidator } from "react-router";
-import { matchPlusCheckoutExtensionEvidence, type ThemeActivationStatus } from
+import { matchPlusCheckoutExtensionEvidence, matchCartDrawerEmbedEvidence, type ThemeActivationStatus } from
   "@/services/shopify-consent/theme-activation-status";
 import WhatsAppCustomerConsent, { type WhatsAppConsentActivation } from "./WhatsAppCustomerConsent";
 
@@ -31,6 +31,7 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
   const checkInFlight = useRef(false);
   const autoCheckedPhase = useRef<string | null>(null);
   const [plusStatus, setPlusStatus] = useState<ThemeActivationStatus>(activation.plusStatus);
+  const [drawerStatus, setDrawerStatus] = useState<"active" | "inactive" | "unverified">("unverified");
   const [actionFailed, setActionFailed] = useState(false);
   const [activationPending, setActivationPending] = useState(false);
   const [verificationFailed, setVerificationFailed] = useState(false);
@@ -63,7 +64,21 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
     return true;
   }, [activationPending, activationFetcher.state, verificationFetcher.state, verificationFetcher]);
 
-  useEffect(() => { void verifyPlus(); }, [verifyPlus]);
+  const verifyDrawer = useCallback(async () => {
+    if (activation.placement !== "non_plus_cart" || activation.cartStatus !== "active") return;
+    const app = (window as unknown as AppBridgeExtensionReader).shopify?.app;
+    if (typeof app?.extensions !== "function") {
+      setDrawerStatus("unverified");
+      return;
+    }
+    try {
+      setDrawerStatus(matchCartDrawerEmbedEvidence(await app.extensions()));
+    } catch {
+      setDrawerStatus("unverified");
+    }
+  }, [activation.placement, activation.cartStatus]);
+
+  useEffect(() => { void verifyPlus(); void verifyDrawer(); }, [verifyPlus, verifyDrawer]);
 
   // On a newly loaded settings page, the loader is the initial verification.
   // When a saved cart block is first observed, persist the fact that activation
@@ -85,7 +100,10 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
   useEffect(() => {
     const onReturn = () => {
       if (document.visibilityState === "hidden") return;
-      if (activation.placement === "non_plus_cart") checkPublishedPlacement();
+      if (activation.placement === "non_plus_cart") {
+        checkPublishedPlacement();
+        void verifyDrawer();
+      }
       else void verifyPlus();
     };
     window.addEventListener("focus", onReturn);
@@ -94,7 +112,7 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
       window.removeEventListener("focus", onReturn);
       document.removeEventListener("visibilitychange", onReturn);
     };
-  }, [activation.placement, checkPublishedPlacement, verifyPlus]);
+  }, [activation.placement, checkPublishedPlacement, verifyPlus, verifyDrawer]);
 
   useEffect(() => {
     const result = verificationFetcher.data;
@@ -164,6 +182,7 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
 
   return <WhatsAppCustomerConsent t={t} activation={activation}
     plusStatusOverride={activation.placement === "plus_checkout" ? plusStatus : undefined}
+    drawerStatus={drawerStatus}
     onActivate={activate}
     busy={activationPending || activationFetcher.state !== "idle"}
     preparing={activationPending || activationFetcher.state !== "idle"}

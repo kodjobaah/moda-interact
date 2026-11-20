@@ -217,3 +217,25 @@ export function matchPlusCheckoutExtensionEvidence(
   }
   return sawHandle ? "unverified" : "inactive";
 }
+
+/** Read-only, published-theme App Bridge evidence for the drawer App Embed. */
+export function matchCartDrawerEmbedEvidence(extensions: unknown):
+  "active" | "inactive" | "unverified" {
+  if (!Array.isArray(extensions)) return "unverified";
+  let found = false;
+  for (const entry of extensions) {
+    if (!entry || typeof entry !== "object") continue;
+    const extension = entry as Record<string, unknown>;
+    if (extension.type !== "theme_app_extension" || extension.handle !== "moda-whatsapp-consent" ||
+        !Array.isArray(extension.activations)) continue;
+    for (const activation of extension.activations) {
+      if (!activation || typeof activation !== "object") continue;
+      const block = activation as Record<string, unknown>;
+      if (block.handle !== "cart-drawer-consent" || block.target !== "body") continue;
+      found = true;
+      if (block.status === "active" && Array.isArray(block.activations) &&
+          block.activations.length > 0) return "active";
+    }
+  }
+  return found ? "inactive" : "unverified";
+}

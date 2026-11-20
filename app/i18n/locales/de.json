@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Shopify wird geöffnet…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopify-Aktivierung konnte nicht vorbereitet werden. Bitte erneut versuchen.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Zum Shopify-Editor",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Im veröffentlichten Checkout nicht aktiv"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Im veröffentlichten Checkout nicht aktiv",
+  "recoverySettings.whatsappConsent.drawerTitle": "Einwilligung im Warenkorb-Drawer",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Das App-Embed ist aktiviert. Testen Sie den Warenkorb-Drawer, um das Kontrollkästchen zu prüfen.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Die Einwilligung im Drawer ist nicht bestätigt. Aktivieren Sie das App-Embed im Theme-Editor und speichern Sie.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Einwilligung im Drawer aktivieren",
+  "recoverySettings.whatsappConsent.drawerManage": "Einwilligung im Drawer verwalten"
 }

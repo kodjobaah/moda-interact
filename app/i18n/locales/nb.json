@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Åpner Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Kunne ikke forberede Shopify-aktivering. Prøv igjen.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Fortsett til Shopify-redigereren",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i publisert kasse"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Ikke aktiv i publisert kasse",
+  "recoverySettings.whatsappConsent.drawerTitle": "Samtykke i handlekurvskuff",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Appintegrasjonen er aktivert. Test handlekurvskuffen for å bekrefte avkrysningsboksen.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Samtykke i handlekurvskuffen er ikke bekreftet. Aktiver i temaredigeringen og lagre.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Aktiver samtykke i handlekurvskuff",
+  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i handlekurvskuff"
 }

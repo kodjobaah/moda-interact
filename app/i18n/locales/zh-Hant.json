@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "正在開啟 Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "無法準備 Shopify 啟用操作。請重試。",
   "recoverySettings.whatsappConsent.activationOpenEditor": "繼續前往 Shopify 編輯器",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "未在已發布的結帳頁面啟用"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "未在已發布的結帳頁面啟用",
+  "recoverySettings.whatsappConsent.drawerTitle": "購物車抽屜同意",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "應用程式嵌入已啟用。請測試購物車抽屜，確認核取方塊可用。",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "尚未驗證購物車抽屜同意。請在佈景主題編輯器中啟用並儲存。",
+  "recoverySettings.whatsappConsent.drawerEnable": "啟用購物車抽屜同意",
+  "recoverySettings.whatsappConsent.drawerManage": "管理購物車抽屜同意"
 }

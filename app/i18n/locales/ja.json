@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Shopifyを開いています…",
   "recoverySettings.whatsappConsent.activationFailed": "Shopifyの有効化を準備できませんでした。もう一度お試しください。",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Shopifyエディターに進む",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "公開中のチェックアウトでは無効です"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "公開中のチェックアウトでは無効です",
+  "recoverySettings.whatsappConsent.drawerTitle": "カートドロワーの同意",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "アプリ埋め込みは有効です。カートドロワーでチェックボックスを確認してください。",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "カートドロワーの同意は未確認です。テーマエディターで有効にして保存してください。",
+  "recoverySettings.whatsappConsent.drawerEnable": "カートドロワーの同意を有効化",
+  "recoverySettings.whatsappConsent.drawerManage": "カートドロワーの同意を管理"
 }

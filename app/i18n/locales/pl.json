@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Otwieranie Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Nie można przygotować aktywacji Shopify. Spróbuj ponownie.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Przejdź do edytora Shopify",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Nieaktywne w opublikowanej kasie"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Nieaktywne w opublikowanej kasie",
+  "recoverySettings.whatsappConsent.drawerTitle": "Zgoda w wysuwanym koszyku",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Osadzona aplikacja jest włączona. Sprawdź wysuwany koszyk i pole wyboru.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Zgoda w wysuwanym koszyku nie została zweryfikowana. Włącz ją w edytorze motywu i zapisz.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Włącz zgodę w wysuwanym koszyku",
+  "recoverySettings.whatsappConsent.drawerManage": "Zarządzaj zgodą w wysuwanym koszyku"
 }

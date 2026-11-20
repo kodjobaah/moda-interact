@@ -8,6 +8,7 @@ import {
 } from "./theme-activation-status";
 import {
   buildCartConsentThemeEditorUrl,
+  buildCartDrawerConsentThemeActivationUrl,
   CART_CONSENT_APP_DATA_METAFIELD,
   type ShopifyConsentPlacement,
 } from "./theme-activation-url.server";
@@ -42,6 +43,7 @@ export type ConsentActivation = Readonly<{
   cartBlockPresence: CartConsentBlockPresence;
   plusStatus: ThemeActivationStatus;
   cartThemeEditorUrl: string | null;
+  drawerThemeActivationUrl: string | null;
   checkoutEditorUrl: string | null;
   gateState: CartConsentGateState;
   setupPhase: CartConsentSetupPhase;
@@ -530,6 +532,10 @@ export async function loadConsentActivation(input: {
     cartBlockPresence: publishedCart.presence,
     plusStatus,
     cartThemeEditorUrl,
+    drawerThemeActivationUrl: placement === "non_plus_cart"
+      ? buildCartDrawerConsentThemeActivationUrl({
+        shopDomain: input.shopDomain, apiKey: input.apiKey, placement,
+      }) : null,
     checkoutEditorUrl: placement === "plus_checkout"
       ? buildCheckoutEditorUrl(input.shopDomain) : null,
     gateState,

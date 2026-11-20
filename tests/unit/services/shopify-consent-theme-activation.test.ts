@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCartConsentThemeActivationUrl, buildCartConsentThemeEditorUrl } from "../../../app/services/shopify-consent/theme-activation-url.server";
+import { buildCartConsentThemeActivationUrl, buildCartConsentThemeEditorUrl, buildCartDrawerConsentThemeActivationUrl } from "../../../app/services/shopify-consent/theme-activation-url.server";
 import * as activationStatusModule from "../../../app/services/shopify-consent/theme-activation-status";
 import { getCartConsentThemeActivationStatus } from "../../../app/services/shopify-consent/theme-activation-status";
 
@@ -294,5 +294,48 @@ describe("published Plus checkout extension evidence", () => {
       { handle: "moda-whatsapp-checkout-consent", type: "ui_extension",
         activations: [{ target: "purchase.checkout.contact.render-after", draft: true }] },
     ])).toBe("unverified");
+  });
+});
+
+
+describe("cart drawer consent App Embed", () => {
+  it("constructs a one-click activation link for a trusted non-Plus shop", () => {
+    const url = buildCartDrawerConsentThemeActivationUrl({
+      shopDomain: "merchant.myshopify.com", apiKey: "client-id", placement: "non_plus_cart",
+    });
+    expect(url).not.toBeNull();
+    const parsed = new URL(url!);
+    expect(parsed.origin).toBe("https://merchant.myshopify.com");
+    expect(parsed.searchParams.get("context")).toBe("apps");
+    expect(parsed.searchParams.get("template")).toBe("cart");
+    expect(parsed.searchParams.get("activateAppId")).toBe("client-id/cart-drawer-consent");
+    expect(parsed.searchParams.has("addAppBlockId")).toBe(false);
+  });
+
+  it("never emits a drawer activation link for Plus or untrusted domains", () => {
+    expect(buildCartDrawerConsentThemeActivationUrl({ shopDomain: "merchant.myshopify.com",
+      apiKey: "client-id", placement: "plus_checkout" })).toBeNull();
+    expect(buildCartDrawerConsentThemeActivationUrl({ shopDomain: "bad.example.com",
+      apiKey: "client-id", placement: "non_plus_cart" })).toBeNull();
+    expect(buildCartDrawerConsentThemeActivationUrl({ shopDomain: "merchant.myshopify.com",
+      apiKey: "bad/key", placement: "non_plus_cart" })).toBeNull();
+  });
+
+  it("distinguishes a published enabled embed from an unverified drawer", () => {
+    const check = activationStatusModule.matchCartDrawerEmbedEvidence;
+    const extension = (status: string) => [{
+      type: "theme_app_extension", handle: "moda-whatsapp-consent",
+      activations: [{ handle: "cart-drawer-consent", target: "body", status,
+        activations: [{ themeId: "gid://shopify/OnlineStoreTheme/123", target: "body" }] }],
+    }];
+    expect(check(extension("active"))).toBe("active");
+    expect(check(extension("available"))).toBe("inactive");
+    expect(check([{ type: "theme_app_extension", handle: "another-app",
+      activations: [{ handle: "cart-drawer-consent", target: "body", status: "active",
+        activations: [{ themeId: "gid://shopify/OnlineStoreTheme/321" }] }] }])).toBe("unverified");
+    expect(check([])).toBe("unverified");
+    expect(check([{ type: "theme_app_extension", activations: [{
+      handle: "unrelated-embed", target: "body", status: "active",
+    }] }])).toBe("unverified");
   });
 });

@@ -314,6 +314,7 @@
   }
 
   window.modaWhatsappConsent = Object.freeze({ initialize });
+  window.dispatchEvent(new Event("moda:cart-consent-ready"));
   const initializeBlocks = () => {
     document.querySelectorAll("[data-moda-whatsapp-consent]").forEach(root => {
       void initialize(root);

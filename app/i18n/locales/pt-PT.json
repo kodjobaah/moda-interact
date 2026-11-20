@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "A abrir o Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Não foi possível preparar a ativação do Shopify. Tente novamente.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Continuar para o editor do Shopify",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Não está ativo no checkout publicado"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Não está ativo no checkout publicado",
+  "recoverySettings.whatsappConsent.drawerTitle": "Consentimento no carrinho lateral",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "A aplicação incorporada está ativa. Teste o carrinho lateral para confirmar a caixa de seleção.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "O consentimento no carrinho lateral não foi verificado. Ative-o no editor do tema e guarde.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Ativar consentimento no carrinho lateral",
+  "recoverySettings.whatsappConsent.drawerManage": "Gerir consentimento no carrinho lateral"
 }

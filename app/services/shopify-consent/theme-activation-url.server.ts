@@ -32,3 +32,17 @@ export function buildCartConsentThemeActivationUrl(
   url.searchParams.set("target", "newAppsSection");
   return url.toString();
 }
+
+/** One-click Shopify App Embed enablement; merchant must still Save the theme. */
+export function buildCartDrawerConsentThemeActivationUrl(
+  input: ThemeActivationUrlInput,
+): string | null {
+  if (input.placement !== "non_plus_cart" ||
+      !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(input.shopDomain) ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(input.apiKey)) return null;
+  const url = new URL(`https://${input.shopDomain}/admin/themes/current/editor`);
+  url.searchParams.set("context", "apps");
+  url.searchParams.set("template", "cart");
+  url.searchParams.set("activateAppId", `${input.apiKey}/cart-drawer-consent`);
+  return url.toString();
+}

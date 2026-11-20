@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Shopify openen…",
   "recoverySettings.whatsappConsent.activationFailed": "Kan Shopify-activering niet voorbereiden. Probeer opnieuw.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Doorgaan naar Shopify-editor",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Niet actief in gepubliceerde checkout"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Niet actief in gepubliceerde checkout",
+  "recoverySettings.whatsappConsent.drawerTitle": "Toestemming in winkelwagenlade",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "De app-insluiting is ingeschakeld. Test de winkelwagenlade om het selectievakje te controleren.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Toestemming in de winkelwagenlade is niet geverifieerd. Schakel in via de thema-editor en sla op.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Toestemming in lade inschakelen",
+  "recoverySettings.whatsappConsent.drawerManage": "Toestemming in lade beheren"
 }

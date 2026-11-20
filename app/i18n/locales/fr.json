@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Ouverture de Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Impossible de préparer l’activation Shopify. Réessayez.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Continuer vers l’éditeur Shopify",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Inactif sur le paiement publié"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Inactif sur le paiement publié",
+  "recoverySettings.whatsappConsent.drawerTitle": "Consentement dans le panier latéral",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Le module intégré est activé. Testez le panier latéral pour confirmer la présence de la case à cocher.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Le consentement dans le panier latéral n’est pas vérifié. Activez-le dans l’éditeur de thème et enregistrez.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Activer le consentement dans le panier latéral",
+  "recoverySettings.whatsappConsent.drawerManage": "Gérer le consentement dans le panier latéral"
 }

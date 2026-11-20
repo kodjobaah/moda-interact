@@ -747,5 +747,10 @@
   "recoverySettings.whatsappConsent.activationPreparing": "Otevírání Shopify…",
   "recoverySettings.whatsappConsent.activationFailed": "Aktivaci Shopify nelze připravit. Zkuste to znovu.",
   "recoverySettings.whatsappConsent.activationOpenEditor": "Pokračovat do editoru Shopify",
-  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Není aktivní v publikované pokladně"
+  "recoverySettings.whatsappConsent.statusCheckoutInactive": "Není aktivní v publikované pokladně",
+  "recoverySettings.whatsappConsent.drawerTitle": "Souhlas v bočním košíku",
+  "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Vložená aplikace je aktivní. Otestujte boční košík a ověřte zobrazení políčka.",
+  "recoverySettings.whatsappConsent.drawerNotVerified": "Souhlas v bočním košíku nebyl ověřen. Zapněte jej v editoru motivu a uložte.",
+  "recoverySettings.whatsappConsent.drawerEnable": "Zapnout souhlas v bočním košíku",
+  "recoverySettings.whatsappConsent.drawerManage": "Spravovat souhlas v bočním košíku"
 }
