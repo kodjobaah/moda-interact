@@ -1,0 +1,42 @@
+{% assign app_proxy_root = block.settings.app_proxy_root | default: '/apps/moda-consent' %}
+
+{%- comment -%}
+  Drawer UI is inert until a supported, open cart drawer is detected.
+  Reuse the cart-page controller and receipt workflow. Shopify owns Save.
+{%- endcomment -%}
+<template data-moda-whatsapp-drawer-template>
+  <div
+    class="moda-whatsapp-consent moda-whatsapp-drawer-consent"
+    data-moda-whatsapp-consent
+    data-proxy-root="{{ app_proxy_root | escape }}"
+    data-status-url="{{ app_proxy_root | append: '/cart/status' | escape }}"
+    data-receipt-url="{{ app_proxy_root | append: '/cart/receipt' | escape }}"
+    data-verify-url="{{ app_proxy_root | append: '/cart/verify' | escape }}"
+    data-locale="{{ localization.language.iso_code | escape }}"
+    hidden
+  >
+    <label class="moda-whatsapp-consent__label">
+      <input class="moda-whatsapp-consent__checkbox" type="checkbox" data-consent-checkbox>
+      <span>{{ 'consent.checkbox.label' | t }}</span>
+    </label>
+  </div>
+</template>
+{{ 'cart-consent.js' | asset_url | script_tag }}
+{{ 'cart-consent.css' | asset_url | stylesheet_tag }}
+
+{% schema %}
+{
+  "name": "Cart drawer consent",
+  "target": "body",
+  "available_if": "{{ app.metafields.moda_interact.cart_consent_enabled }}",
+  "javascript": "cart-drawer-consent.js",
+  "settings": [
+    {
+      "type": "text",
+      "id": "app_proxy_root",
+      "label": "Moda app proxy path",
+      "default": "/apps/moda-consent"
+    }
+  ]
+}
+{% endschema %}
