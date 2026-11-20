@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsAppへの同意"
+    },
+    "cart_drawer_consent": {
+      "name": "ドロワー内の同意"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Modaアプリプロキシのパス"
+    }
+  }
+}

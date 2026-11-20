@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp consent"
+    },
+    "cart_drawer_consent": {
+      "name": "Cart drawer consent"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda app proxy path"
+    }
+  }
+}

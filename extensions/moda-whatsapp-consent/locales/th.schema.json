@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "ความยินยอม WhatsApp"
+    },
+    "cart_drawer_consent": {
+      "name": "ยินยอมในตะกร้า"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "พาธแอปพร็อกซี Moda"
+    }
+  }
+}

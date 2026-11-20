@@ -165,7 +165,8 @@ export default function WhatsAppCustomerConsent({
                 <p role="status">{t(drawerStatus === "active"
                   ? "recoverySettings.whatsappConsent.drawerEmbedEnabled"
                   : "recoverySettings.whatsappConsent.drawerNotVerified")}</p>
-                <a href={drawerStatus === "active" ? editorUrl! : activation.drawerThemeActivationUrl}
+                <a className="moda-recovery-consent-action"
+                  href={drawerStatus === "active" ? editorUrl! : activation.drawerThemeActivationUrl}
                   target="_blank" rel="noopener noreferrer">
                   {t(drawerStatus === "active"
                     ? "recoverySettings.whatsappConsent.drawerManage"
@@ -180,7 +181,12 @@ export default function WhatsAppCustomerConsent({
         <summary>{t("recoverySettings.whatsappConsent.returningTitle")}</summary>
         <p>{t("recoverySettings.whatsappConsent.returning")}</p>
         <p>{t("recoverySettings.whatsappConsent.stop")}</p>
-        {isCart ? <p>{t("recoverySettings.whatsappConsent.proxyBody")}</p> : null}
+        {isCart ? (
+          <p>
+            {t("recoverySettings.whatsappConsent.proxyBody")}{" "}
+            <code>{activation.appProxyDefaultRoot}</code>
+          </p>
+        ) : null}
       </details>
     </section>
   );

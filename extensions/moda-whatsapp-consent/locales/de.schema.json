@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp-Einwilligung"
+    },
+    "cart_drawer_consent": {
+      "name": "Einwilligung im Warenkorb"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda-App-Proxy-Pfad"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp onayı"
+    },
+    "cart_drawer_consent": {
+      "name": "Sepet çekmecesi izni"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda uygulama proxy yolu"
+    }
+  }
+}

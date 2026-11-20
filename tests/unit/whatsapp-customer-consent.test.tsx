@@ -92,6 +92,12 @@ describe("single-action Shopify merchant consent activation", () => {
     expect(html).not.toContain('data-activation-status="active"');
   });
 
+  it("shows the configured proxy path after the translated default-path guidance", () => {
+    const html = render(cartBase);
+    expect(html).toContain("recoverySettings.whatsappConsent.proxyBody");
+    expect(html).toContain("<code>/apps/moda-consent</code>");
+  });
+
   it("retains the plan-exclusive Plus checkout placement", () => {
     const html = render({ ...cartBase, placement: "plus_checkout", plusStatus: "unverified",
       checkoutEditorUrl: "https://merchant.myshopify.com/admin/settings/checkout" });
@@ -110,6 +116,23 @@ describe("non-Plus cart drawer setup", () => {
   it("offers one drawer enable link after the cart page is active", () => {
     const html = render(enabledCart);
     expect(html).toContain("recoverySettings.whatsappConsent.drawerTitle");
+    expect(html).toContain("recoverySettings.whatsappConsent.drawerEnable");
+    expect(html).toContain("activateAppId=");
+  });
+  it("uses the same button style for both editor navigation links", () => {
+    const html = renderToStaticMarkup(<WhatsAppCustomerConsent
+      t={t} activation={enabledCart} drawerStatus="active" />);
+    expect(html).toContain("data-consent-drawer-activation");
+    expect((html.match(/class="moda-recovery-consent-action"/g) ?? []).length).toBe(2);
+    expect(html).not.toContain("moda-recovery-consent-action--secondary");
+    expect(html).toContain('href="https://merchant.myshopify.com/admin/themes/current/editor?template=cart"');
+    expect(html).toContain("recoverySettings.whatsappConsent.drawerManage");
+    expect(html).not.toContain("activateAppId=");
+  });
+  it("keeps the same button style before enabling the drawer", () => {
+    const html = render(enabledCart);
+    expect((html.match(/class="moda-recovery-consent-action"/g) ?? []).length).toBe(2);
+    expect(html).not.toContain("moda-recovery-consent-action--secondary");
     expect(html).toContain("recoverySettings.whatsappConsent.drawerEnable");
     expect(html).toContain("activateAppId=");
   });

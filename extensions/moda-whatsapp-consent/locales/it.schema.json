@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "Consenso WhatsApp"
+    },
+    "cart_drawer_consent": {
+      "name": "Consenso nel carrello"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Percorso proxy app Moda"
+    }
+  }
+}

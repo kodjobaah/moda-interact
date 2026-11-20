@@ -313,7 +313,7 @@
   "recoverySettings.whatsappConsent.cartVerify": "돌아오면 Moda가 저장된 장바구니를 자동으로 확인합니다.",
   "recoverySettings.whatsappConsent.cartOpenEditor": "테마 편집기에서 장바구니 템플릿 열기",
   "recoverySettings.whatsappConsent.proxyTitle": "Moda 앱 프록시 경로",
-  "recoverySettings.whatsappConsent.proxyBody": "장바구니 블록은 스토어의 앱 프록시를 통해 Moda에 연결됩니다. Shopify 앱 프록시의 접두사 또는 하위 경로를 변경한 경우, 블록의 “Moda app proxy path” 설정에 정확히 동일한 전체 스토어 경로를 입력하고 테마를 저장한 뒤 게시된 장바구니 페이지에서 블록을 확인하세요. 기본값:",
+  "recoverySettings.whatsappConsent.proxyBody": "장바구니 블록은 스토어의 앱 프록시를 통해 Moda에 연결됩니다. Shopify 앱 프록시의 접두사 또는 하위 경로를 변경한 경우, 블록의 “Moda 앱 프록시 경로” 설정에 정확히 동일한 전체 스토어 경로를 입력하고 테마를 저장한 뒤 게시된 장바구니 페이지에서 블록을 확인하세요. 기본값:",
   "recoverySettings.whatsappConsent.proxyRules": "경로는 /a, /apps, /community 또는 /tools 뒤에 문자, 숫자, 하이픈 또는 밑줄로 된 1–30자 세그먼트 하나가 와야 하며 URL, 쿼리, 프래그먼트는 사용할 수 없습니다. 잘못된 경로는 Moda 체크박스만 숨길 뿐이며 쇼핑과 결제는 중단되지 않습니다.",
   "recoverySettings.whatsappConsent.returningTitle": "재방문 고객",
   "recoverySettings.whatsappConsent.returning": "로그인한 고객이 Shopify에서 확인되면 체크박스는 아무것도 기록하지 않고 현재 저장된 WhatsApp 허용(STOP 포함)을 표시합니다. 동일한 장바구니나 결제에서 이미 선택한 내용은 서명된 영수증을 통해서만 표시됩니다. 게스트는 다른 쇼핑객의 동의를 상속하지 않으며, 알림은 항상 발송 시점에 저장된 허용을 따릅니다.",

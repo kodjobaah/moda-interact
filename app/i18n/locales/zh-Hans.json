@@ -313,7 +313,7 @@
   "recoverySettings.whatsappConsent.cartVerify": "返回后，Moda 会自动检查已保存的购物车。",
   "recoverySettings.whatsappConsent.cartOpenEditor": "在主题编辑器中打开购物车模板",
   "recoverySettings.whatsappConsent.proxyTitle": "Moda 应用代理路径",
-  "recoverySettings.whatsappConsent.proxyBody": "购物车区块通过商店的应用代理连接 Moda。如果您更改了 Shopify 应用代理的前缀或子路径，请在区块的 “Moda app proxy path” 设置中输入完全相同的完整商店路径，保存主题，并在已发布的购物车页面上验证该区块。默认值为：",
+  "recoverySettings.whatsappConsent.proxyBody": "购物车区块通过商店的应用代理连接 Moda。如果您更改了 Shopify 应用代理的前缀或子路径，请在区块的 “Moda 应用代理路径” 设置中输入完全相同的完整商店路径，保存主题，并在已发布的购物车页面上验证该区块。默认值为：",
   "recoverySettings.whatsappConsent.proxyRules": "路径必须为 /a、/apps、/community 或 /tools，后接一个由字母、数字、连字符或下划线组成的 1–30 个字符的片段——不允许 URL、查询参数或片段标识。路径错误只会隐藏 Moda 的复选框；购物和结账绝不会被中断。",
   "recoverySettings.whatsappConsent.returningTitle": "回访客户",
   "recoverySettings.whatsappConsent.returning": "当已登录客户通过 Shopify 验证后，复选框会显示其当前存储的 WhatsApp 许可（包括 STOP），而不写入任何内容。在同一购物车或结账中已做出的选择仅根据其签名回执显示。访客绝不会继承其他购物者的同意，提醒始终遵循发送时存储的许可。",

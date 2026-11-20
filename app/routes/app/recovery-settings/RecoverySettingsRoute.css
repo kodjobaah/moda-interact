@@ -1487,6 +1487,26 @@
   text-decoration: none;
   color: #fff;
 }
+/* The drawer is a secondary placement, but its editor link is still a real action. */
+.moda-recovery-consent-card [data-consent-drawer-activation] {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--recovery-line);
+}
+.moda-recovery-consent-card [data-consent-drawer-activation] h4 {
+  margin: 0 0 8px;
+  color: var(--recovery-green-900);
+  font-size: 14px;
+}
+/* Both editor-navigation links use the same button appearance; retain anchor semantics. */
+.moda-recovery-consent-card .moda-recovery-consent-action:hover {
+  background: var(--recovery-green-900);
+  color: #fff;
+}
+.moda-recovery-consent-card .moda-recovery-consent-action:focus-visible {
+  outline: 3px solid var(--recovery-green-600);
+  outline-offset: 3px;
+}
 .moda-recovery-consent-card button:disabled { opacity: .6; cursor: wait; }
 .moda-recovery-consent-card button:focus-visible,
 .moda-recovery-consent-guidance summary:focus-visible {

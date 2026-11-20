@@ -313,7 +313,7 @@
   "recoverySettings.whatsappConsent.cartVerify": "戻ると、Modaが保存済みカートを自動的に確認します。",
   "recoverySettings.whatsappConsent.cartOpenEditor": "テーマエディターでカートテンプレートを開く",
   "recoverySettings.whatsappConsent.proxyTitle": "Modaアプリプロキシパス",
-  "recoverySettings.whatsappConsent.proxyBody": "カートブロックは、ストアのアプリプロキシ経由でModaに接続します。ShopifyアプリプロキシのプレフィックスまたはサブパスをVariant変更した場合は、まったく同じ完全なストアパスをブロックの「Moda app proxy path」設定に入力し、テーマを保存して、公開中のカートページでブロックを確認してください。既定値：",
+  "recoverySettings.whatsappConsent.proxyBody": "カートブロックは、ストアのアプリプロキシ経由でModaに接続します。Shopifyアプリプロキシのプレフィックスまたはサブパスを変更した場合は、まったく同じ完全なストアパスをブロックの「Modaアプリプロキシのパス」設定に入力し、テーマを保存して、公開中のカートページでブロックを確認してください。既定値：",
   "recoverySettings.whatsappConsent.proxyRules": "パスは /a、/apps、/community、/tools のいずれかに、英数字・ハイフン・アンダースコアによる1〜30文字のセグメントを1つ続けた形式である必要があります。URL・クエリ・フラグメントは使用できません。パスが誤っていてもModaのチェックボックスが非表示になるだけで、買い物とチェックアウトが中断されることはありません。",
   "recoverySettings.whatsappConsent.returningTitle": "リピーターのお客様",
   "recoverySettings.whatsappConsent.returning": "ログイン済みのお客様がShopifyで確認されると、チェックボックスには現在保存されているWhatsApp許可（STOPを含む）が何も書き込まずに表示されます。同じカートまたはチェックアウトで既に行われた選択は、署名付きレシートからのみ表示されます。ゲストが他の購入者の同意を引き継ぐことはなく、リマインダーは常に送信時点で保存されている許可に従います。",

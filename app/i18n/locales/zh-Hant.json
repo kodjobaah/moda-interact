@@ -313,7 +313,7 @@
   "recoverySettings.whatsappConsent.cartVerify": "返回後，Moda 會自動檢查已儲存的購物車。",
   "recoverySettings.whatsappConsent.cartOpenEditor": "在佈景主題編輯器中開啟購物車範本",
   "recoverySettings.whatsappConsent.proxyTitle": "Moda 應用程式代理路徑",
-  "recoverySettings.whatsappConsent.proxyBody": "購物車區塊透過商店的應用程式代理連線 Moda。如果您變更了 Shopify 應用程式代理的前綴或子路徑，請在區塊的 “Moda app proxy path” 設定中輸入完全相同的完整商店路徑，儲存佈景主題，並在已發佈的購物車頁面上驗證該區塊。預設值為：",
+  "recoverySettings.whatsappConsent.proxyBody": "購物車區塊透過商店的應用程式代理連線 Moda。如果您變更了 Shopify 應用程式代理的前綴或子路徑，請在區塊的 “Moda 應用程式代理路徑” 設定中輸入完全相同的完整商店路徑，儲存佈景主題，並在已發佈的購物車頁面上驗證該區塊。預設值為：",
   "recoverySettings.whatsappConsent.proxyRules": "路徑必須為 /a、/apps、/community 或 /tools，後接一個由字母、數字、連字號或底線組成的 1–30 個字元片段——不允許 URL、查詢參數或片段識別碼。路徑錯誤只會隱藏 Moda 的核取方塊；購物與結帳絕不會被中斷。",
   "recoverySettings.whatsappConsent.returningTitle": "回訪客戶",
   "recoverySettings.whatsappConsent.returning": "當已登入的客戶通過 Shopify 驗證後，核取方塊會顯示其目前儲存的 WhatsApp 許可（包括 STOP），而不寫入任何內容。在同一購物車或結帳中已做出的選擇僅依其簽署回執顯示。訪客絕不會繼承其他購物者的同意，提醒永遠遵循傳送時儲存的許可。",

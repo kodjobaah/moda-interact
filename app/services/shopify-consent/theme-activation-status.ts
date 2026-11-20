@@ -226,15 +226,16 @@ export function matchCartDrawerEmbedEvidence(extensions: unknown):
   for (const entry of extensions) {
     if (!entry || typeof entry !== "object") continue;
     const extension = entry as Record<string, unknown>;
-    if (extension.type !== "theme_app_extension" || extension.handle !== "moda-whatsapp-consent" ||
-        !Array.isArray(extension.activations)) continue;
+    // App Bridge scopes extensions() to the current app. Shopify can report
+    // a generic top-level handle ("theme-app-extension"); the nested handle,
+    // target and published status identify the specific drawer App Embed.
+    if (extension.type !== "theme_app_extension" || !Array.isArray(extension.activations)) continue;
     for (const activation of extension.activations) {
       if (!activation || typeof activation !== "object") continue;
       const block = activation as Record<string, unknown>;
       if (block.handle !== "cart-drawer-consent" || block.target !== "body") continue;
       found = true;
-      if (block.status === "active" && Array.isArray(block.activations) &&
-          block.activations.length > 0) return "active";
+      if (block.status === "active") return "active";
     }
   }
   return found ? "inactive" : "unverified";

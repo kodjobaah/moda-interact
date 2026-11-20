@@ -321,21 +321,45 @@ describe("cart drawer consent App Embed", () => {
       apiKey: "bad/key", placement: "non_plus_cart" })).toBeNull();
   });
 
-  it("distinguishes a published enabled embed from an unverified drawer", () => {
+  it("recognises the published App Bridge drawer activation with a generic extension handle", () => {
     const check = activationStatusModule.matchCartDrawerEmbedEvidence;
-    const extension = (status: string) => [{
-      type: "theme_app_extension", handle: "moda-whatsapp-consent",
-      activations: [{ handle: "cart-drawer-consent", target: "body", status,
-        activations: [{ themeId: "gid://shopify/OnlineStoreTheme/123", target: "body" }] }],
+    // Actual App Bridge shape observed for the merchant's published theme.
+    const published = [{
+      type: "theme_app_extension", handle: "theme-app-extension",
+      activations: [
+        { handle: "cart-consent", target: "section", status: "active",
+          activations: [{ themeId: "gid://shopify/OnlineStoreTheme/123" }] },
+        { handle: "cart-drawer-consent", target: "body", status: "active",
+          activations: [{ themeId: "gid://shopify/OnlineStoreTheme/123" }] },
+      ],
+    }];
+    expect(check(published)).toBe("active");
+  });
+
+  it("uses the drawer block's published status, not nested placement count", () => {
+    const check = activationStatusModule.matchCartDrawerEmbedEvidence;
+    const extension = (status: string, activations: unknown[] = []) => [{
+      type: "theme_app_extension", handle: "theme-app-extension",
+      activations: [{ handle: "cart-drawer-consent", target: "body", status, activations }],
     }];
     expect(check(extension("active"))).toBe("active");
     expect(check(extension("available"))).toBe("inactive");
-    expect(check([{ type: "theme_app_extension", handle: "another-app",
-      activations: [{ handle: "cart-drawer-consent", target: "body", status: "active",
-        activations: [{ themeId: "gid://shopify/OnlineStoreTheme/321" }] }] }])).toBe("unverified");
+    expect(check(extension("inactive"))).toBe("inactive");
+  });
+
+  it("does not recognise a different block, target, or extension type as a drawer embed", () => {
+    const check = activationStatusModule.matchCartDrawerEmbedEvidence;
     expect(check([])).toBe("unverified");
-    expect(check([{ type: "theme_app_extension", activations: [{
-      handle: "unrelated-embed", target: "body", status: "active",
-    }] }])).toBe("unverified");
+    expect(check(null)).toBe("unverified");
+    for (const entry of [
+      { type: "theme_app_extension", activations: [
+        { handle: "unrelated-embed", target: "body", status: "active" }] },
+      { type: "theme_app_extension", activations: [
+        { handle: "cart-drawer-consent", target: "section", status: "active" }] },
+      { type: "ui_extension", activations: [
+        { handle: "cart-drawer-consent", target: "body", status: "active" }] },
+    ]) {
+      expect(check([entry])).toBe("unverified");
+    }
   });
 });

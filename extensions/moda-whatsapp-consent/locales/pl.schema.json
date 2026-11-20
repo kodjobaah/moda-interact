@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "Zgoda WhatsApp"
+    },
+    "cart_drawer_consent": {
+      "name": "Zgoda w panelu koszyka"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Ścieżka proxy aplikacji Moda"
+    }
+  }
+}

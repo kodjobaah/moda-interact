@@ -26,7 +26,7 @@
 
 {% schema %}
 {
-  "name": "Cart drawer consent",
+  "name": "t:blocks.cart_drawer_consent.name",
   "target": "body",
   "available_if": "{{ app.metafields.moda_interact.cart_consent_enabled }}",
   "javascript": "cart-drawer-consent.js",
@@ -34,7 +34,7 @@
     {
       "type": "text",
       "id": "app_proxy_root",
-      "label": "Moda app proxy path",
+      "label": "t:settings.app_proxy_root.label",
       "default": "/apps/moda-consent"
     }
   ]

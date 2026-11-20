@@ -313,7 +313,7 @@
   "recoverySettings.whatsappConsent.cartVerify": "Po návratu Moda automaticky ověří uložený košík.",
   "recoverySettings.whatsappConsent.cartOpenEditor": "Otevřít šablonu košíku v editoru šablon",
   "recoverySettings.whatsappConsent.proxyTitle": "Cesta proxy aplikace Moda",
-  "recoverySettings.whatsappConsent.proxyBody": "Blok košíku se k Modě připojuje přes proxy aplikací vašeho obchodu. Pokud změníte předponu nebo podcestu proxy aplikací Shopify, zadejte přesně stejnou úplnou cestu obchodu do nastavení bloku „Moda app proxy path“, uložte motiv a ověřte blok na publikované stránce košíku. Výchozí hodnota:",
+  "recoverySettings.whatsappConsent.proxyBody": "Blok košíku se k Modě připojuje přes proxy aplikací vašeho obchodu. Pokud změníte předponu nebo podcestu proxy aplikací Shopify, zadejte přesně stejnou úplnou cestu obchodu do nastavení bloku „Cesta proxy aplikace Moda“, uložte motiv a ověřte blok na publikované stránce košíku. Výchozí hodnota:",
   "recoverySettings.whatsappConsent.proxyRules": "Cesta musí být /a, /apps, /community nebo /tools následovaná jedním segmentem o 1–30 znacích z písmen, číslic, pomlčky nebo podtržítka — žádné URL, dotazy ani fragmenty. Nesprávná cesta pouze skryje pole Mody; nakupování a pokladna se nikdy nepřeruší.",
   "recoverySettings.whatsappConsent.returningTitle": "Vracející se zákazníci",
   "recoverySettings.whatsappConsent.returning": "Když Shopify ověří přihlášeného zákazníka, pole zobrazí jeho aktuálně uložené povolení WhatsApp (včetně STOP), aniž by cokoli zapisovalo. Volba již provedená ve stejném košíku nebo pokladně se zobrazuje pouze z podepsané stvrzenky. Hosté nikdy nedědí souhlas jiného nakupujícího a připomenutí se vždy řídí povolením uloženým v okamžiku odeslání.",
