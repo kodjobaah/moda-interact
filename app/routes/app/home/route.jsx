@@ -23,8 +23,6 @@ import { billingService } from "@/services/billing/billing.service";
 import { readPendingRecoveries } from "@/services/pending-recovery/pending-recovery-reader.server";
 import { merchantUiContext } from "@/utils/merchant-i18n";
 import { readActiveMerchantPricingCatalogue } from "@/services/merchant-pricing/merchant-pricing.server";
-import { listSelectableStoreCategories, loadStoreProfile } from "@/services/store-profile/store-category.server";
-import { suggestStoreCategory } from "@/services/store-profile/shopify-taxonomy-suggestion.server";
 import {
   buildMerchantBillingSetupState,
   shouldShowMerchantBillingSetup,
@@ -40,7 +38,7 @@ import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-
 /** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
 export const loader = async ({ request, context = new RouterContextProvider() }) => {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop, authentication: { admin, session } } = merchant;
+  const { shop, authentication: { session } } = merchant;
   const url = new URL(request.url);
   const embed = overviewEmbed(url, session.shop);
   const pendingPage = Number.parseInt(
@@ -78,31 +76,16 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     ? buildMerchantBillingSetupState(subscriptionProjection, pricingCatalogue)
     : null;
 
-  /*
-   * Subscription evidence must not bypass the required initial Store Category
-   * selection. Once a category is already active/pending, the billing setup
-   * surface may take over while Shopify reconciliation finishes.
-   */
+  // Category and prompt setup are optional post-onboarding settings.
+  // A fresh merchant can reach Shopify billing without a category/profile lookup.
   if (!shop.onboardingCompleted) {
-    const [storeCategories, storeProfile] = await Promise.all([
-      listSelectableStoreCategories(merchantUi.locale),
-      loadStoreProfile(shop.id, merchantUi.locale),
-    ]);
-    const storeCategorySuggestion = await suggestStoreCategory(admin, storeCategories);
-    const hasActiveStoreCategory = Boolean(storeProfile.activeCategory);
     return {
       merchantUi,
       merchantExperienceState: onboardingState,
       pricingCatalogue,
       subscription: null,
-      billingSetup: hasActiveStoreCategory ? billingSetup : null,
-      resumeExistingSubscription: Boolean(billingSetup && !hasActiveStoreCategory),
-      storeCategories,
-      pendingCategoryId: storeProfile.pendingCategory?.id ?? null,
-      pendingSelectionGeneration: storeProfile.pendingSelectionGeneration,
-      pendingMappingIds: storeProfile.pendingMappingIds,
-      suggestedCategoryId: storeCategorySuggestion?.categoryId ?? null,
-      suggestedMappingIds: storeCategorySuggestion?.matchedMappingIds ?? [],
+      billingSetup: null,
+      resumeExistingSubscription: Boolean(billingSetup),
     };
   }
 
@@ -208,12 +191,6 @@ export default function Index() {
       <Onboarding
         merchantUi={data.merchantUi}
         pricingCatalogue={data.pricingCatalogue}
-        storeCategories={data.storeCategories}
-        pendingCategoryId={data.pendingCategoryId}
-        pendingSelectionGeneration={data.pendingSelectionGeneration}
-        pendingMappingIds={data.pendingMappingIds}
-        suggestedCategoryId={data.suggestedCategoryId}
-        suggestedMappingIds={data.suggestedMappingIds}
         resumeExistingSubscription={data.resumeExistingSubscription}
       />
     );

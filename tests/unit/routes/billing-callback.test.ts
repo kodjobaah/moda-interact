@@ -182,7 +182,6 @@ beforeEach(() => {
   mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
   mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
-  mocks.activateInitialCategory.mockResolvedValue({ kind: "ACTIVATED" });
 });
 
 describe("billing callback activation", () => {
@@ -204,8 +203,7 @@ describe("billing callback activation", () => {
     expect(mocks.prepareFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
-    expect(mocks.activateInitialCategory).toHaveBeenCalledWith({ shopId: "shop-1" });
-    expect(mocks.completeFreeActivation).toHaveBeenCalledBefore(mocks.activateInitialCategory);
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
@@ -275,31 +273,11 @@ describe("billing callback activation", () => {
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 
-  it("emits category activation failure after the durable subscription commit", async () => {
-    const cause = new Error("category storage marker merchant@example.com");
-    const failure = new Error("category activation marker password=category-secret", { cause });
-    mocks.activateInitialCategory.mockRejectedValue(failure);
-    const records = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("free")).rejects.toBe(failure);
-    });
-    const record = records.find((item) => item.event === "billing.initial_category_activation.failed");
-    const data = record?.data as Record<string, unknown>;
-
-    expect(data).toMatchObject({
-      operation: "activate_initial_pending_store_category",
-      stage: "after_subscription_commit",
-      origin: "internal",
-      shopId: "shop-1",
-      error: { name: "Error", message: "category activation marker [REDACTED]" },
-      causeChain: [{ name: "Error", message: "category storage marker [REDACTED]" }],
-    });
-    expect(JSON.stringify(record)).not.toContain("category-secret");
-    expect(JSON.stringify(record)).not.toContain("merchant@example.com");
-    expect(mocks.completeFreeActivation).toHaveBeenCalledBefore(mocks.activateInitialCategory);
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("free")).rejects.toBe(failure);
-    }, { throwFromSink: true });
-    expect(isolatedRecords).toHaveLength(0);
+  it("does not invoke optional Store Category activation during Free onboarding", async () => {
+    mocks.activateInitialCategory.mockRejectedValue(new Error("stale optional category"));
+    await runLoader("free");
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
+    expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
   });
 
   it("emits retry persistence failure separately and preserves the original throw", async () => {
@@ -482,8 +460,7 @@ describe("billing callback activation", () => {
 
     expect(mocks.preparePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
-    expect(mocks.activateInitialCategory).toHaveBeenCalledWith({ shopId: "shop-1" });
-    expect(mocks.syncSubscription).toHaveBeenCalledBefore(mocks.activateInitialCategory);
+    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));

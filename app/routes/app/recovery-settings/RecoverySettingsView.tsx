@@ -15,6 +15,12 @@ type DiscountCatalogueStatus = Awaited<
 >["catalogueStatus"];
 type RecoveryOfferMode = "NONE" | "FIXED" | "AI_BEST_APPLICABLE";
 
+const DISCOUNT_STATUS_KEYS: Record<string, string> = {
+  ACTIVE: "recoverySettings.discount.status.ACTIVE",
+  SCHEDULED: "recoverySettings.discount.status.SCHEDULED",
+  EXPIRED: "recoverySettings.discount.status.EXPIRED",
+};
+
 function discountCatalogueMessageKey(status: DiscountCatalogueStatus) {
   switch (status) {
     case "CURRENT":
@@ -262,9 +268,9 @@ export default function RecoverySettingsView({
                               ) : null}
                               <span>
                                 {i18n.t("recoverySettings.discount.status", {
-                                  value: i18n.t(
-                                    `recoverySettings.discount.status.${discount.providerStatus}`,
-                                  ),
+                                  value: DISCOUNT_STATUS_KEYS[discount.providerStatus]
+                                    ? i18n.t(DISCOUNT_STATUS_KEYS[discount.providerStatus])
+                                    : discount.providerStatus,
                                 })}
                               </span>
                               <span>

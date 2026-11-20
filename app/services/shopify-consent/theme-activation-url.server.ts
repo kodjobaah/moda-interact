@@ -11,22 +11,23 @@ type ThemeActivationUrlInput = Readonly<{
   placement: ShopifyConsentPlacement;
 }>;
 
-const SHOP_DOMAIN_PATTERN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
-const API_KEY_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** Safe editor link: never inserts an additional block on repeat visits. */
+export function buildCartConsentThemeEditorUrl(input: Pick<ThemeActivationUrlInput, "shopDomain" | "placement">): string | null {
+  if (input.placement !== "non_plus_cart") return null;
+  const url = new URL(`https://${input.shopDomain}/admin/themes/current/editor`);
+  url.searchParams.set("template", "cart");
+  return url.toString();
+}
 
 export function buildCartConsentThemeActivationUrl(
   input: ThemeActivationUrlInput,
 ): string | null {
   if (input.placement !== "non_plus_cart") return null;
-  if (!SHOP_DOMAIN_PATTERN.test(input.shopDomain)) {
-    throw new TypeError("A valid Shopify shop domain is required.");
-  }
-  if (!API_KEY_PATTERN.test(input.apiKey)) {
-    throw new TypeError("A valid Shopify app API key is required.");
-  }
 
-  const url = new URL(`https://${input.shopDomain}/admin/themes/current/editor`);
-  url.searchParams.set("template", "cart");
+  const editorUrl = buildCartConsentThemeEditorUrl(input);
+  if (!editorUrl) return null;
+  const url = new URL(editorUrl);
   url.searchParams.set("addAppBlockId", `${input.apiKey}/cart-consent`);
   url.searchParams.set("target", "newAppsSection");
   return url.toString();

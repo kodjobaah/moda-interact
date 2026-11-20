@@ -1,3 +1,4 @@
+import { ShopifyOfflineTokenError } from "@modainteract/moda-interact-shared/shopify/node";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { RouterContextProvider } from "react-router";
 
@@ -344,6 +345,23 @@ describe("Shopify consent App Proxy route", () => {
     ));
     expect(response.status).toBe(401);
     expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+  });
+
+  it("reports App Proxy coordination failures without mislabelling them as invalid signatures", async () => {
+    appProxyAuthenticate.mockRejectedValueOnce(new ShopifyOfflineTokenError("SESSION_MISSING"));
+    const response = await cartRoute.loader(routeArgs(
+      new Request(proxyUrl("/shopify/consent/cart/status")),
+      "/shopify/consent/*",
+    ));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({ error: "APP_PROXY_SESSION_UNAVAILABLE" });
+    expect(readReturningShopperConsentStatus).not.toHaveBeenCalled();
+    expect(logShopifyConsentFailure).toHaveBeenCalledWith(expect.objectContaining({
+      operation: "app_proxy_authentication",
+      stage: "offline_session_coordination",
+      reasonCode: "SHOPIFY_APP_PROXY_SESSION_UNAVAILABLE",
+    }));
   });
 
   it("rejects malformed or non-HTTPS Origin values and forged body identities", async () => {

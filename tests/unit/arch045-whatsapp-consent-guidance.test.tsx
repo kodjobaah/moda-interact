@@ -11,13 +11,13 @@ const keys = [
   "title", "marketing", "noConsentTitle", "noConsent", "unavailable",
   "stopTitle", "stop",
   "plusTitle", "plusBody", "plusVerify",
-  "cartTitle", "cartBody", "cartVerify", "cartOpenEditor",
+  "cartTitle", "cartBody", "cartActiveTitle", "cartActiveBody", "cartVerify", "cartOpenEditor",
   "proxyTitle", "proxyBody", "proxyRules",
   "returningTitle", "returning",
   "unknownPlanTitle", "unknownPlan",
   "statusActive", "statusInactive", "statusUnsupported",
   "statusUnavailable", "statusUnverified",
-  "activationAction", "activationPreparing", "activationFailed",
+  "activationAction", "activationRestore", "activationPreparing", "activationFailed",
   "activationOpenEditor", "statusCheckoutInactive",
 ].map((suffix) => `recoverySettings.whatsappConsent.${suffix}`);
 
@@ -26,6 +26,7 @@ const nonPlusActivation: WhatsAppConsentActivation = {
   cartStatus: "inactive",
   plusStatus: "unsupported",
   gateState: "disabled",
+  setupPhase: "never",
   checkoutEditorUrl: null,
   cartThemeEditorUrl:
     "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
@@ -87,6 +88,10 @@ describe("WhatsApp Customer Consent guidance (ARCH-045, superseded placement set
       }
       const html = render(locale);
       expect(html).toContain(catalogues[locale]["recoverySettings.whatsappConsent.title"]);
+      const activeHtml = render(locale, { ...nonPlusActivation,
+        cartStatus: "active", cartBlockPresence: "enabled", gateState: "enabled", setupPhase: "active" });
+      expect(activeHtml).toContain(catalogues[locale]["recoverySettings.whatsappConsent.cartActiveTitle"]);
+      expect(activeHtml).toContain(catalogues[locale]["recoverySettings.whatsappConsent.cartActiveBody"]);
       // The compact S005 panel renders STOP guidance inside a details section,
       // not the legacy standalone STOP heading. React escapes apostrophes in text.
       expect(html.replaceAll("&#x27;", "'")).toContain(

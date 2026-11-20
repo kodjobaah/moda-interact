@@ -1479,6 +1479,14 @@
   font-size: 14px;
   font-weight: 700;
 }
+.moda-recovery-consent-card .moda-recovery-consent-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  text-decoration: none;
+  color: #fff;
+}
 .moda-recovery-consent-card button:disabled { opacity: .6; cursor: wait; }
 .moda-recovery-consent-card button:focus-visible,
 .moda-recovery-consent-guidance summary:focus-visible {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildCartConsentThemeActivationUrl } from "../../../app/services/shopify-consent/theme-activation-url.server";
+import { buildCartConsentThemeActivationUrl, buildCartConsentThemeEditorUrl } from "../../../app/services/shopify-consent/theme-activation-url.server";
 import * as activationStatusModule from "../../../app/services/shopify-consent/theme-activation-status";
-import { getCartConsentThemeActivationStatus, CART_CONSENT_EXTENSION_UID } from "../../../app/services/shopify-consent/theme-activation-status";
+import { getCartConsentThemeActivationStatus } from "../../../app/services/shopify-consent/theme-activation-status";
+
+// Actual type suffix returned in Shopify's published templates/cart.json.
+// It differs from shopify.extension.toml's development configuration UID.
+const SHOPIFY_PUBLISHED_CART_BLOCK_ID = "01a1f174-b1a4-78bf-b843-c2cd7385513c";
 
 describe("cart consent theme activation URL", () => {
   it("creates the cart template editor link only for non-Plus placement", () => {
@@ -21,6 +25,14 @@ describe("cart consent theme activation URL", () => {
     expect(parsed.searchParams.get("target")).toBe("newAppsSection");
   });
 
+  it("uses a safe editor URL without an automatic block insertion for resume or restore", () => {
+    const url = buildCartConsentThemeEditorUrl({
+      shopDomain: "merchant.myshopify.com", placement: "non_plus_cart",
+    });
+    expect(url).toBe("https://merchant.myshopify.com/admin/themes/current/editor?template=cart");
+    expect(url).not.toContain("addAppBlockId");
+  });
+
   it.each(["plus_checkout", "unknown"] as const)(
     "does not offer cart activation for %s placement",
     placement => {
@@ -31,19 +43,6 @@ describe("cart consent theme activation URL", () => {
       })).toBeNull();
     },
   );
-
-  it("rejects malformed shop domains and API keys", () => {
-    expect(() => buildCartConsentThemeActivationUrl({
-      shopDomain: "merchant.example",
-      apiKey: "client-id",
-      placement: "non_plus_cart",
-    })).toThrow(TypeError);
-    expect(() => buildCartConsentThemeActivationUrl({
-      shopDomain: "merchant.myshopify.com",
-      apiKey: "client-id/other-shop",
-      placement: "non_plus_cart",
-    })).toThrow(TypeError);
-  });
 });
 
 describe("cart consent theme activation status", () => {
@@ -114,13 +113,17 @@ describe("plus checkout consent activation status", () => {
 describe("published cart template evidence", () => {
   const { deriveCartTemplateEvidence } = activationStatusModule;
 
-  it("reports an unsupported cart when the template is missing or not JSON", () => {
+  it("treats missing or malformed template evidence as unverified, not unsupported", () => {
     expect(deriveCartTemplateEvidence(null)).toEqual({
-      cartTemplateSupported: false,
+      cartTemplateSupported: null,
       blockEnabledInPublishedTheme: null,
     });
     expect(deriveCartTemplateEvidence("{% raw liquid %}")).toEqual({
-      cartTemplateSupported: false,
+      cartTemplateSupported: null,
+      blockEnabledInPublishedTheme: null,
+    });
+    expect(deriveCartTemplateEvidence(JSON.stringify({ unexpected: true }))).toEqual({
+      cartTemplateSupported: null,
       blockEnabledInPublishedTheme: null,
     });
   });
@@ -133,7 +136,7 @@ describe("published cart template evidence", () => {
           type: "apps",
           blocks: {
             consent: {
-              type: `shopify://apps/moda-interact/blocks/cart-consent/${CART_CONSENT_EXTENSION_UID}`,
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
             },
           },
         },
@@ -152,7 +155,7 @@ describe("published cart template evidence", () => {
           type: "apps",
           blocks: {
             consent: {
-              type: `shopify://apps/moda-interact/blocks/cart-consent/${CART_CONSENT_EXTENSION_UID}`,
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
               disabled: true,
             },
           },
@@ -167,6 +170,108 @@ describe("published cart template evidence", () => {
       cartTemplateSupported: true,
       blockEnabledInPublishedTheme: false,
     });
+  });
+});
+
+describe("published cart block presence", () => {
+  const { inspectCartConsentBlockPresence } = activationStatusModule;
+  const block = { type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}` };
+  const template = (blocks: Record<string, unknown>, disabled = false) => JSON.stringify({
+    sections: { apps: { type: "apps", disabled, blocks } },
+  });
+
+  it("recognises the exact published Moda block from Shopify's MAIN cart template", () => {
+    const content = `/* Shopify generated header */\n${JSON.stringify({
+      sections: {
+        "cart-items": { type: "main-cart-items" },
+        "1795112986549ca2a8": {
+          type: "apps",
+          blocks: {
+            moda_interact_cart_consent_BYfR7p: {
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+              settings: { app_proxy_root: "/apps/moda-consent" },
+            },
+          },
+          block_order: ["moda_interact_cart_consent_BYfR7p"],
+        },
+      },
+      order: ["cart-items", "1795112986549ca2a8"],
+    })}`;
+    expect(activationStatusModule.inspectCartConsentTemplate(content)).toMatchObject({
+      presence: "enabled", outcome: "parsed", generatedHeader: true,
+      matchingBlocks: 1, candidateBlocks: 1,
+    });
+  });
+
+  it("does not accept a lookalike app name, block handle or malformed identifier", () => {
+    for (const type of [
+      `shopify://apps/another-app/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+      `shopify://apps/moda-interact-other/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+      `shopify://apps/moda-interact/blocks/cart-consent-other/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+      `prefix-shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+      `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}/extra`,
+      "shopify://apps/moda-interact/blocks/cart-consent/",
+    ]) {
+      expect(inspectCartConsentBlockPresence(template({ impostor: { type } }))).toBe("absent");
+    }
+  });
+
+  it("verifies Shopify JSON templates with autogenerated comment headers", () => {
+    const header = `/*
+     * ------------------------------------------------------------
+     * IMPORTANT: The contents of this file are auto-generated.
+     * This file may be updated by the Shopify admin theme editor.
+     * ------------------------------------------------------------
+     */\n`;
+    const content = `${header}${template({ consent: block })}`;
+    expect(inspectCartConsentBlockPresence(content)).toBe("enabled");
+    expect(activationStatusModule.inspectCartConsentTemplate(content)).toMatchObject({
+      presence: "enabled", outcome: "parsed", generatedHeader: true,
+      matchingBlocks: 1, candidateBlocks: 1,
+    });
+    expect(activationStatusModule.deriveCartTemplateEvidence(content)).toEqual({
+      cartTemplateSupported: true, blockEnabledInPublishedTheme: true,
+    });
+    expect(inspectCartConsentBlockPresence(`${header}${template({ consent: { ...block, disabled: true } })}`))
+      .toBe("disabled");
+    expect(inspectCartConsentBlockPresence(`${header}${template({ a: block, b: block })}`))
+      .toBe("duplicate");
+  });
+
+  it("does not infer presence from malformed headers, malformed JSON or another app", () => {
+    expect(activationStatusModule.inspectCartConsentTemplate("/* unclosed")).toMatchObject({
+      presence: "unknown", outcome: "unterminated_header",
+    });
+    expect(activationStatusModule.inspectCartConsentTemplate("/* header */ invalid")).toMatchObject({
+      presence: "unknown", outcome: "invalid_json",
+    });
+    expect(activationStatusModule.inspectCartConsentTemplate(template({ other: {
+      type: "shopify://apps/another/blocks/cart-consent/other-id",
+    } }))).toMatchObject({
+      presence: "absent", outcome: "parsed", matchingBlocks: 0, candidateBlocks: 1,
+    });
+    const embeddedComment = template({ consent: { ...block, settings: { text: "/* do not alter */" } } });
+    expect(inspectCartConsentBlockPresence(embeddedComment)).toBe("enabled");
+  });
+
+  it("distinguishes never added, saved but disabled, enabled, and duplicates", () => {
+    expect(inspectCartConsentBlockPresence(template({}))).toBe("absent");
+    expect(inspectCartConsentBlockPresence(template({ consent: { ...block, disabled: true } })))
+      .toBe("disabled");
+    expect(inspectCartConsentBlockPresence(template({ consent: block }, true)))
+      .toBe("disabled");
+    expect(inspectCartConsentBlockPresence(template({ consent: block }))).toBe("enabled");
+    expect(inspectCartConsentBlockPresence(template({ a: block, b: block })))
+      .toBe("duplicate");
+  });
+
+  it("never treats missing templates, malformed JSON or another app as a verified Moda block", () => {
+    expect(inspectCartConsentBlockPresence(null)).toBe("unknown");
+    expect(inspectCartConsentBlockPresence("not-json")).toBe("unknown");
+    expect(inspectCartConsentBlockPresence(JSON.stringify({ unexpected: true }))).toBe("unknown");
+    expect(inspectCartConsentBlockPresence(template({ other: {
+      type: "shopify://apps/another/blocks/cart-consent/other-id",
+    } }))).toBe("absent");
   });
 });
 

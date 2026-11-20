@@ -138,11 +138,6 @@ export function runWithShopifySessionBinding<T>(
 
   return sessionBinding.run(binding, async () => {
     let onAbort: (() => void) | undefined;
-    const aborted = new Promise<never>((_resolve, reject) => {
-      onAbort = () => reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"));
-      if (signal.aborted) onAbort();
-      else signal.addEventListener("abort", onAbort, { once: true });
-    });
     try {
       if (context.sessionId !== null) {
         const row = await context.transaction.session.findUnique({ where: { id: context.sessionId } }) as unknown as ShopifyStoredSessionRow | null;
@@ -151,6 +146,14 @@ export function runWithShopifySessionBinding<T>(
         }
         binding.persistedCredentialFingerprint = credentialFingerprint(row);
       }
+      // Do not create a rejecting abort promise until it can be observed by the race.
+      // The session lookup above can be pending when a caller aborts; constructing
+      // this promise before that await leaves its rejection unhandled by Node.
+      const aborted = new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"));
+        if (signal.aborted) onAbort();
+        else signal.addEventListener("abort", onAbort, { once: true });
+      });
       const value = await Promise.race([
         signal.aborted
           ? Promise.reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"))

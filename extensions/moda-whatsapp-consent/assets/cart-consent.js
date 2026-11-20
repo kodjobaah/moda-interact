@@ -4,6 +4,29 @@
   const RECEIPT_ATTRIBUTE = "moda_wa_consent_v1";
   const DEFAULT_APP_PROXY_ROOT = "/apps/moda-consent";
   const initializedRoots = new WeakSet();
+  const LOG_PREFIX = "[moda.cart.consent]";
+
+  function safeErrorMessage(error) {
+    if (!(error instanceof Error)) return "Unknown error";
+    return error.message
+      .replace(/https?:\/\/[^\s]+/gi, "[redacted-url]")
+      .replace(/v1\.[A-Za-z0-9_.-]+/g, "[redacted-receipt]")
+      .replace(/(?:Bearer\s+)[^\s]+/gi, "Bearer [redacted]")
+      .slice(0, 240);
+  }
+
+  function logFailure(event, stage, error) {
+    const details = {
+      stage,
+      errorName: error instanceof Error ? error.name : "UnknownError",
+      message: safeErrorMessage(error),
+    };
+    if (error instanceof Error && Number.isInteger(error.httpStatus)) {
+      details.httpStatus = error.httpStatus;
+    }
+    console.warn(LOG_PREFIX, event, details);
+  }
+
 
   function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -61,7 +84,11 @@
 
   async function responseJson(fetcher, url, init) {
     const response = await fetcher(url, init);
-    if (!response.ok) throw new Error("Shopify consent request failed.");
+    if (!response.ok) {
+      const error = new Error(`Shopify consent request failed (HTTP ${response.status}).`);
+      error.httpStatus = response.status;
+      throw error;
+    }
     return response.json();
   }
 
@@ -227,10 +254,15 @@
     root.hidden = true;
 
     const checkbox = root.querySelector("[data-consent-checkbox]");
-    if (!(checkbox instanceof HTMLInputElement)) return;
+    if (!(checkbox instanceof HTMLInputElement)) {
+      console.warn(LOG_PREFIX, "consent.render.checkbox_missing", { stage: "initialize" });
+      return;
+    }
 
+    let stage = "proxy_configuration";
     try {
       const proxyPaths = appProxyPaths(root);
+      stage = "cart_read";
       const cart = await readCart(fetcher);
       const currentReceiptExists = hasCurrentReceipt(cart.attributes);
       let initialChecked;
@@ -239,8 +271,10 @@
         if (typeof receipt !== "string") {
           throw new Error("Shopify consent receipt is unavailable.");
         }
+        stage = "receipt_verify";
         initialChecked = await verifyReceipt(fetcher, proxyPaths, cart.token, receipt);
       } else {
+        stage = "consent_status";
         initialChecked = await readSqlStatus(fetcher, proxyPaths);
       }
 
@@ -249,8 +283,10 @@
       checkbox.addEventListener("change", async () => {
         const requestedChoice = checkbox.checked;
         checkbox.disabled = true;
+        let updateStage = "cart_read";
         try {
           const currentCart = await readCart(fetcher);
+          updateStage = "receipt_issue";
           const receipt = await issueReceipt(
             fetcher,
             proxyPaths,
@@ -258,16 +294,19 @@
             currentCart.token,
             requestedChoice ? "GRANT" : "REVOKE",
           );
+          updateStage = "receipt_persist";
           await updateAndConfirm(fetcher, currentCart.baseToken, receipt);
           lastConfirmed = requestedChoice;
-        } catch {
+        } catch (error) {
+          logFailure("consent.update.failed", updateStage, error);
           checkbox.checked = lastConfirmed;
         } finally {
           checkbox.disabled = false;
         }
       });
       root.hidden = false;
-    } catch {
+    } catch (error) {
+      logFailure("consent.render.failed", stage, error);
       root.hidden = true;
       checkbox.checked = false;
       checkbox.disabled = true;

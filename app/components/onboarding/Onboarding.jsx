@@ -1,11 +1,10 @@
 // @ts-nocheck
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 import { useFetcher, useNavigate } from "react-router";
 import PropTypes from "prop-types";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 import MerchantPricingCatalogue from "../merchant-pricing/MerchantPricingCatalogue";
-import StoreCategoryMappingSelector from "../store-profile/StoreCategoryMappingSelector";
 import "./Onboarding.css";
 
 void React;
@@ -21,107 +20,29 @@ BenefitIcon.propTypes = {
 export default function Onboarding({
   merchantUi,
   pricingCatalogue,
-  storeCategories = [],
-  pendingCategoryId,
-  pendingSelectionGeneration = 0,
-  pendingMappingIds = [],
-  suggestedCategoryId,
-  suggestedMappingIds = [],
   resumeExistingSubscription = false,
 }) {
   const i18n = createMerchantI18n(merchantUi);
   const t = (key, values) => i18n.t(key, values);
   const cataloguePlans = pricingCatalogue ?? [];
   const firstFreePlan = cataloguePlans.find((plan) => plan.planKind === "FREE");
-  const initialCategoryId = storeCategories.some((category) => category.id === pendingCategoryId)
-    ? pendingCategoryId
-    : storeCategories.some((category) => category.id === suggestedCategoryId)
-      ? suggestedCategoryId
-      : storeCategories[0]?.id ?? "";
-  const mappingIdsForCategory = (categoryId) => {
-    const available = new Set(
-      storeCategories.find((category) => category.id === categoryId)?.mappings?.map((mapping) => mapping.id) ?? [],
-    );
-    const candidates = categoryId === pendingCategoryId
-      ? pendingMappingIds
-      : categoryId === suggestedCategoryId
-        ? suggestedMappingIds
-        : [];
-    return candidates.filter((mappingId) => available.has(mappingId));
-  };
-  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
-  const [selectedMappingIds, setSelectedMappingIds] = useState(() => mappingIdsForCategory(initialCategoryId));
-  const [currentGeneration, setCurrentGeneration] = useState(pendingSelectionGeneration);
-  const categoryFetcher = useFetcher();
   const resumeFetcher = useFetcher();
   const navigate = useNavigate();
-  const resumeRequestedGeneration = useRef(null);
-  const categorySaving = categoryFetcher.state !== "idle" || resumeFetcher.state !== "idle";
-  const categoryError = categoryFetcher.data?.error ?? resumeFetcher.data?.error;
+  const resumeRequested = useRef(false);
 
+  // A prior Shopify selection can complete onboarding without Store Category data.
+  // This is a one-shot resume attempt; provider reconciliation remains authoritative.
   useEffect(() => {
-    if (
-      !resumeExistingSubscription ||
-      !pendingCategoryId ||
-      !Number.isSafeInteger(currentGeneration) ||
-      currentGeneration < 0 ||
-      categoryFetcher.state !== "idle" ||
-      resumeFetcher.state !== "idle" ||
-      resumeFetcher.data?.ok ||
-      resumeRequestedGeneration.current === currentGeneration
-    ) return;
-
-    resumeRequestedGeneration.current = currentGeneration;
-    resumeFetcher.submit({
-      expectedPendingSelectionGeneration: String(currentGeneration),
-    }, { method: "post", action: "/app/onboarding/resume" });
-  }, [
-    categoryFetcher.state,
-    currentGeneration,
-    pendingCategoryId,
-    resumeExistingSubscription,
-    resumeFetcher,
-    resumeFetcher.data,
-    resumeFetcher.state,
-  ]);
-
-  useEffect(() => {
-    if (!categoryFetcher.data?.ok) return;
-    const nextGeneration = categoryFetcher.data.pendingSelectionGeneration;
-    if (Number.isSafeInteger(nextGeneration)) setCurrentGeneration(nextGeneration);
-
-    if (!resumeExistingSubscription) {
-      navigate("/app/billing/select");
-      return;
-    }
-
-    if (resumeRequestedGeneration.current === nextGeneration) return;
-    resumeRequestedGeneration.current = nextGeneration;
-    resumeFetcher.submit({
-      expectedPendingSelectionGeneration: String(nextGeneration),
-    }, { method: "post", action: "/app/onboarding/resume" });
-  }, [categoryFetcher.data, navigate, resumeExistingSubscription, resumeFetcher]);
+    if (!resumeExistingSubscription || resumeRequested.current || resumeFetcher.state !== "idle") return;
+    resumeRequested.current = true;
+    resumeFetcher.submit({}, { method: "post", action: "/app/onboarding/resume" });
+  }, [resumeExistingSubscription, resumeFetcher.state]);
 
   useEffect(() => {
     if (resumeFetcher.data?.ok) navigate("/app");
   }, [resumeFetcher.data, navigate]);
 
-  const choosePlan = () => {
-    if (!selectedCategoryId || categorySaving) return;
-    const form = new FormData();
-    form.set("categoryId", selectedCategoryId);
-    form.set("expectedPendingSelectionGeneration", String(currentGeneration));
-    for (const mappingId of selectedMappingIds) form.append("mappingId", mappingId);
-    categoryFetcher.submit(form, { method: "post", action: "/app/store-profile/category" });
-  };
-
-  const selectCategory = (categoryId) => {
-    setSelectedCategoryId(categoryId);
-    setSelectedMappingIds(mappingIdsForCategory(categoryId));
-  };
-
-
-  const selectedCategory = storeCategories.find((category) => category.id === selectedCategoryId) ?? null;
+  const choosePlan = () => navigate("/app/billing/select");
 
   return (
     <s-page heading={t("onboarding.title")}>
@@ -135,43 +56,12 @@ export default function Onboarding({
                 {t("onboarding.cta.description")}
               </span>
             </p>
-            <label className="mi-store-category-control" htmlFor="onboarding-store-category">
-              <span>{t("storeProfile.categoryLabel")}</span>
-              <select
-                id="onboarding-store-category"
-                value={selectedCategoryId}
-                onChange={(event) => selectCategory(event.currentTarget.value)}
-                disabled={!storeCategories.length || categorySaving}
-              >
-                {storeCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.localizedDisplayName}
-                  </option>
-                ))}
-              </select>
-              {selectedCategory?.localizedDescription ? (
-                <small>{selectedCategory.localizedDescription}</small>
-              ) : null}
-            </label>
-            <StoreCategoryMappingSelector
-              category={selectedCategory}
-              selectedMappingIds={selectedMappingIds}
-              onChange={setSelectedMappingIds}
-              disabled={categorySaving}
-              variant="onboarding"
-            />
-            {!storeCategories.length ? (
-              <p role="status">{t("storeProfile.configurationUnavailable")}</p>
-            ) : null}
-            {categoryError ? (
-              <p role="alert">{t(categoryError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
-            ) : null}
             <div className="mi-shopify-note">
               <span className="mi-lock" aria-hidden="true">✓</span>
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
-          <s-button onClick={choosePlan} disabled={!storeCategories.length || categorySaving || !selectedCategoryId} variant="primary">
+          <s-button onClick={choosePlan} variant="primary">
             {t("onboarding.choosePlan")}
           </s-button>
         </section>
@@ -187,7 +77,7 @@ export default function Onboarding({
             </p>
 
             <div className="mi-hero-actions">
-              <s-button onClick={choosePlan} disabled={!storeCategories.length || categorySaving || !selectedCategoryId} variant="primary">
+              <s-button onClick={choosePlan} variant="primary">
                 {t("onboarding.choosePlan")}
               </s-button>
               <a className="mi-text-link" href="#how-it-works">
@@ -315,12 +205,6 @@ export default function Onboarding({
 
 Onboarding.propTypes = {
   merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
-  storeCategories: PropTypes.array,
-  pendingCategoryId: PropTypes.string,
-  pendingSelectionGeneration: PropTypes.number,
-  pendingMappingIds: PropTypes.arrayOf(PropTypes.string),
-  suggestedCategoryId: PropTypes.string,
-  suggestedMappingIds: PropTypes.arrayOf(PropTypes.string),
   resumeExistingSubscription: PropTypes.bool,
   pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
     shopifyPlanHandle: PropTypes.string.isRequired,

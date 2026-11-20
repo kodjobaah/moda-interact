@@ -1,4 +1,5 @@
-import type { ThemeActivationStatus } from "@/services/shopify-consent/theme-activation-status";
+import type { CartConsentBlockPresence, CartConsentSetupPhase, ThemeActivationStatus }
+  from "@/services/shopify-consent/theme-activation-status";
 import type { ShopifyConsentPlacement } from "@/services/shopify-consent/theme-activation-url.server";
 
 type Translate = (key: string) => string;
@@ -6,8 +7,10 @@ type Translate = (key: string) => string;
 export type WhatsAppConsentActivation = Readonly<{
   placement: ShopifyConsentPlacement;
   cartStatus: ThemeActivationStatus;
+  cartBlockPresence?: CartConsentBlockPresence;
   plusStatus: ThemeActivationStatus;
   gateState: "enabled" | "disabled" | "unknown";
+  setupPhase?: CartConsentSetupPhase;
   cartThemeEditorUrl: string | null;
   checkoutEditorUrl: string | null;
   appProxyDefaultRoot: string;
@@ -21,16 +24,49 @@ const STATUS_KEYS: Record<ThemeActivationStatus, string> = {
   unverified: "recoverySettings.whatsappConsent.statusUnverified",
 };
 
+type CartPrimaryAction = Readonly<{ key: string; needsPreparation: boolean }>;
+/** Pure UI state machine; neither a prior click nor an editor URL means Active. */
+export function getCartPrimaryAction(
+  activation: WhatsAppConsentActivation,
+): CartPrimaryAction {
+  const presence = activation.cartBlockPresence ?? "unknown";
+  if (presence === "duplicate") {
+    return { key: "activationResolveDuplicates", needsPreparation: false };
+  }
+  if (activation.cartStatus === "active") {
+    return { key: "activationManage", needsPreparation: false };
+  }
+  if (presence === "disabled" || presence === "enabled") {
+    return { key: "activationEnable", needsPreparation: false };
+  }
+  if (activation.setupPhase === "active" && presence === "absent" &&
+      activation.gateState === "enabled") {
+    return { key: "activationRestore", needsPreparation: true };
+  }
+  if (activation.setupPhase === "never" &&
+      (activation.gateState === "disabled" ||
+       activation.gateState === "enabled" && presence === "absent")) {
+    return { key: "activationAction", needsPreparation: true };
+  }
+  if (activation.gateState === "disabled" && activation.setupPhase !== "unknown") {
+    // Recover from a partially completed gate write without inserting a copy.
+    return { key: "activationContinue", needsPreparation: true };
+  }
+  return { key: "activationContinue", needsPreparation: false };
+}
+
 export default function WhatsAppCustomerConsent({
-  t, activation, plusStatusOverride, onActivate, busy = false,
-  actionFailed = false, editorFallbackUrl = null,
+  t, activation, plusStatusOverride, onActivate, busy = false, preparing = false,
+  actionFailed = false, verificationFailed = false, editorFallbackUrl = null,
 }: {
   t: Translate;
   activation: WhatsAppConsentActivation;
   plusStatusOverride?: ThemeActivationStatus;
   onActivate?: () => void;
   busy?: boolean;
+  preparing?: boolean;
   actionFailed?: boolean;
+  verificationFailed?: boolean;
   editorFallbackUrl?: string | null;
 }) {
   const isPlus = activation.placement === "plus_checkout";
@@ -39,22 +75,31 @@ export default function WhatsAppCustomerConsent({
   const status = isPlus
     ? plusStatusOverride ?? activation.plusStatus
     : isCart ? activation.cartStatus : "unavailable";
-  const canActivate = isCart
-    ? Boolean(activation.cartThemeEditorUrl)
-    : Boolean(activation.checkoutEditorUrl);
-  const active = status === "active";
-  const statusLabel = isPlus && status === "inactive"
+  const cartAction = getCartPrimaryAction(activation);
+  const cartPresence = activation.cartBlockPresence ?? "unknown";
+  const cartStatusKey = cartPresence === "duplicate"
+    ? "recoverySettings.whatsappConsent.statusDuplicate"
+    : status === "inactive" && cartPresence === "absent"
+      ? "recoverySettings.whatsappConsent.statusMissing"
+      : status === "inactive" && cartPresence === "disabled"
+        ? "recoverySettings.whatsappConsent.statusDisabled"
+        : STATUS_KEYS[status];
+  const statusKey = isPlus && status === "inactive"
     ? "recoverySettings.whatsappConsent.statusCheckoutInactive"
-    : STATUS_KEYS[status];
+    : isCart ? cartStatusKey : STATUS_KEYS[status];
+  const editorUrl = isCart ? activation.cartThemeEditorUrl : activation.checkoutEditorUrl;
+  const needsPreparation = isPlus && status !== "active" || isCart && cartAction.needsPreparation;
+  const primaryLabel = isPlus
+    ? status === "active" ? "activationManage" : "activationAction"
+    : cartAction.key;
+  const canOpenEditor = Boolean(editorUrl);
 
   return (
     <section className="moda-recovery-panel moda-recovery-consent-panel"
       aria-labelledby="recovery-whatsapp-consent-heading">
       <div className="moda-recovery-panel-heading">
         <div>
-          <h2 id="recovery-whatsapp-consent-heading">
-            {t("recoverySettings.whatsappConsent.title")}
-          </h2>
+          <h2 id="recovery-whatsapp-consent-heading">{t("recoverySettings.whatsappConsent.title")}</h2>
           <p>{t("recoverySettings.whatsappConsent.marketing")}</p>
         </div>
       </div>
@@ -74,27 +119,35 @@ export default function WhatsAppCustomerConsent({
           <article className="moda-recovery-consent-card" data-consent-card={isPlus ? "plus-checkout" : "cart-block"}>
             <h3>{t(isPlus
               ? "recoverySettings.whatsappConsent.plusTitle"
-              : "recoverySettings.whatsappConsent.cartTitle")}</h3>
+              : status === "active"
+                ? "recoverySettings.whatsappConsent.cartActiveTitle"
+                : "recoverySettings.whatsappConsent.cartTitle")}</h3>
             <p>{t(isPlus
               ? "recoverySettings.whatsappConsent.plusBody"
-              : "recoverySettings.whatsappConsent.cartBody")}</p>
+              : status === "active"
+                ? "recoverySettings.whatsappConsent.cartActiveBody"
+                : "recoverySettings.whatsappConsent.cartBody")}</p>
             <p role="status" data-activation-status={status}
               className={`moda-recovery-consent-status moda-recovery-consent-status-${status}`}>
-              {t(statusLabel)}
+              {t(statusKey)}
             </p>
-            {!active && canActivate ? (
+            {needsPreparation && canOpenEditor ? (
               <button className="moda-recovery-consent-action" type="button"
-                onClick={onActivate} disabled={busy || !onActivate}>
-                {t(busy
-                  ? "recoverySettings.whatsappConsent.activationPreparing"
-                  : "recoverySettings.whatsappConsent.activationAction")}
+                onClick={onActivate} disabled={busy || !onActivate} aria-busy={busy}>
+                {t(preparing ? "recoverySettings.whatsappConsent.activationPreparing"
+                  : `recoverySettings.whatsappConsent.${primaryLabel}`)}
               </button>
-            ) : null}
-            {!active && !canActivate ? (
-              <p role="status">{t("recoverySettings.whatsappConsent.statusUnavailable")}</p>
-            ) : null}
-            {actionFailed ? (
-              <p role="alert">{t("recoverySettings.whatsappConsent.activationFailed")}</p>
+            ) : canOpenEditor ? (
+              <a className="moda-recovery-consent-action" href={editorUrl!}
+                target="_blank" rel="noopener noreferrer">
+                {t(`recoverySettings.whatsappConsent.${primaryLabel}`)}
+              </a>
+            ) : (
+              <p role="alert">{t("recoverySettings.whatsappConsent.statusUnavailable")}</p>
+            )}
+            {actionFailed ? <p role="alert">{t("recoverySettings.whatsappConsent.activationFailed")}</p> : null}
+            {verificationFailed ? (
+              <p role="status">{t("recoverySettings.whatsappConsent.activationCheckUnavailable")}</p>
             ) : null}
             {editorFallbackUrl ? (
               <a href={editorFallbackUrl} target="_blank" rel="noopener noreferrer">

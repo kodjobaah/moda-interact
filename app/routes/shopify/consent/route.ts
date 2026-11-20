@@ -1,6 +1,8 @@
+import { ShopifyOfflineTokenError } from "@modainteract/moda-interact-shared/shopify/node";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import db from "@/db.server";
 import { authenticate } from "@/shopify.server";
+import { ShopifySessionCoordinationRequiredError } from "@/services/shopify-session-storage.server";
 import {
   ConsentReceiptServiceError,
   logShopifyConsentFailure,
@@ -114,13 +116,24 @@ async function authenticateAppProxyRequest(request: Request): Promise<AuthResult
   try {
     context = await authenticate.public.appProxy(request);
   } catch (error) {
+    const coordinationFailure = error instanceof ShopifySessionCoordinationRequiredError ||
+      error instanceof ShopifyOfflineTokenError;
+    const signatureRejected = error instanceof Response &&
+      (error.status === 401 || error.status === 403);
     logShopifyConsentFailure({
       operation: "app_proxy_authentication",
-      stage: "signature_verification",
+      stage: coordinationFailure
+        ? "offline_session_coordination"
+        : signatureRejected ? "signature_verification" : "authentication",
       error,
-      reasonCode: "SHOPIFY_APP_PROXY_SIGNATURE_REJECTED",
+      reasonCode: coordinationFailure
+        ? "SHOPIFY_APP_PROXY_SESSION_UNAVAILABLE"
+        : signatureRejected ? "SHOPIFY_APP_PROXY_SIGNATURE_REJECTED" : "SHOPIFY_APP_PROXY_AUTHENTICATION_FAILED",
       sensitiveValues: [signature],
     });
+    if (coordinationFailure) {
+      return { response: failureResponse("APP_PROXY_SESSION_UNAVAILABLE", 503) };
+    }
     if (error instanceof Response) {
       return { response: failureResponse("UNAUTHENTICATED_APP_PROXY_REQUEST", 401) };
     }
