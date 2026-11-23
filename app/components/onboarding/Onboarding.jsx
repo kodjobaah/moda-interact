@@ -36,7 +36,7 @@ export default function Onboarding({
     if (!resumeExistingSubscription || resumeRequested.current || resumeFetcher.state !== "idle") return;
     resumeRequested.current = true;
     resumeFetcher.submit({}, { method: "post", action: "/app/onboarding/resume" });
-  }, [resumeExistingSubscription, resumeFetcher.state]);
+  }, [resumeExistingSubscription, resumeFetcher]);
 
   useEffect(() => {
     if (resumeFetcher.data?.ok) navigate("/app");

@@ -1,12 +1,12 @@
 import {
   ShopifyCheckoutCreatedEventV2Schema, ShopifyCheckoutUpdatedEventV3Schema,
   ShopifyCartActivityEventV2Schema, ShopifyOrderCompletedEventV2Schema,
-  ShopifyWhatsAppConsentSyncJobV1Schema, parseShopifyDiscountSyncJob,
+  parseShopifyDiscountSyncJob,
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS as contracts,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   createShopifyWebhookJobId, createShopifyOrderJobId,
-  createShopifyDiscountSyncJobId, createShopifyWhatsAppConsentSyncJobId,
+  createShopifyDiscountSyncJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 export function webhookFixtures(shopId = "shop-a", prefix = "fixture-delivery") {
@@ -24,8 +24,6 @@ export function webhookFixtures(shopId = "shop-a", prefix = "fixture-delivery") 
     eventType: "order.completed", providerTopic: "ORDERS_CREATE", payload: {orderId: "gid://shopify/Order/42", checkoutToken: null, cartToken: null, completedAt: at}});
   const discount = parseShopifyDiscountSyncJob({schemaVersion: 1, shopId, shopDomain: base.tenant.shopDomain,
     reason: "DISCOUNT_WEBHOOK", requestedAt: at, deliveryId: `${prefix}-discount`, webhookTopic: "discounts/create"});
-  const consent = ShopifyWhatsAppConsentSyncJobV1Schema.parse({schemaVersion: 1, shopId,
-    shopifyCustomerId: "706405506930370084", deliveryId: `${prefix}-consent`, triggeredAt: at});
   const deliveryId = (id: string) => `${shopId}--${createShopifyWebhookJobId(shopId, id)}`;
   return [
     {publisher: "publishShopifyCheckoutCreatedEvent", event: created, contract: contracts.CHECKOUT_EVENTS, jobId: deliveryId(created.deliveryId)},
@@ -33,6 +31,5 @@ export function webhookFixtures(shopId = "shop-a", prefix = "fixture-delivery") 
     {publisher: "publishShopifyCartActivityEvent", event: cart, contract: contracts.CART_ACTIVITY_EVENTS, jobId: deliveryId(cart.deliveryId)},
     {publisher: "publishShopifyOrderCompletedEvent", event: order, contract: contracts.ORDER_EVENTS, jobId: `${shopId}--${createShopifyOrderJobId(shopId, order.payload.orderId)}`},
     {publisher: "publishShopifyDiscountSyncJob", event: discount, contract: contracts.SHOPIFY_DISCOUNT_SYNC, jobId: createShopifyDiscountSyncJobId(discount)},
-    {publisher: "publishShopifyWhatsAppConsentSyncJob", event: consent, contract: contracts.WHATSAPP_CONSENT_SYNC, jobId: createShopifyWhatsAppConsentSyncJobId(consent)},
   ] as const;
 }

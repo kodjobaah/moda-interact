@@ -338,7 +338,7 @@ export async function loader({
   ) && verification.status === "ACTIVE_SUBSCRIPTION" &&
     verification.subscription?.planHandle === requestedPlanHandle;
   if (freshInitialProjection) {
-    const subscription = await billingService.syncSubscription(shop.id);
+    await billingService.syncSubscription(shop.id);
     return redirect("/app");
   }
 

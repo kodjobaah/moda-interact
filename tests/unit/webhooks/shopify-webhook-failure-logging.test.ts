@@ -148,11 +148,15 @@ it("bounds supplied causes to four known entries", async () => {
   expect(JSON.stringify(output.records)).not.toContain("fifth cause must be absent");
 });
 
-it("accepts consent once without including the exact customer identifier in observations", async () => {
-  const request = input("CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE", {customer_id: "706405506930370084"});
-  const response = await ingestShopifyWebhook({...request, authenticatedConsentRawBody: '{"customer_id":706405506930370084}'});
-  expect(response.status).toBe(200); expect(ports.add).toHaveBeenCalledTimes(1); expect(ports.shop).toHaveBeenCalledTimes(1);
+it.each([
+  "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE",
+  "customers_whats_app_marketing_consent/update",
+])("ignores obsolete native consent %s without publishing or logging customer identifiers", async topic => {
+  const response = await ingestShopifyWebhook(input(topic, {customer_id: "706405506930370084"}));
+  expect(response.status).toBe(200);
+  expect(ports.shop).not.toHaveBeenCalled();
+  expect(ports.add).not.toHaveBeenCalled();
   expect(records("shopify.webhook.outcome")).toHaveLength(1);
-  expect(records("shopify.webhook.outcome")[0].data.outcome).toBe("QUEUE_ACCEPTED");
+  expect(records("shopify.webhook.outcome")[0].data).toMatchObject({outcome: "IGNORED", queue: null});
   expect(JSON.stringify(output.records)).not.toContain("706405506930370084");
 });

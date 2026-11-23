@@ -62,7 +62,7 @@ export default function WhatsAppConsentActivationController({ t, activation }: {
       method: "post", action: "/app/consent-activate",
     });
     return true;
-  }, [activationPending, activationFetcher.state, verificationFetcher.state, verificationFetcher]);
+  }, [activationPending, activationFetcher.state, verificationFetcher]);
 
   const verifyDrawer = useCallback(async () => {
     if (activation.placement !== "non_plus_cart" || activation.cartStatus !== "active") return;

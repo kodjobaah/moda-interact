@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import process from "node:process";
 import { describe, expect, it } from "vitest";
 
 const extensionRoot = join(process.cwd(), "extensions/moda-whatsapp-consent");
@@ -53,8 +54,8 @@ describe("WhatsApp consent theme-editor schema internationalisation", () => {
       expect(lookup(schema, schemaKeys[1]).length).toBeLessThanOrEqual(25);
       // Merchant instructions must refer to the localized theme-editor setting name.
       const merchantLocale = locale === "en.default" ? "en" : locale;
-      const guidance = readJson(join(process.cwd(), "app/i18n/locales", `${merchantLocale}.json`))
-        ["recoverySettings.whatsappConsent.proxyBody"];
+      const merchantCatalogue = readJson(join(process.cwd(), "app/i18n/locales", `${merchantLocale}.json`));
+      const guidance = merchantCatalogue["recoverySettings.whatsappConsent.proxyBody"];
       expect(guidance).toContain(lookup(schema, schemaKeys[2]));
     }
   });

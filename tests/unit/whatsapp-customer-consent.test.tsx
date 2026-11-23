@@ -18,7 +18,7 @@ describe("single-action Shopify merchant consent activation", () => {
   it("offers one initial action even if Shopify cannot read the published theme", () => {
     const html = render(cartBase);
     expect(html).toContain("recoverySettings.whatsappConsent.activationAction");
-    expect((html.match(/class=\"moda-recovery-consent-action\"/g) ?? []).length).toBe(1);
+    expect((html.match(/class="moda-recovery-consent-action"/g) ?? []).length).toBe(1);
     expect(html).not.toContain("activationRecheck");
     expect(html).not.toContain("activationManualAdd");
   });
@@ -83,7 +83,7 @@ describe("single-action Shopify merchant consent activation", () => {
     const html = render(cartBase, { busy: true, preparing: true });
     expect(html).toContain("activationPreparing");
     expect(html).toContain('aria-busy="true"');
-    expect((html.match(/class=\"moda-recovery-consent-action\"/g) ?? []).length).toBe(1);
+    expect((html.match(/class="moda-recovery-consent-action"/g) ?? []).length).toBe(1);
   });
 
   it("reports failure without pretending activation succeeded", () => {
