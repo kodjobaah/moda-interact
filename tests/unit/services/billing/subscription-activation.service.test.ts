@@ -74,6 +74,7 @@ function createPaidFinalisationHarness({
   periodCounter = null,
   lifetimeCounter = null,
   policy = { lifetimeFreeRecoveryAllowance: 5 },
+  catalogueUsageEventHandles = ["paid-meter"],
 }: {
   planOverrides?: Record<string, unknown>;
   providerOverrides?: Partial<ProviderSubscription>;
@@ -88,6 +89,7 @@ function createPaidFinalisationHarness({
   periodCounter?: Record<string, unknown> | null;
   lifetimeCounter?: Record<string, unknown> | null;
   policy?: { lifetimeFreeRecoveryAllowance: number } | null;
+  catalogueUsageEventHandles?: string[] | null;
 } = {}) {
   const paidPlan = {
     id: "paid-1",
@@ -114,6 +116,11 @@ function createPaidFinalisationHarness({
     $queryRaw: queryRaw,
     shop: { findUnique: vi.fn().mockResolvedValue({ status: shopStatus }) },
     billingPlan: { findUnique: vi.fn().mockResolvedValue(paidPlan) },
+    merchantPricingPlan: { findUnique: vi.fn().mockResolvedValue(
+      catalogueUsageEventHandles === null ? null : {
+        usageEvents: catalogueUsageEventHandles.map((eventHandle) => ({ eventHandle })),
+      },
+    ) },
     billingPeriod: {
       findUnique: vi.fn().mockResolvedValue(billingPeriod),
       create: billingPeriodCreate,
@@ -394,12 +401,54 @@ describe("SubscriptionActivationService", () => {
   });
 
   it.each([
+    { label: "missing reporting handle", planOverrides: { shopifyUsageEventHandle: null } },
+    { label: "unmatched reporting handle", planOverrides: { shopifyUsageEventHandle: "unrelated-reporting-handle" } },
+  ])("accepts a valid Paid plan with $label", async ({ planOverrides }) => {
+    const harness = createPaidFinalisationHarness({
+      planOverrides,
+      providerOverrides: { usageEventHandles: ["gold", "silver", "bronze", "gold"] },
+      catalogueUsageEventHandles: ["bronze", "silver", "catalogue-only"],
+    });
+    const result = await harness.finalize();
+    expect(result).toMatchObject({
+      status: SubscriptionProjectionStatus.ACTIVE,
+      lastSyncErrorCode: null,
+      unmappedShopifyUsageEventHandles: ["gold"],
+    });
+    expect(harness.subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ unmappedShopifyUsageEventHandles: ["gold"] }),
+    }));
+  });
+
+  it("does not require any TieredPrice usage events to finalize Paid activation", async () => {
+    const harness = createPaidFinalisationHarness({
+      planOverrides: { shopifyUsageEventHandle: null },
+      providerOverrides: { usageEventHandles: [] },
+      catalogueUsageEventHandles: null,
+    });
+    await expect(harness.finalize()).resolves.toMatchObject({
+      status: SubscriptionProjectionStatus.ACTIVE,
+      unmappedShopifyUsageEventHandles: [],
+    });
+    expect(harness.transaction.merchantPricingPlan.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("records all provider events when the entire pricing catalogue plan is missing", async () => {
+    const harness = createPaidFinalisationHarness({
+      providerOverrides: { usageEventHandles: ["silver", "gold", "silver"] },
+      catalogueUsageEventHandles: null,
+    });
+    await expect(harness.finalize()).resolves.toMatchObject({
+      status: SubscriptionProjectionStatus.ACTIVE,
+      unmappedShopifyUsageEventHandles: ["gold", "silver"],
+    });
+  });
+
+  it.each([
     ["inactive plan", { planOverrides: { active: false } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["mismatched plan kind", { planOverrides: { kind: BillingPlanKind.FREE } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["mismatched plan handle", { planOverrides: { shopifyPlanHandle: "other" } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["mismatched pending plan identity", { subscriptionOverrides: { pendingPlanId: "other" } }, "INVALID_PAID_PLAN_CONFIGURATION"],
-    ["missing usage meter", { planOverrides: { shopifyUsageEventHandle: null } }, "MISSING_USAGE_METER"],
-    ["unexposed usage meter", { providerOverrides: { usageEventHandles: [] } }, "MISSING_USAGE_METER"],
     ["missing included allowance", { planOverrides: { includedRecoveryConversationAllowance: null } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["invalid included allowance", { planOverrides: { includedRecoveryConversationAllowance: -1 } }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["missing provider cycle", { providerOverrides: { currentPeriodStart: null } }, "INVALID_PAID_PLAN_CONFIGURATION"],
@@ -423,7 +472,7 @@ describe("SubscriptionActivationService", () => {
     expect(harness.lifetimeCounterCreate).not.toHaveBeenCalled();
   });
 
-  it("selects missing-meter error before unsupported Paid trial", async () => {
+  it("reports unsupported Paid trial even when the reporting handle is missing", async () => {
     const harness = createPaidFinalisationHarness({
       planOverrides: { shopifyUsageEventHandle: null },
       providerOverrides: {
@@ -437,11 +486,11 @@ describe("SubscriptionActivationService", () => {
     await harness.finalize();
 
     expect(harness.subscriptionUpdate).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ lastSyncErrorCode: "MISSING_USAGE_METER" }),
+      data: expect.objectContaining({ lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL" }),
     }));
   });
 
-  it("rejects unsupported Paid trial when the required usage meter is exposed", async () => {
+  it("rejects unsupported Paid trial when usage events are configured", async () => {
     const harness = createPaidFinalisationHarness({
       providerOverrides: {
         status: "TRIALING",

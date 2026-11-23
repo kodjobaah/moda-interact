@@ -489,6 +489,7 @@ function createPaidActivationDatabase(overrides: Record<string, unknown> = {}) {
         recurringAmountMinor: 1000,
         currency: "USD",
         billingPeriod: "EVERY_30_DAYS",
+        usageEvents: [],
       }),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
@@ -673,8 +674,6 @@ describe("BillingService subscription projection", () => {
     ["inactive", { active: false }, "BILLING_PLAN_INACTIVE"],
     ["wrong kind", { kind: "FREE" }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["changed handle", { shopifyPlanHandle: "other" }, "INVALID_PAID_PLAN_CONFIGURATION"],
-    ["missing meter", { shopifyUsageEventHandle: null }, "MISSING_USAGE_METER"],
-    ["unexposed meter", { shopifyUsageEventHandle: "other-meter" }, "MISSING_USAGE_METER"],
     ["null allowance", { includedRecoveryConversationAllowance: null }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["negative allowance", { includedRecoveryConversationAllowance: -1 }, "INVALID_PAID_PLAN_CONFIGURATION"],
     ["fractional allowance", { includedRecoveryConversationAllowance: 1.5 }, "INVALID_PAID_PLAN_CONFIGURATION"],
@@ -773,15 +772,16 @@ describe("BillingService subscription projection", () => {
     expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
   });
 
-  it("fails closed when the initial Paid target has no provider usage meter", async () => {
+  it("activates Paid with a null reporting handle and records provider-only usage events", async () => {
     const { database, state, billingPeriodEntitlementCounter, shopEntitlementCounter } = createPaidActivationDatabase({ shopifyUsageEventHandle: null });
     Object.assign(state.subscription, { status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingShopifyPlanHandle: "growth", pendingPlanId: "paid-1", pendingEffectiveAt: new Date(), nextReconcileAt: new Date() });
     const service = new BillingService({ getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription()) }, database as never);
 
-    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({ lastSyncErrorCode: "MISSING_USAGE_METER", nextReconcileAt: null });
-    expect(billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
-    expect(shopEntitlementCounter.create).not.toHaveBeenCalled();
-    expect(state.onboardingCompleted).toBe(false);
+    await expect(service.syncSubscription("shop-1", { subscriptionId: "subscription-1", pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth", pendingEffectiveAt: state.subscription.pendingEffectiveAt, nextReconcileAt: state.subscription.nextReconcileAt, planKind: "PAID_METERED" })).resolves.toMatchObject({
+      status: "ACTIVE", lastSyncErrorCode: null, unmappedShopifyUsageEventHandles: ["message-meter"],
+    });
+    expect(billingPeriodEntitlementCounter.create).toHaveBeenCalledTimes(1);
+    expect(shopEntitlementCounter.create).toHaveBeenCalledTimes(1);
   });
 
   it.each(["UNINSTALLED", "SUSPENDED"] as const)("does not activate when the Shop becomes %s before commit", async (shopStatus) => {
@@ -2015,7 +2015,7 @@ describe("BillingService subscription projection", () => {
     expect(state.plan).toBeNull();
   });
 
-  it("uses the dedicated paid recovery meter, never a top-up usage event", async () => {
+  it("keeps the App Events reporting handle separate from Shopify's billable top-up events", async () => {
     const cataloguePlan = createMerchantPricingPlanFixture({
       planKind: "PAID_METERED",
       includedRecoveryCredits: 25,
@@ -2025,7 +2025,7 @@ describe("BillingService subscription projection", () => {
     const { database, state } = createDatabase({ cataloguePlan });
     const service = new BillingService({
       getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
-        usageEventHandles: ["recovery-meter", "credit-pack-meter"],
+        usageEventHandles: ["credit-pack-meter"],
       })),
     }, database as never);
 
@@ -2036,7 +2036,7 @@ describe("BillingService subscription projection", () => {
       shopifyUsageEventHandle: "recovery-meter",
       includedRecoveryConversationAllowance: 25,
     });
-    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1" });
+    expect(state.current).toMatchObject({ status: "ACTIVE", planId: "materialized-1", unmappedShopifyUsageEventHandles: [] });
     expect(database.billingPlan.create).toHaveBeenCalledWith({
       data: expect.objectContaining({ shopifyUsageEventHandle: "recovery-meter" }),
     });
@@ -2051,10 +2051,13 @@ describe("BillingService subscription projection", () => {
 
     expect(database.billingPlan.create).not.toHaveBeenCalled();
     expect(cataloguePlan.materializedAt).toBeNull();
-    expect(state.current).toMatchObject({ status: "UNMAPPED", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+    expect(state.current).toMatchObject({
+      status: "UNMAPPED", lastSyncErrorCode: null, lastSyncErrorAt: null,
+      unmappedShopifyUsageEventHandles: ["message-meter"],
+    });
   });
 
-  it("classifies an invalid active paid catalogue row as a bounded sync error", async () => {
+  it("materializes a Paid catalogue plan without a reporting handle", async () => {
     const cataloguePlan = createMerchantPricingPlanFixture({
       planKind: "PAID_METERED",
       includedRecoveryCredits: 25,
@@ -2065,9 +2068,13 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(database.billingPlan.create).not.toHaveBeenCalled();
-    expect(cataloguePlan.materializedAt).toBeNull();
-    expect(state.current).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "INVALID_MERCHANT_PRICING_PLAN" });
+    expect(database.billingPlan.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ kind: "PAID_METERED", shopifyUsageEventHandle: null }),
+    });
+    expect(cataloguePlan.materializedAt).toBeInstanceOf(Date);
+    expect(state.current).toMatchObject({
+      status: "ACTIVE", lastSyncErrorCode: null, unmappedShopifyUsageEventHandles: ["message-meter"],
+    });
   });
 
   it("recovers a unique-handle race by returning the persisted winner", async () => {
@@ -2146,7 +2153,7 @@ describe("BillingService subscription projection", () => {
     expect(nextReconcileAt.getTime()).toBeGreaterThanOrEqual(before + 60_000);
   });
 
-  it("fails closed when a paid plan omits its configured usage meter", async () => {
+  it("retains a valid Paid subscription when Shopify returns no TieredPrice events", async () => {
     const { database, state } = createDatabase({
       plan: { id: "paid-1", shopifyPlanHandle: "growth", kind: "PAID_METERED", active: true, shopifyUsageEventHandle: "message-meter", includedRecoveryConversationAllowance: 25 },
     });
@@ -2154,7 +2161,9 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({ status: "SYNC_ERROR", lastSyncErrorCode: "MISSING_USAGE_METER" });
+    expect(state.current).toMatchObject({
+      status: "ACTIVE", lastSyncErrorCode: null, unmappedShopifyUsageEventHandles: [],
+    });
   });
 
   it("persists a mapped paid plan and clears stale sync errors", async () => {
@@ -2196,7 +2205,11 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({ status: "UNMAPPED", planId: null, observedShopifyPlanHandle: "unknown", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+    expect(state.current).toMatchObject({
+      status: "UNMAPPED", planId: null, observedShopifyPlanHandle: "unknown",
+      lastSyncErrorCode: null, lastSyncErrorAt: null,
+      unmappedShopifyUsageEventHandles: ["message-meter"],
+    });
   });
 
   it("maps a pending plan and stores the current cycle end as its effective boundary", async () => {
@@ -2310,7 +2323,10 @@ describe("BillingService subscription projection", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(state.current).toMatchObject({ status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null, pendingPlanId: null, pendingShopifyPlanHandle: null });
+    expect(state.current).toMatchObject({
+      status: "NO_CONTRACT", planId: null, observedShopifyPlanHandle: null,
+      pendingPlanId: null, pendingShopifyPlanHandle: null, unmappedShopifyUsageEventHandles: [],
+    });
   });
 
   it("clears a stale sync error after a valid projection", async () => {

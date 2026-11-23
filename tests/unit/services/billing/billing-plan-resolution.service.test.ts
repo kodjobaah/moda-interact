@@ -119,6 +119,18 @@ describe("BillingPlanResolutionService", () => {
     expect(tx.merchantPricingPlan.updateMany).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { kind: "PAID_METERED", handle: null, expected: null },
+    { kind: "PAID_METERED", handle: " custom-reporting-event ", expected: "custom-reporting-event" },
+    { kind: "FREE", handle: "free-reporting-event", expected: null },
+  ])("materializes a $kind plan with reporting handle $handle", async ({ kind, handle, expected }) => {
+    const { service, createPlan } = createResolutionService({
+      catalogue: cataloguePlan({ planKind: kind, shopifyRecoveryUsageEventHandle: handle, includedRecoveryCredits: 25 }),
+    });
+    await expect(service.resolveOrMaterializeBillingPlan("growth")).resolves.toMatchObject({ kind: "READY" });
+    expect(createPlan).toHaveBeenCalledWith({ data: expect.objectContaining({ shopifyUsageEventHandle: expected }) });
+  });
+
   it("returns unknown and inactive outcomes without materializing", async () => {
     const unknown = createResolutionService({ catalogue: { ...cataloguePlan(), isActive: false } });
     await expect(unknown.service.resolveOrMaterializeBillingPlan("growth"))

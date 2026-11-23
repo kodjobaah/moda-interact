@@ -67,14 +67,9 @@ export class BillingPlanResolutionService {
             ? "MISSING_CHECKOUT_RECOVERY_FEATURE"
             : catalogue.features.some((mapping) => !mapping.feature)
               ? "MISSING_FEATURE_MAPPING"
-              : catalogue.planKind === "FREE" && catalogue.shopifyRecoveryUsageEventHandle !== null
-                ? "FREE_PLAN_HAS_RECOVERY_USAGE_METER"
-                : catalogue.planKind === "PAID_METERED" &&
-                    !(typeof catalogue.shopifyRecoveryUsageEventHandle === "string" && catalogue.shopifyRecoveryUsageEventHandle.trim())
-                  ? "PAID_PLAN_MISSING_RECOVERY_USAGE_METER"
-                  : !Number.isSafeInteger(catalogue.includedRecoveryCredits) || catalogue.includedRecoveryCredits < 0
-                    ? "INVALID_INCLUDED_RECOVERY_CREDITS"
-                    : null;
+              : !Number.isSafeInteger(catalogue.includedRecoveryCredits) || catalogue.includedRecoveryCredits < 0
+                ? "INVALID_INCLUDED_RECOVERY_CREDITS"
+                : null;
         if (invalidReason) {
           return { kind: "INVALID_CATALOGUE_PLAN", reason: invalidReason };
         }
@@ -132,7 +127,7 @@ export class BillingPlanResolutionService {
             active: true,
             shopifyUsageEventHandle: kind === BillingPlanKind.FREE
               ? null
-              : catalogue.shopifyRecoveryUsageEventHandle!.trim(),
+              : catalogue.shopifyRecoveryUsageEventHandle?.trim() || null,
             includedRecoveryConversationAllowance: kind === BillingPlanKind.FREE
               ? null
               : catalogue.includedRecoveryCredits,

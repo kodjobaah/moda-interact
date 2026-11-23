@@ -808,7 +808,7 @@ describe("billing callback activation", () => {
     });
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
-    mocks.syncSubscription.mockResolvedValue({ status: "UNMAPPED", lastSyncErrorCode: "UNMAPPED_PLAN_HANDLE" });
+    mocks.syncSubscription.mockResolvedValue({ status: "UNMAPPED", lastSyncErrorCode: null });
 
     await runLoader("unknown");
 

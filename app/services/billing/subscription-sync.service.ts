@@ -26,6 +26,7 @@ import {
 import { lockSubscriptionLifecycleRows } from "./subscription-locks";
 import { logBillingBoundaryFailure } from "./providers/shopify-billing-diagnostics.server";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
+import { mapShopifyUsageEventHandles } from "./shopify-usage-event-mapping";
 import {
   deriveLifecycleIdentity,
   SubscriptionEndedNotificationService,
@@ -140,6 +141,7 @@ export class SubscriptionSyncService {
             trialEndsAt: null,
             cancelAtPeriodEnd: false,
             providerSubscriptionId: null,
+            unmappedShopifyUsageEventHandles: [],
             lastSyncedAt: now,
             lastSyncErrorCode: null,
             lastSyncErrorAt: null,
@@ -151,6 +153,7 @@ export class SubscriptionSyncService {
           create: {
             shopId,
             status: SubscriptionProjectionStatus.NO_CONTRACT,
+            unmappedShopifyUsageEventHandles: [],
             lastSyncedAt: now,
           },
         });
@@ -185,8 +188,6 @@ export class SubscriptionSyncService {
     );
 
     const planIsUsable = resolution.kind === "READY" && resolution.plan.active;
-    const paidMeterIsPresent = plan?.kind !== BillingPlanKind.PAID_METERED
-      || Boolean(plan.shopifyUsageEventHandle && providerSubscription.usageEventHandles.includes(plan.shopifyUsageEventHandle));
     const paidAllowanceIsValid = plan?.kind !== BillingPlanKind.PAID_METERED
       || (
         plan.includedRecoveryConversationAllowance !== null &&
@@ -197,21 +198,17 @@ export class SubscriptionSyncService {
       ? SubscriptionProjectionStatus.UNMAPPED
       : resolution.kind === "INACTIVE_OPERATIONAL_PLAN" || resolution.kind === "INVALID_CATALOGUE_PLAN"
         ? SubscriptionProjectionStatus.SYNC_ERROR
-        : !paidMeterIsPresent || !paidAllowanceIsValid
+        : !paidAllowanceIsValid
           ? SubscriptionProjectionStatus.SYNC_ERROR
           : providerSubscription.status === "TRIALING"
             ? SubscriptionProjectionStatus.TRIALING
             : SubscriptionProjectionStatus.ACTIVE;
-    const syncErrorCode = resolution.kind === "UNKNOWN_CATALOGUE_PLAN"
-      ? "UNMAPPED_PLAN_HANDLE"
-      : resolution.kind === "INACTIVE_OPERATIONAL_PLAN"
+    const syncErrorCode = resolution.kind === "INACTIVE_OPERATIONAL_PLAN"
         ? "BILLING_PLAN_INACTIVE"
         : resolution.kind === "INVALID_CATALOGUE_PLAN"
           ? "INVALID_MERCHANT_PRICING_PLAN"
           : status === SubscriptionProjectionStatus.SYNC_ERROR
-            ? !paidMeterIsPresent
-              ? "MISSING_USAGE_METER"
-              : "INVALID_INCLUDED_ALLOWANCE"
+            ? "INVALID_INCLUDED_ALLOWANCE"
             : null;
     const now = new Date();
 
@@ -271,6 +268,11 @@ export class SubscriptionSyncService {
         }
         return finalized;
       }
+      const { unmappedHandles } = await mapShopifyUsageEventHandles(
+        transaction,
+        providerSubscription.planHandle,
+        providerSubscription.usageEventHandles,
+      );
       const pendingPlan = providerSubscription.pendingPlanHandle
         ? await transaction.billingPlan.findUnique({
             where: { shopifyPlanHandle: providerSubscription.pendingPlanHandle },
@@ -376,6 +378,7 @@ export class SubscriptionSyncService {
         update: {
           planId: projectedPlanId,
           observedShopifyPlanHandle: providerSubscription.planHandle,
+          unmappedShopifyUsageEventHandles: unmappedHandles,
           status: projectedStatus,
           billingPeriodId: projectedBillingPeriodId,
           currentPeriodStart: projectedPeriodStart,
@@ -396,6 +399,7 @@ export class SubscriptionSyncService {
           shopId,
           planId: projectedPlanId,
           observedShopifyPlanHandle: providerSubscription.planHandle,
+          unmappedShopifyUsageEventHandles: unmappedHandles,
           status: projectedStatus,
           billingPeriodId: projectedBillingPeriodId,
           currentPeriodStart: projectedPeriodStart,

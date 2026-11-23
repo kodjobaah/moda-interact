@@ -5,7 +5,6 @@ import { randomUUID } from "node:crypto";
 
 import {
   BillingPeriodStatus,
-  BillingPlanKind,
   Prisma,
   ShopPlatform,
   ShopStatus,
@@ -283,11 +282,7 @@ export class RecoveryCreditPurchaseRequestService {
         !hasMatchingBillingCycle(currentSubscription, providerSubscription, verifiedBillingPeriodId) ||
         deriveBillingPeriodPhase(providerSubscription.currentPeriodEnd) !== "ACTIVE" ||
         currentPlan.shopifyPlanHandle !== providerSubscription.planHandle ||
-        currentSelectedEvent?.creditsGrantedPerUnit !== creditsGranted ||
-        (currentPlan.kind === BillingPlanKind.PAID_METERED &&
-          (!currentPlan.shopifyUsageEventHandle ||
-            currentPlan.shopifyUsageEventHandle === eventHandle ||
-            !providerSubscription.usageEventHandles.includes(currentPlan.shopifyUsageEventHandle)))
+        currentSelectedEvent?.creditsGrantedPerUnit !== creditsGranted
       ) {
         throw new Error("Recovery credit pack configuration changed during purchase request.");
       }
