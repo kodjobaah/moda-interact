@@ -473,10 +473,17 @@ export async function reconcileCartConsentGate(
   }
 }
 
+/**
+ * Send Plus merchants straight to the checkout editor's Apps panel, not the
+ * checkout settings overview. Shopify requires the merchant to add the block
+ * and Save; an editor visit is never evidence of activation.
+ */
 export function buildCheckoutEditorUrl(shopDomain: string): string | null {
-  return /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shopDomain)
-    ? `https://${shopDomain}/admin/settings/checkout`
-    : null;
+  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shopDomain)) return null;
+  const url = new URL(`https://${shopDomain}/admin/settings/checkout/editor`);
+  url.searchParams.set("page", "checkout");
+  url.searchParams.set("context", "apps");
+  return url.toString();
 }
 
 

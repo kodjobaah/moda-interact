@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   loadConsentActivation,
+  buildCheckoutEditorUrl,
   resolveConsentPlacement,
   type AdminGraphqlClient,
   reconcileCartConsentGate,
@@ -75,6 +76,25 @@ describe("consent placement resolution", () => {
     expect(
       await resolveConsentPlacement(adminWith({ ModaConsentShopPlan: { shop: {} } })),
     ).toBe("unknown");
+  });
+});
+
+describe("Shopify Plus checkout editor navigation", () => {
+  it("links directly to the checkout Apps panel without auto-adding a block", () => {
+    const url = buildCheckoutEditorUrl("merchant.myshopify.com");
+    expect(url).toBe("https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps");
+    expect(url).not.toContain("addAppBlockId");
+    expect(url).not.toContain("activateAppId");
+  });
+
+  it.each([
+    "merchant.example.com",
+    "merchant.myshopify.com.evil.example",
+    "https://merchant.myshopify.com",
+    "merchant.myshopify.com/checkout",
+    "MERCHANT.myshopify.com",
+  ])("rejects an unsafe or non-canonical Shopify shop domain: %s", (domain) => {
+    expect(buildCheckoutEditorUrl(domain)).toBeNull();
   });
 });
 
@@ -207,7 +227,7 @@ describe("consent activation snapshot", () => {
     expect(activation.plusStatus).toBe("unverified");
     expect(activation.cartStatus).toBe("unsupported");
     expect(activation.cartThemeEditorUrl).toBeNull();
-    expect(activation.checkoutEditorUrl).toContain("/admin/settings/checkout");
+    expect(activation.checkoutEditorUrl).toBe(buildCheckoutEditorUrl(base.shopDomain));
   });
 
   it("degrades to truthful unavailable statuses when evidence reads fail", async () => {

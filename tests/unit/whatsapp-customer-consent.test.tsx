@@ -100,9 +100,11 @@ describe("single-action Shopify merchant consent activation", () => {
 
   it("retains the plan-exclusive Plus checkout placement", () => {
     const html = render({ ...cartBase, placement: "plus_checkout", plusStatus: "unverified",
-      checkoutEditorUrl: "https://merchant.myshopify.com/admin/settings/checkout" });
+      checkoutEditorUrl: "https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps" });
     expect(html).toContain('data-consent-card="plus-checkout"');
     expect(html).not.toContain('data-consent-card="cart-block"');
+    expect(html).toContain("recoverySettings.whatsappConsent.plusBody");
+    expect(html).toContain("recoverySettings.whatsappConsent.plusVerify");
   });
 });
 

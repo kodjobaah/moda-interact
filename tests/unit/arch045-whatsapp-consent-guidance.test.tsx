@@ -65,6 +65,18 @@ describe("WhatsApp Customer Consent guidance (ARCH-045, superseded placement set
     expect(html).not.toContain('data-consent-card="plus-checkout"');
   });
 
+  it("explains the Plus checkout editor Add block and Save step without claiming automatic activation", () => {
+    const html = render("en", { ...nonPlusActivation,
+      placement: "plus_checkout", cartStatus: "unsupported", plusStatus: "unverified",
+      checkoutEditorUrl: "https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps",
+    });
+    expect(html).toContain("moda-whatsapp-checkout-consent");
+    expect(html).toContain("Save");
+    expect(html).toContain("cannot add it automatically");
+    expect(html).toContain("not already present");
+    expect(html).not.toContain("It renders automatically");
+  });
+
   it("does not mistake tracking or a phone number for messaging opt-in, and keeps STOP authoritative", () => {
     const html = render("en");
     expect(html).toContain("marketing messages, not order confirmations or utility updates");

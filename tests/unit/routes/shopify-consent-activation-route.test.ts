@@ -58,7 +58,7 @@ beforeEach(() => {
   mocks.buildCartConsentThemeEditorUrl.mockReturnValue(
     "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
   );
-  mocks.buildCheckoutEditorUrl.mockReturnValue("https://merchant.myshopify.com/admin/settings/checkout");
+  mocks.buildCheckoutEditorUrl.mockReturnValue("https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps");
 });
 
 describe("authenticated Shopify cart consent setup lifecycle", () => {
@@ -193,7 +193,10 @@ describe("authenticated Shopify cart consent setup lifecycle", () => {
   it("supports Shopify Plus without a cart block and rejects client-supplied plan fields", async () => {
     mocks.resolveConsentPlacement.mockResolvedValue("plus_checkout");
     mocks.reconcileCartConsentGate.mockResolvedValue("disabled");
-    expect((await (await invoke()).json()).editorUrl).toContain("/admin/settings/checkout");
+    expect((await (await invoke()).json()).editorUrl).toBe(
+      "https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps",
+    );
+    expect(mocks.buildCheckoutEditorUrl).toHaveBeenCalledWith("merchant.myshopify.com");
     expect(mocks.buildCartConsentThemeActivationUrl).not.toHaveBeenCalled();
     const invalid = new Request("https://test.example/app/consent-activate", {
       method: "POST", body: new URLSearchParams({ intent: "activate", plan: "plus_checkout" }),
