@@ -16,6 +16,7 @@ import type { ProviderSubscription } from "./billing.types";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
 import { lockSubscriptionLifecycleRows } from "./subscription-locks";
+import { mapShopifyUsageEventHandles } from "./shopify-usage-event-mapping";
 
 export type InitialFreeActivationToken = Readonly<{
   subscriptionId: string;
@@ -221,7 +222,6 @@ export class SubscriptionActivationService {
       const pendingPlan = await transaction.billingPlan.findUnique({
         where: { id: expected.pendingPlanId },
       });
-      const usageMeter = pendingPlan?.shopifyUsageEventHandle?.trim() ?? "";
       const exactPlan = Boolean(
         pendingPlan &&
         pendingPlan.id === expected.pendingPlanId &&
@@ -230,9 +230,7 @@ export class SubscriptionActivationService {
         pendingPlan.kind === BillingPlanKind.PAID_METERED &&
         pendingPlan.shopifyPlanHandle === existingSubscription.pendingShopifyPlanHandle &&
         pendingPlan.shopifyPlanHandle === expected.pendingShopifyPlanHandle &&
-        pendingPlan.shopifyPlanHandle === providerSubscription.planHandle &&
-        usageMeter &&
-        providerSubscription.usageEventHandles.includes(usageMeter),
+        pendingPlan.shopifyPlanHandle === providerSubscription.planHandle,
       );
       const allowance = pendingPlan?.includedRecoveryConversationAllowance;
       const validAllowance = allowance !== null && allowance !== undefined &&
@@ -245,16 +243,20 @@ export class SubscriptionActivationService {
         providerSubscription.trialEndsAt !== null &&
         providerSubscription.trialEndsAt >= now &&
         !validCycle;
-      const invalidCode = !usageMeter || !providerSubscription.usageEventHandles.includes(usageMeter)
-        ? "MISSING_USAGE_METER"
-        : unsupportedPaidTrial
-          ? "UNSUPPORTED_PAID_TRIAL"
-          : null;
+      const invalidCode = unsupportedPaidTrial
+        ? "UNSUPPORTED_PAID_TRIAL"
+        : null;
+      const { unmappedHandles } = await mapShopifyUsageEventHandles(
+        transaction,
+        providerSubscription.planHandle,
+        providerSubscription.usageEventHandles,
+      );
       if (transactionalShop?.status !== ShopStatus.ACTIVE || !exactPlan || !validAllowance || (!validCycle && !unsupportedPaidTrial)) {
         return transaction.subscription.update({
           where: { shopId },
           data: {
             status: SubscriptionProjectionStatus.SYNC_ERROR,
+            unmappedShopifyUsageEventHandles: unmappedHandles,
             planId: null,
             billingPeriodId: null,
             currentPeriodStart: null,
@@ -270,6 +272,7 @@ export class SubscriptionActivationService {
           where: { shopId },
           data: {
             status: SubscriptionProjectionStatus.SYNC_ERROR,
+            unmappedShopifyUsageEventHandles: unmappedHandles,
             planId: null,
             billingPeriodId: null,
             currentPeriodStart: null,
@@ -322,6 +325,7 @@ export class SubscriptionActivationService {
           where: { shopId },
           data: {
             status: SubscriptionProjectionStatus.SYNC_ERROR,
+            unmappedShopifyUsageEventHandles: unmappedHandles,
             planId: null,
             billingPeriodId: null,
             currentPeriodStart: null,
@@ -378,6 +382,7 @@ export class SubscriptionActivationService {
         data: {
           planId: pendingPlan!.id,
           observedShopifyPlanHandle: providerSubscription.planHandle,
+          unmappedShopifyUsageEventHandles: unmappedHandles,
           status: SubscriptionProjectionStatus.ACTIVE,
           billingPeriodId: committedPeriod.id,
           currentPeriodStart: periodStart,

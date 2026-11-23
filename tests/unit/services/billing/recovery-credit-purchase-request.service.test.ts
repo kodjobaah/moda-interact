@@ -66,13 +66,14 @@ function createHarness(options: {
   transactionSubscription?: Record<string, unknown>;
   transactionError?: unknown;
   replayAfterUniqueError?: Record<string, unknown> | null;
+  reportingHandle?: string | null;
 } = {}) {
   const plan = {
     id: "plan-1",
     shopifyPlanHandle: "growth",
     active: true,
     kind: "PAID_METERED",
-    shopifyUsageEventHandle: "message-meter",
+    shopifyUsageEventHandle: options.reportingHandle === undefined ? "message-meter" : options.reportingHandle,
   };
   const billingPeriod = { id: "period-1", periodStart, periodEnd, status: "OPEN" };
   const subscription = {
@@ -201,6 +202,46 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe("RecoveryCreditPurchaseRequestService", () => {
+  it.each([null, "unrelated-app-events-reporting-handle"])(
+    "accepts a mapped provider credit pack with reporting handle %s and other unmapped provider events",
+    async (reportingHandle) => {
+      const observed = providerSubscription({ usageEventHandles: [eventHandle, "unmapped-provider-meter"] });
+      const harness = createHarness({
+        reportingHandle,
+        snapshots: [
+          { activeSubscription: observed, latestLifecycleEvent: null },
+          { activeSubscription: observed, latestLifecycleEvent: null },
+        ],
+      });
+
+      await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
+        .resolves.toMatchObject({ id: purchaseId, status: "REQUESTED", creditsGranted: 100 });
+      expect(harness.catalogueReads).toBe(2);
+      expect(harness.billingOperationService.recordOneTimeChargeIntent).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("rejects a catalogue-only credit pack absent from Shopify's returned usage-event handles", async () => {
+    const observed = providerSubscription({ usageEventHandles: ["other-provider-meter"] });
+    const harness = createHarness({
+      snapshots: [{ activeSubscription: observed, latestLifecycleEvent: null }],
+    });
+
+    await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
+      .rejects.toThrow("selected recovery credit offer could not be verified");
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a provider-only credit pack absent from the pricing catalogue", async () => {
+    const harness = createHarness({
+      catalogueRead: () => ({ shopifyPlanHandle: "growth", usageEvents: [] }),
+    });
+
+    await expect(harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle))
+      .rejects.toThrow("selected recovery credit offer could not be verified");
+    expect(harness.database.$transaction).not.toHaveBeenCalled();
+  });
+
   it("performs exactly two provider snapshots and two catalogue reads before its Serializable transaction", async () => {
     const harness = createHarness();
     const result = await harness.service.requestRecoveryCreditPack(shopId, "BUY_RECOVERY_CREDIT_PACK", purchaseId, eventHandle);
