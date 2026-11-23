@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "Souhlas přes WhatsApp"
+    },
+    "cart_drawer_consent": {
+      "name": "Souhlas v panelu košíku"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Cesta proxy aplikace Moda"
+    }
+  }
+}

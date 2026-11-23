@@ -1,4 +1,7 @@
 import { spawn } from "node:child_process";
+import { configureShopifyCheckoutReceiptOrigin, loadShopifyPlatformEnvironment } from "./shopify-dev-settings.mjs";
+
+loadShopifyPlatformEnvironment();
 
 const PORT = 50620;
 const NGROK_API = "http://127.0.0.1:4040/api/tunnels";
@@ -49,11 +52,13 @@ Start ngrok first:
 
 const ngrokUrl = await getNgrokUrl();
 
+const { origin: receiptOrigin } = configureShopifyCheckoutReceiptOrigin(ngrokUrl);
 const shopifyTunnelUrl = `${ngrokUrl}:${PORT}`;
 
 console.log(`
 Ngrok tunnel detected:
   ${ngrokUrl}
+  Checkout receipt endpoint: ${receiptOrigin}/shopify/checkout/receipt
 
 Starting Shopify with:
   --tunnel-url=${shopifyTunnelUrl}
@@ -69,6 +74,7 @@ const child = spawn(
     "moda-interact",
     "--tunnel-url",
     shopifyTunnelUrl,
+    ...process.argv.slice(2),
   ],
   {
     stdio: "inherit",

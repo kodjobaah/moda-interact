@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp-toestemming"
+    },
+    "cart_drawer_consent": {
+      "name": "Toestemming winkelwagen"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda-app-proxypad"
+    }
+  }
+}

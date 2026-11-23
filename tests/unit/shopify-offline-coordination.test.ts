@@ -116,6 +116,49 @@ describe("App Shopify offline authentication coordination", () => {
     expect(source).not.toMatch(/export\s+default\s+shopify\s*;/);
     expect(source).not.toMatch(/export\s+const\s+authenticate\s*=\s*shopify\.authenticate/);
     expect(source).not.toMatch(/export\s+const\s+sessionStorage\s*=\s*shopify\.sessionStorage/);
+    expect(source).toContain("appProxy: authenticateAppProxy");
+    expect(source).toContain("shopifyOfflineCoordination.withAppProxyAuthentication(");
+  });
+
+  it("provides the offline session binding while the SDK authenticates a signed App Proxy request", async () => {
+    const app = fixture();
+    const proxyRequest = new Request(`https://app.example.test/shopify/consent/cart/status?shop=${app.domain}&signature=${"a".repeat(64)}`);
+    const sdkAuthenticate = vi.fn(async () => {
+      const session = await app.coordination.sessionStorage.loadSession("sdk-session-id");
+      return { session };
+    });
+
+    const result = await app.coordination.withAppProxyAuthentication(proxyRequest, sdkAuthenticate);
+
+    expect(sdkAuthenticate).toHaveBeenCalledOnce();
+    expect(result.session).toBeInstanceOf(Session);
+    expect(result.session?.shop).toBe(app.domain);
+    expect(app.counts.commits).toBe(1);
+  });
+
+  it("does not treat the App Proxy shop hint as signature authorization", async () => {
+    const app = fixture();
+    const proxyRequest = new Request(`https://app.example.test/shopify/consent/cart/status?shop=${app.domain}&signature=forged`);
+    const sdkRejection = new Response(null, { status: 401 });
+
+    await expect(app.coordination.withAppProxyAuthentication(proxyRequest, async () => {
+      await app.coordination.sessionStorage.loadSession("sdk-session-id");
+      throw sdkRejection;
+    })).rejects.toBe(sdkRejection);
+
+    expect(app.counts.commits).toBe(0);
+    expect(app.counts.rollbacks).toBe(1);
+  });
+
+  it("rejects duplicate App Proxy shop hints before attempting an offline session read", async () => {
+    const app = fixture();
+    const proxyRequest = new Request(`https://app.example.test/shopify/consent/cart/status?shop=${app.domain}&shop=other.myshopify.com`);
+
+    await expect(app.coordination.withAppProxyAuthentication(proxyRequest, () =>
+      app.coordination.sessionStorage.loadSession("sdk-session-id"),
+    )).rejects.toMatchObject({ code: "COORDINATION_REQUIRED" });
+
+    expect(app.database.$transaction).not.toHaveBeenCalled();
   });
 
   it("commits a successful SDK token store before rethrowing its redirect", async () => {

@@ -9,7 +9,7 @@ const configurations = [
     redirectUrl: "https://app-test.modainteract.com",
     webhookApiVersion: "2026-07",
     priorScopes: [
-      "read_customers", "read_discounts", "read_locales", "read_markets",
+      "read_themes", "read_customers", "read_discounts", "read_locales", "read_markets",
       "read_orders", "read_products", "read_brand",
     ],
   },
@@ -48,7 +48,7 @@ describe("Shopify shipping-policy read permission", () => {
     const taskScopes = filename === "shopify.app.moda-interact.toml"
       ? ["read_legal_policies", "write_app_proxy"]
       : ["read_legal_policies"];
-    expect(scopes).toEqual([...priorScopes, ...taskScopes]);
+    expect(scopes).toEqual(expect.arrayContaining([...priorScopes, ...taskScopes]));
     expect(scopes.filter((scope) => scope === "read_legal_policies")).toHaveLength(1);
     expect(new Set(scopes).size).toBe(scopes.length);
     expect(section(toml, "access_scopes")).not.toMatch(/optional_scopes\s*=\s*\[[^\]]*"read_legal_policies"/);

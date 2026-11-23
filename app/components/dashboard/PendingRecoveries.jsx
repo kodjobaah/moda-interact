@@ -5,6 +5,25 @@ import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 void React;
 
+// BullMQ calls future scheduled jobs "delayed"; merchant copy calls them "Scheduled".
+export const PENDING_RECOVERY_STATUS_LABEL_KEYS = Object.freeze({
+  delayed: "pending.scheduledStatus",
+  waiting: "pending.waitingStatus",
+  active: "pending.activeStatus",
+});
+
+/** @param {string} status */
+function pendingRecoveryStatusLabelKey(status) {
+  switch (status) {
+    case "delayed":
+    case "waiting":
+    case "active":
+      return PENDING_RECOVERY_STATUS_LABEL_KEYS[status];
+    default:
+      return "common.unavailable";
+  }
+}
+
 /** @param {number} page @param {Record<string, string>} contextParams */
 function pageHref(page, contextParams) {
   return `/app?${new URLSearchParams({ ...contextParams, pendingPage: String(page) })}`;
@@ -140,7 +159,7 @@ export default function PendingRecoveries({
                     <span
                       className={`pending-recovery-status pending-recovery-status-${item.status}`}
                     >
-                      {i18n.t(`pending.${item.status}Status`)}
+                      {i18n.t(pendingRecoveryStatusLabelKey(item.status))}
                     </span>
                   </td>
                 </tr>

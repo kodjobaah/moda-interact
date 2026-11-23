@@ -2,14 +2,18 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 /** Static declaration checks; installation grants and live deployment need smoke evidence. */
-describe("ARCH-045 Shopify consent subscription declaration", () => {
+describe("retired Shopify-native WhatsApp consent subscription", () => {
   const namedAppToml = readFileSync(new URL("../../../shopify.app.moda-interact.toml", import.meta.url), "utf8");
 
-  it("adds WhatsApp consent to the existing /webhooks subscription on API 2026-07", () => {
+  it("does not subscribe to the retired native consent webhook", () => {
     expect(namedAppToml).toMatch(/\[webhooks\]\s*api_version\s*=\s*"2026-07"/);
-    expect(namedAppToml).toMatch(/uri\s*=\s*"\/webhooks"\s*topics\s*=\s*\[[^\]]*"customers_whats_app_marketing_consent\/update"/s);
-    expect(namedAppToml).toContain('"orders/create"');
-    expect(namedAppToml).toContain('"checkouts/update"');
+    expect(namedAppToml).not.toContain('"customers_whats_app_marketing_consent/update"');
+    for (const topic of ['"orders/create"', '"checkouts/update"', '"carts/create"', '"carts/update"']) {
+      expect(namedAppToml).toContain(topic);
+    }
+    for (const privacyTopic of ['"customers/data_request"', '"customers/redact"', '"shop/redact"']) {
+      expect(namedAppToml).toContain(privacyTopic);
+    }
   });
 
   it("requests read_customers, not a Shopify customer mutation scope", () => {

@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp-samtykke"
+    },
+    "cart_drawer_consent": {
+      "name": "Samtykke i kurvpanel"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda-app-proxysti"
+    }
+  }
+}

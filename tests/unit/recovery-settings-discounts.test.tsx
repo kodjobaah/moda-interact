@@ -121,6 +121,24 @@ it("reflects merchant flags rather than provider availability or the legacy anch
   expect(host.querySelector<HTMLInputElement>('input[name="selectedDiscountIds"]')?.value).toBe("[]");
 });
 
+it("renders scheduled and expired discounts without requesting unknown catalogue keys", async () => {
+  const discounts = [
+    { ...data.discounts[0], id: "scheduled", providerStatus: "SCHEDULED" },
+    { ...data.discounts[0], id: "expired", providerStatus: "EXPIRED" },
+    { ...data.discounts[1], id: "active", providerStatus: "ACTIVE" },
+    { ...data.discounts[0], id: "future", providerStatus: "NEW_PROVIDER_STATUS" },
+  ];
+  await act(async () =>
+    root.render(<RecoverySettingsView data={{ ...data, discounts } as never} />),
+  );
+
+  expect(host.textContent).toContain("recoverySettings.discount.status.SCHEDULED");
+  expect(host.textContent).toContain("recoverySettings.discount.status.EXPIRED");
+  expect(host.textContent).toContain("recoverySettings.discount.status.ACTIVE");
+  expect(host.textContent).toContain('"value":"NEW_PROVIDER_STATUS"');
+  expect(host.textContent).not.toContain("recoverySettings.discount.status.NEW_PROVIDER_STATUS");
+});
+
 it("keeps all 50 selections and disables only further unchecked choices", async () => {
   const selectedDiscountIds = Array.from({ length: 50 }, (_, index) => `d-${index}`);
   const discounts = [

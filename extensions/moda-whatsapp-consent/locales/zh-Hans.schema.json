@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp 同意"
+    },
+    "cart_drawer_consent": {
+      "name": "抽屉购物车同意"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda 应用代理路径"
+    }
+  }
+}

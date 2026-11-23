@@ -6,7 +6,7 @@ import SettingsForm from "@/components/settings/SettingsForm";
 import FeaturePreferences from "@/components/settings/FeaturePreferences";
 import StoreProfileSection from "@/components/settings/StoreProfileSection";
 import MerchantKnowledgeSection from "@/components/settings/MerchantKnowledgeSection";
-import WhatsAppCustomerConsent from "./WhatsAppCustomerConsent";
+import WhatsAppConsentActivationController from "./WhatsAppConsentActivationController";
 import AiResponseDelaySettings from "./AiResponseDelaySettings";
 import "./RecoverySettingsRoute.css";
 type DiscountRow = Awaited<ReturnType<typeof loader>>["discounts"][number];
@@ -14,6 +14,12 @@ type DiscountCatalogueStatus = Awaited<
   ReturnType<typeof loader>
 >["catalogueStatus"];
 type RecoveryOfferMode = "NONE" | "FIXED" | "AI_BEST_APPLICABLE";
+
+const DISCOUNT_STATUS_KEYS: Record<string, string> = {
+  ACTIVE: "recoverySettings.discount.status.ACTIVE",
+  SCHEDULED: "recoverySettings.discount.status.SCHEDULED",
+  EXPIRED: "recoverySettings.discount.status.EXPIRED",
+};
 
 function discountCatalogueMessageKey(status: DiscountCatalogueStatus) {
   switch (status) {
@@ -262,9 +268,9 @@ export default function RecoverySettingsView({
                               ) : null}
                               <span>
                                 {i18n.t("recoverySettings.discount.status", {
-                                  value: i18n.t(
-                                    `recoverySettings.discount.status.${discount.providerStatus}`,
-                                  ),
+                                  value: DISCOUNT_STATUS_KEYS[discount.providerStatus]
+                                    ? i18n.t(DISCOUNT_STATUS_KEYS[discount.providerStatus])
+                                    : discount.providerStatus,
                                 })}
                               </span>
                               <span>
@@ -452,7 +458,7 @@ export default function RecoverySettingsView({
             t={i18n.t}
           />
         </div>
-        <WhatsAppCustomerConsent t={i18n.t} />
+        <WhatsAppConsentActivationController t={i18n.t} activation={data.whatsappActivation} />
         <FeaturePreferences snapshot={data.features} t={i18n.t} />
 
         <section

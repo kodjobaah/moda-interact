@@ -143,7 +143,80 @@ function operationHarness() {
   };
 }
 
+function attemptInitialPaidIntent(harness: ReturnType<typeof operationHarness>) {
+  return harness.service.recordInitialPaidIntent(harness.transaction as never, {
+    shopId: "shop-1",
+    subscriptionId: "subscription-1",
+    targetPlanHandle: "growth",
+    lifecycleEventId: null,
+  });
+}
+
 describe("ShopifyBillingOperationService", () => {
+  it("reports when the paid pricing catalogue plan does not exist", async () => {
+    const harness = operationHarness();
+    harness.plans.delete("growth");
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      'Shopify paid billing quote unavailable: no MerchantPricingPlan exists for Shopify plan handle "growth".',
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
+  it("reports when the paid pricing catalogue plan is inactive", async () => {
+    const harness = operationHarness();
+    harness.plans.get("growth")!.isActive = false;
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      'Shopify paid billing quote unavailable: MerchantPricingPlan "growth" (pricing-growth) is inactive.',
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
+  it("reports the actual plan kind when the pricing catalogue plan is not paid-metered", async () => {
+    const harness = operationHarness();
+    harness.plans.get("growth")!.planKind = MerchantPricingPlanKind.FREE;
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      'Shopify paid billing quote unavailable: MerchantPricingPlan "growth" (pricing-growth) has planKind "FREE"; expected "PAID_METERED".',
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
+  it.each([
+    { description: "zero", amount: 0 },
+    { description: "negative", amount: -100 },
+    { description: "outside the safe integer range", amount: Number.MAX_SAFE_INTEGER + 1 },
+  ])("reports the actual recurring amount when it is $description", async ({ amount }) => {
+    const harness = operationHarness();
+    harness.plans.get("growth")!.recurringAmountMinor = amount;
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      `Shopify paid billing quote unavailable: MerchantPricingPlan "growth" (pricing-growth) has recurringAmountMinor "${String(amount)}"; expected a positive safe integer.`,
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
+  it("reports the actual currency when the pricing catalogue currency is invalid", async () => {
+    const harness = operationHarness();
+    harness.plans.get("growth")!.currency = "usd";
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      'Shopify paid billing quote unavailable: MerchantPricingPlan "growth" (pricing-growth) has currency "usd"; expected a three-letter uppercase currency code.',
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
+  it("reports the actual billing period when the pricing catalogue period is unsupported", async () => {
+    const harness = operationHarness();
+    harness.plans.get("growth")!.billingPeriod = "EVERY_YEAR" as MerchantPricingBillingPeriod;
+
+    await expect(attemptInitialPaidIntent(harness)).rejects.toThrow(
+      'Shopify paid billing quote unavailable: MerchantPricingPlan "growth" (pricing-growth) has billingPeriod "EVERY_YEAR"; expected "EVERY_30_DAYS".',
+    );
+    expect(harness.operations).toHaveLength(0);
+  });
+
   it("reuses initial subscription command identity when lifecycle evidence changes", async () => {
     const harness = operationHarness();
     const first = await harness.service.recordInitialPaidIntent(harness.transaction as never, {

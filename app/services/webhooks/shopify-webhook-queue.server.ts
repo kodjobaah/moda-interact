@@ -3,8 +3,6 @@ import { createBullMQTelemetry } from "@modainteract/moda-interact-shared/observ
 import {
   SHOPIFY_WEBHOOK_QUEUE_CONTRACTS,
   parseShopifyDiscountSyncJob,
-  ShopifyWhatsAppConsentSyncJobV1Schema,
-  type ShopifyWhatsAppConsentSyncJobV1,
   type ShopifyDiscountSyncJob,
   type ShopifyCheckoutCreatedEventV2,
   type ShopifyCheckoutUpdatedEventV2,
@@ -17,7 +15,6 @@ import {
   createShopifyWebhookJobId,
   createShopifyOrderJobId,
   createShopifyDiscountSyncJobId,
-  createShopifyWhatsAppConsentSyncJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 import { recordShopifyWebhookQueueFailure } from "./shopify-webhook-observability.server";
@@ -135,11 +132,5 @@ export async function publishShopifyDiscountSyncJob(input: { event: ShopifyDisco
   return publish(SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.SHOPIFY_DISCOUNT_SYNC, () => {
     const event = parseShopifyDiscountSyncJob(input.event);
     return { event, jobId: createShopifyDiscountSyncJobId(event) };
-  });
-}
-export async function publishShopifyWhatsAppConsentSyncJob(input: { event: ShopifyWhatsAppConsentSyncJobV1 }): Promise<ShopifyWebhookPublicationResult> {
-  return publish(SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.WHATSAPP_CONSENT_SYNC, () => {
-    const event = ShopifyWhatsAppConsentSyncJobV1Schema.parse(input.event);
-    return { event, jobId: createShopifyWhatsAppConsentSyncJobId(event) };
   });
 }

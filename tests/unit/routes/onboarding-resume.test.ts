@@ -7,7 +7,6 @@ const mocks = vi.hoisted(() => ({
   assertActiveShop: vi.fn(),
   getSubscriptionProjection: vi.fn(),
   syncSubscription: vi.fn(),
-  activateInitialCategory: vi.fn(),
   transaction: vi.fn(),
   updateShopOnboarding: vi.fn(),
   updateSettingsOnboarding: vi.fn(),
@@ -31,9 +30,6 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
     syncSubscription: mocks.syncSubscription,
   },
 }));
-vi.mock("../../../app/services/store-profile/store-category-activation.server", () => ({
-  activateInitialPendingStoreCategoryIfEligible: mocks.activateInitialCategory,
-}));
 vi.mock("../../../app/db.server", () => ({
   default: { $transaction: mocks.transaction },
 }));
@@ -54,10 +50,10 @@ async function captureSharedErrorRecords(
   return records;
 }
 
-function request(generation = "7") {
+function request(body = new URLSearchParams()) {
   return new Request("https://app.test/app/onboarding/resume", {
     method: "POST",
-    body: new URLSearchParams({ expectedPendingSelectionGeneration: generation }),
+    body,
   });
 }
 
@@ -91,11 +87,6 @@ beforeEach(() => {
     status: "ACTIVE",
     planId: "plan-free",
   });
-  mocks.activateInitialCategory.mockResolvedValue({
-    kind: "ACTIVATED",
-    categoryId: "category-1",
-    promptRevisionId: "revision-1",
-  });
   mocks.transaction.mockImplementation(async (callback) => callback({
     shop: { updateMany: mocks.updateShopOnboarding },
     shopSettings: { updateMany: mocks.updateSettingsOnboarding },
@@ -105,16 +96,12 @@ beforeEach(() => {
 });
 
 describe("onboarding resume action", () => {
-  it("re-syncs an existing Shopify subscription, activates the pending Store Category, and completes onboarding", async () => {
+  it("re-syncs an existing Shopify subscription and completes onboarding without a category", async () => {
     const response = await action({ request: request() } as never);
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ ok: true, onboardingCompleted: true });
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
-    expect(mocks.activateInitialCategory).toHaveBeenCalledWith({
-      shopId: "shop-1",
-      expectedPendingSelectionGeneration: 7,
-    });
     expect(mocks.updateShopOnboarding).toHaveBeenCalledWith({
       where: { id: "shop-1" },
       data: { onboardingCompleted: true },
@@ -138,7 +125,6 @@ describe("onboarding resume action", () => {
       ok: false,
       error: "BILLING_RECONCILIATION_REQUIRED",
     });
-    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
@@ -149,34 +135,15 @@ describe("onboarding resume action", () => {
 
     expect(response.status).toBe(409);
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
-    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.transaction).not.toHaveBeenCalled();
   });
 
-  it("emits category activation failure with the actual generation and preserves the throw", async () => {
-    const cause = new Error("category owner marker");
-    const failure = new Error("category dispatch marker", { cause });
-    mocks.activateInitialCategory.mockRejectedValue(failure);
-    const records = await captureSharedErrorRecords(async () => {
-      await expect(action({ request: request("19") } as never)).rejects.toBe(failure);
-    });
-    const record = records.find((item) => item.event === "billing.initial_category_activation.failed");
-    const data = record?.data as Record<string, unknown>;
-
-    expect(data).toMatchObject({
-      operation: "activate_initial_pending_store_category",
-      stage: "onboarding_resume",
-      origin: "internal",
-      shopId: "shop-1",
-      identities: { expectedPendingSelectionGeneration: "19" },
-      error: { name: "Error", message: "category dispatch marker" },
-      causeChain: [{ name: "Error", message: "category owner marker" }],
-    });
-    expect(mocks.transaction).not.toHaveBeenCalled();
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(action({ request: request("19") } as never)).rejects.toBe(failure);
-    }, { throwFromSink: true });
-    expect(isolatedRecords).toHaveLength(0);
+  it("rejects obsolete generation-bearing submissions without resuming billing", async () => {
+    const response = await action({ request: request(new URLSearchParams({
+      expectedPendingSelectionGeneration: "19",
+    })) } as never);
+    expect(response.status).toBe(400);
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
   });
 
   it("emits the actual milestone persistence failure without reporting success", async () => {

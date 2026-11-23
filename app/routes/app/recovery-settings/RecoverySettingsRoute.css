@@ -1464,3 +1464,54 @@
     grid-column: auto;
   }
 }
+
+/* Minimal, single-path consent activation. Shopify owns the final Save. */
+.moda-recovery-consent-grid { grid-template-columns: minmax(0, 1fr); }
+.moda-recovery-consent-action,
+.moda-recovery-consent-card button {
+  min-height: 42px;
+  padding: 10px 16px;
+  cursor: pointer;
+  border: 1px solid var(--recovery-green-600);
+  border-radius: 9px;
+  background: var(--recovery-green-800);
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+}
+.moda-recovery-consent-card .moda-recovery-consent-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  text-decoration: none;
+  color: #fff;
+}
+/* The drawer is a secondary placement, but its editor link is still a real action. */
+.moda-recovery-consent-card [data-consent-drawer-activation] {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--recovery-line);
+}
+.moda-recovery-consent-card [data-consent-drawer-activation] h4 {
+  margin: 0 0 8px;
+  color: var(--recovery-green-900);
+  font-size: 14px;
+}
+/* Both editor-navigation links use the same button appearance; retain anchor semantics. */
+.moda-recovery-consent-card .moda-recovery-consent-action:hover {
+  background: var(--recovery-green-900);
+  color: #fff;
+}
+.moda-recovery-consent-card .moda-recovery-consent-action:focus-visible {
+  outline: 3px solid var(--recovery-green-600);
+  outline-offset: 3px;
+}
+.moda-recovery-consent-card button:disabled { opacity: .6; cursor: wait; }
+.moda-recovery-consent-card button:focus-visible,
+.moda-recovery-consent-guidance summary:focus-visible {
+  outline: 3px solid var(--recovery-green-600);
+  outline-offset: 3px;
+}
+.moda-recovery-consent-guidance { margin-top: 12px; font-size: 13px; }
+.moda-recovery-consent-guidance p { line-height: 1.6; }

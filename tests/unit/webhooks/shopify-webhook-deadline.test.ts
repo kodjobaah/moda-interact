@@ -12,7 +12,6 @@ const publishers = {
   publishShopifyCartActivityEvent: publications.publishShopifyCartActivityEvent,
   publishShopifyOrderCompletedEvent: publications.publishShopifyOrderCompletedEvent,
   publishShopifyDiscountSyncJob: publications.publishShopifyDiscountSyncJob,
-  publishShopifyWhatsAppConsentSyncJob: publications.publishShopifyWhatsAppConsentSyncJob,
 };
 const fixtures = webhookFixtures();
 function pending() { let resolve!: (value?: unknown) => void, reject!: (error: unknown) => void;

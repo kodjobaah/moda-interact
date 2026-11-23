@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp-suostumus"
+    },
+    "cart_drawer_consent": {
+      "name": "Ostoskoripaneelin lupa"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda-sovellusproxyn polku"
+    }
+  }
+}

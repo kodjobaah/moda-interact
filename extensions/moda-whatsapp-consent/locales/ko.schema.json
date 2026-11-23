@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp 수신 동의"
+    },
+    "cart_drawer_consent": {
+      "name": "장바구니 서랍 동의"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Moda 앱 프록시 경로"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "blocks": {
+    "cart_consent": {
+      "name": "WhatsApp-samtycke"
+    },
+    "cart_drawer_consent": {
+      "name": "Samtycke i varukorg"
+    }
+  },
+  "settings": {
+    "app_proxy_root": {
+      "label": "Sökväg för Moda-app-proxy"
+    }
+  }
+}

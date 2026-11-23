@@ -21,7 +21,7 @@ import {
   logBillingBoundaryFailure,
 } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
-import { activateInitialPendingStoreCategoryIfEligible } from "@/services/store-profile/store-category-activation.server";
+import { ShopifyPaidBillingQuoteUnavailableError } from "@/services/billing/shopify-billing-operation.service";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -96,32 +96,6 @@ function isVerifiedPaidActivation(
     subscription.pendingEffectiveAt === null &&
     subscription.nextReconcileAt,
   );
-}
-
-async function activateInitialCategoryAfterSubscriptionCommit(
-  shopId: string,
-  subscription: Pick<Subscription, "status" | "planId"> | null,
-): Promise<void> {
-  if (
-    subscription?.planId !== null &&
-    subscription?.planId !== undefined &&
-    (subscription.status === SubscriptionProjectionStatus.ACTIVE ||
-      subscription.status === SubscriptionProjectionStatus.TRIALING)
-  ) {
-    try {
-      await activateInitialPendingStoreCategoryIfEligible({ shopId });
-    } catch (error) {
-      logBillingBoundaryFailure({
-        event: "billing.initial_category_activation.failed",
-        operation: "activate_initial_pending_store_category",
-        stage: "after_subscription_commit",
-        shopId,
-        identities: { subscriptionStatus: subscription.status },
-        error,
-      });
-      throw error;
-    }
-  }
 }
 
 export async function loader({
@@ -253,7 +227,12 @@ export async function loader({
         identities: { requestedPlanHandle },
         error,
       });
-      throw error;
+      if (!(error instanceof ShopifyPaidBillingQuoteUnavailableError)) {
+        throw error;
+      }
+      // Shopify has already confirmed the selected subscription. A missing
+      // local commercial quote is logged, then the existing verified
+      // projection fallback below reconciles the provider's subscription.
     }
   }
 
@@ -274,7 +253,6 @@ export async function loader({
     const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
 
     if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
-      await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
         subscriptionId: subscription!.id,
@@ -300,7 +278,6 @@ export async function loader({
         });
         throw error;
       }
-      if (completed) await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
       if (completed?.nextReconcileAt) {
         await enqueueBillingSubscriptionReconcileBestEffort({
           shopId: shop.id,
@@ -361,8 +338,7 @@ export async function loader({
   ) && verification.status === "ACTIVE_SUBSCRIPTION" &&
     verification.subscription?.planHandle === requestedPlanHandle;
   if (freshInitialProjection) {
-    const subscription = await billingService.syncSubscription(shop.id);
-    await activateInitialCategoryAfterSubscriptionCommit(shop.id, subscription);
+    await billingService.syncSubscription(shop.id);
     return redirect("/app");
   }
 

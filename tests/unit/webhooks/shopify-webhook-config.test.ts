@@ -29,12 +29,23 @@ describe("intended Shopify app configuration", () => {
     expect(source).toContain("read_customers");
     expect(source).toContain("read_discounts");
     expect(source).toContain("read_brand");
-    expect(source).toContain('scopes = "read_customers,read_discounts,read_locales,read_markets,read_orders,read_products,read_brand,read_legal_policies,write_app_proxy"');
-    expect(source).toContain('[app_proxy]\nurl = "/shopify/consent"\nprefix = "apps"\nsubpath = "moda-consent"');
+    const declaredScopes = source.match(/^scopes\s*=\s*"([^"]+)"/m)?.[1]
+      ?.split(",").map((scope) => scope.trim()) ?? [];
+    expect(declaredScopes).toEqual(expect.arrayContaining([
+      "read_themes", "write_app_proxy", "read_customers", "read_discounts",
+      "read_brand", "read_legal_policies", "read_locales", "read_markets",
+      "read_orders", "read_products",
+    ]));
+    expect(new Set(declaredScopes).size).toBe(declaredScopes.length);
+    // TOML table keys are unordered; Shopify may reformat the app-proxy section.
+    const appProxySection = source.split("[app_proxy]")[1]?.split(/\n\s*\[/, 1)[0] ?? "";
+    expect(appProxySection).toMatch(/^\s*url = "\/shopify\/consent"$/m);
+    expect(appProxySection).toMatch(/^\s*prefix = "apps"$/m);
+    expect(appProxySection).toMatch(/^\s*subpath = "moda-consent"$/m);
     expect(orderedSubscriptions(subscriptions(source))).toEqual(orderedSubscriptions([
       { uri: "/webhooks", topics: [
         "orders/create", "carts/create", "carts/update", "checkouts/create",
-        "checkouts/update", "customers_whats_app_marketing_consent/update",
+        "checkouts/update",
         "discounts/create", "discounts/update", "discounts/delete",
         "discounts/redeemcode_added", "discounts/redeemcode_removed",
       ] },

@@ -2,14 +2,12 @@ import process from "node:process";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ShopifyCheckoutUpdatedEventV3Schema,
-  ShopifyWhatsAppConsentSyncJobV1Schema,
   parseShopifyRecoveryEvent,
   parseShopifyRecoveryEventV2,
 } from "@modainteract/moda-interact-shared/shopify";
 import {
   createShopifyWebhookJobId,
   createShopifyOrderJobId,
-  createShopifyWhatsAppConsentSyncJobId,
 } from "@modainteract/moda-interact-shared/shopify/node";
 
 const bullMQTelemetry = { tracer: "shared-bullmq-telemetry" };
@@ -102,43 +100,8 @@ beforeEach(async () => {
 });
 
 describe("shopify webhook queue helpers", () => {
-  it("publishes consent sync under its own job name on existing checkout-events", async () => {
-    const event = ShopifyWhatsAppConsentSyncJobV1Schema.parse({
-      schemaVersion: 1, shopId: "shop_1", shopifyCustomerId: "706405506930370084",
-      deliveryId: "consent-delivery-1", triggeredAt: "2026-10-22T09:00:00Z",
-    });
-    const first = await queueModule.publishShopifyWhatsAppConsentSyncJob({ event });
-    const second = await queueModule.publishShopifyWhatsAppConsentSyncJob({ event });
-    const third = await queueModule.publishShopifyWhatsAppConsentSyncJob({ event: { ...event, deliveryId: "consent-delivery-2" } });
-
-    expect(first).toEqual({ queue: "checkout-events", jobId: createShopifyWhatsAppConsentSyncJobId(event), outcome: "accepted" });
-    expect(second).toEqual({ ...first, outcome: "accepted" });
-    expect(third.jobId).not.toBe(first.jobId);
-    expect(queues.checkout.addCalls).toHaveLength(3);
-    expect(queues.checkout.getJobCalls).toHaveLength(0);
-    expect(queues.checkout.addCalls[0].jobName).toBe("shopify-whatsapp-consent-sync");
-    expect(queues.checkout.addCalls[0].data).toEqual(event);
-    expect(queues.checkout.addCalls[0].data).not.toHaveProperty("phone_number");
-    expect(queues.checkout.addCalls[0].data).not.toHaveProperty("consent");
-    expect(queues.checkout.addCalls[0].opts.delay).toBeUndefined();
-    expect(queues.order.addCalls).toHaveLength(0);
-  });
-
-  it("returns a publication error if Redis is absent for consent sync", async () => {
-    await queueModule.resetShopifyWebhookQueuesForTests();
-    delete process.env.REDIS_URL;
-    const event = ShopifyWhatsAppConsentSyncJobV1Schema.parse({
-      schemaVersion: 1, shopId: "shop_1", shopifyCustomerId: "42", deliveryId: "d", triggeredAt: "2026-10-22T09:00:00Z",
-    });
-    await expect(queueModule.publishShopifyWhatsAppConsentSyncJob({ event }))
-      .rejects.toMatchObject({ code: "REDIS_UNAVAILABLE" });
-  });
-
-  it("rejects foreign or consent-authority fields before queue creation", async () => {
-    const event = { schemaVersion: 1, shopId: "shop_1", shopifyCustomerId: "42", deliveryId: "d", triggeredAt: "2026-10-22T09:00:00Z", phone: "+447700900123" };
-    await expect(queueModule.publishShopifyWhatsAppConsentSyncJob({ event }))
-      .rejects.toThrow();
-    expect(queues.checkout.addCalls).toHaveLength(0);
+  it("does not expose a publisher for obsolete native WhatsApp consent jobs", () => {
+    expect(queueModule).not.toHaveProperty("publishShopifyWhatsAppConsentSyncJob");
   });
 
   it("creates deterministic delivery and order job ids", () => {

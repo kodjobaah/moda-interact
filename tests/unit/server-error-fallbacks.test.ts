@@ -178,10 +178,10 @@ describe.each([false, true])("original fallback evidence, broken sink=%s", broke
     expect((await suggestStoreCategory(admin, [{id: "category-1"}]))?.categoryId).toBe("category-1");
     expect(JSON.stringify(output.records)).not.toContain("private-provider-body-sentinel"); expect(failures()).toHaveLength(broken ? 0 : 1);
   });
-  it.each(["sync", "activate"] as const)("keeps onboarding %s technical failure outcome", async stage => {
-    const error = source("P2010"); ports[stage].mockRejectedValueOnce(error);
-    const args = {request: new Request("https://app.test/app/onboarding/resume", {method: "POST", body: new URLSearchParams({expectedPendingSelectionGeneration: "1"})}), context: {}, params: {}} as unknown as ActionFunctionArgs;
-    if (stage === "sync") expect((await resume(args)).status).toBe(503); else await expect(resume(args)).rejects.toBe(error);
+  it("keeps onboarding subscription-sync technical failure outcome without category input", async () => {
+    const error = source("P2010"); ports.sync.mockRejectedValueOnce(error);
+    const args = {request: new Request("https://app.test/app/onboarding/resume", {method: "POST", body: new URLSearchParams()}), context: {}, params: {}} as unknown as ActionFunctionArgs;
+    expect((await resume(args)).status).toBe(503);
     evidence(broken); expect(ports.milestone).not.toHaveBeenCalled();
   });
   it.each(["success", "network", "response"] as const)("keeps telemetry probe %s shape/status while protecting configured URL", async stage => {

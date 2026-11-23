@@ -13,14 +13,21 @@ import {
   loadStoreProfile,
 } from "@/services/store-profile/store-category.server";
 import { loadSettingsReadContext } from "@/services/feature-preferences/settings-read-context.server";
+import { loadConsentActivation } from "@/services/shopify-consent/consent-activation.server";
+import { apiKey } from "@/shopify.server";
 import RecoverySettingsView from "./RecoverySettingsView";
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const { shop, session, merchant } = await settingsAccess(request, context);
   const readContext = await loadSettingsReadContext(merchant);
   const merchantUi = merchantUiContext(shop, session);
-  const [storeCategories, storeProfile] = await Promise.all([
+  const [storeCategories, storeProfile, whatsappActivation] = await Promise.all([
     listSelectableStoreCategories(merchantUi.locale),
     loadStoreProfile(shop.id, merchantUi.locale),
+    loadConsentActivation({
+      admin: merchant.authentication.admin,
+      shopDomain: shop.domain,
+      apiKey,
+    }),
   ]);
   const merchantKnowledge = await loadMerchantKnowledge(shop.id, undefined, readContext);
   const features = (() => {
@@ -42,6 +49,7 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     storeProfile,
     merchantKnowledge,
     merchantUi,
+    whatsappActivation,
   };
 }
 export { action } from "../settings-save/route";

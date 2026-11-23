@@ -45,6 +45,7 @@ export default [
   route("app/recoveries/:recoveryId/commands", "./routes/app/recovery-detail/commands.ts"),
   route("app/recoveries/:recoveryId/commands/:commandId", "./routes/app/recovery-detail/command-status.ts"),
   route("app/settings-save", "./routes/app/settings-save/route.ts"),
+  route("app/consent-activate", "./routes/app/consent-activate/route.ts"),
   route("app/merchant-knowledge/source", "./routes/app/merchant-knowledge/source/route.ts"),
   route("app/merchant-knowledge/reorder", "./routes/app/merchant-knowledge/reorder/route.ts"),
   route("app/merchant-knowledge/refresh", "./routes/app/merchant-knowledge/refresh/route.ts"),

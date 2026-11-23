@@ -413,6 +413,34 @@ describe("cart WhatsApp consent block", () => {
     expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/update.js"))).toBe(false);
   });
 
+  it("logs a redacted, staged HTTP failure while keeping the cart checkbox hidden", async () => {
+    const root = makeBlock();
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetcher = vi.fn(async url => {
+      if (String(url).endsWith("/fr/cart.js")) return response(cart("redacted-cart"));
+      if (String(url).endsWith("/apps/moda-consent/cart/status")) {
+        return response({ error: "UNAVAILABLE" }, 503);
+      }
+      throw new Error("Unexpected request");
+    });
+    try {
+      await window.modaWhatsappConsent.initialize(root, fetcher);
+      expect(root.hidden).toBe(true);
+      expect(root.querySelector("[data-consent-checkbox]").disabled).toBe(true);
+      expect(warning).toHaveBeenCalledWith(
+        "[moda.cart.consent]",
+        "consent.render.failed",
+        expect.objectContaining({
+          stage: "consent_status",
+          httpStatus: 503,
+        }),
+      );
+      expect(JSON.stringify(warning.mock.calls)).not.toContain("redacted-cart");
+    } finally {
+      warning.mockRestore();
+    }
+  });
+
   it("initializes a newly loaded theme editor section once without duplicating existing handlers", async () => {
     const firstRoot = makeBlock();
     const fetcher = vi.fn(async url => {

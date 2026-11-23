@@ -60,6 +60,7 @@ export type CoordinatedShopifyAuthentication = Readonly<{
   fetch: AbstractFetchFunc;
   withAdminAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
   withWebhookAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
+  withAppProxyAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
   withUnauthenticatedAdmin<T>(shop: string, authenticate: () => Promise<T>): Promise<T>;
   withLifecycleLock<T>(integrationDomain: string, work: LifecycleWork<T>, options?: { sessionId?: string | null }): Promise<T>;
 }>;
@@ -74,7 +75,15 @@ function createOfflineProvider(database: PrismaClient, fetchImpl: typeof fetch) 
   });
 }
 
-function getRequestHint(request: Request, surface: "admin" | "webhook"): string | undefined {
+function getRequestHint(request: Request, surface: "admin" | "webhook" | "app_proxy"): string | undefined {
+  if (surface === "app_proxy") {
+    // A Shopify App Proxy `shop` query parameter is only a lock-selection hint.
+    // The SDK must still verify the signed request before it can authorize a shop.
+    const shops = new URL(request.url).searchParams.getAll("shop");
+    return shops.length === 1 && /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shops[0])
+      ? shops[0]
+      : undefined;
+  }
   if (surface === "webhook") {
     return request.headers.get("x-shopify-shop-domain") ?? undefined;
   }
@@ -427,7 +436,7 @@ export function createCoordinatedShopifyAuthentication(input: {
   async function withShopHint<T>(
     integrationDomain: string | undefined,
     authenticate: () => Promise<T>,
-    options: { surface: "admin" | "webhook" | "unauthenticated"; request?: Request },
+    options: { surface: "admin" | "webhook" | "app_proxy" | "unauthenticated"; request?: Request },
   ): Promise<T> {
     if (!integrationDomain) return authenticate();
 
@@ -480,6 +489,9 @@ export function createCoordinatedShopifyAuthentication(input: {
     },
     withWebhookAuthentication<T>(request: Request, authenticate: () => Promise<T>) {
       return withShopHint(getRequestHint(request, "webhook"), authenticate, { surface: "webhook", request });
+    },
+    withAppProxyAuthentication<T>(request: Request, authenticate: () => Promise<T>) {
+      return withShopHint(getRequestHint(request, "app_proxy"), authenticate, { surface: "app_proxy", request });
     },
     withUnauthenticatedAdmin<T>(shop: string, authenticate: () => Promise<T>) {
       return withShopHint(shop, authenticate, { surface: "unauthenticated" });

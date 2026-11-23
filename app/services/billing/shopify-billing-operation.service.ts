@@ -36,6 +36,13 @@ type PaidPlanQuote = Readonly<{
   billingPeriod: MerchantPricingBillingPeriod;
 }>;
 
+export class ShopifyPaidBillingQuoteUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ShopifyPaidBillingQuoteUnavailableError";
+  }
+}
+
 const OPEN_OPERATION_STATES = [
   BillingOperationState.INITIATING,
   BillingOperationState.AWAITING_CONFIRMATION,
@@ -596,16 +603,35 @@ export class ShopifyBillingOperationService {
         billingPeriod: true,
       },
     });
-    if (
-      !plan ||
-      !plan.isActive ||
-      plan.planKind !== MerchantPricingPlanKind.PAID_METERED ||
-      !Number.isSafeInteger(plan.recurringAmountMinor) ||
-      plan.recurringAmountMinor <= 0 ||
-      !/^[A-Z]{3}$/.test(plan.currency) ||
-      plan.billingPeriod !== MerchantPricingBillingPeriod.EVERY_30_DAYS
-    ) {
-      throw new Error("Shopify paid billing operation quote is unavailable.");
+    if (!plan) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: no MerchantPricingPlan exists for Shopify plan handle "${planHandle}".`,
+      );
+    }
+    if (!plan.isActive) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) is inactive.`,
+      );
+    }
+    if (plan.planKind !== MerchantPricingPlanKind.PAID_METERED) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has planKind "${String(plan.planKind)}"; expected "PAID_METERED".`,
+      );
+    }
+    if (!Number.isSafeInteger(plan.recurringAmountMinor) || plan.recurringAmountMinor <= 0) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has recurringAmountMinor "${String(plan.recurringAmountMinor)}"; expected a positive safe integer.`,
+      );
+    }
+    if (!/^[A-Z]{3}$/.test(plan.currency)) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has currency "${String(plan.currency)}"; expected a three-letter uppercase currency code.`,
+      );
+    }
+    if (plan.billingPeriod !== MerchantPricingBillingPeriod.EVERY_30_DAYS) {
+      throw new ShopifyPaidBillingQuoteUnavailableError(
+        `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has billingPeriod "${String(plan.billingPeriod)}"; expected "EVERY_30_DAYS".`,
+      );
     }
     return plan;
   }

@@ -144,16 +144,14 @@ describe("app home loader", () => {
       merchantExperienceState: "ONBOARDING",
       pricingCatalogue: [{ shopifyPlanHandle: "free" }],
       subscription: null,
-      storeCategories: [{ id: "category-home", localizedDisplayName: "Home goods" }],
-      pendingCategoryId: "category-home",
-      pendingSelectionGeneration: 3,
-      pendingMappingIds: ["mapping-pending"],
-      suggestedCategoryId: "category-home",
-      suggestedMappingIds: ["mapping-home"],
+      billingSetup: null,
+      resumeExistingSubscription: false,
     });
-    expect(listSelectableStoreCategories).toHaveBeenCalledOnce();
-    expect(loadStoreProfile).toHaveBeenCalledWith("shop-1", expect.any(String));
-    expect(suggestStoreCategory).toHaveBeenCalledOnce();
+    expect(result).not.toHaveProperty("storeCategories");
+    expect(result).not.toHaveProperty("pendingCategoryId");
+    expect(listSelectableStoreCategories).not.toHaveBeenCalled();
+    expect(loadStoreProfile).not.toHaveBeenCalled();
+    expect(suggestStoreCategory).not.toHaveBeenCalled();
     expect(getSubscription).not.toHaveBeenCalled();
     expect(readPendingRecoveries).not.toHaveBeenCalled();
     expect(findRecoveries).not.toHaveBeenCalled();
@@ -185,7 +183,7 @@ describe("app home loader", () => {
   });
 
 
-  it("keeps Store Category selection visible before resuming an existing Shopify subscription", async () => {
+  it("resumes existing Shopify billing without requiring category selection", async () => {
     resolveShopifyShop.mockResolvedValue({
       id: "shop-1",
       domain: "merchant.myshopify.com",
@@ -219,14 +217,12 @@ describe("app home loader", () => {
       merchantExperienceState: "ONBOARDING",
       billingSetup: null,
       resumeExistingSubscription: true,
-      pendingCategoryId: null,
-      pendingSelectionGeneration: 0,
     });
-    expect(listSelectableStoreCategories).toHaveBeenCalledOnce();
-    expect(loadStoreProfile).toHaveBeenCalledWith("shop-1", expect.any(String));
+    expect(loadStoreProfile).not.toHaveBeenCalled();
+    expect(listSelectableStoreCategories).not.toHaveBeenCalled();
   });
 
-  it("keeps a pending Store Category on onboarding while durable Shopify evidence is resumed", async () => {
+  it("ignores stale pending categories while resuming durable Shopify billing", async () => {
     resolveShopifyShop.mockResolvedValue({
       id: "shop-1",
       domain: "merchant.myshopify.com",
@@ -257,8 +253,6 @@ describe("app home loader", () => {
       merchantExperienceState: "ONBOARDING",
       billingSetup: null,
       resumeExistingSubscription: true,
-      pendingCategoryId: "category-home",
-      pendingSelectionGeneration: 3,
       subscription: null,
     });
     expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
@@ -268,7 +262,7 @@ describe("app home loader", () => {
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
 
-  it("shows subscription setup only once Store Category activation has already completed", async () => {
+  it("does not gate existing Shopify billing setup on active category", async () => {
     resolveShopifyShop.mockResolvedValue({
       id: "shop-1",
       domain: "merchant.myshopify.com",
@@ -299,12 +293,8 @@ describe("app home loader", () => {
 
     expect(result).toMatchObject({
       merchantExperienceState: "ONBOARDING",
-      billingSetup: {
-        phase: "VERIFYING_SUBSCRIPTION",
-        planHandle: "free",
-        planName: "Free",
-      },
-      resumeExistingSubscription: false,
+      billingSetup: null,
+      resumeExistingSubscription: true,
       subscription: null,
     });
   });

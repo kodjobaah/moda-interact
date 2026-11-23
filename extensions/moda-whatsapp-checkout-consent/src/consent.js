@@ -1,7 +1,7 @@
 export const CONSENT_ATTRIBUTE_KEY = "moda_wa_consent_v1";
 export const CHECKOUT_TARGET = "purchase.checkout.contact.render-after";
 
-const DEFAULT_RECEIPT_ORIGIN = "https://app-test.modainteract.com";
+const DEFAULT_RECEIPT_ORIGIN = "https://app.modainteract.com";
 
 // The Shopify CLI statically replaces `process.env.*` from the app `.env`
 // during extension builds. The try/catch keeps the checkout worker safe when
@@ -14,9 +14,11 @@ function configuredReceiptOrigin() {
   } catch {
     origin = undefined;
   }
-  return typeof origin === "string" && /^https:\/\/[^\s/]+$/.test(origin)
-    ? origin
-    : DEFAULT_RECEIPT_ORIGIN;
+  if (origin === undefined) return DEFAULT_RECEIPT_ORIGIN;
+  if (typeof origin !== "string" || !/^https:\/\/[^\s/?#]+$/.test(origin)) {
+    throw new Error("Invalid MODA_CHECKOUT_RECEIPT_ORIGIN: expected an HTTPS origin");
+  }
+  return origin;
 }
 
 export const CHECKOUT_RECEIPT_ENDPOINT =
@@ -57,6 +59,8 @@ export function isConsentStatus(value) {
     value !== null &&
     typeof value === "object" &&
     typeof value.checked === "boolean" &&
-    (value.source === "checkout" || value.source === "postgresql")
+    (value.source === "checkout" || value.source === "postgresql" ||
+      (value.source === "invalid_checkout_receipt" &&
+        value.checked === false && value.decision === "UNKNOWN"))
   );
 }

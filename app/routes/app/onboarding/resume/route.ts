@@ -6,7 +6,6 @@ import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { persistShopifyOnboardingMilestone } from "@/services/billing/onboarding-milestone.server";
 import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
-import { activateInitialPendingStoreCategoryIfEligible } from "@/services/store-profile/store-category-activation.server";
 
 const ACTIVE_STATUSES = new Set<SubscriptionProjectionStatus>([
   SubscriptionProjectionStatus.ACTIVE,
@@ -26,14 +25,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     });
   }
 
+  // No initial store category or selection generation is required for billing.
   const form = await request.formData();
-  if ([...form.keys()].some((key) =>
-    key !== "expectedPendingSelectionGeneration" || form.getAll(key).length !== 1,
-  )) return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
-
-  const generationValue = form.get("expectedPendingSelectionGeneration");
-  const generation = typeof generationValue === "string" ? Number(generationValue) : NaN;
-  if (!Number.isSafeInteger(generation) || generation < 0) {
+  if ([...form.keys()].length !== 0) {
     return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
   }
 
@@ -74,30 +68,6 @@ export async function action({ request, context }: ActionFunctionArgs) {
   ) {
     return Response.json(
       { ok: false, error: "BILLING_RECONCILIATION_REQUIRED" },
-      { status: 409, headers: { "Cache-Control": "no-store" } },
-    );
-  }
-
-  let activation;
-  try {
-    activation = await activateInitialPendingStoreCategoryIfEligible({
-      shopId: shop.id,
-      expectedPendingSelectionGeneration: generation,
-    });
-  } catch (error) {
-    logBillingBoundaryFailure({
-      event: "billing.initial_category_activation.failed",
-      operation: "activate_initial_pending_store_category",
-      stage: "onboarding_resume",
-      shopId: shop.id,
-      identities: { expectedPendingSelectionGeneration: String(generation) },
-      error,
-    });
-    throw error;
-  }
-  if (activation.kind !== "ACTIVATED" && activation.kind !== "ALREADY_ACTIVE") {
-    return Response.json(
-      { ok: false, error: "CATEGORY_ACTIVATION_REQUIRED" },
       { status: 409, headers: { "Cache-Control": "no-store" } },
     );
   }

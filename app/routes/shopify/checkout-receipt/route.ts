@@ -153,6 +153,18 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
         error,
         shopId: shop.id,
       });
+      if (
+        error instanceof ConsentReceiptServiceError &&
+        (error.code === "INVALID_RECEIPT" || error.code === "RECEIPT_BINDING_MISMATCH")
+      ) {
+        // The existing attribute is not consent evidence for this checkout.
+        // Permit a fresh explicit decision, but never inherit GRANTED status.
+        return cors(jsonResponse({
+          checked: false,
+          decision: "UNKNOWN",
+          source: "invalid_checkout_receipt",
+        }));
+      }
       if (error instanceof ConsentReceiptServiceError) {
         return cors(failureResponse(
           error.code,

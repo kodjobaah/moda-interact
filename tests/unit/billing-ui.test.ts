@@ -35,11 +35,11 @@ describe("canonical merchant billing UI", () => {
     expect(selectSource).not.toContain('throw new Error("SHOPIFY_APP_HANDLE is not configured")');
   });
 
-  it("sends onboarding plan CTA to Shopify plan selection after category persistence", () => {
+  it("sends onboarding plan CTA directly to Shopify plan selection", () => {
     expect(onboardingSource).not.toContain('href="/app/billing"');
     expect(onboardingSource).not.toContain('href="/app/billing/select"');
     expect(onboardingSource).toContain('navigate("/app/billing/select")');
-    expect(onboardingSource).toContain('action: "/app/store-profile/category"');
+    expect(onboardingSource).not.toContain('action: "/app/store-profile/category"');
   });
 
   it("maps billing system messages to lifecycle-allowed destinations", () => {

@@ -61,6 +61,10 @@ const coordinatedAuthenticate = Object.freeze({
   ...shopify.authenticate,
   admin: authenticateAdmin,
   webhook: authenticateWebhook,
+  public: Object.freeze({
+    ...shopify.authenticate.public,
+    appProxy: authenticateAppProxy,
+  }),
 });
 const coordinatedUnauthenticated = Object.freeze({
   ...shopify.unauthenticated,
@@ -87,6 +91,14 @@ function authenticateWebhook(request) {
     () => shopify.authenticate.webhook(request),
   );
 }
+/** @param {Request} request */
+function authenticateAppProxy(request) {
+  return shopifyOfflineCoordination.withAppProxyAuthentication(
+    request,
+    () => shopify.authenticate.public.appProxy(request),
+  );
+}
+
 /** @param {string} integrationDomain */
 function unauthenticatedAdmin(integrationDomain) {
   return shopifyOfflineCoordination.withUnauthenticatedAdmin(

@@ -20,7 +20,7 @@ export function merchantRows(domain = "merchant.myshopify.com") {
   };
   const subscription: Subscription = {
     id: `subscription-${domain}`, shopId: shop.id, status: "ACTIVE", planId: null,
-    observedShopifyPlanHandle: null, billingPeriodId: null, currentPeriodStart: null,
+    observedShopifyPlanHandle: null, unmappedShopifyUsageEventHandles: [], billingPeriodId: null, currentPeriodStart: null,
     currentPeriodEnd: null, trialEndsAt: null, cancelAtPeriodEnd: false,
     providerSubscriptionId: null, providerCoverageEndAt: null, lastSyncedAt: null,
     lastSyncErrorCode: null, lastSyncErrorAt: null, pendingShopifyPlanHandle: null,
