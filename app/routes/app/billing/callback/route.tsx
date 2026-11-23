@@ -21,6 +21,7 @@ import {
   logBillingBoundaryFailure,
 } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 import { enqueueSubscriptionActivatedDiscountSyncBestEffort } from "@/services/discounts/shopify-discount-lifecycle.service";
+import { ShopifyPaidBillingQuoteUnavailableError } from "@/services/billing/shopify-billing-operation.service";
 
 function billingOptionsRedirect(result: string, requestedPlanHandle: string) {
   const params = new URLSearchParams({ plan_change: result });
@@ -226,7 +227,12 @@ export async function loader({
         identities: { requestedPlanHandle },
         error,
       });
-      throw error;
+      if (!(error instanceof ShopifyPaidBillingQuoteUnavailableError)) {
+        throw error;
+      }
+      // Shopify has already confirmed the selected subscription. A missing
+      // local commercial quote is logged, then the existing verified
+      // projection fallback below reconciles the provider's subscription.
     }
   }
 

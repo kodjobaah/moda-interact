@@ -62,6 +62,7 @@ vi.mock("../../../app/db.server", () => ({
 
 import { loader } from "../../../app/routes/app/billing/callback/route";
 import { ShopifyBillingProviderError } from "../../../app/services/billing/providers/shopify-billing-diagnostics.server";
+import { ShopifyPaidBillingQuoteUnavailableError } from "../../../app/services/billing/shopify-billing-operation.service";
 
 async function captureSharedErrorRecords(
   run: () => Promise<unknown>,
@@ -410,6 +411,66 @@ describe("billing callback activation", () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     }, { throwFromSink: true });
     expect(isolatedRecords).toHaveLength(0);
+  });
+
+  it("logs an unavailable paid quote and continues through verified provider projection", async () => {
+    const failure = new ShopifyPaidBillingQuoteUnavailableError(
+      'Shopify paid billing quote unavailable: no MerchantPricingPlan exists for Shopify plan handle "growth".',
+    );
+    mocks.getFence.mockResolvedValue(null);
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockRejectedValue(failure);
+    mocks.syncSubscription.mockResolvedValue(subscription({
+      status: "ACTIVE",
+      planId: paidPlan.id,
+      plan: paidPlan,
+      observedShopifyPlanHandle: "growth",
+      billingPeriodId: "period-paid",
+      currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+    }));
+
+    const records = await captureSharedErrorRecords(async () => {
+      await runLoader("growth");
+    });
+    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "prepare_paid_subscription_activation",
+      stage: "activation_prepare",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { requestedPlanHandle: "growth" },
+      error: {
+        name: "ShopifyPaidBillingQuoteUnavailableError",
+        message: failure.message,
+      },
+    });
+    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+    expect(mocks.redirect).toHaveBeenCalledWith("/app");
+  });
+
+  it("continues to propagate unexpected paid activation preparation failures", async () => {
+    const failure = Object.assign(new Error("paid activation transaction marker"), { code: "P2034" });
+    mocks.getFence.mockResolvedValue(null);
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockRejectedValue(failure);
+
+    const records = await captureSharedErrorRecords(async () => {
+      await expect(runLoader("growth")).rejects.toBe(failure);
+    });
+    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+
+    expect(record?.data).toMatchObject({
+      operation: "prepare_paid_subscription_activation",
+      stage: "activation_prepare",
+      origin: "database",
+      shopId: "shop-1",
+      identities: { requestedPlanHandle: "growth" },
+      databaseCode: "P2034",
+      error: { name: "Error", message: "paid activation transaction marker" },
+    });
+    expect(mocks.syncSubscription).not.toHaveBeenCalled();
   });
 
   it("logs activation finalization persistence failure without advancing category activation", async () => {
