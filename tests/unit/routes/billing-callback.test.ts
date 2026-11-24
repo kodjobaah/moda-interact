@@ -21,10 +21,14 @@ const mocks = vi.hoisted(() => ({
   updateShopOnboarding: vi.fn(),
   transaction: vi.fn(),
   activateInitialCategory: vi.fn(),
+  provisionTemplates: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
+}));
+vi.mock("../../../app/services/recoveries/onboarding-template-assignments.server", () => ({
+  ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {

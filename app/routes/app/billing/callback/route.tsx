@@ -16,6 +16,7 @@ import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billin
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { persistShopifyOnboardingMilestone } from "@/services/billing/onboarding-milestone.server";
+import { ensureOnboardingRecoveryTemplatesBestEffort } from "@/services/recoveries/onboarding-template-assignments.server";
 import {
   classifyBillingVerificationFailure,
   logBillingBoundaryFailure,
@@ -198,6 +199,7 @@ export async function loader({
   }
 
   await persistShopifyOnboardingMilestone(shop.id);
+  await ensureOnboardingRecoveryTemplatesBestEffort(shop.id);
 
   let activation;
   try {

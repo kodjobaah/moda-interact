@@ -1,3 +1,4 @@
+import { providerComponentsHash } from "../../app/services/recoveries/recovery-template-provider-hash.server";
 import type { Prisma } from "@prisma/client";
 
 /** A Moda-authored, explicitly published, provider-approved recovery template.
@@ -13,7 +14,8 @@ export const validFollowUpVariant = {
     id: "registration-1", wabaId: WABA, providerTemplateName: "recovery_reminder",
     providerLanguageCode: "en", providerTemplateId: "meta-template-1", providerStatus: "APPROVED",
     submissionState: "APPROVED", category: "MARKETING", failureCode: null,
-    submittedContentHash: "c".repeat(64), lastObservedContentHash: "c".repeat(64),
+    submittedContentHash: "c".repeat(64), lastObservedContentHash: providerComponentsHash([{type: "BODY", text: "Approved follow-up"}]),
+    componentsSnapshot: [{type: "BODY", text: "Approved follow-up"}],
     lastObservedCategory: "MARKETING", driftDetectedAt: null,
     locale: { languageTag: "en", providerLanguageCode: "en", status: "REVIEWED",
       contentHash: "c".repeat(64), definition: {

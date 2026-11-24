@@ -5,6 +5,7 @@ import { billingService } from "@/services/billing/billing.service";
 import { assertActiveShop } from "@/services/shop/shop-access-policy";
 import { getMerchantRequestContext } from "@/services/shop/merchant-request-context.server";
 import { persistShopifyOnboardingMilestone } from "@/services/billing/onboarding-milestone.server";
+import { ensureOnboardingRecoveryTemplatesBestEffort } from "@/services/recoveries/onboarding-template-assignments.server";
 import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 
 const ACTIVE_STATUSES = new Set<SubscriptionProjectionStatus>([
@@ -20,6 +21,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   });
 
   if (shop.onboardingCompleted === true) {
+    await ensureOnboardingRecoveryTemplatesBestEffort(shop.id);
     return Response.json({ ok: true, onboardingCompleted: true }, {
       headers: { "Cache-Control": "no-store" },
     });
@@ -73,6 +75,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
   }
 
   await persistShopifyOnboardingMilestone(shop.id);
+  await ensureOnboardingRecoveryTemplatesBestEffort(shop.id);
 
   return Response.json({ ok: true, onboardingCompleted: true }, {
     headers: { "Cache-Control": "no-store" },

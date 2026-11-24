@@ -67,6 +67,12 @@ describe("ARCH-047 Shopify current, published follow-up catalogue", () => {
     },
   );
 
+  it("validates Meta observed content against provider components rather than submitted source hash", () => {
+    const row = example();
+    expect(row.metaRegistration.lastObservedContentHash).not.toBe(row.metaRegistration.submittedContentHash);
+    expect(eligible(row)).toEqual([expect.objectContaining({id: "variant-1"})]);
+  });
+
   it("accepts the immutable published English source while requiring review of translated locales", () => {
     const english = updated((row) => { row.metaRegistration.locale.status = "SOURCE_SAVED"; });
     expect(eligible(english)).toEqual([expect.objectContaining({ language: "en" })]);

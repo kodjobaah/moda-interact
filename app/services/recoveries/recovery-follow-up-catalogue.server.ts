@@ -2,6 +2,7 @@ import { Prisma, type Shop } from "@prisma/client";
 import { canonicaliseLanguageTag } from "@modainteract/moda-interact-shared/internationalization";
 import prisma from "../../db.server";
 import { trustedRecoverySenderWaba } from "./recovery-follow-up-sender.server";
+import { providerComponentsHash } from "./recovery-template-provider-hash.server";
 
 const FOLLOW_UP_PURPOSES = ["FOLLOW_UP_NO_OFFER", "FOLLOW_UP_CODE_OFFER", "FOLLOW_UP_AUTOMATIC_OFFER"] as const;
 const NO_OFFER = "FOLLOW_UP_NO_OFFER";
@@ -50,7 +51,7 @@ function isCurrentModaPublication(row: CatalogueVariant, wabaId: string): boolea
       !["SUBMITTED", "CONFIRMED", "APPROVED"].includes(registration.submissionState) ||
       registration.failureCode !== null || registration.driftDetectedAt !== null ||
       registration.lastObservedContentHash !== null &&
-        registration.lastObservedContentHash !== registration.submittedContentHash ||
+        registration.lastObservedContentHash !== providerComponentsHash(registration.componentsSnapshot) ||
       registration.lastObservedCategory !== null && registration.lastObservedCategory !== registration.category) return false;
   const locale = registration.locale;
   const definition = locale.definition;
@@ -82,7 +83,7 @@ const variantSelect = {
   metaRegistration: { select: {
     id: true, wabaId: true, providerTemplateName: true, providerLanguageCode: true,
     providerTemplateId: true, providerStatus: true, submissionState: true,
-    category: true, failureCode: true, submittedContentHash: true,
+    category: true, failureCode: true, submittedContentHash: true, componentsSnapshot: true,
     lastObservedContentHash: true, lastObservedCategory: true, driftDetectedAt: true,
     locale: { select: {
       languageTag: true, providerLanguageCode: true, status: true, contentHash: true,

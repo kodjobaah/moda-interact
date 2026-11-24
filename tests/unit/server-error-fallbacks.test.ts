@@ -4,7 +4,7 @@ const output = vi.hoisted(() => ({records: [] as Array<{event: string; data: Rec
 const ports = vi.hoisted(() => ({redisCtor: vi.fn(), connect: vi.fn(), ping: vi.fn(), disconnect: vi.fn(), redisOn: vi.fn(), zcard: vi.fn(), zrange: vi.fn(),
   queueCtor: vi.fn(), queueOn: vi.fn(), getJob: vi.fn(), close: vi.fn(), add: vi.fn(), state: vi.fn(),
   pgConnect: vi.fn(), pgQuery: vi.fn(), pgEnd: vi.fn(), pgOn: vi.fn(),
-  context: vi.fn(), projection: vi.fn(), sync: vi.fn(), activate: vi.fn(), milestone: vi.fn()}));
+  context: vi.fn(), projection: vi.fn(), sync: vi.fn(), activate: vi.fn(), milestone: vi.fn(), provisionTemplates: vi.fn()}));
 vi.mock("@modainteract/moda-interact-shared/logging", async original => {
   const real = await original<typeof import("@modainteract/moda-interact-shared/logging")>();
   return {...real, createLogger: (options: Parameters<typeof real.createLogger>[0]) => real.createLogger({...options, sink: record => {
@@ -24,6 +24,7 @@ vi.mock("../../app/services/shop/merchant-request-context.server", () => ({getMe
 vi.mock("../../app/services/billing/billing.service", () => ({billingService: {getSubscriptionProjection: ports.projection, syncSubscription: ports.sync}}));
 vi.mock("../../app/services/store-profile/store-category-activation.server", () => ({activateInitialPendingStoreCategoryIfEligible: ports.activate}));
 vi.mock("../../app/services/billing/onboarding-milestone.server", () => ({persistShopifyOnboardingMilestone: ports.milestone}));
+vi.mock("../../app/services/recoveries/onboarding-template-assignments.server", () => ({ensureOnboardingRecoveryTemplatesBestEffort: ports.provisionTemplates}));
 import {checkPostgresReadiness, checkRedisReadiness, HEALTH_CHECK_TIMEOUT_MS} from "../../app/services/health/health-check.server";
 import {readPendingRecoveries} from "../../app/services/pending-recovery/pending-recovery-reader.server";
 import {SubscriptionEndedNotificationService, MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY} from "../../app/services/billing/subscription-ended-notification.service";

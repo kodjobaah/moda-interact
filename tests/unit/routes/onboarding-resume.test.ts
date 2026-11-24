@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   updateShopOnboarding: vi.fn(),
   updateSettingsOnboarding: vi.fn(),
+  provisionTemplates: vi.fn(),
 }));
 
 vi.mock("../../../app/shopify.server", () => ({
@@ -23,6 +24,9 @@ vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
 }));
 vi.mock("../../../app/services/shop/shop-access-policy", () => ({
   assertActiveShop: mocks.assertActiveShop,
+}));
+vi.mock("../../../app/services/recoveries/onboarding-template-assignments.server", () => ({
+  ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
