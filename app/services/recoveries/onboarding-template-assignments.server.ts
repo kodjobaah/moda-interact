@@ -32,7 +32,7 @@ export function assignmentResolutionInstructions(purpose: string, reason: string
   if (reason === "ASSIGNMENT_TRANSACTION_FAILED") {
     return `WhatsApp ${purpose}: the automatic assignment transaction failed. Check the original server-side error logs and current published variant/target state, resolve the conflict, then retry onboarding.`;
   }
-  return `WhatsApp ${purpose}: ${reason}. In Platform Admin > System Controls > WhatsApp templates, verify the correct 20-language Meta-approved recovery definition for the configured WABA, reconcile Meta approval/content status, then Publish > All currently eligible shops and complete publication.`;
+  return `WhatsApp ${purpose}: ${reason}. In Platform Admin > System Controls > WhatsApp templates, verify the correct 20-language Meta-approved recovery definition for the configured WABA, reconcile Meta approval/content status, then open Recovery defaults and use Set as default or Replace default. Retry onboarding after the default is configured.`;
 }
 
 /** Non-critical post-commit onboarding step. Both callback and resume call it.
