@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import db from "@/db.server";
 import { apiKey, authenticate } from "@/shopify.server";
 import {
@@ -23,14 +23,19 @@ const SHOP_DOMAIN_PATTERN = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 const CUSTOMER_GID_PATTERN = /^gid:\/\/shopify\/Customer\/([1-9][0-9]{0,19})$/;
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: RESPONSE_HEADERS });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: RESPONSE_HEADERS,
+  });
 }
 
 function failureResponse(code: string, status: number): Response {
   return jsonResponse({ error: code }, status);
 }
 
-function customerIdFromClaim(sessionToken: Record<string, unknown>): string | null | undefined {
+function customerIdFromClaim(
+  sessionToken: Record<string, unknown>,
+): string | null | undefined {
   if (!Object.hasOwn(sessionToken, "sub")) return null;
   if (typeof sessionToken.sub !== "string") return undefined;
   return CUSTOMER_GID_PATTERN.exec(sessionToken.sub)?.[1];
@@ -38,10 +43,14 @@ function customerIdFromClaim(sessionToken: Record<string, unknown>): string | nu
 
 function bearerToken(request: Request): string | undefined {
   const authorization = request.headers.get("Authorization");
-  return authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+  return authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length)
+    : undefined;
 }
 
-export async function action({ request }: ActionFunctionArgs): Promise<Response> {
+export async function action({
+  request,
+}: ActionFunctionArgs): Promise<Response> {
   let context;
   try {
     context = await authenticate.public.checkout(request);
@@ -50,11 +59,15 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
       operation: "checkout_receipt",
       stage: "session_authentication",
       error,
-      sensitiveValues: [bearerToken(request)].filter((value): value is string => Boolean(value)),
+      sensitiveValues: [bearerToken(request)].filter((value): value is string =>
+        Boolean(value),
+      ),
       reasonCode: "SHOPIFY_CHECKOUT_SESSION_REJECTED",
     });
     if (error instanceof Response) {
-      return request.method === "OPTIONS" ? error : failureResponse("UNAUTHENTICATED_CHECKOUT_REQUEST", 401);
+      return request.method === "OPTIONS"
+        ? error
+        : failureResponse("UNAUTHENTICATED_CHECKOUT_REQUEST", 401);
     }
     throw error;
   }
@@ -102,10 +115,7 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
     return cors(failureResponse("METHOD_NOT_ALLOWED", 405));
   }
   const body = await readBoundedJsonObject(request);
-  if (
-    !body ||
-    typeof body.checkoutToken !== "string"
-  ) {
+  if (!body || typeof body.checkoutToken !== "string") {
     return cors(failureResponse("INVALID_RECEIPT_REQUEST", 400));
   }
   const checkoutTokenBytes = Buffer.byteLength(body.checkoutToken, "utf8");
@@ -128,11 +138,13 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
           shopId: shop.id,
           shopifyCustomerId: customerId,
         });
-        return cors(jsonResponse({
-          checked: status.checked,
-          decision: status.decision,
-          source: "postgresql",
-        }));
+        return cors(
+          jsonResponse({
+            checked: status.checked,
+            decision: status.decision,
+            source: "postgresql",
+          }),
+        );
       }
 
       const claims = verifyConsentReceipt(body.receipt, {
@@ -141,11 +153,13 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
         token: body.checkoutToken,
         customerId,
       });
-      return cors(jsonResponse({
-        checked: claims.decision === "G",
-        decision: claims.decision,
-        source: "checkout",
-      }));
+      return cors(
+        jsonResponse({
+          checked: claims.decision === "G",
+          decision: claims.decision,
+          source: "checkout",
+        }),
+      );
     } catch (error) {
       logShopifyConsentFailure({
         operation: "checkout_receipt",
@@ -155,21 +169,26 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
       });
       if (
         error instanceof ConsentReceiptServiceError &&
-        (error.code === "INVALID_RECEIPT" || error.code === "RECEIPT_BINDING_MISMATCH")
+        (error.code === "INVALID_RECEIPT" ||
+          error.code === "RECEIPT_BINDING_MISMATCH")
       ) {
         // The existing attribute is not consent evidence for this checkout.
         // Permit a fresh explicit decision, but never inherit GRANTED status.
-        return cors(jsonResponse({
-          checked: false,
-          decision: "UNKNOWN",
-          source: "invalid_checkout_receipt",
-        }));
+        return cors(
+          jsonResponse({
+            checked: false,
+            decision: "UNKNOWN",
+            source: "invalid_checkout_receipt",
+          }),
+        );
       }
       if (error instanceof ConsentReceiptServiceError) {
-        return cors(failureResponse(
-          error.code,
-          error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
-        ));
+        return cors(
+          failureResponse(
+            error.code,
+            error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
+          ),
+        );
       }
       return cors(failureResponse("CONSENT_UNAVAILABLE", 503));
     }
@@ -201,15 +220,17 @@ export async function action({ request }: ActionFunctionArgs): Promise<Response>
       shopId: shop.id,
     });
     if (error instanceof ConsentReceiptServiceError) {
-      return cors(failureResponse(
-        error.code,
-        error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
-      ));
+      return cors(
+        failureResponse(
+          error.code,
+          error.code === "CREDENTIAL_CONFIGURATION_UNAVAILABLE" ? 503 : 400,
+        ),
+      );
     }
     return cors(failureResponse("CONSENT_UNAVAILABLE", 503));
   }
 }
 
-export function loader(): Response {
-  return failureResponse("METHOD_NOT_ALLOWED", 405);
+export async function loader({ request }: LoaderFunctionArgs) {
+  await authenticate.public.checkout(request);
 }
