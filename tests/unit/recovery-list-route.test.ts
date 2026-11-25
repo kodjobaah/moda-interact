@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { createMemoryRouter, RouterProvider } from "react-router";
+import { renderStaticRoute } from "../fixtures/render-static-route";
 import type { LoaderFunctionArgs } from "react-router";
 import { readFileSync } from "node:fs";
 import {
@@ -228,14 +227,8 @@ describe("recovery list presentation and navigation", () => {
   });
   it("renders one safe localized row and no premature detail or mutation controls", async () => {
     const data = await loadRecoveryList(request());
-    const router = createMemoryRouter([
-      {
-        path: "*",
-        element: createElement(RecoveryList, { data, onRefresh: () => {} }),
-      },
-    ]);
-    const html = renderToStaticMarkup(
-      createElement(RouterProvider, { router }),
+    const html = await renderStaticRoute(
+      createElement(RecoveryList, { data, onRefresh: () => {} }), "/", "*",
     );
     expect(html).toContain("Ada Lovelace");
     expect(html).toContain("£100.25");
@@ -257,17 +250,11 @@ describe("recovery list presentation and navigation", () => {
   it("renders localized error, empty and busy states with accessible semantics", async () => {
     const data = await loadRecoveryList(request());
     for (const state of ["never-used", "empty", "error", "invalid"] as const) {
-      const router = createMemoryRouter([
-        {
-          path: "*",
-          element: createElement(RecoveryList, {
-            data: { ...data, state, error: "date" },
-            onRefresh: () => {},
-          }),
-        },
-      ]);
-      const html = renderToStaticMarkup(
-        createElement(RouterProvider, { router }),
+      const html = await renderStaticRoute(
+        createElement(RecoveryList, {
+          data: { ...data, state, error: "date" },
+          onRefresh: () => {},
+        }), "/", "*",
       );
       expect(html).toContain(
         state === "error" || state === "invalid"
@@ -275,18 +262,9 @@ describe("recovery list presentation and navigation", () => {
           : 'role="status"',
       );
     }
-    const router = createMemoryRouter([
-      {
-        path: "*",
-        element: createElement(RecoveryList, {
-          data,
-          busy: true,
-          onRefresh: () => {},
-        }),
-      },
-    ]);
-    const html = renderToStaticMarkup(
-      createElement(RouterProvider, { router }),
+    const html = await renderStaticRoute(
+      createElement(RecoveryList, { data, busy: true, onRefresh: () => {} }),
+      "/", "*",
     );
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("Loading recoveries");

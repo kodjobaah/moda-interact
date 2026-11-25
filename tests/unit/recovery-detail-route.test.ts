@@ -1,11 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  createMemoryRouter,
-  RouterProvider,
-  type LoaderFunctionArgs,
-} from "react-router";
+import type { LoaderFunctionArgs } from "react-router";
+import { renderStaticRoute } from "../fixtures/render-static-route";
 import { readFileSync } from "node:fs";
 import {
   recoveryDetailUrl,
@@ -275,13 +272,9 @@ it("renders sender, audio, unknown, receipt, RTL and merchant-local date semanti
       },
     ],
   };
-  const router = createMemoryRouter([
-    {
-      path: "/",
-      element: createElement(RecoveryDetail, { data: d, onRefresh: () => {} }),
-    },
-  ]);
-  const html = renderToStaticMarkup(createElement(RouterProvider, { router }));
+  const html = await renderStaticRoute(
+    createElement(RecoveryDetail, { data: d, onRefresh: () => {} }),
+  );
   expect(html).toContain("Automated message");
   expect(html).toContain("Transcription rejected");
   expect(html).toContain("Unknown sender");

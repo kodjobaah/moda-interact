@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import { MODA_SUPPORTED_LANGUAGE_TAGS } from "@modainteract/moda-interact-shared/internationalization";
 import { providerComponentsHash } from "./recovery-template-provider-hash.server";
+import { recoveryHeaderKind, recoveryTemplateFormat, isBrandIndependentText, validImageRole, type RecoveryTemplateFormat, type RecoveryHeaderKind } from "./recovery-template-format.server";
 
 export const LANGUAGES: readonly string[] = MODA_SUPPORTED_LANGUAGE_TAGS;
 const DIGEST = /^[a-f0-9]{64}$/;
@@ -134,7 +135,7 @@ export type VerifiedDefault = { definitionId: string; registrations: Registratio
   evidenceFingerprint: string };
 
 export async function readVerifiedDefault(tx: Prisma.TransactionClient, definitionId: string, purpose: string,
-  wabaId: string): Promise<VerifiedDefault | null> {
+  wabaId: string, format: RecoveryTemplateFormat): Promise<VerifiedDefault | null> {
   // Coordinate with Admin's default setter and registration reconciliation.
   // Read only after taking the exact source locks in the Admin order.
   await tx.$queryRaw`SELECT "id" FROM "whatsapp"."WhatsAppTemplateDefinition" WHERE "id"=${definitionId} FOR UPDATE`;
@@ -156,12 +157,25 @@ export async function readVerifiedDefault(tx: Prisma.TransactionClient, definiti
       `${definition.purpose}_${definition.offerType}` !== purpose || definition.locales.length !== LANGUAGES.length) return null;
   const verified: Registration[] = [];
   const orderedLocales: SourceLocale[] = [];
+  let headerKind: RecoveryHeaderKind | null = null;
+  let imageRole: string | null = null;
   for (const language of LANGUAGES) {
     const matches = definition.locales.filter(locale => locale.languageTag === language);
     if (matches.length !== 1) return null;
     const locale = matches[0];
     const reg = approvedRegistration(definition, locale, wabaId);
     if (!reg || !registrations.some(row => row.id === reg.id) || !locales.some(row => row.id === locale.id)) return null;
+    const kind = recoveryHeaderKind(reg.componentsSnapshot);
+    if (!kind || recoveryTemplateFormat(reg.componentsSnapshot) !== format ||
+        (headerKind !== null && headerKind !== kind)) return null;
+    headerKind = kind;
+    if (format === "TEXT") {
+      if (!isBrandIndependentText(reg.parameterBindingsSnapshot)) return null;
+    } else {
+      const role = validImageRole(reg.parameterBindingsSnapshot);
+      if (!role || (imageRole !== null && imageRole !== role)) return null;
+      imageRole = role;
+    }
     verified.push(reg);
     orderedLocales.push(locale);
   }
@@ -170,7 +184,7 @@ export async function readVerifiedDefault(tx: Prisma.TransactionClient, definiti
       !await currentCommonLayout(tx, orderedLocales)) return null;
   return { definitionId, registrations: verified,
     registrationIds: Object.fromEntries(orderedLocales.map((locale, i) => [locale.languageTag, verified[i].id])),
-    evidenceFingerprint: templateEvidenceHash([definitionId, purpose, wabaId, definition.sourceHash,
+    evidenceFingerprint: templateEvidenceHash([definitionId, purpose, wabaId, format, definition.sourceHash,
       orderedLocales.map((locale, i) => [locale.languageTag, locale.contentHash, verified[i].id,
         verified[i].providerTemplateId, verified[i].lastObservedContentHash])]) };
 }

@@ -32,7 +32,7 @@ type Wrapper = ReturnType<typeof commonWrapperFixture>;
 
 /** Mirrors the saved Admin v1 locale and frozen TEXT registration shapes.
  * The integration tests seed them directly: no Admin or live Meta call. */
-export function recoveryDefaultFixture(purpose: OnboardingTemplatePurpose, revision = "one", common?: Wrapper, image = false) {
+export function recoveryDefaultFixture(purpose: OnboardingTemplatePurpose, revision = "one", common?: Wrapper, image = false, bodyVariable = "shop.name") {
   const stage = purpose.startsWith("INITIAL_") ? "INITIAL" : "FOLLOW_UP";
   const offerType = purpose.slice(stage.length + 1);
   const id = definitionId(`${purpose}-${revision}`);
@@ -45,7 +45,7 @@ export function recoveryDefaultFixture(purpose: OnboardingTemplatePurpose, revis
       ...(common && saved ? { commonLayout: { schemaVersion: 1, definitionId: common.id,
         sourceHash: common.sourceHash, localeId: saved.id, languageTag, contentHash: saved.contentHash,
         prepared: saved.localeAst.prepared } } : {}),
-      header: [], body: [{ type: "text", value: "Your basket at " }, { type: "variable", name: "shop.name" },
+      header: [], body: [{ type: "text", value: "Your basket at " }, { type: "variable", name: bodyVariable },
         { type: "text", value: " is waiting. Reply to this message for help." }], footer: [], buttons: [] };
   };
   const sourceHash = templateEvidenceHash(authoringFor("en"));
@@ -55,7 +55,7 @@ export function recoveryDefaultFixture(purpose: OnboardingTemplatePurpose, revis
       components: [...(image ? [{ type: "HEADER", format: "IMAGE" }] : []), { type: "BODY", text: "Your basket at {{1}} is waiting. Reply to this message for help.", example: { body_text: [["Example shop"]] } }],
       parameterBindings: { ...(image ? { schemaVersion: 1, headerMediaRole: "LOGO" } : {}),
         ...(offerType === "NO_OFFER" ? {} : { promotionTarget: "CHECKOUT" }),
-        header: [], body: [{ position: 1, variable: "shop.name" }], buttons: [] } };
+        header: [], body: [{ position: 1, variable: bodyVariable }], buttons: [] } };
     const contentHash = templateEvidenceHash(prepared);
     const localeId = `${id}-${languageTag}`;
     return { id: localeId, definitionId: id, languageTag, providerLanguageCode: code(languageTag),

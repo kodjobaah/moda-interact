@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
+import { providerComponentsHash } from "../../app/services/recoveries/recovery-template-provider-hash.server";
 import { validFollowUpVariant, WABA } from "../fixtures/arch047-shopify-follow-up";
 vi.mock("../../app/db.server", () => ({ default: {} }));
 const { eligibleFollowUpChoices, readCurrentFollowUpTemplates } =
@@ -17,6 +18,21 @@ function fixture(rows: unknown[] = [example()], shop = { status: "ACTIVE", platf
     }]) } } as unknown as PrismaClient;
   return { db, ...db };
 }
+
+const imageExample = () => {
+  const row = example();
+  row.id = "variant-image";
+  row.providerTemplateName = "image_reminder";
+  row.providerTemplateId = "meta-image-template";
+  row.metaRegistrationId = "registration-image";
+  row.metaRegistration.id = row.metaRegistrationId;
+  row.metaRegistration.providerTemplateName = row.providerTemplateName;
+  row.metaRegistration.providerTemplateId = row.providerTemplateId;
+  row.metaRegistration.locale.definition.providerTemplateName = row.providerTemplateName;
+  row.metaRegistration.componentsSnapshot.unshift({ type: "HEADER", format: "IMAGE" } as never);
+  row.metaRegistration.lastObservedContentHash = providerComponentsHash(row.metaRegistration.componentsSnapshot);
+  return row;
+};
 
 const updated = (mutate: (row: ReturnType<typeof example>) => void) => {
   const value = example(); mutate(value); return value;
@@ -90,6 +106,28 @@ describe("ARCH-047 Shopify current, published follow-up catalogue", () => {
     const duplicate = updated((r) => { r.id = "new-variant"; r.metaRegistrationId = null as never; });
     expect(eligible(example(), duplicate)).toEqual([]);
   });
+  it("allows a TEXT and IMAGE template for the same language, with explicit TEXT choice first", () => {
+    expect(eligible(imageExample(), example())).toEqual([
+      expect.objectContaining({ id: "variant-1" }), expect.objectContaining({ id: "variant-image" }),
+    ]);
+    const image = imageExample(); image.metaRegistration.providerStatus = "REJECTED";
+    expect(eligible(image, example())).toEqual([expect.objectContaining({ id: "variant-1" })]);
+    expect(eligible(imageExample(), imageExample(), example())).toEqual([expect.objectContaining({ id: "variant-1" })]);
+    expect(eligible(example(), example())).toEqual([]);
+  });
+
+  it("requires independent publication targets for each format", async () => {
+    const { db } = fixture([imageExample(), example()]);
+    expect(await readCurrentFollowUpTemplates("shop-1", "en", db, async () => WABA))
+      .toEqual([expect.objectContaining({ id: "variant-1" })]);
+    (db.whatsAppTemplatePublicationTarget.findMany as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { newVariantId: "variant-1", metaRegistrationId: "registration-1", languageTag: "en" },
+      { newVariantId: "variant-image", metaRegistrationId: "registration-image", languageTag: "en" },
+    ]);
+    expect(await readCurrentFollowUpTemplates("shop-1", "en", db, async () => WABA))
+      .toEqual([expect.objectContaining({ id: "variant-1" }), expect.objectContaining({ id: "variant-image" })]);
+  });
+
   it("never treats a configured initial offer as verified checkout-specific savings", () => {
     for (const offer of ["CODE_OFFER", "AUTOMATIC_OFFER"]) {
       const row = updated((r) => {

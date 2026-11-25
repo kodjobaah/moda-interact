@@ -3,6 +3,7 @@ import { canonicaliseLanguageTag } from "@modainteract/moda-interact-shared/inte
 import prisma from "../../db.server";
 import { trustedRecoverySenderWaba } from "./recovery-follow-up-sender.server";
 import { providerComponentsHash } from "./recovery-template-provider-hash.server";
+import { RECOVERY_TEMPLATE_FORMATS, recoveryTemplateFormat } from "./recovery-template-format.server";
 
 const FOLLOW_UP_PURPOSES = ["FOLLOW_UP_NO_OFFER", "FOLLOW_UP_CODE_OFFER", "FOLLOW_UP_AUTOMATIC_OFFER"] as const;
 const NO_OFFER = "FOLLOW_UP_NO_OFFER";
@@ -113,12 +114,18 @@ export function eligibleFollowUpChoices(rows: readonly CatalogueVariant[], input
   for (const language of languages) {
     const matches = rows.filter((row) => row.purpose === NO_OFFER && canonicalLanguage(row.languageTag) === language);
     if (!matches.length) continue;
-    // More than one candidate in the same purpose/language is not a choice.
-    // Do not fall through to a different language after encountering ambiguity.
-    if (matches.length !== 1 || !isCurrentModaPublication(matches[0], input.wabaId)) return [];
-    const variant = matches[0];
-    return [{ id: variant.id, name: variant.providerTemplateName, language,
-      purpose: NO_OFFER, providerLanguageCode: variant.providerLanguageCode }];
+    // TEXT and IMAGE may coexist. Unlinked/malformed rows have no trustworthy
+    // slot. A known but unusable format must not hide the other valid format.
+    if (matches.some(row => !recoveryTemplateFormat(row.metaRegistration?.componentsSnapshot))) return [];
+    const choices: FollowUpTemplateChoice[] = [];
+    for (const format of RECOVERY_TEMPLATE_FORMATS) {
+      const candidates = matches.filter(row => recoveryTemplateFormat(row.metaRegistration?.componentsSnapshot) === format);
+      if (candidates.length !== 1) continue;
+      const variant = candidates[0];
+      if (isCurrentModaPublication(variant, input.wabaId)) choices.push({ id: variant.id, name: variant.providerTemplateName, language,
+        purpose: NO_OFFER, providerLanguageCode: variant.providerLanguageCode });
+    }
+    return choices;
   }
   return [];
 }
@@ -152,14 +159,15 @@ export async function readCurrentFollowUpTemplates(
   // require durable evidence of this shop/language/variant's successful
   // Admin publication, not an adopted or hand-inserted catalogue record.
   const targets = await db.whatsAppTemplatePublicationTarget.findMany({
-    where: { shopId, status: "SUCCEEDED", newVariantId: selected[0].id },
+    where: { shopId, status: "SUCCEEDED", newVariantId: { in: selected.map(choice => choice.id) } },
     select: { newVariantId: true, metaRegistrationId: true, languageTag: true },
-    take: 2,
+    take: 201,
   });
-  const matching = rows.find((row) => row.id === selected[0].id);
-  if (!matching || !targets.some((target) =>
-    target.newVariantId === selected[0].id &&
-    target.metaRegistrationId === matching.metaRegistrationId &&
-    canonicalLanguage(target.languageTag) === selected[0].language)) return [];
-  return selected;
+  if (targets.length > 200) return [];
+  return selected.filter(choice => {
+    const matching = rows.find(row => row.id === choice.id);
+    return matching && targets.some(target => target.newVariantId === choice.id &&
+      target.metaRegistrationId === matching.metaRegistrationId &&
+      canonicalLanguage(target.languageTag) === choice.language);
+  });
 }
