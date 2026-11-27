@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import type { PrismaClient } from "@prisma/client";
 import prisma from "../../db.server";
 import { shopifyPeriodUsageWhere } from "./period-scope";
+import { readUsageSources } from "./sources.server";
+export { readUsageSources, type SourceRecovery } from "./sources.server";
 
 type UsageHistoryDatabase = Pick<PrismaClient, "billingPeriod" | "usageEvent" | "$queryRaw">;
 const db: UsageHistoryDatabase = prisma;
@@ -65,66 +67,6 @@ function encode(
       direction,
     }),
   ).toString("base64url");
-}
-export type SourceRecovery = {
-  recoveryId: string;
-  detectedAt: string;
-  customerName: string | null;
-};
-/** Three indexed source-ID branches; no history hydration or message-body projection. */
-export async function readUsageSources(
-  shopId: string,
-  ids: string[],
-  database: Pick<UsageHistoryDatabase, "$queryRaw"> = db,
-): Promise<Map<string, SourceRecovery>> {
-  if (!ids.length) return new Map();
-  if (ids.length > 100) throw new Error("Usage page exceeds source limit");
-  const sourceIds = Prisma.join([...new Set(ids)]);
-  const rows = await database.$queryRaw<
-    Array<{
-      sourceId: string;
-      recoveryId: string;
-      detectedAt: Date;
-      firstName: string | null;
-      lastName: string | null;
-      email: string | null;
-    }>
-  >(Prisma.sql`
-    WITH sources AS (
-      SELECT r."id" AS "sourceId", r."id" AS "recoveryId", r."detectedAt", r."customerId"
-      FROM commerce."CheckoutRecovery" r WHERE r."shopId" = ${shopId} AND r."id" IN (${sourceIds})
-      UNION ALL
-      SELECT c."id", r."id", r."detectedAt", r."customerId"
-      FROM whatsapp."Conversation" c JOIN commerce."CheckoutRecovery" r ON r."id" = c."checkoutRecoveryId" AND r."shopId" = ${shopId}
-      WHERE c."id" IN (${sourceIds}) AND (c."shopId" IS NULL OR c."shopId" = ${shopId})
-      UNION ALL
-      SELECT m."id", r."id", r."detectedAt", r."customerId"
-      FROM whatsapp."ConversationMessage" m JOIN whatsapp."Conversation" c ON c."id" = m."conversationId"
-      JOIN commerce."CheckoutRecovery" r ON r."id" = c."checkoutRecoveryId" AND r."shopId" = ${shopId}
-      WHERE m."id" IN (${sourceIds}) AND (c."shopId" IS NULL OR c."shopId" = ${shopId})
-    )
-    SELECT s."sourceId", s."recoveryId", s."detectedAt", c."firstName", c."lastName", c."email"
-    FROM sources s LEFT JOIN commerce."Customer" c ON c."id" = s."customerId" AND c."shopId" = ${shopId}
-    LIMIT 300`);
-  const grouped = new Map<string, typeof rows>();
-  for (const row of rows)
-    grouped.set(row.sourceId, [...(grouped.get(row.sourceId) ?? []), row]);
-  const result = new Map<string, SourceRecovery>();
-  for (const [id, matches] of grouped) {
-    if (new Set(matches.map((row) => row.recoveryId)).size !== 1) continue;
-    const row = matches[0];
-    result.set(id, {
-      recoveryId: row.recoveryId,
-      detectedAt: row.detectedAt.toISOString(),
-      customerName:
-        [row.firstName?.trim(), row.lastName?.trim()]
-          .filter(Boolean)
-          .join(" ") ||
-        row.email ||
-        null,
-    });
-  }
-  return result;
 }
 export async function readUsageHistory(
   shopId: string,
@@ -221,8 +163,6 @@ export async function readUsageHistory(
             metric: true,
             quantity: true,
             idempotencyKey: true,
-            sourceType: true,
-            sourceId: true,
             occurredAt: true,
           },
           orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
@@ -234,7 +174,7 @@ export async function readUsageHistory(
     : [[], { _count: { _all: 0 }, _sum: { quantity: null } }];
   const sources = await readUsageSources(
     shopId,
-    events.flatMap((event) => (event.sourceId ? [event.sourceId] : [])),
+    events.map((event) => event.id),
     database,
   );
   return {
@@ -248,9 +188,7 @@ export async function readUsageHistory(
       quantity: Number(event.quantity),
       idempotencyKey: event.idempotencyKey,
       occurredAt: event.occurredAt.toISOString(),
-      sourceRecovery: event.sourceId
-        ? (sources.get(event.sourceId) ?? null)
-        : null,
+      sourceRecovery: sources.get(event.id) ?? null,
     })),
     usagePagination: {
       page,

@@ -160,7 +160,7 @@ describe("usage route and bounded readers", () => {
     expect(data.history?.usageEvents[0].quantity).toBe(2);
     expect(mocks.recoveries).not.toHaveBeenCalled();
     expect(mocks.periods.mock.calls[0][0]).not.toHaveProperty("include");
-    expect(mocks.raw).not.toHaveBeenCalled();
+    expect(mocks.raw).toHaveBeenCalledOnce();
   });
   it("preserves signed debit and correction rows without deriving totals from physical outreach or page size", async () => {
     mocks.events.mockResolvedValue([
@@ -174,7 +174,7 @@ describe("usage route and bounded readers", () => {
     ]);
     expect(data.usagePagination).toMatchObject({ total: 3, totalQuantity: 1 });
     expect(mocks.events.mock.calls[0][0].where).toEqual(mocks.aggregate.mock.calls[0][0].where);
-    expect(mocks.raw).not.toHaveBeenCalled();
+    expect(mocks.raw).toHaveBeenCalledOnce();
   });
   it.each(["missing", "foreign", "deleted", "", "bad/id"])(
     "never substitutes an explicit unavailable period %s",
@@ -283,13 +283,14 @@ describe("usage route and bounded readers", () => {
       expect.objectContaining({ take: 10, skip: 0 }),
     );
   });
-  it("resolves only current-page recovery/conversation/message IDs in one tenant-constrained batch", async () => {
+  it("resolves current-page recovery/conversation/message and reservation links in one tenant-constrained batch", async () => {
     mocks.events.mockResolvedValue(
       ["recovery", "conversation", "message", "missing"].map(event),
     );
     mocks.raw.mockResolvedValue(
       ["recovery", "conversation", "message"].map((sourceId) => ({
-        sourceId,
+        eventId: `event-${sourceId}`,
+        logicalKey: null, logicalIdentity: null,
         recoveryId: "owned",
         detectedAt: period().periodStart,
         firstName: "Ada",
@@ -302,9 +303,13 @@ describe("usage route and bounded readers", () => {
     const sql = mocks.raw.mock.calls[0][0];
     expect(sql.strings.join("")).toContain("UNION ALL");
     expect(sql.strings.join("")).toContain('"shopId" IS NULL');
-    expect(sql.strings.join("")).toContain("LIMIT 300");
+    expect(sql.strings.join("")).toContain("LIMIT 401");
+    expect(sql.strings.join("")).toContain('"UsageReservation"');
+    expect(sql.strings.join("")).toContain('"correctionOfUsageEventId"');
+    expect(sql.strings.join("")).toContain('"RecoveryOutreachAttempt"');
     expect(sql.values).toContain("shop-1");
-    expect(sql.values).toContain("message");
+    expect(sql.values).toContain("event-message");
+    expect(sql.values).not.toContain("message");
     expect(sql.strings.join("")).not.toContain("content");
     expect(
       data.usageEvents
@@ -316,7 +321,8 @@ describe("usage route and bounded readers", () => {
   it("fails closed for ambiguous source IDs", async () => {
     mocks.raw.mockResolvedValue(
       ["a", "b"].map((recoveryId) => ({
-        sourceId: "collision",
+        eventId: "collision",
+        logicalKey: null, logicalIdentity: null,
         recoveryId,
         detectedAt: period().periodStart,
         firstName: null,
@@ -325,6 +331,48 @@ describe("usage route and bounded readers", () => {
       })),
     );
     expect((await readUsageSources("shop-1", ["collision"])).size).toBe(0);
+  });
+  it("resolves a correction through its own event ID even when its sourceId is null", async () => {
+    mocks.events.mockResolvedValue([{ ...event(null), id: "late-correction", quantity: -1,
+      correctionOfUsageEventId: "original-debit" }]);
+    mocks.raw.mockResolvedValue([{ eventId: "late-correction", recoveryId: "owned",
+      logicalKey: null, logicalIdentity: null,
+      detectedAt: period().periodStart, firstName: null, lastName: null, email: null }]);
+    const data = await readUsageHistory("shop-1", new URLSearchParams());
+    expect(data.usageEvents[0].sourceRecovery?.recoveryId).toBe("owned");
+    expect(mocks.raw).toHaveBeenCalledOnce();
+    const sql = mocks.raw.mock.calls[0][0];
+    expect(sql.values).toContain("late-correction");
+    expect(sql.values).not.toContain("original-debit");
+  });
+  it("accepts a canonical retry reservation link and refuses a noncanonical candidate", async () => {
+    const common = { recoveryId: "owned", detectedAt: period().periodStart,
+      firstName: null, lastName: null, email: null, logicalIdentity: "recovery-outreach:retry_intent" };
+    mocks.raw.mockResolvedValue([
+      { ...common, eventId: "valid", logicalKey: "recovery:shop-1:recovery-outreach:retry_intent" },
+      { ...common, eventId: "invalid", logicalKey: "recovery:other:recovery-outreach:retry_intent" },
+    ]);
+    const links = await readUsageSources("shop-1", ["valid", "invalid"]);
+    expect(links.get("valid")?.recoveryId).toBe("owned");
+    expect(links.has("invalid")).toBe(false);
+  });
+  it("does not prefer a reservation link over a contradictory direct recovery link", async () => {
+    const common = { eventId: "retry-debit", detectedAt: period().periodStart,
+      firstName: null, lastName: null, email: null };
+    mocks.raw.mockResolvedValue([
+      { ...common, recoveryId: "canonical", logicalKey: "recovery:shop-1:recovery-outreach:retry_intent",
+        logicalIdentity: "recovery-outreach:retry_intent" },
+      { ...common, recoveryId: "different", logicalKey: null, logicalIdentity: null },
+    ]);
+    expect((await readUsageSources("shop-1", ["retry-debit"])).size).toBe(0);
+  });
+  it("rejects an oversized source page or inconsistent result instead of returning partial links", async () => {
+    await expect(readUsageSources("shop-1", Array.from({ length: 101 }, (_, i) => `event-${i}`)))
+      .rejects.toThrow("Usage page exceeds source limit");
+    expect(mocks.raw).not.toHaveBeenCalled();
+    mocks.raw.mockResolvedValue(Array.from({ length: 401 }, () => ({ eventId: "overflow" })));
+    await expect(readUsageSources("shop-1", ["overflow"]))
+      .rejects.toThrow("Usage source result exceeds page limit");
   });
   it("provides a safe error state while retaining trusted embed context", async () => {
     mocks.period.mockRejectedValue(new Error("private database failure"));

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { startBillingPostgresFixture, type BillingPostgresFixture } from "../helpers/billing-postgres";
 
 vi.mock("../../app/db.server", () => ({ default: {} }));
-import { readUsageHistory } from "../../app/services/usage/history.server";
+import { readUsageHistory, readUsageSources } from "../../app/services/usage/history.server";
 import { readRecoveryCohortSummary } from "../../app/services/recoveries/recovery-readers.server";
 import { normalizeRecoveryQuery } from "../../app/services/recoveries/recovery-query.server";
 
@@ -48,10 +48,31 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("Shopify retry 
     const negative = await add("late-correction", { quantity: -1, correctionOfUsageEventId: failed.id,
       sourceType: "RECOVERY_UNDELIVERABLE_COMPENSATION", occurredAt: afterClose });
     const retry = await add("retry-purchased", { sourceType: "PURCHASED_RECOVERY_CREDITS", occurredAt: afterClose });
-    const promotion = await add("old-promotion", { sourceType: "PROMOTIONAL_RECOVERY_CREDITS", occurredAt: october });
+    // The paid writer uses a billing-period-prefixed committed reservation key.
+    // A retry-linked or legacy debit must resolve via that reservation rather
+    // than interpreting its sourceId as a CheckoutRecovery primary key.
+    const recovery = await db.checkoutRecovery.create({ data: {
+      shopId: shop.id, checkoutToken: `ledger-link-${suffix}`, lastExternalActivityAt: beforeClose,
+    } });
+    const promotion = await add("old-promotion", { sourceType: "PROMOTIONAL_RECOVERY_CREDITS", occurredAt: october,
+      sourceId: recovery.id });
     const included = await add("old-included", { sourceType: "PAID_RECOVERY_CONVERSATION", billingPeriodId: old.id });
+    const unrelated = await db.checkoutRecovery.create({ data: {
+      shopId: shop.id, checkoutToken: `ledger-unrelated-${suffix}`, lastExternalActivityAt: beforeClose,
+    } });
     const includedCorrection = await add("late-included-correction", { quantity: -1, correctionOfUsageEventId: included.id,
-      billingPeriodId: old.id, sourceType: "RECOVERY_UNDELIVERABLE_COMPENSATION", occurredAt: afterClose });
+      billingPeriodId: old.id, sourceType: "RECOVERY_UNDELIVERABLE_COMPENSATION", occurredAt: afterClose,
+      sourceId: unrelated.id });
+    const paidCounter = await db.billingPeriodEntitlementCounter.create({ data: {
+      shopId: shop.id, billingPeriodId: old.id, counter: "INCLUDED_RECOVERY_CREDITS",
+      grantedQuantity: 10, committedQuantity: 1,
+    } });
+    const paidKey = createRecoveryIdempotencyKey(shop.id, recovery.id);
+    await db.usageReservation.create({ data: {
+      shopId: shop.id, billingPeriodEntitlementCounterId: paidCounter.id, quantity: 1,
+      status: "COMMITTED", sourceKey: `paid-included:${old.id}:${paidKey}`,
+      committedUsageEventId: included.id,
+    } });
     const legacyIncluded = await add("old-legacy-included", { sourceType: "PAID_RECOVERY_CONVERSATION", billingPeriodId: old.id });
     const legacyCorrection = await add("late-legacy-correction", { quantity: -1, correctionOfUsageEventId: legacyIncluded.id,
       sourceType: "RECOVERY_UNDELIVERABLE_COMPENSATION", occurredAt: afterClose });
@@ -72,6 +93,12 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("Shopify retry 
       failed.id, negative.id, promotion.id, included.id, includedCorrection.id, legacyIncluded.id, legacyCorrection.id,
     ]));
     expect(past.usageEvents.filter(row => row.quantity < 0).map(row => row.id).sort()).toEqual([negative.id, includedCorrection.id, legacyCorrection.id].sort());
+    for (const id of [included.id, includedCorrection.id, promotion.id]) {
+      expect(past.usageEvents.find(row => row.id === id)?.sourceRecovery?.recoveryId).toBe(recovery.id);
+    }
+    expect(past.usageEvents.find(row => row.id === failed.id)?.sourceRecovery).toBeNull();
+    expect((await readUsageSources(foreign.id, [included.id, includedCorrection.id], db)).size).toBe(0);
+    expect((await readUsageSources(shop.id, [foreignCorrection.id, chainedCorrection.id, foreignProvider.id], db)).size).toBe(0);
     const present = await readUsageHistory(shop.id, new URLSearchParams(), db);
     expect(present.usagePagination).toMatchObject({ billId: current.id, total: 2, totalQuantity: 2 });
     expect(new Set(present.usageEvents.map(row => row.id))).toEqual(new Set([retry.id, nextBoundary.id]));
@@ -155,7 +182,11 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("Shopify retry 
       id: retryId, checkoutRecoveryId: recovery.id, recipient: original.recipient, sequence: 3, trigger: "INITIAL",
       status: "WAITING_FOR_RESPONSE", configuredOfferMode: "NONE", sentAt: retryAt, outboundMessageId: retryMessage.id,
     } });
-    await recordDebit(retryId, retryAt);
+    const retryReservation = await recordDebit(retryId, retryAt);
+    const ids = [reservation.committedUsageEventId!, reservation.compensationUsageEventId!, retryReservation.committedUsageEventId!];
+    const links = await readUsageSources(shop.id, ids, db);
+    expect(links.size).toBe(3);
+    for (const id of ids) expect(links.get(id)?.recoveryId).toBe(recovery.id);
     expect(await db.recoveryOutreachAttempt.count({ where: { checkoutRecoveryId: recovery.id } })).toBe(2);
     const after = await readRecoveryCohortSummary(shop.id, query, db);
     expect(after).toEqual(before);
