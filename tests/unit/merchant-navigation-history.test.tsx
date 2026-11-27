@@ -86,3 +86,18 @@ describe("merchant navigation and history links", () => {
     expect(html).toContain("billId=period-1");
   });
 });
+
+it("renders the all-time usage ledger and preserves its source filter through paging", () => {
+  const data = usageFixture();
+  Object.assign(data.history!, { usageView: "all", chargeSource: "PROMOTIONAL_CREDITS",
+    periodPage: { items: [], previousCursor: null, nextCursor: null }, selection: {} });
+  Object.assign(data.history!.usagePagination, { billId: null, periodStart: null, periodEnd: null, total: 25 });
+  data.history!.usageEvents[0].chargedAgainst = "PROMOTIONAL_CREDITS";
+  const html = renderUsage(data).replaceAll("&amp;", "&");
+  expect(html).toContain("Lifetime usage");
+  expect(html).toContain("Charged against");
+  expect(html).toContain("Promotional credits");
+  expect(html).toContain("bill=all");
+  expect(html).toContain("chargeSource=PROMOTIONAL_CREDITS");
+  expect(html).not.toContain("billId=period-1");
+});

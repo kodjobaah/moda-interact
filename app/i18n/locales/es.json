@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "La aplicación integrada está habilitada. Prueba el carrito lateral para confirmar que aparece la casilla.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "El consentimiento del carrito lateral aún no se ha verificado. Actívalo en el editor del tema y guarda.",
   "recoverySettings.whatsappConsent.drawerEnable": "Activar consentimiento en el carrito lateral",
-  "recoverySettings.whatsappConsent.drawerManage": "Gestionar consentimiento del carrito lateral"
+  "recoverySettings.whatsappConsent.drawerManage": "Gestionar consentimiento del carrito lateral",
+  "usageHistory.allTime": "Uso de por vida",
+  "usageHistory.chargedAgainst": "Descontado de",
+  "usageHistory.sourceFree": "Créditos gratuitos de por vida",
+  "usageHistory.sourceIncluded": "Asignación incluida en el plan",
+  "usageHistory.sourcePurchased": "Recarga comprada",
+  "usageHistory.sourcePromotional": "Créditos promocionales",
+  "usageHistory.sourceUnattributed": "Sin atribución",
+  "usageHistory.allSources": "Todas las fuentes de créditos"
 }

@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "A aplicação incorporada está ativa. Teste o carrinho lateral para confirmar a caixa de seleção.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "O consentimento no carrinho lateral não foi verificado. Ative-o no editor do tema e guarde.",
   "recoverySettings.whatsappConsent.drawerEnable": "Ativar consentimento no carrinho lateral",
-  "recoverySettings.whatsappConsent.drawerManage": "Gerir consentimento no carrinho lateral"
+  "recoverySettings.whatsappConsent.drawerManage": "Gerir consentimento no carrinho lateral",
+  "usageHistory.allTime": "Utilização vitalícia",
+  "usageHistory.chargedAgainst": "Debitado de",
+  "usageHistory.sourceFree": "Créditos gratuitos vitalícios",
+  "usageHistory.sourceIncluded": "Plafond incluído no plano",
+  "usageHistory.sourcePurchased": "Carregamento adquirido",
+  "usageHistory.sourcePromotional": "Créditos promocionais",
+  "usageHistory.sourceUnattributed": "Não atribuído",
+  "usageHistory.allSources": "Todas as fontes de crédito"
 }

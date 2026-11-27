@@ -105,6 +105,70 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("Shopify retry 
     for (const excluded of [unlinkedFree, unrelatedMetric, foreignProvider, foreignTenant, foreignCorrection, chainedCorrection]) {
       expect([...past.usageEvents, ...present.usageEvents].some(row => row.id === excluded.id)).toBe(false);
     }
+    // Real purchase/award allocations for unified source filtering, after
+    // the legacy-history checks intentionally exercising incomplete evidence.
+    const purchasedCounter = await db.shopEntitlementCounter.create({ data: {
+      shopId: shop.id, counter: "PURCHASED_RECOVERY_CREDITS", grantedQuantity: 3, committedQuantity: 1,
+    } });
+    const pack = await add("purchase-pack", { metric: "RECOVERY_CREDIT_PACK_PURCHASE",
+      billingPeriodId: old.id, sourceType: "RECOVERY_CREDIT_PURCHASE", shopifyReportState: "REPORTED" });
+    const purchase = await db.recoveryCreditPurchase.create({ data: {
+      id: randomUUID(), shopId: shop.id, planId: plan.id, billingPeriodId: old.id,
+      provider: "SHOPIFY", status: "ACTIVE", creditsGranted: 3, currentAmount: 2,
+      shopifyPlanHandleSnapshot: plan.shopifyPlanHandle, shopifyEventHandleSnapshot: `pack-${suffix}`,
+      providerSubscriptionIdSnapshot: `subscription-${suffix}`, usageEventId: pack.id,
+      providerUsageQuantityBeforeSnapshot: 0, providerUsageQuantityAfterSnapshot: 1,
+      providerUsageCostBeforeSnapshot: "0.00", providerUsageCostAfterSnapshot: "5.00",
+      providerUsageCostCurrencyBeforeSnapshot: "USD", providerUsageCostCurrencyAfterSnapshot: "USD",
+      providerValuationConfirmedAt: beforeClose, providerPriceSnapshot: { kind: "FIXED", amount: "5.00", currency: "USD" },
+      providerPurchaseAmount: "5.00", providerPurchaseCurrency: "USD", activatedAt: beforeClose,
+    } });
+    await db.usageReservation.create({ data: {
+      shopId: shop.id, counterId: purchasedCounter.id, purchasedCreditPurchaseId: purchase.id,
+      sourceKey: `ledger-purchase-original-${suffix}`, quantity: 1, status: "COMMITTED",
+      committedUsageEventId: failed.id, compensationUsageEventId: negative.id,
+      compensationReason: "WHATSAPP_DELIVERY_FAILED", compensationDisposition: "RESTORED_SPENDABLE", compensatedAt: afterClose,
+    } });
+    await db.usageReservation.create({ data: {
+      shopId: shop.id, counterId: purchasedCounter.id, purchasedCreditPurchaseId: purchase.id,
+      sourceKey: `ledger-purchase-retry-${suffix}`, quantity: 1, status: "COMMITTED", committedUsageEventId: retry.id,
+    } });
+    const admin = await db.platformAdmin.create({ data: { email: `ledger-${suffix}@example.test` } });
+    const campaign = await db.promotionCampaign.create({ data: {
+      name: `Ledger ${suffix}`, scope: "GLOBAL", quantity: 2, startsAt: october,
+      expiresAt: november, status: "ACTIVE", createdByPlatformAdminId: admin.id,
+    } });
+    const grant = await db.promotionalCreditGrant.create({ data: {
+      shopId: shop.id, campaignId: campaign.id, quantity: 2, committedQuantity: 1,
+    } });
+    await db.usageReservation.create({ data: {
+      shopId: shop.id, promotionalCreditGrantId: grant.id, quantity: 1, status: "COMMITTED",
+      sourceKey: `ledger-promotion-${suffix}`, committedUsageEventId: promotion.id,
+    } });
+
+    const all = await readUsageHistory(shop.id, new URLSearchParams("bill=all&pageSize=25"), db);
+    expect(all.usageView).toBe("all");
+    expect(all.usagePagination).toMatchObject({ billId: null, total: 10, totalQuantity: 4 });
+    expect(all.usageEvents.find(row => row.id === included.id)?.chargedAgainst).toBe("INCLUDED_PLAN_ALLOWANCE");
+    expect(all.usageEvents.find(row => row.id === includedCorrection.id)?.chargedAgainst).toBe("INCLUDED_PLAN_ALLOWANCE");
+    expect(all.usageEvents.find(row => row.id === failed.id)?.chargedAgainst).toBe("PURCHASED_TOP_UP");
+    expect(all.usageEvents.find(row => row.id === unlinkedFree.id)?.chargedAgainst).toBe("UNATTRIBUTED");
+    for (const excluded of [pack, unrelatedMetric, foreignProvider, foreignTenant, foreignCorrection, chainedCorrection])
+      expect(all.usageEvents.some(row => row.id === excluded.id)).toBe(false);
+    const onlyIncluded = await readUsageHistory(shop.id, new URLSearchParams(
+      "bill=all&chargeSource=INCLUDED_PLAN_ALLOWANCE"), db);
+    expect(onlyIncluded.usagePagination).toMatchObject({ total: 2, totalQuantity: 0 });
+    expect(new Set(onlyIncluded.usageEvents.map(row => row.id))).toEqual(new Set([included.id, includedCorrection.id]));
+    const purchased = await readUsageHistory(shop.id, new URLSearchParams("bill=all&chargeSource=PURCHASED_TOP_UP"), db);
+    expect(purchased.usagePagination).toMatchObject({ total: 3, totalQuantity: 1 });
+    expect(new Set(purchased.usageEvents.map(row => row.id))).toEqual(new Set([failed.id, negative.id, retry.id]));
+    const restoredPeriod = await readUsageHistory(shop.id, new URLSearchParams(
+      `bill=past&billId=${old.id}&chargeSource=PURCHASED_TOP_UP`), db);
+    expect(restoredPeriod.usagePagination).toMatchObject({ total: 2, totalQuantity: 0 });
+    const promotional = await readUsageHistory(shop.id, new URLSearchParams("bill=all&chargeSource=PROMOTIONAL_CREDITS"), db);
+    expect(promotional.usagePagination).toMatchObject({ total: 1, totalQuantity: 1 });
+    expect(promotional.usageEvents[0]?.id).toBe(promotion.id);
+
     const missing = await readUsageHistory(foreign.id, new URLSearchParams({ billId: old.id }), db);
     expect(missing.state).toBe("unavailable");
     expect(missing.usageEvents).toEqual([]);
@@ -184,6 +248,10 @@ describe.skipIf(process.env.MODA_DISPOSABLE_INTEGRATION !== "1")("Shopify retry 
     } });
     const retryReservation = await recordDebit(retryId, retryAt);
     const ids = [reservation.committedUsageEventId!, reservation.compensationUsageEventId!, retryReservation.committedUsageEventId!];
+    const all = await readUsageHistory(shop.id, new URLSearchParams("bill=all&chargeSource=LIFETIME_FREE_CREDITS"), db);
+    expect(all.usagePagination).toMatchObject({ total: 3, totalQuantity: 1 });
+    expect(new Set(all.usageEvents.map(row => row.id))).toEqual(new Set(ids));
+    expect(all.usageEvents.every(row => row.chargedAgainst === "LIFETIME_FREE_CREDITS")).toBe(true);
     const links = await readUsageSources(shop.id, ids, db);
     expect(links.size).toBe(3);
     for (const id of ids) expect(links.get(id)?.recoveryId).toBe(recovery.id);

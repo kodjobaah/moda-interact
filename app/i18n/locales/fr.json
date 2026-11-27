@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Le module intégré est activé. Testez le panier latéral pour confirmer la présence de la case à cocher.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Le consentement dans le panier latéral n’est pas vérifié. Activez-le dans l’éditeur de thème et enregistrez.",
   "recoverySettings.whatsappConsent.drawerEnable": "Activer le consentement dans le panier latéral",
-  "recoverySettings.whatsappConsent.drawerManage": "Gérer le consentement dans le panier latéral"
+  "recoverySettings.whatsappConsent.drawerManage": "Gérer le consentement dans le panier latéral",
+  "usageHistory.allTime": "Utilisation à vie",
+  "usageHistory.chargedAgainst": "Décompté de",
+  "usageHistory.sourceFree": "Crédits gratuits à vie",
+  "usageHistory.sourceIncluded": "Quota inclus dans l’abonnement",
+  "usageHistory.sourcePurchased": "Recharge achetée",
+  "usageHistory.sourcePromotional": "Crédits promotionnels",
+  "usageHistory.sourceUnattributed": "Non attribué",
+  "usageHistory.allSources": "Toutes les sources de crédits"
 }

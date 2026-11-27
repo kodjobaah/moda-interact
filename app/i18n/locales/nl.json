@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "De app-insluiting is ingeschakeld. Test de winkelwagenlade om het selectievakje te controleren.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Toestemming in de winkelwagenlade is niet geverifieerd. Schakel in via de thema-editor en sla op.",
   "recoverySettings.whatsappConsent.drawerEnable": "Toestemming in lade inschakelen",
-  "recoverySettings.whatsappConsent.drawerManage": "Toestemming in lade beheren"
+  "recoverySettings.whatsappConsent.drawerManage": "Toestemming in lade beheren",
+  "usageHistory.allTime": "Levenslang gebruik",
+  "usageHistory.chargedAgainst": "Afgeschreven van",
+  "usageHistory.sourceFree": "Levenslange gratis credits",
+  "usageHistory.sourceIncluded": "Inbegrepen abonnementstegoed",
+  "usageHistory.sourcePurchased": "Aangekocht extra tegoed",
+  "usageHistory.sourcePromotional": "Promotiecredits",
+  "usageHistory.sourceUnattributed": "Niet toegewezen",
+  "usageHistory.allSources": "Alle creditbronnen"
 }

@@ -45,10 +45,14 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     );
   const merchantUi = merchantUiContext(shop, session);
   try {
+    const filters = new URLSearchParams(url.searchParams);
+    if (!filters.has("bill") && !filters.has("billId") && !filters.has("periodCursor"))
+      filters.set("bill", "all");
+    if (!filters.has("chargeSource")) filters.set("chargeSource", "ALL");
     return {
       merchantUi,
       embed,
-      history: await readUsageHistory(shop.id, url.searchParams),
+      history: await readUsageHistory(shop.id, filters),
     };
   } catch (error) {
     if (!(error instanceof UsageCursorError)) logBillingBoundaryFailure({ event: "shopify.usage.read_failed", operation: "read_usage_history", stage: "read_history", shopId: shop.id, error });

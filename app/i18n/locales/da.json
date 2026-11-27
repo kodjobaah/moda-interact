@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Appintegrationen er aktiveret. Test kurvskuffen for at bekræfte afkrydsningsfeltet.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Samtykke i kurvskuffen er ikke bekræftet. Aktivér det i temaeditoren, og gem.",
   "recoverySettings.whatsappConsent.drawerEnable": "Aktivér samtykke i kurvskuffen",
-  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i kurvskuffen"
+  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i kurvskuffen",
+  "usageHistory.allTime": "Samlet forbrug uden udløb",
+  "usageHistory.chargedAgainst": "Trukket fra",
+  "usageHistory.sourceFree": "Gratis kreditter uden udløb",
+  "usageHistory.sourceIncluded": "Inkluderet i abonnementet",
+  "usageHistory.sourcePurchased": "Købt ekstra kredit",
+  "usageHistory.sourcePromotional": "Kampagnekreditter",
+  "usageHistory.sourceUnattributed": "Ikke tilknyttet",
+  "usageHistory.allSources": "Alle kreditkilder"
 }

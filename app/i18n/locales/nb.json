@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Appintegrasjonen er aktivert. Test handlekurvskuffen for å bekrefte avkrysningsboksen.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Samtykke i handlekurvskuffen er ikke bekreftet. Aktiver i temaredigeringen og lagre.",
   "recoverySettings.whatsappConsent.drawerEnable": "Aktiver samtykke i handlekurvskuff",
-  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i handlekurvskuff"
+  "recoverySettings.whatsappConsent.drawerManage": "Administrer samtykke i handlekurvskuff",
+  "usageHistory.allTime": "Livstidsbruk",
+  "usageHistory.chargedAgainst": "Belastet",
+  "usageHistory.sourceFree": "Livsvarige gratiskreditter",
+  "usageHistory.sourceIncluded": "Inkludert kvote i abonnementet",
+  "usageHistory.sourcePurchased": "Kjøpt påfyll",
+  "usageHistory.sourcePromotional": "Kampanjekreditter",
+  "usageHistory.sourceUnattributed": "Ikke tilordnet",
+  "usageHistory.allSources": "Alle kredittkilder"
 }

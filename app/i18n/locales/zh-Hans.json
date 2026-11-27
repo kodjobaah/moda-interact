@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "应用嵌入已启用。请测试购物车抽屉，确认复选框可用。",
   "recoverySettings.whatsappConsent.drawerNotVerified": "尚未验证购物车抽屉同意。请在主题编辑器中启用并保存。",
   "recoverySettings.whatsappConsent.drawerEnable": "启用购物车抽屉同意",
-  "recoverySettings.whatsappConsent.drawerManage": "管理购物车抽屉同意"
+  "recoverySettings.whatsappConsent.drawerManage": "管理购物车抽屉同意",
+  "usageHistory.allTime": "终身用量",
+  "usageHistory.chargedAgainst": "扣费来源",
+  "usageHistory.sourceFree": "终身免费额度",
+  "usageHistory.sourceIncluded": "套餐内含额度",
+  "usageHistory.sourcePurchased": "购买的追加额度",
+  "usageHistory.sourcePromotional": "促销额度",
+  "usageHistory.sourceUnattributed": "未归属",
+  "usageHistory.allSources": "所有额度来源"
 }

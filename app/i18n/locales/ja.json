@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "アプリ埋め込みは有効です。カートドロワーでチェックボックスを確認してください。",
   "recoverySettings.whatsappConsent.drawerNotVerified": "カートドロワーの同意は未確認です。テーマエディターで有効にして保存してください。",
   "recoverySettings.whatsappConsent.drawerEnable": "カートドロワーの同意を有効化",
-  "recoverySettings.whatsappConsent.drawerManage": "カートドロワーの同意を管理"
+  "recoverySettings.whatsappConsent.drawerManage": "カートドロワーの同意を管理",
+  "usageHistory.allTime": "生涯利用状況",
+  "usageHistory.chargedAgainst": "請求先",
+  "usageHistory.sourceFree": "生涯無料クレジット",
+  "usageHistory.sourceIncluded": "プランに含まれる利用枠",
+  "usageHistory.sourcePurchased": "購入した追加クレジット",
+  "usageHistory.sourcePromotional": "プロモーションクレジット",
+  "usageHistory.sourceUnattributed": "未分類",
+  "usageHistory.allSources": "すべてのクレジットの種類"
 }

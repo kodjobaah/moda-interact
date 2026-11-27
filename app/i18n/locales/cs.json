@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Vložená aplikace je aktivní. Otestujte boční košík a ověřte zobrazení políčka.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Souhlas v bočním košíku nebyl ověřen. Zapněte jej v editoru motivu a uložte.",
   "recoverySettings.whatsappConsent.drawerEnable": "Zapnout souhlas v bočním košíku",
-  "recoverySettings.whatsappConsent.drawerManage": "Spravovat souhlas v bočním košíku"
+  "recoverySettings.whatsappConsent.drawerManage": "Spravovat souhlas v bočním košíku",
+  "usageHistory.allTime": "Celoživotní využití",
+  "usageHistory.chargedAgainst": "Účtováno z",
+  "usageHistory.sourceFree": "Doživotní kredity zdarma",
+  "usageHistory.sourceIncluded": "Kredity zahrnuté v tarifu",
+  "usageHistory.sourcePurchased": "Zakoupené dobití kreditů",
+  "usageHistory.sourcePromotional": "Propagační kredity",
+  "usageHistory.sourceUnattributed": "Bez přiřazeného zdroje",
+  "usageHistory.allSources": "Všechny zdroje kreditů"
 }

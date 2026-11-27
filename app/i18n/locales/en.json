@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "App Embed enabled. Test your cart drawer to confirm the checkbox is available.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Drawer consent has not been verified. Enable it in the theme editor and save.",
   "recoverySettings.whatsappConsent.drawerEnable": "Enable cart drawer consent",
-  "recoverySettings.whatsappConsent.drawerManage": "Manage cart drawer consent"
+  "recoverySettings.whatsappConsent.drawerManage": "Manage cart drawer consent",
+  "usageHistory.allTime": "Lifetime usage",
+  "usageHistory.chargedAgainst": "Charged against",
+  "usageHistory.sourceFree": "Lifetime Free credits",
+  "usageHistory.sourceIncluded": "Included plan allowance",
+  "usageHistory.sourcePurchased": "Purchased top-up",
+  "usageHistory.sourcePromotional": "Promotional credits",
+  "usageHistory.sourceUnattributed": "Unattributed",
+  "usageHistory.allSources": "All credit sources"
 }

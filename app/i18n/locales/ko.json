@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "앱 임베드가 활성화되었습니다. 장바구니 서랍에서 확인란을 테스트하세요.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "장바구니 서랍 동의가 아직 확인되지 않았습니다. 테마 편집기에서 활성화하고 저장하세요.",
   "recoverySettings.whatsappConsent.drawerEnable": "장바구니 서랍 동의 활성화",
-  "recoverySettings.whatsappConsent.drawerManage": "장바구니 서랍 동의 관리"
+  "recoverySettings.whatsappConsent.drawerManage": "장바구니 서랍 동의 관리",
+  "usageHistory.allTime": "평생 사용량",
+  "usageHistory.chargedAgainst": "차감된 항목",
+  "usageHistory.sourceFree": "평생 무료 크레딧",
+  "usageHistory.sourceIncluded": "요금제 포함 한도",
+  "usageHistory.sourcePurchased": "구매한 추가 크레딧",
+  "usageHistory.sourcePromotional": "프로모션 크레딧",
+  "usageHistory.sourceUnattributed": "출처 미확인",
+  "usageHistory.allSources": "모든 크레딧 출처"
 }

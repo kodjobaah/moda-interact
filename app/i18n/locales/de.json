@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Das App-Embed ist aktiviert. Testen Sie den Warenkorb-Drawer, um das Kontrollkästchen zu prüfen.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Die Einwilligung im Drawer ist nicht bestätigt. Aktivieren Sie das App-Embed im Theme-Editor und speichern Sie.",
   "recoverySettings.whatsappConsent.drawerEnable": "Einwilligung im Drawer aktivieren",
-  "recoverySettings.whatsappConsent.drawerManage": "Einwilligung im Drawer verwalten"
+  "recoverySettings.whatsappConsent.drawerManage": "Einwilligung im Drawer verwalten",
+  "usageHistory.allTime": "Nutzung ohne zeitliche Begrenzung",
+  "usageHistory.chargedAgainst": "Abgerechnet über",
+  "usageHistory.sourceFree": "Lebenslang kostenlose Guthaben",
+  "usageHistory.sourceIncluded": "Im Tarif enthaltenes Kontingent",
+  "usageHistory.sourcePurchased": "Zusätzlich gekauftes Guthaben",
+  "usageHistory.sourcePromotional": "Aktionsguthaben",
+  "usageHistory.sourceUnattributed": "Nicht zugeordnet",
+  "usageHistory.allSources": "Alle Guthabenquellen"
 }

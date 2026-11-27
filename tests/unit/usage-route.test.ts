@@ -83,6 +83,10 @@ beforeEach(() => {
   mocks.count.mockResolvedValue(0);
   mocks.aggregate.mockResolvedValue({ _count: { _all: 0 }, _sum: { quantity: null } });
   mocks.raw.mockResolvedValue([]);
+  // Unified reader has a single result row even for an empty page.
+  mocks.raw.mockImplementation(async (sql) => sql.strings.join("").includes("WITH classified")
+    ? [{ id: null, total: 0n, totalQuantity: 0 }] : []);
+
 });
 const request = (query = "") => ({
   request: new Request(`https://example.test/app/usage${query}`),
@@ -108,16 +112,17 @@ describe("usage route and bounded readers", () => {
       mocks.subscription.mockResolvedValue({ status });
       const data = await loader(request());
       expect(data.history?.state).toBe("ready");
-      expect(mocks.events).toHaveBeenCalled();
+      expect(data.history?.usageView).toBe("all");
+      expect(mocks.raw).toHaveBeenCalledOnce();
+      expect(mocks.period).not.toHaveBeenCalled();
     },
   );
   it("scopes selected-period quantities and bounds event projections without recovery hydration", async () => {
     mocks.events.mockResolvedValue([event(null)]);
     mocks.count.mockResolvedValue(31);
     mocks.aggregate.mockResolvedValue({ _count: { _all: 31 }, _sum: { quantity: 62 } });
-    const data = await loader(
-      request("?bill=past&billId=period-1&page=2&pageSize=25"),
-    );
+    const history = await readUsageHistory("shop-1",
+      new URLSearchParams("bill=past&billId=period-1&page=2&pageSize=25"));
     expect(mocks.period).toHaveBeenCalledWith({
       where: { shopId: "shop-1", id: "period-1" },
       select: expect.any(Object),
@@ -156,8 +161,8 @@ describe("usage route and bounded readers", () => {
       _count: { _all: true },
       _sum: { quantity: true },
     });
-    expect(data.history?.usagePagination.totalQuantity).toBe(62);
-    expect(data.history?.usageEvents[0].quantity).toBe(2);
+    expect(history.usagePagination.totalQuantity).toBe(62);
+    expect(history.usageEvents[0].quantity).toBe(2);
     expect(mocks.recoveries).not.toHaveBeenCalled();
     expect(mocks.periods.mock.calls[0][0]).not.toHaveProperty("include");
     expect(mocks.raw).toHaveBeenCalledOnce();
@@ -377,7 +382,7 @@ describe("usage route and bounded readers", () => {
   it("provides a safe error state while retaining trusted embed context", async () => {
     mocks.period.mockRejectedValue(new Error("private database failure"));
     const data = await loader(
-      request("?shop=attacker&host=aG9zdA==&embedded=1"),
+      request("?bill=current&shop=attacker&host=aG9zdA==&embedded=1"),
     );
     expect(data).toMatchObject({
       history: null,
@@ -397,8 +402,12 @@ describe("usage read diagnostic ownership", () => {
   it.each([["data", false], ["data", true], ["source", false], ["source", true]] as const)("retains the safe %s read fallback and original error, broken sink=%s", async (stage, broken) => {
     mocks.brokenSink = broken;
     const failure = Object.assign(new Error("usage original marker email=person@example.test", { cause: new Error("source cause https://files.example.test/path?signature=secret-sentinel") }), { code: "P2010" });
-    if (stage === "source") { mocks.events.mockResolvedValue([event("recovery-1")]); mocks.raw.mockRejectedValue(failure); }
-    else mocks.aggregate.mockRejectedValue(failure);
+    if (stage === "source") {
+      mocks.raw.mockResolvedValueOnce([{ id: "event-1", metric: "RECOVERY_CONVERSATION", quantity: 1,
+        occurredAt: period().periodStart, sourceId: null, correctionOfUsageEventId: null,
+        billingPeriodId: null, chargedAgainst: "LIFETIME_FREE_CREDITS", total: 1n, totalQuantity: 1 }]);
+      mocks.raw.mockRejectedValueOnce(failure);
+    } else mocks.raw.mockRejectedValueOnce(failure);
     const result = await loader(request());
     expect(result).toMatchObject({ history: null, error: "read" });
     expect(JSON.stringify(result)).not.toContain("usage original marker");
@@ -412,5 +421,38 @@ describe("usage read diagnostic ownership", () => {
     expect(await loader(request("?periodCursor=invalid"))).toMatchObject({ error: "cursor", history: null });
     expect(mocks.records).toHaveLength(0);
     expect(mocks.period).not.toHaveBeenCalled();
+  });
+});
+
+describe("unified usage history", () => {
+  it("defaults to one all-time ledger, and preserves signed corrections and exact funding", async () => {
+    const row = { metric: "RECOVERY_CONVERSATION", occurredAt: period().periodStart,
+      sourceId: null, correctionOfUsageEventId: null, billingPeriodId: null,
+      chargedAgainst: "PROMOTIONAL_CREDITS", total: 12n, totalQuantity: 3 };
+    mocks.raw.mockResolvedValueOnce([{ ...row, id: "credit", quantity: 1 },
+      { ...row, id: "restore", quantity: -1, correctionOfUsageEventId: "credit" }]).mockResolvedValueOnce([]);
+    const result = await loader(request("?chargeSource=PROMOTIONAL_CREDITS&page=2"));
+    expect(result.history).toMatchObject({ usageView: "all", chargeSource: "PROMOTIONAL_CREDITS",
+      usagePagination: { page: 2, billId: null, total: 12, totalQuantity: 3 } });
+    expect(result.history?.usageEvents.map(row => [row.quantity, row.chargedAgainst]))
+      .toEqual([[1, "PROMOTIONAL_CREDITS"], [-1, "PROMOTIONAL_CREDITS"]]);
+    expect(mocks.period).not.toHaveBeenCalled();
+    const sql = mocks.raw.mock.calls[0][0];
+    expect(sql.values).toContain("PROMOTIONAL_CREDITS");
+    expect(sql.values).toContain("SHOPIFY");
+    expect(sql.strings.join("")).toContain('SELECT * FROM classified');
+    expect(mocks.raw).toHaveBeenCalledTimes(2);
+  });
+  it("keeps current/past filters and refuses a mismatched all-time period or invalid source", async () => {
+    for (const query of ["?bill=all&billId=period-1", "?chargeSource=unknown",
+      "?chargeSource=ALL&chargeSource=PURCHASED_TOP_UP"]) {
+      expect(await loader(request(query))).toMatchObject({ history: null, error: "cursor" });
+    }
+    expect(mocks.raw).not.toHaveBeenCalled();
+    await loader(request("?bill=past&billId=period-1&chargeSource=INCLUDED_PLAN_ALLOWANCE"));
+    expect(mocks.period).toHaveBeenCalledWith({
+      where: { shopId: "shop-1", id: "period-1", status: "CLOSED" }, select: expect.any(Object),
+    });
+    expect(mocks.raw.mock.calls[0][0].values).toContain("period-1");
   });
 });

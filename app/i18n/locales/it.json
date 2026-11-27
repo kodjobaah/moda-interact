@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "L’app integrata è attiva. Verifica il carrello laterale per confermare che la casella sia presente.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Il consenso nel carrello laterale non è verificato. Attivalo nell’editor del tema e salva.",
   "recoverySettings.whatsappConsent.drawerEnable": "Attiva consenso nel carrello laterale",
-  "recoverySettings.whatsappConsent.drawerManage": "Gestisci consenso nel carrello laterale"
+  "recoverySettings.whatsappConsent.drawerManage": "Gestisci consenso nel carrello laterale",
+  "usageHistory.allTime": "Utilizzo a vita",
+  "usageHistory.chargedAgainst": "Addebitato su",
+  "usageHistory.sourceFree": "Crediti gratuiti a vita",
+  "usageHistory.sourceIncluded": "Quota inclusa nel piano",
+  "usageHistory.sourcePurchased": "Ricarica acquistata",
+  "usageHistory.sourcePromotional": "Crediti promozionali",
+  "usageHistory.sourceUnattributed": "Non attribuito",
+  "usageHistory.allSources": "Tutte le fonti di credito"
 }

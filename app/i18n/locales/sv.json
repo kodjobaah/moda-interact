@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Appinbäddningen är aktiverad. Testa varukorgslådan och kontrollera kryssrutan.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Samtycket i varukorgslådan är inte verifierat. Aktivera i temaredigeraren och spara.",
   "recoverySettings.whatsappConsent.drawerEnable": "Aktivera samtycke i varukorgslådan",
-  "recoverySettings.whatsappConsent.drawerManage": "Hantera samtycke i varukorgslådan"
+  "recoverySettings.whatsappConsent.drawerManage": "Hantera samtycke i varukorgslådan",
+  "usageHistory.allTime": "Livstidsanvändning",
+  "usageHistory.chargedAgainst": "Debiterat från",
+  "usageHistory.sourceFree": "Livslånga gratiskrediter",
+  "usageHistory.sourceIncluded": "Inkluderad planpott",
+  "usageHistory.sourcePurchased": "Köpt påfyllning",
+  "usageHistory.sourcePromotional": "Kampanjkrediter",
+  "usageHistory.sourceUnattributed": "Inte tillskrivet",
+  "usageHistory.allSources": "Alla kreditkällor"
 }

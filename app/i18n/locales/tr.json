@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Uygulama yerleştirmesi etkin. Onay kutusunu doğrulamak için sepet çekmecesini test edin.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Sepet çekmecesi onayı doğrulanmadı. Tema düzenleyicisinde etkinleştirip kaydedin.",
   "recoverySettings.whatsappConsent.drawerEnable": "Sepet çekmecesi onayını etkinleştir",
-  "recoverySettings.whatsappConsent.drawerManage": "Sepet çekmecesi onayını yönet"
+  "recoverySettings.whatsappConsent.drawerManage": "Sepet çekmecesi onayını yönet",
+  "usageHistory.allTime": "Ömür boyu kullanım",
+  "usageHistory.chargedAgainst": "Şuradan düşüldü",
+  "usageHistory.sourceFree": "Ömür boyu ücretsiz krediler",
+  "usageHistory.sourceIncluded": "Plana dahil kullanım hakkı",
+  "usageHistory.sourcePurchased": "Satın alınan ek kredi",
+  "usageHistory.sourcePromotional": "Promosyon kredileri",
+  "usageHistory.sourceUnattributed": "Kaynağı belirsiz",
+  "usageHistory.allSources": "Tüm kredi kaynakları"
 }

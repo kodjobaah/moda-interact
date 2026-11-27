@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Osadzona aplikacja jest włączona. Sprawdź wysuwany koszyk i pole wyboru.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Zgoda w wysuwanym koszyku nie została zweryfikowana. Włącz ją w edytorze motywu i zapisz.",
   "recoverySettings.whatsappConsent.drawerEnable": "Włącz zgodę w wysuwanym koszyku",
-  "recoverySettings.whatsappConsent.drawerManage": "Zarządzaj zgodą w wysuwanym koszyku"
+  "recoverySettings.whatsappConsent.drawerManage": "Zarządzaj zgodą w wysuwanym koszyku",
+  "usageHistory.allTime": "Wykorzystanie bezterminowe",
+  "usageHistory.chargedAgainst": "Pobrano z",
+  "usageHistory.sourceFree": "Darmowe kredyty bezterminowe",
+  "usageHistory.sourceIncluded": "Limit wliczony w plan",
+  "usageHistory.sourcePurchased": "Zakupione dodatkowe kredyty",
+  "usageHistory.sourcePromotional": "Kredyty promocyjne",
+  "usageHistory.sourceUnattributed": "Nieprzypisane",
+  "usageHistory.allSources": "Wszystkie źródła kredytów"
 }

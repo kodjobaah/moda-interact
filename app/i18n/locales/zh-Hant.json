@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "應用程式嵌入已啟用。請測試購物車抽屜，確認核取方塊可用。",
   "recoverySettings.whatsappConsent.drawerNotVerified": "尚未驗證購物車抽屜同意。請在佈景主題編輯器中啟用並儲存。",
   "recoverySettings.whatsappConsent.drawerEnable": "啟用購物車抽屜同意",
-  "recoverySettings.whatsappConsent.drawerManage": "管理購物車抽屜同意"
+  "recoverySettings.whatsappConsent.drawerManage": "管理購物車抽屜同意",
+  "usageHistory.allTime": "終身用量",
+  "usageHistory.chargedAgainst": "扣抵來源",
+  "usageHistory.sourceFree": "終身免費額度",
+  "usageHistory.sourceIncluded": "方案內含額度",
+  "usageHistory.sourcePurchased": "購買的加值額度",
+  "usageHistory.sourcePromotional": "促銷額度",
+  "usageHistory.sourceUnattributed": "未歸屬",
+  "usageHistory.allSources": "所有額度來源"
 }

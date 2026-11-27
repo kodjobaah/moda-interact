@@ -752,5 +752,13 @@
   "recoverySettings.whatsappConsent.drawerEmbedEnabled": "Sovellusupotus on käytössä. Testaa sivupaneelia varmistaaksesi valintaruudun.",
   "recoverySettings.whatsappConsent.drawerNotVerified": "Sivupaneelin suostumusta ei ole vahvistettu. Ota se käyttöön teemaeditorissa ja tallenna.",
   "recoverySettings.whatsappConsent.drawerEnable": "Ota sivupaneelin suostumus käyttöön",
-  "recoverySettings.whatsappConsent.drawerManage": "Hallinnoi sivupaneelin suostumusta"
+  "recoverySettings.whatsappConsent.drawerManage": "Hallinnoi sivupaneelin suostumusta",
+  "usageHistory.allTime": "Elinikäinen käyttö",
+  "usageHistory.chargedAgainst": "Veloitettu lähteestä",
+  "usageHistory.sourceFree": "Elinikäiset ilmaiset krediitit",
+  "usageHistory.sourceIncluded": "Tilaukseen sisältyvä kiintiö",
+  "usageHistory.sourcePurchased": "Ostettu lisäsaldo",
+  "usageHistory.sourcePromotional": "Kampanjakrediitit",
+  "usageHistory.sourceUnattributed": "Kohdistamaton",
+  "usageHistory.allSources": "Kaikki krediittilähteet"
 }
