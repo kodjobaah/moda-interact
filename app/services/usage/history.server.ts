@@ -3,10 +3,18 @@ import type { PrismaClient } from "@prisma/client";
 import prisma from "../../db.server";
 import { shopifyPeriodUsageWhere } from "./period-scope";
 import { readUsageSources } from "./sources.server";
-import { isCreditSource, readUnifiedLedger, type ChargedAgainst, type CreditSource } from "./unified-ledger";
+import {
+  isCreditSource,
+  readUnifiedLedger,
+  type ChargedAgainst,
+  type CreditSource,
+} from "./unified-ledger";
 export { readUsageSources, type SourceRecovery } from "./sources.server";
 
-type UsageHistoryDatabase = Pick<PrismaClient, "billingPeriod" | "usageEvent" | "$queryRaw">;
+type UsageHistoryDatabase = Pick<
+  PrismaClient,
+  "billingPeriod" | "usageEvent" | "$queryRaw"
+>;
 const db: UsageHistoryDatabase = prisma;
 const periodSelect = {
   id: true,
@@ -69,14 +77,41 @@ function encode(
     }),
   ).toString("base64url");
 }
-type HistoryEvent = { id: string; metric: string; quantity: number; occurredAt: string;
-  sourceRecovery: import("./sources.server").SourceRecovery | null; chargedAgainst?: ChargedAgainst; idempotencyKey?: string };
+type HistoryEvent = {
+  id: string;
+  metric: string;
+  quantity: number;
+  occurredAt: string;
+  sourceRecovery: import("./sources.server").SourceRecovery | null;
+  chargedAgainst?: ChargedAgainst;
+  idempotencyKey?: string;
+};
 type History = {
-  state: "ready" | "unavailable"; usageView: "current" | "past" | "all"; chargeSource?: CreditSource;
-  periodPage: { items: Array<{ id: string; status: string; periodStart: string; periodEnd: string }>; previousCursor: string | null; nextCursor: string | null };
+  state: "ready" | "unavailable";
+  usageView: "current" | "past" | "all";
+  chargeSource?: CreditSource;
+  periodPage: {
+    items: Array<{
+      id: string;
+      status: string;
+      periodStart: string;
+      periodEnd: string;
+    }>;
+    previousCursor: string | null;
+    nextCursor: string | null;
+  };
   usageEvents: HistoryEvent[];
-  usagePagination: { page: number; pageSize: number; total: number; totalQuantity: number; billId: string | null; periodStart: string | null; periodEnd: string | null };
-  selection: { billId?: string }; periodCursor: string | null;
+  usagePagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalQuantity: number;
+    billId: string | null;
+    periodStart: string | null;
+    periodEnd: string | null;
+  };
+  selection: { billId?: string };
+  periodCursor: string | null;
 };
 export async function readUsageHistory(
   shopId: string,
@@ -84,8 +119,11 @@ export async function readUsageHistory(
   database: UsageHistoryDatabase = db,
 ): Promise<History> {
   const view =
-    params.get("bill") === "all" ? ("all" as const) :
-    params.get("bill") === "past" ? ("past" as const) : ("current" as const);
+    params.get("bill") === "all"
+      ? ("all" as const)
+      : params.get("bill") === "past"
+        ? ("past" as const)
+        : ("current" as const);
   const unified = view === "all" || params.has("chargeSource");
   const source = params.get("chargeSource") ?? "ALL";
   if (params.getAll("chargeSource").length > 1 || !isCreditSource(source))
@@ -106,20 +144,43 @@ export async function readUsageHistory(
   if (view === "all") {
     if (params.has("billId") || params.has("periodCursor"))
       throw new UsageCursorError("All-time usage cannot select a period");
-    const ledger = await readUnifiedLedger(database, { shopId, provider: "SHOPIFY",
-      source, page, pageSize, period: null });
-    const sources = await readUsageSources(shopId, ledger.events.map(event => event.id), database);
+    const ledger = await readUnifiedLedger(database, {
+      shopId,
+      provider: "SHOPIFY",
+      source,
+      page,
+      pageSize,
+      period: null,
+    });
+    const sources = await readUsageSources(
+      shopId,
+      ledger.events.map((event) => event.id),
+      database,
+    );
     return {
-      state: "ready" as const, usageView: view, chargeSource: source,
+      state: "ready" as const,
+      usageView: view,
+      chargeSource: source,
       periodPage: { items: [], previousCursor: null, nextCursor: null },
-      usageEvents: ledger.events.map(event => ({
-        id: event.id, metric: event.metric, quantity: event.quantity,
-        occurredAt: event.occurredAt.toISOString(), chargedAgainst: event.chargedAgainst,
+      usageEvents: ledger.events.map((event) => ({
+        id: event.id,
+        metric: event.metric,
+        quantity: event.quantity,
+        occurredAt: event.occurredAt.toISOString(),
+        chargedAgainst: event.chargedAgainst,
         sourceRecovery: sources.get(event.id) ?? null,
       })),
-      usagePagination: { page, pageSize, total: ledger.total, totalQuantity: ledger.totalQuantity,
-        billId: null, periodStart: null, periodEnd: null },
-      selection: {} as { billId?: string }, periodCursor: null,
+      usagePagination: {
+        page,
+        pageSize,
+        total: ledger.total,
+        totalQuantity: ledger.totalQuantity,
+        billId: null,
+        periodStart: null,
+        periodEnd: null,
+      },
+      selection: {} as { billId?: string },
+      periodCursor: null,
     };
   }
   const boundary = decode(params.get("periodCursor"), shopId, view);
@@ -188,19 +249,44 @@ export async function readUsageHistory(
         : null,
   };
   if (unified && selected) {
-    const ledger = await readUnifiedLedger(database, { shopId, provider: "SHOPIFY",
-      source, page, pageSize, period: selected });
-    const sources = await readUsageSources(shopId, ledger.events.map(event => event.id), database);
+    const ledger = await readUnifiedLedger(database, {
+      shopId,
+      provider: "SHOPIFY",
+      source,
+      page,
+      pageSize,
+      period: selected,
+    });
+    const sources = await readUsageSources(
+      shopId,
+      ledger.events.map((event) => event.id),
+      database,
+    );
     return {
-      state: "ready" as const, usageView: view, chargeSource: source, periodPage,
-      usageEvents: ledger.events.map(event => ({
-        id: event.id, metric: event.metric, quantity: event.quantity,
-        occurredAt: event.occurredAt.toISOString(), chargedAgainst: event.chargedAgainst,
+      state: "ready" as const,
+      usageView: view,
+      chargeSource: source,
+      periodPage,
+      usageEvents: ledger.events.map((event) => ({
+        id: event.id,
+        metric: event.metric,
+        quantity: event.quantity,
+        occurredAt: event.occurredAt.toISOString(),
+        chargedAgainst: event.chargedAgainst,
         sourceRecovery: sources.get(event.id) ?? null,
       })),
-      usagePagination: { page, pageSize, total: ledger.total, totalQuantity: ledger.totalQuantity,
-        billId: selected.id, periodStart: selected.periodStart.toISOString(), periodEnd: selected.periodEnd.toISOString() },
-      selection: ids.length ? { billId: selected.id } : {} as { billId?: string },
+      usagePagination: {
+        page,
+        pageSize,
+        total: ledger.total,
+        totalQuantity: ledger.totalQuantity,
+        billId: selected.id,
+        periodStart: selected.periodStart.toISOString(),
+        periodEnd: selected.periodEnd.toISOString(),
+      },
+      selection: ids.length
+        ? { billId: selected.id }
+        : ({} as { billId?: string }),
       periodCursor: params.get("periodCursor"),
     };
   }
@@ -220,7 +306,11 @@ export async function readUsageHistory(
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
-        database.usageEvent.aggregate({ where, _count: { _all: true }, _sum: { quantity: true } }),
+        database.usageEvent.aggregate({
+          where,
+          _count: { _all: true },
+          _sum: { quantity: true },
+        }),
       ])
     : [[], { _count: { _all: 0 }, _sum: { quantity: null } }];
   const sources = await readUsageSources(
@@ -230,7 +320,9 @@ export async function readUsageHistory(
   );
   return {
     state:
-      (ids.length || (unified && view === "current")) && !selected ? ("unavailable" as const) : ("ready" as const),
+      (ids.length || (unified && view === "current")) && !selected
+        ? ("unavailable" as const)
+        : ("ready" as const),
     usageView: view,
     ...(unified ? { chargeSource: source } : {}),
     periodPage,

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const appRoot = fileURLToPath(new URL("../../app/", import.meta.url));
-const contextField = "(?:defaultLanguageTag|defaultTimeZone|defaultCountryCode)";
+const contextField =
+  "(?:defaultLanguageTag|defaultTimeZone|defaultCountryCode)";
 const legacyContextRead = new RegExp(
   `(?:\\bsettings\\s*(?:\\?\\.)?\\s*\\.${contextField}\\b|shopSettings\\.(?:findUnique|findFirst|findMany)\\s*\\([\\s\\S]{0,500}?select\\s*:\\s*\\{[\\s\\S]{0,200}?\\b${contextField}\\b|SELECT\\s+"${contextField}"[\\s\\S]{0,200}?FROM\\s+"shopify"\\."ShopSettings")`,
   "i",

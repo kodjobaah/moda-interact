@@ -6,11 +6,14 @@ const readMerchantSupportUnreadCount = vi.fn();
 const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await authenticateAdmin(request);
-    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    const shop = await resolveShopifyShop({
+      domain: authentication.session.shop,
+    });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => getSubscriptionProjection(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -25,9 +28,12 @@ vi.mock("../../../app/shopify.server", () => ({
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
-vi.mock("../../../app/services/merchant-support/merchant-support.service", () => ({
-  readMerchantSupportUnreadCount,
-}));
+vi.mock(
+  "../../../app/services/merchant-support/merchant-support.service",
+  () => ({
+    readMerchantSupportUnreadCount,
+  }),
+);
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: { getSubscriptionProjection },
 }));
@@ -87,7 +93,9 @@ describe("app layout access", () => {
       reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
     });
 
-    await expect(loader(requestFor("/app/merchant-support?shopId=other-shop"))).resolves.toMatchObject({
+    await expect(
+      loader(requestFor("/app/merchant-support?shopId=other-shop")),
+    ).resolves.toMatchObject({
       unreadMessages: 2,
       apiKey: "database-public-key",
     });
@@ -97,7 +105,11 @@ describe("app layout access", () => {
   });
 
   it("rejects unmarked uninstalled merchant support before app-shell reads", async () => {
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED", reinstallPendingAt: null });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+      reinstallPendingAt: null,
+    });
 
     await expectRedirect("/app/merchant-support", "/auth/login");
     expect(readMerchantSupportUnreadCount).not.toHaveBeenCalled();

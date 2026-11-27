@@ -17,7 +17,13 @@ import {
 
 const APP_PROXY_SCOPE = "write_app_proxy";
 const BASE_PATH = "/shopify/consent/";
-const SIGNED_QUERY_KEYS = ["shop", "signature", "timestamp", "path_prefix", "logged_in_customer_id"] as const;
+const SIGNED_QUERY_KEYS = [
+  "shop",
+  "signature",
+  "timestamp",
+  "path_prefix",
+  "logged_in_customer_id",
+] as const;
 const MAX_PATH_PREFIX_LENGTH = 256;
 const RESPONSE_HEADERS = {
   "Cache-Control": "no-store",
@@ -31,12 +37,13 @@ type AuthenticatedAppProxy = {
   shopifyCustomerId: string | null;
 };
 
-type AuthResult =
-  | { context: AuthenticatedAppProxy }
-  | { response: Response };
+type AuthResult = { context: AuthenticatedAppProxy } | { response: Response };
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: RESPONSE_HEADERS });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: RESPONSE_HEADERS,
+  });
 }
 
 function failureResponse(code: string, status: number): Response {
@@ -52,19 +59,25 @@ function validPathPrefix(value: string | null): value is string {
   if (!value || value.length > MAX_PATH_PREFIX_LENGTH) return false;
   const match = /^\/(?:a|apps|community|tools)\/(.+)$/.exec(value);
   if (!match) return false;
-  return match[1].split("/").every(segment =>
-    segment.length > 0 &&
-    segment !== "." &&
-    segment !== ".." &&
-    /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(segment),
-  );
+  return match[1]
+    .split("/")
+    .every(
+      (segment) =>
+        segment.length > 0 &&
+        segment !== "." &&
+        segment !== ".." &&
+        /^[A-Za-z0-9][A-Za-z0-9._~-]*$/.test(segment),
+    );
 }
 
 function validTimestamp(value: string | null): value is string {
   if (!value || !/^[1-9]\d{8,11}$/.test(value)) return false;
   const timestamp = Number(value);
-  return Number.isSafeInteger(timestamp) &&
-    Math.abs(Math.floor(Date.now() / 1000) - timestamp) <= APP_PROXY_CLOCK_SKEW_SECONDS;
+  return (
+    Number.isSafeInteger(timestamp) &&
+    Math.abs(Math.floor(Date.now() / 1000) - timestamp) <=
+      APP_PROXY_CLOCK_SKEW_SECONDS
+  );
 }
 
 function authenticatedCustomerId(url: URL): string | null | undefined {
@@ -80,19 +93,23 @@ function validHttpsOrigin(request: Request): boolean {
   if (origin === null) return true;
   try {
     const parsed = new URL(origin);
-    return parsed.protocol === "https:" &&
+    return (
+      parsed.protocol === "https:" &&
       parsed.origin === origin &&
       parsed.pathname === "/" &&
       !parsed.username &&
       !parsed.password &&
       !parsed.search &&
-      !parsed.hash;
+      !parsed.hash
+    );
   } catch {
     return false;
   }
 }
 
-async function authenticateAppProxyRequest(request: Request): Promise<AuthResult> {
+async function authenticateAppProxyRequest(
+  request: Request,
+): Promise<AuthResult> {
   const url = new URL(request.url);
   const signedShop = oneValue(url, "shop");
   const signature = oneValue(url, "signature");
@@ -106,8 +123,14 @@ async function authenticateAppProxyRequest(request: Request): Promise<AuthResult
     !validTimestamp(timestamp) ||
     !validPathPrefix(pathPrefix) ||
     customerId === undefined ||
-    SIGNED_QUERY_KEYS.some(key => url.searchParams.getAll(key).length !== 1 &&
-      !(key === "logged_in_customer_id" && url.searchParams.getAll(key).length === 0))
+    SIGNED_QUERY_KEYS.some(
+      (key) =>
+        url.searchParams.getAll(key).length !== 1 &&
+        !(
+          key === "logged_in_customer_id" &&
+          url.searchParams.getAll(key).length === 0
+        ),
+    )
   ) {
     return { response: failureResponse("INVALID_APP_PROXY_REQUEST", 400) };
   }
@@ -116,26 +139,36 @@ async function authenticateAppProxyRequest(request: Request): Promise<AuthResult
   try {
     context = await authenticate.public.appProxy(request);
   } catch (error) {
-    const coordinationFailure = error instanceof ShopifySessionCoordinationRequiredError ||
+    const coordinationFailure =
+      error instanceof ShopifySessionCoordinationRequiredError ||
       error instanceof ShopifyOfflineTokenError;
-    const signatureRejected = error instanceof Response &&
+    const signatureRejected =
+      error instanceof Response &&
       (error.status === 401 || error.status === 403);
     logShopifyConsentFailure({
       operation: "app_proxy_authentication",
       stage: coordinationFailure
         ? "offline_session_coordination"
-        : signatureRejected ? "signature_verification" : "authentication",
+        : signatureRejected
+          ? "signature_verification"
+          : "authentication",
       error,
       reasonCode: coordinationFailure
         ? "SHOPIFY_APP_PROXY_SESSION_UNAVAILABLE"
-        : signatureRejected ? "SHOPIFY_APP_PROXY_SIGNATURE_REJECTED" : "SHOPIFY_APP_PROXY_AUTHENTICATION_FAILED",
+        : signatureRejected
+          ? "SHOPIFY_APP_PROXY_SIGNATURE_REJECTED"
+          : "SHOPIFY_APP_PROXY_AUTHENTICATION_FAILED",
       sensitiveValues: [signature],
     });
     if (coordinationFailure) {
-      return { response: failureResponse("APP_PROXY_SESSION_UNAVAILABLE", 503) };
+      return {
+        response: failureResponse("APP_PROXY_SESSION_UNAVAILABLE", 503),
+      };
     }
     if (error instanceof Response) {
-      return { response: failureResponse("UNAUTHENTICATED_APP_PROXY_REQUEST", 401) };
+      return {
+        response: failureResponse("UNAUTHENTICATED_APP_PROXY_REQUEST", 401),
+      };
     }
     throw error;
   }
@@ -147,7 +180,12 @@ async function authenticateAppProxyRequest(request: Request): Promise<AuthResult
   if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(session.shop)) {
     return { response: failureResponse("SHOP_NOT_AUTHORIZED", 403) };
   }
-  const grantedScopes = new Set((session.scope ?? "").split(",").map(scope => scope.trim()).filter(Boolean));
+  const grantedScopes = new Set(
+    (session.scope ?? "")
+      .split(",")
+      .map((scope) => scope.trim())
+      .filter(Boolean),
+  );
   if (!grantedScopes.has(APP_PROXY_SCOPE)) {
     return { response: failureResponse("APP_PROXY_SCOPE_REQUIRED", 403) };
   }
@@ -198,10 +236,13 @@ function serviceFailure(
   return failureResponse("CONSENT_UNAVAILABLE", 503);
 }
 
-export async function loader({ request }: LoaderFunctionArgs): Promise<Response> {
+export async function loader({
+  request,
+}: LoaderFunctionArgs): Promise<Response> {
   const auth = await authenticateAppProxyRequest(request);
   if ("response" in auth) return auth.response;
-  if (request.method !== "GET") return failureResponse("METHOD_NOT_ALLOWED", 405);
+  if (request.method !== "GET")
+    return failureResponse("METHOD_NOT_ALLOWED", 405);
 
   const url = new URL(request.url);
   if (url.pathname !== `${BASE_PATH}cart/status`) {
@@ -218,10 +259,13 @@ export async function loader({ request }: LoaderFunctionArgs): Promise<Response>
   }
 }
 
-export async function action({ request }: ActionFunctionArgs): Promise<Response> {
+export async function action({
+  request,
+}: ActionFunctionArgs): Promise<Response> {
   const auth = await authenticateAppProxyRequest(request);
   if ("response" in auth) return auth.response;
-  if (request.method !== "POST") return failureResponse("METHOD_NOT_ALLOWED", 405);
+  if (request.method !== "POST")
+    return failureResponse("METHOD_NOT_ALLOWED", 405);
   if (!validHttpsOrigin(request)) return failureResponse("INVALID_ORIGIN", 400);
 
   const url = new URL(request.url);

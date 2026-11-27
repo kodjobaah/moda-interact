@@ -25,30 +25,24 @@ function requireEnv(name, value) {
 requireEnv("SHOPIFY_API_KEY", SHOPIFY_API_KEY);
 requireEnv("SHOPIFY_API_SECRET", SHOPIFY_API_SECRET);
 requireEnv("SHOPIFY_PARTNER_ORG_ID", SHOPIFY_PARTNER_ORG_ID);
-requireEnv(
-  "SHOPIFY_PARTNER_ACCESS_TOKEN",
-  SHOPIFY_PARTNER_ACCESS_TOKEN,
-);
+requireEnv("SHOPIFY_PARTNER_ACCESS_TOKEN", SHOPIFY_PARTNER_ACCESS_TOKEN);
 requireEnv("SHOPIFY_APP_ID", SHOPIFY_APP_ID);
 
 //
 // 1. Shopify App Events bearer token
 //
 async function getAppEventsAccessToken() {
-  const response = await fetch(
-    "https://api.shopify.com/auth/access_token",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        client_id: SHOPIFY_API_KEY,
-        client_secret: SHOPIFY_API_SECRET,
-        grant_type: "client_credentials",
-      }),
+  const response = await fetch("https://api.shopify.com/auth/access_token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      client_id: SHOPIFY_API_KEY,
+      client_secret: SHOPIFY_API_SECRET,
+      grant_type: "client_credentials",
+    }),
+  });
 
   const body = await response.json();
 
@@ -98,8 +92,7 @@ async function getMeter(handle) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Shopify-Access-Token":
-        SHOPIFY_PARTNER_ACCESS_TOKEN,
+      "X-Shopify-Access-Token": SHOPIFY_PARTNER_ACCESS_TOKEN,
     },
     body: JSON.stringify({
       query,
@@ -113,9 +106,7 @@ async function getMeter(handle) {
   const body = await response.json();
 
   if (!response.ok || body.errors) {
-    throw new Error(
-      `Partner API failed: ${JSON.stringify(body, null, 2)}`,
-    );
+    throw new Error(`Partner API failed: ${JSON.stringify(body, null, 2)}`);
   }
 
   const subscription = body.data?.activeSubscription;
@@ -124,14 +115,10 @@ async function getMeter(handle) {
     throw new Error("No active Shopify subscription.");
   }
 
-  const meter = subscription.items.find(
-    (item) => item.handle === handle,
-  );
+  const meter = subscription.items.find((item) => item.handle === handle);
 
   if (!meter) {
-    throw new Error(
-      `Meter "${handle}" is not present on activeSubscription.`,
-    );
+    throw new Error(`Meter "${handle}" is not present on activeSubscription.`);
   }
 
   return {
@@ -140,21 +127,16 @@ async function getMeter(handle) {
     handle: meter.handle,
     quantity: Number(meter.usage?.quantity ?? 0),
     costAmount: meter.usage?.cost?.amount ?? null,
-    costCurrency:
-      meter.usage?.cost?.currencyCode ?? null,
+    costCurrency: meter.usage?.cost?.currencyCode ?? null,
   };
 }
 
 //
 // 3. Send ONE billing App Event
 //
-async function sendBillingEvent({
-  accessToken,
-  idempotencyKey,
-}) {
+async function sendBillingEvent({ accessToken, idempotencyKey }) {
   const endpoint =
-    `https://api.shopify.com/app/` +
-    `${SHOPIFY_APP_EVENTS_API_VERSION}/events`;
+    `https://api.shopify.com/app/` + `${SHOPIFY_APP_EVENTS_API_VERSION}/events`;
 
   const payload = {
     shop_id: SHOP_ID,
@@ -188,16 +170,11 @@ async function sendBillingEvent({
   console.log("\nAPP EVENT RESPONSE");
   console.log("==================");
   console.log("HTTP:", response.status);
-  console.log(
-    "Idempotent-Replay:",
-    response.headers.get("Idempotent-Replay"),
-  );
+  console.log("Idempotent-Replay:", response.headers.get("Idempotent-Replay"));
   console.log(JSON.stringify(body, null, 2));
 
   if (!response.ok) {
-    throw new Error(
-      `App Event submission failed: HTTP ${response.status}`,
-    );
+    throw new Error(`App Event submission failed: HTTP ${response.status}`);
   }
 }
 
@@ -230,10 +207,7 @@ const shopifyIdempotencyKey = `rcp_${guid}`;
 console.log("\nMODA-GENERATED IDENTIFIERS");
 console.log("==========================");
 console.log("GUID:", guid);
-console.log(
-  "Shopify idempotency key:",
-  shopifyIdempotencyKey,
-);
+console.log("Shopify idempotency key:", shopifyIdempotencyKey);
 
 const accessToken = await getAppEventsAccessToken();
 
@@ -271,12 +245,8 @@ console.log("\nFINAL RESULT");
 console.log("============");
 
 if (!after) {
-  console.log(
-    "No meter change observed within 60 seconds.",
-  );
-  console.log(
-    "Check Shopify Dev Dashboard -> Logs -> App Billing Event.",
-  );
+  console.log("No meter change observed within 60 seconds.");
+  console.log("Check Shopify Dev Dashboard -> Logs -> App Billing Event.");
   process.exit(2);
 }
 
@@ -288,11 +258,8 @@ console.log(JSON.stringify(after, null, 2));
 
 console.log("\nDELTA:");
 console.log({
-  quantity:
-    after.quantity - before.quantity,
-  cost:
-    Number(after.costAmount ?? 0) -
-    Number(before.costAmount ?? 0),
+  quantity: after.quantity - before.quantity,
+  cost: Number(after.costAmount ?? 0) - Number(before.costAmount ?? 0),
 });
 
 console.log("\nIDENTIFIER TO STORE IN MODA:");

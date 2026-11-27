@@ -1,11 +1,10 @@
 import type { BillingPlan, PrismaClient } from "@prisma/client";
 import { BillingPlanKind, Prisma } from "@prisma/client";
-import {
-  MerchantKnowledgeFeatureConfigurationSchema,
-} from "@modainteract/moda-interact-shared/merchant-knowledge";
+import { MerchantKnowledgeFeatureConfigurationSchema } from "@modainteract/moda-interact-shared/merchant-knowledge";
 
 import {
-  readMerchantPricingPlanForProvider, deriveRecoveryCreditTopUpConfiguration,
+  readMerchantPricingPlanForProvider,
+  deriveRecoveryCreditTopUpConfiguration,
 } from "../merchant-pricing/merchant-pricing.server.js";
 
 export type OperationalBillingPlanResolution =
@@ -59,23 +58,27 @@ export class BillingPlanResolutionService {
           return { kind: "UNKNOWN_CATALOGUE_PLAN" };
         }
 
-        const invalidReason = catalogue.planKind !== "FREE" && catalogue.planKind !== "PAID_METERED"
-          ? "INVALID_PLAN_KIND"
-          : !catalogue.features.some((mapping) =>
-              mapping.feature?.key === "checkout_recovery" && mapping.feature.systemRequired,
-            )
-            ? "MISSING_CHECKOUT_RECOVERY_FEATURE"
-            : catalogue.features.some((mapping) => !mapping.feature)
-              ? "MISSING_FEATURE_MAPPING"
-              : !Number.isSafeInteger(catalogue.includedRecoveryCredits) || catalogue.includedRecoveryCredits < 0
-                ? "INVALID_INCLUDED_RECOVERY_CREDITS"
-                : null;
+        const invalidReason =
+          catalogue.planKind !== "FREE" && catalogue.planKind !== "PAID_METERED"
+            ? "INVALID_PLAN_KIND"
+            : !catalogue.features.some(
+                  (mapping) =>
+                    mapping.feature?.key === "checkout_recovery" &&
+                    mapping.feature.systemRequired,
+                )
+              ? "MISSING_CHECKOUT_RECOVERY_FEATURE"
+              : catalogue.features.some((mapping) => !mapping.feature)
+                ? "MISSING_FEATURE_MAPPING"
+                : !Number.isSafeInteger(catalogue.includedRecoveryCredits) ||
+                    catalogue.includedRecoveryCredits < 0
+                  ? "INVALID_INCLUDED_RECOVERY_CREDITS"
+                  : null;
         if (invalidReason) {
           return { kind: "INVALID_CATALOGUE_PLAN", reason: invalidReason };
         }
 
-        const merchantKnowledgeMappings = catalogue.features.filter((mapping) =>
-          mapping.feature?.key === "merchant_knowledge",
+        const merchantKnowledgeMappings = catalogue.features.filter(
+          (mapping) => mapping.feature?.key === "merchant_knowledge",
         );
         if (merchantKnowledgeMappings.length > 0) {
           if (merchantKnowledgeMappings.length !== 1) {
@@ -84,31 +87,40 @@ export class BillingPlanResolutionService {
               reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
             };
           }
-          const configuration = MerchantKnowledgeFeatureConfigurationSchema.safeParse(
-            merchantKnowledgeMappings[0].configuration,
-          );
+          const configuration =
+            MerchantKnowledgeFeatureConfigurationSchema.safeParse(
+              merchantKnowledgeMappings[0].configuration,
+            );
           if (!configuration.success) {
             return {
               kind: "INVALID_CATALOGUE_PLAN",
               reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
             };
           }
-          const activeCompatibilityRows = await transaction.merchantKnowledgePurposeDataFormat.findMany({
-            where: {
-              purpose: { is: { active: true } },
-              dataFormat: { is: { active: true } },
-            },
-            select: {
-              purpose: { select: { key: true } },
-              dataFormat: { select: { key: true } },
-            },
-          });
-          const activePairs = new Set(activeCompatibilityRows.map((row) =>
-            `${row.purpose.key}\u0000${row.dataFormat.key}`,
-          ));
-          if (configuration.data.allowedSourceTypes.some((sourceType) =>
-            !activePairs.has(`${sourceType.purposeKey}\u0000${sourceType.dataFormatKey}`),
-          )) {
+          const activeCompatibilityRows =
+            await transaction.merchantKnowledgePurposeDataFormat.findMany({
+              where: {
+                purpose: { is: { active: true } },
+                dataFormat: { is: { active: true } },
+              },
+              select: {
+                purpose: { select: { key: true } },
+                dataFormat: { select: { key: true } },
+              },
+            });
+          const activePairs = new Set(
+            activeCompatibilityRows.map(
+              (row) => `${row.purpose.key}\u0000${row.dataFormat.key}`,
+            ),
+          );
+          if (
+            configuration.data.allowedSourceTypes.some(
+              (sourceType) =>
+                !activePairs.has(
+                  `${sourceType.purposeKey}\u0000${sourceType.dataFormatKey}`,
+                ),
+            )
+          ) {
             return {
               kind: "INVALID_CATALOGUE_PLAN",
               reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
@@ -116,21 +128,24 @@ export class BillingPlanResolutionService {
           }
         }
 
-        const kind = catalogue.planKind === "FREE"
-          ? BillingPlanKind.FREE
-          : BillingPlanKind.PAID_METERED;
+        const kind =
+          catalogue.planKind === "FREE"
+            ? BillingPlanKind.FREE
+            : BillingPlanKind.PAID_METERED;
         const plan = await transaction.billingPlan.create({
           data: {
             shopifyPlanHandle: catalogue.shopifyPlanHandle,
             name: catalogue.displayName,
             kind,
             active: true,
-            shopifyUsageEventHandle: kind === BillingPlanKind.FREE
-              ? null
-              : catalogue.shopifyRecoveryUsageEventHandle?.trim() || null,
-            includedRecoveryConversationAllowance: kind === BillingPlanKind.FREE
-              ? null
-              : catalogue.includedRecoveryCredits,
+            shopifyUsageEventHandle:
+              kind === BillingPlanKind.FREE
+                ? null
+                : catalogue.shopifyRecoveryUsageEventHandle?.trim() || null,
+            includedRecoveryConversationAllowance:
+              kind === BillingPlanKind.FREE
+                ? null
+                : catalogue.includedRecoveryCredits,
             recoveryCreditPackEnabled: false,
             recoveryCreditsPerPack: null,
             shopifyRecoveryCreditPackEventHandle: null,
@@ -138,9 +153,10 @@ export class BillingPlanResolutionService {
               create: catalogue.features.map((mapping) => ({
                 featureId: mapping.featureId,
                 enabled: true,
-                configuration: mapping.configuration === null
-                  ? Prisma.JsonNull
-                  : mapping.configuration as Prisma.InputJsonValue,
+                configuration:
+                  mapping.configuration === null
+                    ? Prisma.JsonNull
+                    : (mapping.configuration as Prisma.InputJsonValue),
               })),
             },
           },
@@ -179,7 +195,9 @@ export class BillingPlanResolutionService {
     }
   }
 
-  async readRecoveryCreditTopUpConfiguration(planHandle: string | null | undefined) {
+  async readRecoveryCreditTopUpConfiguration(
+    planHandle: string | null | undefined,
+  ) {
     if (!planHandle || !this.database.merchantPricingPlan?.findUnique) {
       return { enabled: false, creditsPerPack: null as number | null };
     }
@@ -197,22 +215,39 @@ export class BillingPlanResolutionService {
 
   async readMerchantPricingPlansForPresentation(handles: readonly string[]) {
     const distinct = [...new Set(handles.filter(Boolean))];
-    if (distinct.length > 2) throw new Error("Commercial presentation requires at most two pricing plans.");
+    if (distinct.length > 2)
+      throw new Error(
+        "Commercial presentation requires at most two pricing plans.",
+      );
     if (!distinct.length) return [];
     const plans = await this.database.merchantPricingPlan.findMany({
       where: { shopifyPlanHandle: { in: distinct } },
-      include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+      include: {
+        usageEvents: {
+          orderBy: { position: "asc" },
+          include: { tiers: { orderBy: { position: "asc" } } },
+        },
+      },
     });
-    return plans.map(plan => ({ ...plan, usageEvents: plan.usageEvents.map(event => ({
-      ...event, cataloguePosition: event.position,
-    })) }));
+    return plans.map((plan) => ({
+      ...plan,
+      usageEvents: plan.usageEvents.map((event) => ({
+        ...event,
+        cataloguePosition: event.position,
+      })),
+    }));
   }
 
   async readMerchantPricingPlan(planHandle: string) {
     if (this.database.merchantPricingPlan?.findUnique) {
       const plan = await this.database.merchantPricingPlan.findUnique({
         where: { shopifyPlanHandle: planHandle },
-        include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+        include: {
+          usageEvents: {
+            orderBy: { position: "asc" },
+            include: { tiers: { orderBy: { position: "asc" } } },
+          },
+        },
       });
       return plan
         ? {

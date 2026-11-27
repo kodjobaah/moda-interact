@@ -76,24 +76,28 @@ export function recordShopifyWebhookAuthenticationFailure(input: {
   error: unknown;
   ackMs: number;
 }): void {
-  logBillingBoundaryFailure({
-    event: "shopify.webhook.authentication_failed",
-    operation: "authenticate_webhook",
-    stage: "authentication",
-    origin: "internal",
-    error: input.error,
-  }, diagnosticLogger(
-    input.error instanceof Response ? "sdk_response" : "sdk_exception",
+  logBillingBoundaryFailure(
     {
-      route: input.route,
-      method: input.request.method,
-      statusCode: errorStatusCode(input.error),
-      errorType: errorType(input.error),
-      classification: input.error instanceof Response ? "sdk_denial" : "sdk_exception",
-      ackMs: input.ackMs,
+      event: "shopify.webhook.authentication_failed",
+      operation: "authenticate_webhook",
+      stage: "authentication",
+      origin: "internal",
+      error: input.error,
     },
-    "warn",
-  ));
+    diagnosticLogger(
+      input.error instanceof Response ? "sdk_response" : "sdk_exception",
+      {
+        route: input.route,
+        method: input.request.method,
+        statusCode: errorStatusCode(input.error),
+        errorType: errorType(input.error),
+        classification:
+          input.error instanceof Response ? "sdk_denial" : "sdk_exception",
+        ackMs: input.ackMs,
+      },
+      "warn",
+    ),
+  );
 }
 
 /**
@@ -153,26 +157,36 @@ export function recordShopifyWebhookRouteFailure(input: {
   origin?: string;
 }): void {
   const publication = publicationDiagnosticContext(input.error);
-  const origin = input.origin ?? (publication?.publicationStage === "add" ? "transport" : "internal");
-  logBillingBoundaryFailure({
-    event: "shopify.webhook.failed",
-    operation: input.operation ?? input.route,
-    stage: input.stage ?? "route_failure",
-    origin: billingFailureOrigin(origin),
-    shopId: input.shopId ?? undefined,
-    error: input.error,
-  }, diagnosticLogger(origin, {
-    ...publication,
-    route: input.route,
-    method: input.request.method,
-    topic: input.topic ?? null,
-    deliveryId: webhookDeliveryId(input.request),
-    eventId: input.eventId ?? null,
-    shopDomain: input.shopDomain ?? null,
-    statusCode: errorStatusCode(input.error),
-    errorType: errorType(input.error),
-    ackMs: input.ackMs,
-  }, "error", publication !== undefined));
+  const origin =
+    input.origin ??
+    (publication?.publicationStage === "add" ? "transport" : "internal");
+  logBillingBoundaryFailure(
+    {
+      event: "shopify.webhook.failed",
+      operation: input.operation ?? input.route,
+      stage: input.stage ?? "route_failure",
+      origin: billingFailureOrigin(origin),
+      shopId: input.shopId ?? undefined,
+      error: input.error,
+    },
+    diagnosticLogger(
+      origin,
+      {
+        ...publication,
+        route: input.route,
+        method: input.request.method,
+        topic: input.topic ?? null,
+        deliveryId: webhookDeliveryId(input.request),
+        eventId: input.eventId ?? null,
+        shopDomain: input.shopDomain ?? null,
+        statusCode: errorStatusCode(input.error),
+        errorType: errorType(input.error),
+        ackMs: input.ackMs,
+      },
+      "error",
+      publication !== undefined,
+    ),
+  );
 }
 
 export function recordShopifyLifecycleFailure(input: {
@@ -183,51 +197,109 @@ export function recordShopifyLifecycleFailure(input: {
   shopId?: string;
 }): void {
   const publication = publicationDiagnosticContext(input.error);
-  const origin = publication ? publication.publicationStage === "add" ? "transport" : "internal" : input.origin;
-  logBillingBoundaryFailure({
-    event: "shopify.lifecycle.failed",
-    operation: input.operation,
-    stage: input.stage,
-    origin: billingFailureOrigin(origin),
-    ...(input.shopId ? { shopId: input.shopId } : {}),
-    error: input.error,
-  }, diagnosticLogger(origin, publication, "error", publication !== undefined));
+  const origin = publication
+    ? publication.publicationStage === "add"
+      ? "transport"
+      : "internal"
+    : input.origin;
+  logBillingBoundaryFailure(
+    {
+      event: "shopify.lifecycle.failed",
+      operation: input.operation,
+      stage: input.stage,
+      origin: billingFailureOrigin(origin),
+      ...(input.shopId ? { shopId: input.shopId } : {}),
+      error: input.error,
+    },
+    diagnosticLogger(origin, publication, "error", publication !== undefined),
+  );
 }
 
 /** Keep an existing publication wrapper for propagation/deduplication while exposing its source code. */
-function publicationDiagnosticContext(error: unknown): Record<string, unknown> | undefined {
-  if (!(error instanceof Error) || error.name !== "ShopifyWebhookPublicationError" || !("code" in error)) return;
+function publicationDiagnosticContext(
+  error: unknown,
+): Record<string, unknown> | undefined {
+  if (
+    !(error instanceof Error) ||
+    error.name !== "ShopifyWebhookPublicationError" ||
+    !("code" in error)
+  )
+    return;
   const publication = error as ShopifyWebhookPublicationError;
-  if (!["REDIS_UNAVAILABLE", "PUBLICATION_TIMEOUT", "QUEUE_ADD_FAILED"].includes(publication.code)) return;
+  if (
+    !["REDIS_UNAVAILABLE", "PUBLICATION_TIMEOUT", "QUEUE_ADD_FAILED"].includes(
+      publication.code,
+    )
+  )
+    return;
   const source = publication.cause;
-  const code = source && typeof source === "object" && "code" in source ? source.code : undefined;
-  return { reasonCode: publication.code, publicationStage: publication.stage,
-    queue: publication.queue ?? null, jobId: publication.jobId ?? null,
-    ...(typeof code === "string" && /^[A-Za-z0-9_]{1,64}$/u.test(code) ? {sourceCode: code} : {}),
+  const code =
+    source && typeof source === "object" && "code" in source
+      ? source.code
+      : undefined;
+  return {
+    reasonCode: publication.code,
+    publicationStage: publication.stage,
+    queue: publication.queue ?? null,
+    jobId: publication.jobId ?? null,
+    ...(typeof code === "string" && /^[A-Za-z0-9_]{1,64}$/u.test(code)
+      ? { sourceCode: code }
+      : {}),
   };
 }
 
 /** Generic ingress owns typed publication failures converted to 503; wrappers only propagate. */
 export function recordShopifyWebhookPublicationFailure(input: {
-  error: ShopifyWebhookPublicationError; topic: string; deliveryId: string;
-  shopId?: string; queue?: string; jobId?: string;
+  error: ShopifyWebhookPublicationError;
+  topic: string;
+  deliveryId: string;
+  shopId?: string;
+  queue?: string;
+  jobId?: string;
 }): void {
-  const source = input.error.cause === undefined ? input.error : input.error.cause;
+  const source =
+    input.error.cause === undefined ? input.error : input.error.cause;
   const origin = input.error.stage === "add" ? "transport" : "internal";
-  logBillingBoundaryFailure({
-    event: "shopify.webhook.publication_failed", operation: "publish_webhook", stage: input.error.stage,
-    origin, error: source, ...(input.shopId ? { shopId: input.shopId } : {}),
-  }, diagnosticLogger(origin, {
-    topic: input.topic, deliveryId: input.deliveryId, queue: input.queue ?? input.error.queue ?? null,
-    jobId: input.jobId ?? input.error.jobId ?? null, reasonCode: input.error.code,
-  }, "error", input.error.cause === undefined));
+  logBillingBoundaryFailure(
+    {
+      event: "shopify.webhook.publication_failed",
+      operation: "publish_webhook",
+      stage: input.error.stage,
+      origin,
+      error: source,
+      ...(input.shopId ? { shopId: input.shopId } : {}),
+    },
+    diagnosticLogger(
+      origin,
+      {
+        topic: input.topic,
+        deliveryId: input.deliveryId,
+        queue: input.queue ?? input.error.queue ?? null,
+        jobId: input.jobId ?? input.error.jobId ?? null,
+        reasonCode: input.error.code,
+      },
+      "error",
+      input.error.cause === undefined,
+    ),
+  );
 }
 
 /** An idle producer's connection event has no request owner. Never include connection configuration. */
-export function recordShopifyWebhookQueueFailure(input: { queue: string; stage: string; error: unknown }): void {
-  logBillingBoundaryFailure({ event: "shopify.webhook.queue_failed", operation: "queue_connection", stage: input.stage,
-    origin: "transport", error: input.error,
-  }, diagnosticLogger("transport", { queue: input.queue }));
+export function recordShopifyWebhookQueueFailure(input: {
+  queue: string;
+  stage: string;
+  error: unknown;
+}): void {
+  logBillingBoundaryFailure(
+    {
+      event: "shopify.webhook.queue_failed",
+      operation: "queue_connection",
+      stage: input.stage,
+      origin: "transport",
+      error: input.error,
+    },
+    diagnosticLogger("transport", { queue: input.queue }),
+  );
 }
 
 function diagnosticLogger(
@@ -245,7 +317,9 @@ function diagnosticLogger(
         ...safeFields,
         origin,
         ...(typeof databaseCode === "string" && !omitSourceCode
-          ? origin === "database" ? { databaseCode } : { sourceCode: databaseCode }
+          ? origin === "database"
+            ? { databaseCode }
+            : { sourceCode: databaseCode }
           : {}),
       });
     },

@@ -69,11 +69,15 @@ export default function RecoveryOverview({
               : capacity.availability === "CONTRACT_REQUIRED"
                 ? "billing.contractRequiredDescription"
                 : "billing.configurationUnavailableDescription";
-  const postContract = capacity?.availability === "POST_CONTRACT_AVAILABLE" ||
+  const postContract =
+    capacity?.availability === "POST_CONTRACT_AVAILABLE" ||
     capacity?.availability === "POST_CONTRACT_EXHAUSTED";
   const summary = overview?.summary;
   return (
-    <main className="recovery-overview moda-page-shell moda-page-shell--wide" dir={i18n.direction}>
+    <main
+      className="recovery-overview moda-page-shell moda-page-shell--wide"
+      dir={i18n.direction}
+    >
       <header>
         <div>
           <h1>{t("overview.title")}</h1>
@@ -339,12 +343,17 @@ export default function RecoveryOverview({
           )}
         </dl>
         {!billingSetup &&
-          (merchantExperienceState === "NO_CONTRACT" || merchantExperienceState === "POST_CONTRACT" ? (
+          (merchantExperienceState === "NO_CONTRACT" ||
+          merchantExperienceState === "POST_CONTRACT" ? (
             <MerchantPricingCatalogue
               merchantUi={merchantUi}
               pricingCatalogue={pricingCatalogue}
               showChoosePlanAction
-              choosePlanLabelKey={merchantExperienceState === "POST_CONTRACT" ? "billing.subscribeAgain" : undefined}
+              choosePlanLabelKey={
+                merchantExperienceState === "POST_CONTRACT"
+                  ? "billing.subscribeAgain"
+                  : undefined
+              }
             />
           ) : (
             <Link to={`/app/billing/options?${new URLSearchParams(embed)}`}>

@@ -8,7 +8,10 @@ type Category = {
   localizedDescription: string;
   mappings?: Array<{ id: string; localizedDisplayName: string }>;
 };
-type LocalizedCategory = Pick<Category, "id" | "localizedDisplayName" | "localizedDescription"> | null;
+type LocalizedCategory = Pick<
+  Category,
+  "id" | "localizedDisplayName" | "localizedDescription"
+> | null;
 type Profile = {
   activeCategory: LocalizedCategory;
   pendingCategory: LocalizedCategory;
@@ -25,7 +28,14 @@ type Profile = {
 };
 type SelectionResult =
   | { ok: true; pendingSelectionGeneration: number }
-  | { ok: false; error: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "SHOP_UNAVAILABLE" | "INVALID_INPUT" };
+  | {
+      ok: false;
+      error:
+        | "CONFLICT"
+        | "CATEGORY_UNAVAILABLE"
+        | "SHOP_UNAVAILABLE"
+        | "INVALID_INPUT";
+    };
 
 function mappingIdsForCategory(
   categoryId: string,
@@ -36,13 +46,16 @@ function mappingIdsForCategory(
   activeMappingIds: string[],
 ): string[] {
   const available = new Set(
-    categories.find((category) => category.id === categoryId)?.mappings?.map((mapping) => mapping.id) ?? [],
+    categories
+      .find((category) => category.id === categoryId)
+      ?.mappings?.map((mapping) => mapping.id) ?? [],
   );
-  const candidates = categoryId === pendingCategoryId
-    ? pendingMappingIds
-    : categoryId === activeCategoryId
-      ? activeMappingIds
-      : [];
+  const candidates =
+    categoryId === pendingCategoryId
+      ? pendingMappingIds
+      : categoryId === activeCategoryId
+        ? activeMappingIds
+        : [];
   return candidates.filter((mappingId) => available.has(mappingId));
 }
 
@@ -58,8 +71,13 @@ export default function StoreProfileSection({
   embedded?: boolean;
 }) {
   const fetcher = useFetcher<SelectionResult>();
-  const initialCategoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "";
-  const [selectedCategoryId, setSelectedCategoryId] = useState(initialCategoryId);
+  const initialCategoryId =
+    profile.pendingCategory?.id ??
+    profile.activeCategory?.id ??
+    categories[0]?.id ??
+    "";
+  const [selectedCategoryId, setSelectedCategoryId] =
+    useState(initialCategoryId);
   const [selectedMappingIds, setSelectedMappingIds] = useState(() =>
     mappingIdsForCategory(
       initialCategoryId,
@@ -77,22 +95,30 @@ export default function StoreProfileSection({
     profile.pendingSelectionGeneration,
     actionGeneration ?? profile.pendingSelectionGeneration,
   );
-  const waitingForLoader = actionGeneration !== null
-    && profile.pendingSelectionGeneration < actionGeneration;
-  const selectionError = fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
+  const waitingForLoader =
+    actionGeneration !== null &&
+    profile.pendingSelectionGeneration < actionGeneration;
+  const selectionError =
+    fetcher.data && !fetcher.data.ok ? fetcher.data.error : null;
   const saving = fetcher.state !== "idle" || waitingForLoader;
 
   useEffect(() => {
-    const categoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? categories[0]?.id ?? "";
+    const categoryId =
+      profile.pendingCategory?.id ??
+      profile.activeCategory?.id ??
+      categories[0]?.id ??
+      "";
     setSelectedCategoryId(categoryId);
-    setSelectedMappingIds(mappingIdsForCategory(
-      categoryId,
-      categories,
-      profile.pendingCategory?.id,
-      profile.activeCategory?.id,
-      profile.pendingMappingIds,
-      profile.activeMappingIds,
-    ));
+    setSelectedMappingIds(
+      mappingIdsForCategory(
+        categoryId,
+        categories,
+        profile.pendingCategory?.id,
+        profile.activeCategory?.id,
+        profile.pendingMappingIds,
+        profile.activeMappingIds,
+      ),
+    );
   }, [
     profile.activeCategory?.id,
     profile.pendingCategory?.id,
@@ -101,8 +127,10 @@ export default function StoreProfileSection({
     categories,
   ]);
 
-  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
-  const persistedCategoryId = profile.pendingCategory?.id ?? profile.activeCategory?.id ?? "";
+  const selectedCategory =
+    categories.find((category) => category.id === selectedCategoryId) ?? null;
+  const persistedCategoryId =
+    profile.pendingCategory?.id ?? profile.activeCategory?.id ?? "";
   const persistedMappingIds = mappingIdsForCategory(
     persistedCategoryId,
     categories,
@@ -112,24 +140,29 @@ export default function StoreProfileSection({
     profile.activeMappingIds,
   );
   const selectedMappingSet = new Set(selectedMappingIds);
-  const hasUnsavedChanges = selectedCategoryId !== persistedCategoryId
-    || selectedMappingIds.length !== persistedMappingIds.length
-    || persistedMappingIds.some((mappingId) => !selectedMappingSet.has(mappingId));
+  const hasUnsavedChanges =
+    selectedCategoryId !== persistedCategoryId ||
+    selectedMappingIds.length !== persistedMappingIds.length ||
+    persistedMappingIds.some((mappingId) => !selectedMappingSet.has(mappingId));
   const selectCategory = (categoryId: string) => {
     setSelectedCategoryId(categoryId);
-    setSelectedMappingIds(mappingIdsForCategory(
-      categoryId,
-      categories,
-      profile.pendingCategory?.id,
-      profile.activeCategory?.id,
-      profile.pendingMappingIds,
-      profile.activeMappingIds,
-    ));
+    setSelectedMappingIds(
+      mappingIdsForCategory(
+        categoryId,
+        categories,
+        profile.pendingCategory?.id,
+        profile.activeCategory?.id,
+        profile.pendingMappingIds,
+        profile.activeMappingIds,
+      ),
+    );
   };
 
   return (
     <section
-      className={embedded ? "moda-recovery-embedded-panel" : "moda-recovery-panel"}
+      className={
+        embedded ? "moda-recovery-embedded-panel" : "moda-recovery-panel"
+      }
       aria-labelledby={embedded ? undefined : "store-profile-heading"}
       aria-label={embedded ? t("storeProfile.title") : undefined}
     >
@@ -145,21 +178,33 @@ export default function StoreProfileSection({
       <dl className="moda-store-profile-summary">
         <div>
           <dt>{t("storeProfile.activeCategory")}</dt>
-          <dd>{profile.activeCategory?.localizedDisplayName ?? t("storeProfile.none")}</dd>
+          <dd>
+            {profile.activeCategory?.localizedDisplayName ??
+              t("storeProfile.none")}
+          </dd>
           {profile.activeCategory?.localizedDescription ? (
             <dd>{profile.activeCategory.localizedDescription}</dd>
           ) : null}
         </div>
         <div>
           <dt>{t("storeProfile.pendingCategory")}</dt>
-          <dd>{profile.pendingCategory?.localizedDisplayName ?? t("storeProfile.none")}</dd>
+          <dd>
+            {profile.pendingCategory?.localizedDisplayName ??
+              t("storeProfile.none")}
+          </dd>
           {profile.pendingCategory?.localizedDescription ? (
             <dd>{profile.pendingCategory.localizedDescription}</dd>
           ) : null}
         </div>
         <div>
           <dt>{t("storeProfile.pendingState")}</dt>
-          <dd>{t(profile.pendingState === "PENDING_PUBLICATION" ? "storeProfile.pendingPublication" : "storeProfile.noPendingChange")}</dd>
+          <dd>
+            {t(
+              profile.pendingState === "PENDING_PUBLICATION"
+                ? "storeProfile.pendingPublication"
+                : "storeProfile.noPendingChange",
+            )}
+          </dd>
         </div>
       </dl>
 
@@ -178,21 +223,31 @@ export default function StoreProfileSection({
           <summary>
             <span>{t("storeProfile.categoryLabel")}</span>
             <small>
-              {profile.pendingCategory?.localizedDisplayName
-                ?? profile.activeCategory?.localizedDisplayName
-                ?? t("storeProfile.none")}
+              {profile.pendingCategory?.localizedDisplayName ??
+                profile.activeCategory?.localizedDisplayName ??
+                t("storeProfile.none")}
             </small>
           </summary>
           <div className="moda-settings-disclosure-body">
-            <fetcher.Form method="post" action="/app/store-profile/category" className="moda-store-profile-form">
-              <input type="hidden" name="expectedPendingSelectionGeneration" value={generation} />
+            <fetcher.Form
+              method="post"
+              action="/app/store-profile/category"
+              className="moda-store-profile-form"
+            >
+              <input
+                type="hidden"
+                name="expectedPendingSelectionGeneration"
+                value={generation}
+              />
               <label htmlFor="settings-store-category">
                 <span>{t("storeProfile.categoryLabel")}</span>
                 <select
                   id="settings-store-category"
                   name="categoryId"
                   value={selectedCategoryId}
-                  onChange={(event) => selectCategory(event.currentTarget.value)}
+                  onChange={(event) =>
+                    selectCategory(event.currentTarget.value)
+                  }
                   disabled={saving}
                 >
                   {categories.map((category) => (
@@ -208,13 +263,24 @@ export default function StoreProfileSection({
                 onChange={setSelectedMappingIds}
                 disabled={saving}
               />
-              <button type="submit" disabled={saving || !selectedCategoryId || !hasUnsavedChanges}>
-                {saving ? t("storeProfile.saving") : t("storeProfile.changeCategory")}
+              <button
+                type="submit"
+                disabled={saving || !selectedCategoryId || !hasUnsavedChanges}
+              >
+                {saving
+                  ? t("storeProfile.saving")
+                  : t("storeProfile.changeCategory")}
               </button>
             </fetcher.Form>
 
             {selectionError ? (
-              <p role="alert">{t(selectionError === "CONFLICT" ? "storeProfile.selectionConflict" : "storeProfile.saveFailed")}</p>
+              <p role="alert">
+                {t(
+                  selectionError === "CONFLICT"
+                    ? "storeProfile.selectionConflict"
+                    : "storeProfile.saveFailed",
+                )}
+              </p>
             ) : null}
             {fetcher.data?.ok && waitingForLoader ? (
               <p role="status">{t("storeProfile.saved")}</p>

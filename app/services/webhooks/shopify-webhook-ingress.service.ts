@@ -31,7 +31,10 @@ import {
   publishShopifyDiscountSyncJob,
 } from "./shopify-webhook-queue.server";
 import { buildDiscountSyncJob } from "../discounts/shopify-discount-lifecycle.service";
-import { recordShopifyWebhookOutcome, recordShopifyWebhookPublicationFailure } from "./shopify-webhook-observability.server";
+import {
+  recordShopifyWebhookOutcome,
+  recordShopifyWebhookPublicationFailure,
+} from "./shopify-webhook-observability.server";
 import { getActiveTraceId } from "../otel/otel.runtime";
 import {
   normalizeCheckoutCreatedPayload,
@@ -122,11 +125,21 @@ export async function ingestShopifyWebhook(
     throw error;
   }
 
-  const discountWebhookTopic = normalizeDiscountWebhookTopic(metadata.providerTopic);
+  const discountWebhookTopic = normalizeDiscountWebhookTopic(
+    metadata.providerTopic,
+  );
   if (!plan && !discountWebhookTopic) {
-    recordShopifyWebhookOutcome({ topic: metadata.providerTopic, deliveryId: metadata.deliveryId,
-      eventId: metadata.eventId, queue: null, jobId: null, outcome: "IGNORED", shopId: null,
-      shopDomain: metadata.shopDomain, ackMs: Date.now() - ackStartedAt });
+    recordShopifyWebhookOutcome({
+      topic: metadata.providerTopic,
+      deliveryId: metadata.deliveryId,
+      eventId: metadata.eventId,
+      queue: null,
+      jobId: null,
+      outcome: "IGNORED",
+      shopId: null,
+      shopDomain: metadata.shopDomain,
+      ackMs: Date.now() - ackStartedAt,
+    });
     return new Response(null, { status: 200 });
   }
   let shop: Pick<Shop, "id" | "domain" | "status"> | null = null;
@@ -167,7 +180,10 @@ export async function ingestShopifyWebhook(
       });
     }
 
-    if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY) {
+    if (
+      !publication &&
+      plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CART_ACTIVITY
+    ) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -197,7 +213,10 @@ export async function ingestShopifyWebhook(
       publication = await publishShopifyCartActivityEvent({
         event: ShopifyCartActivityEventV2Schema.parse(event),
       });
-    } else if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED) {
+    } else if (
+      !publication &&
+      plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED
+    ) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -222,13 +241,18 @@ export async function ingestShopifyWebhook(
         eventType: plan.eventType,
         orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
         payload: normalizedPayload,
-        internationalContext: normalizeShopifyInternationalContext(input.payload),
+        internationalContext: normalizeShopifyInternationalContext(
+          input.payload,
+        ),
       });
 
       publication = await publishShopifyCheckoutCreatedEvent({
         event: ShopifyCheckoutCreatedEventV2Schema.parse(event),
       });
-    } else if (!publication && plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED) {
+    } else if (
+      !publication &&
+      plan?.eventType === SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_UPDATED
+    ) {
       const normalizedPayload = plan.normalize(input.payload);
       if (!normalizedPayload) {
         recordShopifyWebhookOutcome({
@@ -256,7 +280,9 @@ export async function ingestShopifyWebhook(
           eventType: plan.eventType,
           orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
           payload: normalizedPayload,
-          internationalContext: normalizeShopifyInternationalContext(input.payload),
+          internationalContext: normalizeShopifyInternationalContext(
+            input.payload,
+          ),
         }),
         schemaVersion: SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V3,
       };
@@ -265,7 +291,10 @@ export async function ingestShopifyWebhook(
         event: ShopifyCheckoutUpdatedEventV3Schema.parse(event),
       });
     } else if (!publication) {
-      if (!plan || plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED) {
+      if (
+        !plan ||
+        plan.eventType !== SHOPIFY_RECOVERY_EVENT_TYPES_V2.ORDER_COMPLETED
+      ) {
         throw new Error("Unsupported webhook publication plan");
       }
 
@@ -293,7 +322,9 @@ export async function ingestShopifyWebhook(
         eventType: plan.eventType,
         orderingKey: plan.buildOrderingKey(shop.id, normalizedPayload),
         payload: normalizedPayload,
-        internationalContext: normalizeShopifyInternationalContext(input.payload),
+        internationalContext: normalizeShopifyInternationalContext(
+          input.payload,
+        ),
       });
 
       publication = await publishShopifyOrderCompletedEvent({
@@ -316,8 +347,14 @@ export async function ingestShopifyWebhook(
     return new Response(null, { status: 200 });
   } catch (error) {
     if (error instanceof ShopifyWebhookPublicationError) {
-      recordShopifyWebhookPublicationFailure({ error, topic: metadata.providerTopic, deliveryId: metadata.deliveryId,
-        shopId: shop?.id, queue: error.queue, jobId: error.jobId });
+      recordShopifyWebhookPublicationFailure({
+        error,
+        topic: metadata.providerTopic,
+        deliveryId: metadata.deliveryId,
+        shopId: shop?.id,
+        queue: error.queue,
+        jobId: error.jobId,
+      });
       recordShopifyWebhookOutcome({
         topic: metadata.providerTopic,
         deliveryId: metadata.deliveryId,
@@ -366,7 +403,9 @@ function buildShopifyEventEnvelope({
     | CheckoutCreatedPayloadV2
     | CheckoutUpdatedPayloadV3
     | OrderCompletedPayloadV2;
-  internationalContext?: ReturnType<typeof normalizeShopifyInternationalContext>;
+  internationalContext?: ReturnType<
+    typeof normalizeShopifyInternationalContext
+  >;
 }) {
   return {
     schemaVersion: SHOPIFY_COMMERCE_EVENT_SCHEMA_VERSION_V2,
@@ -380,7 +419,9 @@ function buildShopifyEventEnvelope({
       shopId: shop.id,
       shopDomain: shop.domain,
     },
-    occurredAt: metadata.triggeredAt ? metadata.triggeredAt.toISOString() : null,
+    occurredAt: metadata.triggeredAt
+      ? metadata.triggeredAt.toISOString()
+      : null,
     receivedAt: metadata.receivedAt.toISOString(),
     traceId: getActiveTraceId(requestId),
     orderingKey,
@@ -399,9 +440,7 @@ function classifyWebhookTopic(
     .replaceAll(".", "_")
     .replaceAll("-", "_");
 
-  if (
-    canonicalTopic === "CHECKOUTS_CREATE"
-  ) {
+  if (canonicalTopic === "CHECKOUTS_CREATE") {
     return {
       eventType: SHOPIFY_RECOVERY_EVENT_TYPES_V2.CHECKOUT_CREATED,
       queue: SHOPIFY_WEBHOOK_QUEUE_CONTRACTS.CHECKOUT_EVENTS.queueName,
@@ -450,13 +489,20 @@ function classifyWebhookTopic(
 
 function normalizeDiscountWebhookTopic(
   providerTopic: string,
-): "discounts/create" | "discounts/update" | "discounts/delete" | "discounts/redeemcode_added" | "discounts/redeemcode_removed" | null {
+):
+  | "discounts/create"
+  | "discounts/update"
+  | "discounts/delete"
+  | "discounts/redeemcode_added"
+  | "discounts/redeemcode_removed"
+  | null {
   const normalized = providerTopic.trim().toLowerCase();
-  const topic = normalized === "discounts_redeemcode_added"
-    ? "discounts/redeemcode_added"
-    : normalized === "discounts_redeemcode_removed"
-      ? "discounts/redeemcode_removed"
-      : normalized.replaceAll("_", "/");
+  const topic =
+    normalized === "discounts_redeemcode_added"
+      ? "discounts/redeemcode_added"
+      : normalized === "discounts_redeemcode_removed"
+        ? "discounts/redeemcode_removed"
+        : normalized.replaceAll("_", "/");
   return topic === "discounts/create" ||
     topic === "discounts/update" ||
     topic === "discounts/delete" ||

@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
-import { listSelectableStoreCategories, loadStoreProfile } from "../../app/services/store-profile/store-category.server";
+import {
+  listSelectableStoreCategories,
+  loadStoreProfile,
+} from "../../app/services/store-profile/store-category.server";
 import { selectPendingStoreCategory } from "../../app/services/store-profile/store-category-selection.server";
 
 type ProfileState = {
@@ -40,7 +43,9 @@ const makeStore = ({
     lineages: [...lineages],
     draft: existingDraft ? { ...existingDraft } : null,
     latestRevisionNumber,
-    configurations: configurations.map((configuration) => ({ ...configuration })),
+    configurations: configurations.map((configuration) => ({
+      ...configuration,
+    })),
     category: {
       id: "category-home",
       slug: "home-goods",
@@ -57,13 +62,27 @@ const makeStore = ({
         promptText: "Canonical English prompt\nSecond line.",
       },
       taxonomyMappings: [
-        { id: "mapping-shoes", categoryId: "category-home", editVersion: 2, conditionKey: "shoes", weight: 2 },
-        { id: "mapping-handbags", categoryId: "category-home", editVersion: 3, conditionKey: "handbags", weight: 1 },
+        {
+          id: "mapping-shoes",
+          categoryId: "category-home",
+          editVersion: 2,
+          conditionKey: "shoes",
+          weight: 2,
+        },
+        {
+          id: "mapping-handbags",
+          categoryId: "category-home",
+          editVersion: 3,
+          conditionKey: "handbags",
+          weight: 1,
+        },
       ],
     },
   };
   const tx = {
-    $queryRaw: vi.fn<(query: { sql: string }) => Promise<Array<{ id: string }>>>().mockResolvedValue([{ id: "shop-1" }]),
+    $queryRaw: vi
+      .fn<(query: { sql: string }) => Promise<Array<{ id: string }>>>()
+      .mockResolvedValue([{ id: "shop-1" }]),
     commerceShopProfile: {
       findUnique: vi.fn(async () => state.profile),
       create: vi.fn(async ({ data }) => {
@@ -81,25 +100,34 @@ const makeStore = ({
       updateMany: vi.fn(async ({ where, data }) => {
         if (
           !state.profile ||
-          state.profile.pendingSelectionGeneration !== where.pendingSelectionGeneration ||
+          state.profile.pendingSelectionGeneration !==
+            where.pendingSelectionGeneration ||
           (Object.prototype.hasOwnProperty.call(where, "activeCategoryId") &&
             state.profile.activeCategoryId !== where.activeCategoryId)
-        ) return { count: 0 };
+        )
+          return { count: 0 };
 
         const nextGeneration = data.pendingSelectionGeneration?.increment
-          ? state.profile.pendingSelectionGeneration + data.pendingSelectionGeneration.increment
+          ? state.profile.pendingSelectionGeneration +
+            data.pendingSelectionGeneration.increment
           : state.profile.pendingSelectionGeneration;
         Object.assign(state.profile, {
           ...(Object.prototype.hasOwnProperty.call(data, "activeCategoryId")
             ? { activeCategoryId: data.activeCategoryId }
             : {}),
-          ...(Object.prototype.hasOwnProperty.call(data, "activeCategoryActivatedAt")
+          ...(Object.prototype.hasOwnProperty.call(
+            data,
+            "activeCategoryActivatedAt",
+          )
             ? { activeCategoryActivatedAt: data.activeCategoryActivatedAt }
             : {}),
           ...(Object.prototype.hasOwnProperty.call(data, "pendingCategoryId")
             ? { pendingCategoryId: data.pendingCategoryId }
             : {}),
-          ...(Object.prototype.hasOwnProperty.call(data, "pendingPromptRevisionId")
+          ...(Object.prototype.hasOwnProperty.call(
+            data,
+            "pendingPromptRevisionId",
+          )
             ? { pendingPromptRevisionId: data.pendingPromptRevisionId }
             : {}),
           ...(Object.prototype.hasOwnProperty.call(data, "pendingSelectedAt")
@@ -122,11 +150,15 @@ const makeStore = ({
       }),
     },
     commerceAgentPromptRevision: {
-      findUnique: vi.fn(async () => state.draft
-        ? { ...state.draft, prompt: { scope: "SHOP", shopId: "shop-1" } }
-        : null),
+      findUnique: vi.fn(async () =>
+        state.draft
+          ? { ...state.draft, prompt: { scope: "SHOP", shopId: "shop-1" } }
+          : null,
+      ),
       findFirst: vi.fn(async ({ where }) =>
-        where.status ? state.draft : { revisionNumber: state.latestRevisionNumber },
+        where.status
+          ? state.draft
+          : { revisionNumber: state.latestRevisionNumber },
       ),
       create: vi.fn(async ({ data }) => {
         const draft = { id: "draft-1", ...data, editVersion: 1 };
@@ -137,14 +169,22 @@ const makeStore = ({
         const draft = state.draft;
         if (!draft) throw new Error("Expected pending DRAFT");
         Object.assign(draft, {
-          ...(Object.prototype.hasOwnProperty.call(data, "status") ? { status: data.status } : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "status")
+            ? { status: data.status }
+            : {}),
           promptText: data.promptText,
           sourceTemplateId: data.sourceTemplateId,
           sourceTemplateEditVersion: data.sourceTemplateEditVersion,
           sourceContext: data.sourceContext,
-          ...(Object.prototype.hasOwnProperty.call(data, "contentHash") ? { contentHash: data.contentHash } : {}),
-          ...(Object.prototype.hasOwnProperty.call(data, "publishedAt") ? { publishedAt: data.publishedAt } : {}),
-          editVersion: data.editVersion?.increment ? draft.editVersion + data.editVersion.increment : draft.editVersion,
+          ...(Object.prototype.hasOwnProperty.call(data, "contentHash")
+            ? { contentHash: data.contentHash }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(data, "publishedAt")
+            ? { publishedAt: data.publishedAt }
+            : {}),
+          editVersion: data.editVersion?.increment
+            ? draft.editVersion + data.editVersion.increment
+            : draft.editVersion,
         });
         return { id: where.id, revisionNumber: draft.revisionNumber };
       }),
@@ -160,7 +200,8 @@ const makeStore = ({
         if (!state.configurations[0]) throw new Error("Expected configuration");
         Object.assign(state.configurations[0], {
           activePromptRevisionId: data.activePromptRevisionId,
-          promptEditVersion: Number(state.configurations[0].promptEditVersion ?? 1) + 1,
+          promptEditVersion:
+            Number(state.configurations[0].promptEditVersion ?? 1) + 1,
         });
       }),
       create: vi.fn(async ({ data }) => {
@@ -182,12 +223,16 @@ const select = (
   now = new Date("2026-09-30T12:00:00.000Z"),
   selectedMappingIds: string[] = [],
 ) =>
-  selectPendingStoreCategory({
-    shopId: "shop-1",
-    categoryId: "category-home",
-    expectedPendingSelectionGeneration: generation,
-    selectedMappingIds,
-  }, client as never, now);
+  selectPendingStoreCategory(
+    {
+      shopId: "shop-1",
+      categoryId: "category-home",
+      expectedPendingSelectionGeneration: generation,
+      selectedMappingIds,
+    },
+    client as never,
+    now,
+  );
 
 describe("pending Store Category selection", () => {
   it("accepts an enabled Admin-authored category even when no Shopify localization keys exist", async () => {
@@ -266,11 +311,13 @@ describe("pending Store Category selection", () => {
         sourceTemplateId: "template-home",
         sourceTemplateEditVersion: 7,
       },
-      configurations: [{
-        id: "configuration-1",
-        activePromptRevisionId: "revision-old",
-        promptEditVersion: 4,
-      }],
+      configurations: [
+        {
+          id: "configuration-1",
+          activePromptRevisionId: "revision-old",
+          promptEditVersion: 4,
+        },
+      ],
     });
     state.category.defaultTemplate.promptText = "Updated canonical prompt";
     state.category.defaultTemplate.editVersion = 8;
@@ -301,7 +348,9 @@ describe("pending Store Category selection", () => {
           templateEditVersion: 8,
           mappings: [],
         },
-        contentHash: createHash("sha256").update("Updated canonical prompt", "utf8").digest("hex"),
+        contentHash: createHash("sha256")
+          .update("Updated canonical prompt", "utf8")
+          .digest("hex"),
         publishedAt: now,
         editVersion: { increment: 1 },
       },
@@ -341,11 +390,13 @@ describe("pending Store Category selection", () => {
       },
       lineages: [{ id: "shop-prompt" }],
       latestRevisionNumber: 5,
-      configurations: [{
-        id: "configuration-1",
-        activePromptRevisionId: "revision-old",
-        promptEditVersion: 7,
-      }],
+      configurations: [
+        {
+          id: "configuration-1",
+          activePromptRevisionId: "revision-old",
+          promptEditVersion: 7,
+        },
+      ],
     });
     state.category.defaultTemplate.promptText = [
       "Base prompt.",
@@ -373,11 +424,13 @@ describe("pending Store Category selection", () => {
           categoryEditVersion: 4,
           templateId: "template-home",
           templateEditVersion: 7,
-          mappings: [{
-            mappingId: "mapping-shoes",
-            mappingEditVersion: 2,
-            conditionKey: "shoes",
-          }],
+          mappings: [
+            {
+              mappingId: "mapping-shoes",
+              mappingEditVersion: 2,
+              conditionKey: "shoes",
+            },
+          ],
         },
       }),
       select: { id: true, revisionNumber: true },
@@ -408,12 +461,11 @@ describe("pending Store Category selection", () => {
       "{% if mappings.handbags %}Handbag guidance.{% endif %}",
     ].join("\n");
 
-    await expect(select(
-      client,
-      0,
-      new Date("2026-09-30T12:00:00.000Z"),
-      ["mapping-shoes"],
-    )).resolves.toMatchObject({ pendingPromptRevisionId: "draft-1" });
+    await expect(
+      select(client, 0, new Date("2026-09-30T12:00:00.000Z"), [
+        "mapping-shoes",
+      ]),
+    ).resolves.toMatchObject({ pendingPromptRevisionId: "draft-1" });
 
     expect(tx.commerceAgentPromptRevision.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -425,11 +477,13 @@ describe("pending Store Category selection", () => {
           categoryEditVersion: 4,
           templateId: "template-home",
           templateEditVersion: 7,
-          mappings: [{
-            mappingId: "mapping-shoes",
-            mappingEditVersion: 2,
-            conditionKey: "shoes",
-          }],
+          mappings: [
+            {
+              mappingId: "mapping-shoes",
+              mappingEditVersion: 2,
+              conditionKey: "shoes",
+            },
+          ],
         },
       }),
       select: { id: true, revisionNumber: true },
@@ -439,12 +493,11 @@ describe("pending Store Category selection", () => {
   it("rejects mapping selections that do not belong to the selected category contract", async () => {
     const { client, tx } = makeStore();
 
-    await expect(select(
-      client,
-      0,
-      new Date("2026-09-30T12:00:00.000Z"),
-      ["mapping-foreign"],
-    )).rejects.toMatchObject({ code: "CATEGORY_UNAVAILABLE" });
+    await expect(
+      select(client, 0, new Date("2026-09-30T12:00:00.000Z"), [
+        "mapping-foreign",
+      ]),
+    ).rejects.toMatchObject({ code: "CATEGORY_UNAVAILABLE" });
 
     expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
   });
@@ -491,7 +544,6 @@ describe("pending Store Category selection", () => {
   });
 });
 
-
 describe("Store Category profile mapping provenance", () => {
   it("restores pending and active mapping selections from prompt revision sourceContext", async () => {
     const category = {
@@ -508,7 +560,13 @@ describe("Store Category profile mapping provenance", () => {
       categoryEditVersion: 4,
       templateId: "template-home",
       templateEditVersion: 7,
-      mappings: [{ mappingId: "mapping-shoes", mappingEditVersion: 2, conditionKey: "shoes" }],
+      mappings: [
+        {
+          mappingId: "mapping-shoes",
+          mappingEditVersion: 2,
+          conditionKey: "shoes",
+        },
+      ],
     };
     const client = {
       commerceShopProfile: {
@@ -523,17 +581,26 @@ describe("Store Category profile mapping provenance", () => {
           pendingPromptRevision: {
             sourceContext,
             sourceTemplateEditVersion: 7,
-            sourceTemplate: { id: "template-home", key: "home.default", displayName: "Home", editVersion: 7 },
+            sourceTemplate: {
+              id: "template-home",
+              key: "home.default",
+              displayName: "Home",
+              editVersion: 7,
+            },
           },
         })),
       },
       commerceAgentConfiguration: {
-        findMany: vi.fn(async () => [{ activePromptRevision: { sourceContext } }]),
+        findMany: vi.fn(async () => [
+          { activePromptRevision: { sourceContext } },
+        ]),
       },
       commercePromptTemplateCategory: { findMany: vi.fn() },
     } as never;
 
-    await expect(loadStoreProfile("shop-1", "en", client)).resolves.toMatchObject({
+    await expect(
+      loadStoreProfile("shop-1", "en", client),
+    ).resolves.toMatchObject({
       activeMappingIds: ["mapping-shoes"],
       pendingMappingIds: ["mapping-shoes"],
     });
@@ -560,8 +627,18 @@ describe("selectable Store Category read model", () => {
         enabled: true,
         displayOrder: 5,
         defaultTemplateId: "late-template",
-        defaultTemplate: { ...template, id: "late-template", categoryId: "late" },
-        translations: [{ locale: "en", displayName: "Late English", description: "Late English description" }],
+        defaultTemplate: {
+          ...template,
+          id: "late-template",
+          categoryId: "late",
+        },
+        translations: [
+          {
+            locale: "en",
+            displayName: "Late English",
+            description: "Late English description",
+          },
+        ],
         taxonomyMappings: [],
       },
       {
@@ -572,15 +649,74 @@ describe("selectable Store Category read model", () => {
         enabled: true,
         displayOrder: 0,
         defaultTemplateId: "unknown-template",
-        defaultTemplate: { ...template, id: "unknown-template", categoryId: "untranslated" },
+        defaultTemplate: {
+          ...template,
+          id: "unknown-template",
+          categoryId: "untranslated",
+        },
         translations: [],
         taxonomyMappings: [],
       },
-      { id: "disabled", slug: "disabled", displayName: "Disabled", description: "Disabled", enabled: false, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: template, translations: [], taxonomyMappings: [] },
-      { id: "missing-template", slug: "missing", displayName: "Missing", description: "Missing", enabled: true, displayOrder: 1, defaultTemplateId: null, defaultTemplate: null, translations: [], taxonomyMappings: [] },
-      { id: "wrong-category", slug: "wrong", displayName: "Wrong", description: "Wrong", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, categoryId: "other" }, translations: [], taxonomyMappings: [] },
-      { id: "disabled-template", slug: "disabled-template", displayName: "Disabled template", description: "Disabled template", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, enabled: false }, translations: [], taxonomyMappings: [] },
-      { id: "blank-template", slug: "blank", displayName: "Blank", description: "Blank", enabled: true, displayOrder: 1, defaultTemplateId: template.id, defaultTemplate: { ...template, promptText: "  \n" }, translations: [], taxonomyMappings: [] },
+      {
+        id: "disabled",
+        slug: "disabled",
+        displayName: "Disabled",
+        description: "Disabled",
+        enabled: false,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: template,
+        translations: [],
+        taxonomyMappings: [],
+      },
+      {
+        id: "missing-template",
+        slug: "missing",
+        displayName: "Missing",
+        description: "Missing",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: null,
+        defaultTemplate: null,
+        translations: [],
+        taxonomyMappings: [],
+      },
+      {
+        id: "wrong-category",
+        slug: "wrong",
+        displayName: "Wrong",
+        description: "Wrong",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: { ...template, categoryId: "other" },
+        translations: [],
+        taxonomyMappings: [],
+      },
+      {
+        id: "disabled-template",
+        slug: "disabled-template",
+        displayName: "Disabled template",
+        description: "Disabled template",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: { ...template, enabled: false },
+        translations: [],
+        taxonomyMappings: [],
+      },
+      {
+        id: "blank-template",
+        slug: "blank",
+        displayName: "Blank",
+        description: "Blank",
+        enabled: true,
+        displayOrder: 1,
+        defaultTemplateId: template.id,
+        defaultTemplate: { ...template, promptText: "  \n" },
+        translations: [],
+        taxonomyMappings: [],
+      },
       {
         id: "b",
         slug: "b",
@@ -590,7 +726,13 @@ describe("selectable Store Category read model", () => {
         displayOrder: 1,
         defaultTemplateId: template.id,
         defaultTemplate: { ...template, id: "template-b", categoryId: "b" },
-        translations: [{ locale: "en", displayName: "B English", description: "B English description" }],
+        translations: [
+          {
+            locale: "en",
+            displayName: "B English",
+            description: "B English description",
+          },
+        ],
         taxonomyMappings: [],
       },
       {
@@ -603,8 +745,16 @@ describe("selectable Store Category read model", () => {
         defaultTemplateId: template.id,
         defaultTemplate: { ...template, id: "template-a", categoryId: "a" },
         translations: [
-          { locale: "en", displayName: "Apparel", description: "English apparel description" },
-          { locale: "de", displayName: "Bekleidung", description: "Deutsche Beschreibung" },
+          {
+            locale: "en",
+            displayName: "Apparel",
+            description: "English apparel description",
+          },
+          {
+            locale: "de",
+            displayName: "Bekleidung",
+            description: "Deutsche Beschreibung",
+          },
         ],
         taxonomyMappings: [
           {
@@ -629,12 +779,22 @@ describe("selectable Store Category read model", () => {
         ],
       },
     ];
-    const findMany = vi.fn(async () => rows
-      .filter((category) => category.enabled && category.defaultTemplateId !== null)
-      .sort((left, right) => left.displayOrder - right.displayOrder || left.id.localeCompare(right.id)));
+    const findMany = vi.fn(async () =>
+      rows
+        .filter(
+          (category) => category.enabled && category.defaultTemplateId !== null,
+        )
+        .sort(
+          (left, right) =>
+            left.displayOrder - right.displayOrder ||
+            left.id.localeCompare(right.id),
+        ),
+    );
     const client = { commercePromptTemplateCategory: { findMany } } as never;
 
-    await expect(listSelectableStoreCategories("de-DE", client)).resolves.toEqual([
+    await expect(
+      listSelectableStoreCategories("de-DE", client),
+    ).resolves.toEqual([
       {
         id: "untranslated",
         slug: "not-localized",
@@ -694,24 +854,39 @@ describe("selectable Store Category read model", () => {
         },
       },
     ]);
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      include: expect.objectContaining({
-        translations: { where: { locale: { in: ["de", "en"] } } },
-        taxonomyMappings: expect.objectContaining({
-          where: { conditionKey: { not: null } },
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        include: expect.objectContaining({
+          translations: { where: { locale: { in: ["de", "en"] } } },
+          taxonomyMappings: expect.objectContaining({
+            where: { conditionKey: { not: null } },
+          }),
         }),
+        orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
       }),
-      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-    }));
-    expect(JSON.stringify(await listSelectableStoreCategories("de-DE", client))).not.toContain("Do not expose this prompt.");
+    );
+    expect(
+      JSON.stringify(await listSelectableStoreCategories("de-DE", client)),
+    ).not.toContain("Do not expose this prompt.");
   });
 });
 
 it("requires an ACTIVE Shop under the existing lock before any publication writes", async () => {
- const { client, tx } = makeStore();
- tx.$queryRaw.mockResolvedValueOnce([]);
- await expect(selectPendingStoreCategory({ shopId: "shop-1", categoryId: "category-home", expectedPendingSelectionGeneration: 0 }, client as never)).rejects.toMatchObject({ code: "SHOP_UNAVAILABLE" });
- const query = tx.$queryRaw.mock.calls[0][0];
- expect(query.sql).toContain('AND "status" = \'ACTIVE\' FOR UPDATE');
- expect(tx.commerceShopProfile.create).not.toHaveBeenCalled(); expect(tx.commerceAgentPrompt.create).not.toHaveBeenCalled(); expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
+  const { client, tx } = makeStore();
+  tx.$queryRaw.mockResolvedValueOnce([]);
+  await expect(
+    selectPendingStoreCategory(
+      {
+        shopId: "shop-1",
+        categoryId: "category-home",
+        expectedPendingSelectionGeneration: 0,
+      },
+      client as never,
+    ),
+  ).rejects.toMatchObject({ code: "SHOP_UNAVAILABLE" });
+  const query = tx.$queryRaw.mock.calls[0][0];
+  expect(query.sql).toContain("AND \"status\" = 'ACTIVE' FOR UPDATE");
+  expect(tx.commerceShopProfile.create).not.toHaveBeenCalled();
+  expect(tx.commerceAgentPrompt.create).not.toHaveBeenCalled();
+  expect(tx.commerceAgentPromptRevision.create).not.toHaveBeenCalled();
 });

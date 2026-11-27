@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { configureShopifyCheckoutReceiptOrigin, loadShopifyPlatformEnvironment } from "./shopify-dev-settings.mjs";
+import {
+  configureShopifyCheckoutReceiptOrigin,
+  loadShopifyPlatformEnvironment,
+} from "./shopify-dev-settings.mjs";
 
 loadShopifyPlatformEnvironment();
 
@@ -67,14 +70,10 @@ function shutdown(exitCode = 0) {
 async function main() {
   console.log(`Starting ngrok on port ${PORT}...`);
 
-  ngrok = spawn(
-  "ngrok",
-  ["http", String(PORT)],
-  {
+  ngrok = spawn("ngrok", ["http", String(PORT)], {
     // Keep ngrok running in the background without its terminal UI
     stdio: ["ignore", "ignore", "ignore"],
-  },
-);
+  });
 
   ngrok.on("error", (error) => {
     console.error("\nFailed to start ngrok:");
@@ -103,7 +102,8 @@ async function main() {
 
   const ngrokUrl = await getNgrokUrl();
 
-  const { origin: receiptOrigin } = configureShopifyCheckoutReceiptOrigin(ngrokUrl);
+  const { origin: receiptOrigin } =
+    configureShopifyCheckoutReceiptOrigin(ngrokUrl);
   const tunnelUrl = `${ngrokUrl}:${PORT}`;
 
   console.log(`
@@ -118,21 +118,21 @@ Starting Shopify:
 `);
 
   shopify = spawn(
-  "npx",
-  [
-    "shopify",
-    "app",
-    "dev",
-    "--config",
-    "moda-interact",
-    "--tunnel-url",
-    tunnelUrl,
-    ...process.argv.slice(2),
-  ],
-  {
-    stdio: "inherit",
-  },
-);
+    "npx",
+    [
+      "shopify",
+      "app",
+      "dev",
+      "--config",
+      "moda-interact",
+      "--tunnel-url",
+      tunnelUrl,
+      ...process.argv.slice(2),
+    ],
+    {
+      stdio: "inherit",
+    },
+  );
   shopify.on("error", (error) => {
     console.error("\nFailed to start Shopify:");
     console.error(error.message);
@@ -141,9 +141,7 @@ Starting Shopify:
 
   shopify.on("exit", (code, signal) => {
     if (!shuttingDown) {
-      console.log(
-        `\nShopify exited (${signal ?? code ?? 0}).`,
-      );
+      console.log(`\nShopify exited (${signal ?? code ?? 0}).`);
 
       shutdown(code ?? 0);
     }

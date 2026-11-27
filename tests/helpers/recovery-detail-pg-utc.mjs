@@ -18,5 +18,7 @@ export const recoveryDetailPgTypes = {
 // query's ::timestamp cast reads its UTC wall-clock fields, exactly as intended.
 /** @param {unknown[]} values */
 export function recoveryDetailPgValues(values) {
-  return values.map((/** @type {unknown} */ value) => value instanceof Date ? value.toISOString() : value);
+  return values.map((/** @type {unknown} */ value) =>
+    value instanceof Date ? value.toISOString() : value,
+  );
 }

@@ -50,12 +50,15 @@ export function normalizeCheckoutUpdatedPayload(
   }
 
   if (Object.hasOwn(payload, "created_at")) {
-    const createdAt = payload.created_at === null
-      ? null
-      : normalizeTimestamp(payload.created_at);
+    const createdAt =
+      payload.created_at === null
+        ? null
+        : normalizeTimestamp(payload.created_at);
     if (createdAt !== null || payload.created_at === null) {
       const checkoutCreatedAt =
-        CheckoutUpdatedPayloadV3Schema.shape.checkoutCreatedAt.safeParse(createdAt);
+        CheckoutUpdatedPayloadV3Schema.shape.checkoutCreatedAt.safeParse(
+          createdAt,
+        );
       if (checkoutCreatedAt.success) {
         normalized.checkoutCreatedAt = checkoutCreatedAt.data;
       }
@@ -74,4 +77,3 @@ export function normalizeCheckoutUpdatedPayload(
 
   return normalized;
 }
-

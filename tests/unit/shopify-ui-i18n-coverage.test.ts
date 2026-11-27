@@ -12,19 +12,51 @@ const [
   reinstallingSource,
 ] = await Promise.all([
   readFile(new URL("../../app/routes/app/route.jsx", import.meta.url), "utf8"),
-  readFile(new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url), "utf8"),
-  readFile(new URL("../../app/components/dashboard/MerchantNavigation.tsx", import.meta.url), "utf8"),
+  readFile(
+    new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url),
+    "utf8",
+  ),
+  readFile(
+    new URL(
+      "../../app/components/dashboard/MerchantNavigation.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
   readFile(new URL("../../app/routes.ts", import.meta.url), "utf8"),
-  readFile(new URL("../../app/components/settings/MerchantKnowledgeSection.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../../app/routes/app/recovery-settings/RecoverySettingsView.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../../app/components/settings/FeaturePreferences.tsx", import.meta.url), "utf8"),
-  readFile(new URL("../../app/routes/app/reinstalling/route.jsx", import.meta.url), "utf8"),
+  readFile(
+    new URL(
+      "../../app/components/settings/MerchantKnowledgeSection.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+  readFile(
+    new URL(
+      "../../app/routes/app/recovery-settings/RecoverySettingsView.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+  readFile(
+    new URL(
+      "../../app/components/settings/FeaturePreferences.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+  readFile(
+    new URL("../../app/routes/app/reinstalling/route.jsx", import.meta.url),
+    "utf8",
+  ),
 ]);
 
 describe("authenticated Shopify UI internationalisation coverage", () => {
   it("localizes the shell and all scoped support controls through existing keys", () => {
     expect(appShellSource).toContain('alt={i18n.t("common.logoAlt")}');
-    expect(appShellSource).toContain("merchantUi: merchantUiContext(shop, session)");
+    expect(appShellSource).toContain(
+      "merchantUi: merchantUiContext(shop, session)",
+    );
     expect(appShellSource).toContain("<MerchantNavigation");
     expect(appShellSource).toContain("<Outlet />");
 
@@ -50,14 +82,24 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
     ]) {
       expect(supportRouteSource).toContain(`i18n.t("${key}")`);
     }
-    expect(supportRouteSource).toContain('i18n.formatNumber(support.page)');
-    expect(supportRouteSource).toContain('i18n.formatNumber(support.totalPages)');
-    expect(supportRouteSource).toContain('{i18n.formatNumber(graphemeCount)}/{i18n.formatNumber(500)}');
-    expect(supportRouteSource).toContain('i18n.t("support.messageLengthError", { max: 500 })');
-    expect(supportRouteSource).toContain('<s-page heading={i18n.t("merchantNav.support")}>');
+    expect(supportRouteSource).toContain("i18n.formatNumber(support.page)");
+    expect(supportRouteSource).toContain(
+      "i18n.formatNumber(support.totalPages)",
+    );
+    expect(supportRouteSource).toContain(
+      "{i18n.formatNumber(graphemeCount)}/{i18n.formatNumber(500)}",
+    );
+    expect(supportRouteSource).toContain(
+      'i18n.t("support.messageLengthError", { max: 500 })',
+    );
+    expect(supportRouteSource).toContain(
+      '<s-page heading={i18n.t("merchantNav.support")}>',
+    );
     expect(supportRouteSource).toContain('<p dir="auto">');
     expect(navigationSource).toContain('support: "merchantNav.support"');
-    expect(routeConfigSource).toContain('route("merchant-support", "./routes/app/merchant-support/route.jsx")');
+    expect(routeConfigSource).toContain(
+      'route("merchant-support", "./routes/app/merchant-support/route.jsx")',
+    );
   });
 
   it("keeps the scoped routes free of the retired merchant-facing English literals", () => {
@@ -124,7 +166,9 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
     }
     expect(merchantKnowledgeSource).toContain('t("pending.activeStatus")');
     expect(merchantKnowledgeSource).toContain('t("pending.refresh")');
-    expect(merchantKnowledgeSource).toContain('formatDateTime(source.revision.activeFetchedAt)');
+    expect(merchantKnowledgeSource).toContain(
+      "formatDateTime(source.revision.activeFetchedAt)",
+    );
 
     for (const key of [
       "recoverySettings.context.title",
@@ -134,14 +178,26 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
     ]) {
       expect(recoverySettingsSource).toContain(`i18n.t("${key}"`);
     }
-    expect(recoverySettingsSource).toContain('formatDateTime={i18n.formatDateTime}');
+    expect(recoverySettingsSource).toContain(
+      "formatDateTime={i18n.formatDateTime}",
+    );
 
-    expect(featurePreferencesSource).toContain('merchantFeatures.features.checkout_recovery.name');
-    expect(featurePreferencesSource).toContain('merchantFeatures.features.ai_conversations.name');
-    expect(featurePreferencesSource).toContain('merchantFeatures.features.product_search.name');
-    expect(featurePreferencesSource).toContain('merchantFeatures.features.order_support.name');
-    expect(featurePreferencesSource).toContain('merchant_knowledge: {');
-    expect(featurePreferencesSource).toContain('name: "merchantKnowledge.title"');
+    expect(featurePreferencesSource).toContain(
+      "merchantFeatures.features.checkout_recovery.name",
+    );
+    expect(featurePreferencesSource).toContain(
+      "merchantFeatures.features.ai_conversations.name",
+    );
+    expect(featurePreferencesSource).toContain(
+      "merchantFeatures.features.product_search.name",
+    );
+    expect(featurePreferencesSource).toContain(
+      "merchantFeatures.features.order_support.name",
+    );
+    expect(featurePreferencesSource).toContain("merchant_knowledge: {");
+    expect(featurePreferencesSource).toContain(
+      'name: "merchantKnowledge.title"',
+    );
 
     for (const key of [
       "reinstalling.pendingTitle",
@@ -174,7 +230,6 @@ describe("authenticated Shopify UI internationalisation coverage", () => {
       expect(reinstallingSource).not.toContain(literal);
     }
   });
-
 });
 
 // ARCH-040-SHOPIFY-004: These Recovery Detail labels must never silently inherit
@@ -201,8 +256,26 @@ const recoveryDetailSecondaryCopyKeys = [
 ] as const;
 
 const merchantLocales = [
-  "en", "cs", "da", "de", "es", "fi", "fr", "it", "ja", "ko",
-  "nb", "nl", "pl", "pt-BR", "pt-PT", "sv", "th", "tr", "zh-Hans", "zh-Hant",
+  "en",
+  "cs",
+  "da",
+  "de",
+  "es",
+  "fi",
+  "fr",
+  "it",
+  "ja",
+  "ko",
+  "nb",
+  "nl",
+  "pl",
+  "pt-BR",
+  "pt-PT",
+  "sv",
+  "th",
+  "tr",
+  "zh-Hans",
+  "zh-Hant",
 ] as const;
 
 function interpolationTokens(value: string): string[] {
@@ -213,37 +286,50 @@ function interpolationTokens(value: string): string[] {
 
 describe("ARCH-040 Recovery Detail merchant locale parity", () => {
   it("translates the 16 secondary-copy keys in every non-English locale without changing delivery meaning", async () => {
-    const catalogues = await Promise.all(merchantLocales.map(async (locale) => {
-      const content = await readFile(
-        new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url), "utf8",
-      );
-      return [locale, JSON.parse(content) as Record<string, string>] as const;
-    }));
+    const catalogues = await Promise.all(
+      merchantLocales.map(async (locale) => {
+        const content = await readFile(
+          new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url),
+          "utf8",
+        );
+        return [locale, JSON.parse(content) as Record<string, string>] as const;
+      }),
+    );
     const english = catalogues[0][1];
     const sourceKeys = Object.keys(english).sort();
     expect(recoveryDetailSecondaryCopyKeys).toHaveLength(16);
     expect(catalogues).toHaveLength(20);
 
     for (const [locale, dictionary] of catalogues) {
-      expect(Object.keys(dictionary).sort(), `${locale}: catalogue keys`).toEqual(sourceKeys);
+      expect(
+        Object.keys(dictionary).sort(),
+        `${locale}: catalogue keys`,
+      ).toEqual(sourceKeys);
       for (const key of recoveryDetailSecondaryCopyKeys) {
         expect(dictionary[key], `${locale}: ${key} must exist`).toBeTruthy();
-        expect(interpolationTokens(dictionary[key]), `${locale}: ${key} interpolation`).toEqual(
-          interpolationTokens(english[key]),
-        );
+        expect(
+          interpolationTokens(dictionary[key]),
+          `${locale}: ${key} interpolation`,
+        ).toEqual(interpolationTokens(english[key]));
         if (locale !== "en") {
-          expect(dictionary[key], `${locale}: ${key} remains an English placeholder`).not.toBe(english[key]);
+          expect(
+            dictionary[key],
+            `${locale}: ${key} remains an English placeholder`,
+          ).not.toBe(english[key]);
         }
       }
       // Queue acceptance, provider admission, no-send and confirmed send must
       // be distinct labels. Translation may not imply delivery at admission.
-      expect(new Set([
-        dictionary["recoveryDetail.sendStatus.CLAIMED"],
-        dictionary["recoveryDetail.sendStatus.DISPATCH_ADMITTED"],
-        dictionary["recoveryDetail.sendStatus.CANCELLED"],
-        dictionary["recoveryDetail.sendStatus.SENT"],
-        dictionary["recoveryDetail.sendStatus.DELIVERED"],
-      ]).size, `${locale}: distinct outbound states`).toBe(5);
+      expect(
+        new Set([
+          dictionary["recoveryDetail.sendStatus.CLAIMED"],
+          dictionary["recoveryDetail.sendStatus.DISPATCH_ADMITTED"],
+          dictionary["recoveryDetail.sendStatus.CANCELLED"],
+          dictionary["recoveryDetail.sendStatus.SENT"],
+          dictionary["recoveryDetail.sendStatus.DELIVERED"],
+        ]).size,
+        `${locale}: distinct outbound states`,
+      ).toBe(5);
     }
   });
 });

@@ -56,53 +56,69 @@ describe("cart WhatsApp consent block", () => {
     "/tools/custom-consent",
     "/a/custom-consent",
     "/community/custom-consent",
-  ])("derives status, receipt, and verification URLs from proxy root %s", async proxyRoot => {
-    const root = makeBlock(proxyRoot);
-    let currentCart = cart("proxy-cart");
-    const fetcher = vi.fn(async (url, init = {}) => {
-      const path = new URL(String(url)).pathname;
-      if (path.endsWith("/fr/cart.js")) return response(currentCart);
-      if (path === `${proxyRoot}/cart/status`) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
-      }
-      if (path === `${proxyRoot}/cart/receipt`) {
-        expect(JSON.parse(init.body)).toMatchObject({
-          cartToken: "proxy-cart",
-          decision: "GRANT",
-        });
-        return response({ receipt: RECEIPT });
-      }
-      if (path.endsWith("/fr/cart/update.js")) {
-        currentCart = cart("proxy-cart", { moda_wa_consent_v1: RECEIPT });
-        return response(currentCart);
-      }
-      if (path === `${proxyRoot}/cart/verify`) {
-        return response({ source: "verified_receipt", decision: "GRANT" });
-      }
-      throw new Error("Unexpected request");
-    });
+  ])(
+    "derives status, receipt, and verification URLs from proxy root %s",
+    async (proxyRoot) => {
+      const root = makeBlock(proxyRoot);
+      let currentCart = cart("proxy-cart");
+      const fetcher = vi.fn(async (url, init = {}) => {
+        const path = new URL(String(url)).pathname;
+        if (path.endsWith("/fr/cart.js")) return response(currentCart);
+        if (path === `${proxyRoot}/cart/status`) {
+          return response({
+            checked: false,
+            decision: "NO_CUSTOMER",
+            source: "postgresql",
+          });
+        }
+        if (path === `${proxyRoot}/cart/receipt`) {
+          expect(JSON.parse(init.body)).toMatchObject({
+            cartToken: "proxy-cart",
+            decision: "GRANT",
+          });
+          return response({ receipt: RECEIPT });
+        }
+        if (path.endsWith("/fr/cart/update.js")) {
+          currentCart = cart("proxy-cart", { moda_wa_consent_v1: RECEIPT });
+          return response(currentCart);
+        }
+        if (path === `${proxyRoot}/cart/verify`) {
+          return response({ source: "verified_receipt", decision: "GRANT" });
+        }
+        throw new Error("Unexpected request");
+      });
 
-    await window.modaWhatsappConsent.initialize(root, fetcher);
-    const checkbox = root.querySelector("[data-consent-checkbox]");
-    clickCheckbox(checkbox, true);
-    await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
+      await window.modaWhatsappConsent.initialize(root, fetcher);
+      const checkbox = root.querySelector("[data-consent-checkbox]");
+      clickCheckbox(checkbox, true);
+      await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
 
-    const reloadedRoot = makeBlock(proxyRoot);
-    await window.modaWhatsappConsent.initialize(reloadedRoot, fetcher);
+      const reloadedRoot = makeBlock(proxyRoot);
+      await window.modaWhatsappConsent.initialize(reloadedRoot, fetcher);
 
-    const requestedPaths = fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname);
-    expect(requestedPaths).toContain(`${proxyRoot}/cart/status`);
-    expect(requestedPaths).toContain(`${proxyRoot}/cart/receipt`);
-    expect(requestedPaths).toContain(`${proxyRoot}/cart/verify`);
-    expect(reloadedRoot.querySelector("[data-consent-checkbox]").checked).toBe(true);
-  });
+      const requestedPaths = fetcher.mock.calls.map(
+        ([url]) => new URL(String(url)).pathname,
+      );
+      expect(requestedPaths).toContain(`${proxyRoot}/cart/status`);
+      expect(requestedPaths).toContain(`${proxyRoot}/cart/receipt`);
+      expect(requestedPaths).toContain(`${proxyRoot}/cart/verify`);
+      expect(
+        reloadedRoot.querySelector("[data-consent-checkbox]").checked,
+      ).toBe(true);
+    },
+  );
 
   it("uses the default proxy root when the block setting is empty", async () => {
     const root = makeBlock("");
-    const fetcher = vi.fn(async url => {
-      if (String(url).endsWith("/fr/cart.js")) return response(cart("empty-setting-cart"));
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).endsWith("/fr/cart.js"))
+        return response(cart("empty-setting-cart"));
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       throw new Error("Unexpected request");
     });
@@ -110,8 +126,9 @@ describe("cart WhatsApp consent block", () => {
     await window.modaWhatsappConsent.initialize(root, fetcher);
 
     expect(root.hidden).toBe(false);
-    expect(fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname))
-      .toContain("/apps/moda-consent/cart/status");
+    expect(
+      fetcher.mock.calls.map(([url]) => new URL(String(url)).pathname),
+    ).toContain("/apps/moda-consent/cart/status");
   });
 
   it.each([
@@ -130,23 +147,31 @@ describe("cart WhatsApp consent block", () => {
     "//attacker.example/tools/consent",
     "/apps/",
     `/tools/${"x".repeat(31)}`,
-  ])("hides the block without a request for invalid proxy root %s", async proxyRoot => {
-    const root = makeBlock(proxyRoot);
-    const fetcher = vi.fn();
+  ])(
+    "hides the block without a request for invalid proxy root %s",
+    async (proxyRoot) => {
+      const root = makeBlock(proxyRoot);
+      const fetcher = vi.fn();
 
-    await window.modaWhatsappConsent.initialize(root, fetcher);
+      await window.modaWhatsappConsent.initialize(root, fetcher);
 
-    expect(root.hidden).toBe(true);
-    expect(root.querySelector("[data-consent-checkbox]").disabled).toBe(true);
-    expect(fetcher).not.toHaveBeenCalled();
-  });
+      expect(root.hidden).toBe(true);
+      expect(root.querySelector("[data-consent-checkbox]").disabled).toBe(true);
+      expect(fetcher).not.toHaveBeenCalled();
+    },
+  );
 
   it("shows a new cart unchecked without issuing a receipt", async () => {
     const root = makeBlock();
-    const fetcher = vi.fn(async url => {
-      if (String(url).endsWith("/fr/cart.js")) return response(cart("new-cart"));
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).endsWith("/fr/cart.js"))
+        return response(cart("new-cart"));
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       throw new Error("Unexpected request");
     });
@@ -156,15 +181,22 @@ describe("cart WhatsApp consent block", () => {
     expect(root.hidden).toBe(false);
     expect(root.querySelector("[data-consent-checkbox]").checked).toBe(false);
     expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt"))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt")),
+    ).toBe(false);
   });
 
   it("displays verified SQL GRANTED without issuing a receipt", async () => {
     const root = makeBlock();
-    const fetcher = vi.fn(async url => {
-      if (String(url).endsWith("/fr/cart.js")) return response(cart("returning-cart"));
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).endsWith("/fr/cart.js"))
+        return response(cart("returning-cart"));
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: true, decision: "GRANTED", source: "postgresql" });
+        return response({
+          checked: true,
+          decision: "GRANTED",
+          source: "postgresql",
+        });
       }
       throw new Error("Unexpected request");
     });
@@ -172,36 +204,56 @@ describe("cart WhatsApp consent block", () => {
     await window.modaWhatsappConsent.initialize(root, fetcher);
 
     expect(root.querySelector("[data-consent-checkbox]").checked).toBe(true);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt"))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt")),
+    ).toBe(false);
   });
 
   it.each([
     ["GRANT", true],
     ["REVOKE", false],
-  ])("renders a verified existing %s receipt without issuing a new receipt", async (decision, checked) => {
-    const root = makeBlock();
-    const fetcher = vi.fn(async (url, init = {}) => {
-      if (String(url).endsWith("/fr/cart.js")) {
-        return response(cart("receipt-cart", { moda_wa_consent_v1: RECEIPT }));
-      }
-      if (String(url).endsWith("/apps/moda-consent/cart/verify")) {
-        expect(JSON.parse(init.body)).toEqual({ cartToken: "receipt-cart", receipt: RECEIPT });
-        return response({ source: "verified_receipt", decision });
-      }
-      throw new Error("Unexpected request");
-    });
+  ])(
+    "renders a verified existing %s receipt without issuing a new receipt",
+    async (decision, checked) => {
+      const root = makeBlock();
+      const fetcher = vi.fn(async (url, init = {}) => {
+        if (String(url).endsWith("/fr/cart.js")) {
+          return response(
+            cart("receipt-cart", { moda_wa_consent_v1: RECEIPT }),
+          );
+        }
+        if (String(url).endsWith("/apps/moda-consent/cart/verify")) {
+          expect(JSON.parse(init.body)).toEqual({
+            cartToken: "receipt-cart",
+            receipt: RECEIPT,
+          });
+          return response({ source: "verified_receipt", decision });
+        }
+        throw new Error("Unexpected request");
+      });
 
-    await window.modaWhatsappConsent.initialize(root, fetcher);
+      await window.modaWhatsappConsent.initialize(root, fetcher);
 
-    expect(root.hidden).toBe(false);
-    expect(root.querySelector("[data-consent-checkbox]").checked).toBe(checked);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt"))).toBe(false);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/verify"))).toBe(true);
-  });
+      expect(root.hidden).toBe(false);
+      expect(root.querySelector("[data-consent-checkbox]").checked).toBe(
+        checked,
+      );
+      expect(
+        fetcher.mock.calls.some(([url]) =>
+          String(url).endsWith("/cart/receipt"),
+        ),
+      ).toBe(false);
+      expect(
+        fetcher.mock.calls.some(([url]) =>
+          String(url).endsWith("/cart/verify"),
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("hides the control when a present receipt cannot be verified without falling back to SQL", async () => {
     const root = makeBlock();
-    const fetcher = vi.fn(async url => {
+    const fetcher = vi.fn(async (url) => {
       if (String(url).endsWith("/fr/cart.js")) {
         return response(cart("tampered-cart", { moda_wa_consent_v1: RECEIPT }));
       }
@@ -209,7 +261,11 @@ describe("cart WhatsApp consent block", () => {
         return response({ error: "INVALID_RECEIPT" }, 400);
       }
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: true, decision: "GRANTED", source: "postgresql" });
+        return response({
+          checked: true,
+          decision: "GRANTED",
+          source: "postgresql",
+        });
       }
       throw new Error("Unexpected request");
     });
@@ -218,8 +274,12 @@ describe("cart WhatsApp consent block", () => {
 
     expect(root.hidden).toBe(true);
     expect(root.querySelector("[data-consent-checkbox]").disabled).toBe(true);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/status"))).toBe(false);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt"))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/status")),
+    ).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/receipt")),
+    ).toBe(false);
   });
 
   it("issues only on an explicit GRANT and confirms the exact receipt without overwriting other attributes", async () => {
@@ -229,7 +289,11 @@ describe("cart WhatsApp consent block", () => {
       const path = String(url);
       if (path.endsWith("/fr/cart.js")) return response(currentCart);
       if (path.endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       if (path.endsWith("/apps/moda-consent/cart/receipt")) {
         expect(JSON.parse(init.body)).toEqual({
@@ -259,18 +323,27 @@ describe("cart WhatsApp consent block", () => {
 
     expect(checkbox.checked).toBe(true);
     expect(currentCart.attributes.gift_note).toBe("keep me");
-    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/cart/receipt"))).toHaveLength(1);
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).endsWith("/cart/receipt"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("writes an explicit REVOKE to the same receipt attribute", async () => {
     const root = makeBlock();
     let currentCart = cart("returning-cart");
-    const revokeReceipt = "v1.key.AAAAAAAAAAAAAAAA.cmV2b2tl.AAAAAAAAAAAAAAAAAAAAAA";
+    const revokeReceipt =
+      "v1.key.AAAAAAAAAAAAAAAA.cmV2b2tl.AAAAAAAAAAAAAAAAAAAAAA";
     const fetcher = vi.fn(async (url, init = {}) => {
       const path = String(url);
       if (path.endsWith("/fr/cart.js")) return response(currentCart);
       if (path.endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: true, decision: "GRANTED", source: "postgresql" });
+        return response({
+          checked: true,
+          decision: "GRANTED",
+          source: "postgresql",
+        });
       }
       if (path.endsWith("/apps/moda-consent/cart/receipt")) {
         expect(JSON.parse(init.body)).toMatchObject({
@@ -283,7 +356,9 @@ describe("cart WhatsApp consent block", () => {
         expect(JSON.parse(init.body)).toEqual({
           attributes: { moda_wa_consent_v1: revokeReceipt },
         });
-        currentCart = cart("returning-cart", { moda_wa_consent_v1: revokeReceipt });
+        currentCart = cart("returning-cart", {
+          moda_wa_consent_v1: revokeReceipt,
+        });
         return response(currentCart);
       }
       throw new Error("Unexpected request");
@@ -301,17 +376,25 @@ describe("cart WhatsApp consent block", () => {
 
   it("replaces GRANT with REVOKE on the same cart and reloads the verified latest choice", async () => {
     let currentCart = cart("same-cart");
-    const grantReceipt = "v1.key.AAAAAAAAAAAAAAAA.Z3JhbnQ.AAAAAAAAAAAAAAAAAAAAAA";
-    const revokeReceipt = "v1.key.AAAAAAAAAAAAAAAA.cmV2b2tl.AAAAAAAAAAAAAAAAAAAAAA";
+    const grantReceipt =
+      "v1.key.AAAAAAAAAAAAAAAA.Z3JhbnQ.AAAAAAAAAAAAAAAAAAAAAA";
+    const revokeReceipt =
+      "v1.key.AAAAAAAAAAAAAAAA.cmV2b2tl.AAAAAAAAAAAAAAAAAAAAAA";
     const fetcher = vi.fn(async (url, init = {}) => {
       const path = String(url);
       if (path.endsWith("/fr/cart.js")) return response(currentCart);
       if (path.endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       if (path.endsWith("/apps/moda-consent/cart/receipt")) {
         const { decision } = JSON.parse(init.body);
-        return response({ receipt: decision === "GRANT" ? grantReceipt : revokeReceipt });
+        return response({
+          receipt: decision === "GRANT" ? grantReceipt : revokeReceipt,
+        });
       }
       if (path.endsWith("/fr/cart/update.js")) {
         const { attributes } = JSON.parse(init.body);
@@ -341,9 +424,19 @@ describe("cart WhatsApp consent block", () => {
 
     const reloadedRoot = makeBlock();
     await window.modaWhatsappConsent.initialize(reloadedRoot, fetcher);
-    expect(reloadedRoot.querySelector("[data-consent-checkbox]").checked).toBe(false);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/cart/receipt"))).toHaveLength(2);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/cart/verify"))).toHaveLength(1);
+    expect(reloadedRoot.querySelector("[data-consent-checkbox]").checked).toBe(
+      false,
+    );
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).endsWith("/cart/receipt"),
+      ),
+    ).toHaveLength(2);
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).endsWith("/cart/verify"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("binds an explicit choice to the newly read cart and restores the last confirmed state after failed readback", async () => {
@@ -353,9 +446,11 @@ describe("cart WhatsApp consent block", () => {
       const path = String(url);
       if (path.endsWith("/fr/cart.js")) {
         cartReads += 1;
-        return response(cartReads === 1
-          ? cart("old-cart", { moda_wa_consent_v1: RECEIPT })
-          : cart("replacement-cart"));
+        return response(
+          cartReads === 1
+            ? cart("old-cart", { moda_wa_consent_v1: RECEIPT })
+            : cart("replacement-cart"),
+        );
       }
       if (path.endsWith("/apps/moda-consent/cart/verify")) {
         return response({ source: "verified_receipt", decision: "REVOKE" });
@@ -378,7 +473,11 @@ describe("cart WhatsApp consent block", () => {
 
     expect(checkbox.checked).toBe(false);
     expect(cartReads).toBe(4);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).endsWith("/cart/receipt"))).toHaveLength(1);
+    expect(
+      fetcher.mock.calls.filter(([url]) =>
+        String(url).endsWith("/cart/receipt"),
+      ),
+    ).toHaveLength(1);
   });
 
   it("does not save a receipt if the browser cart changes while the issuer request is pending", async () => {
@@ -388,7 +487,11 @@ describe("cart WhatsApp consent block", () => {
       const path = String(url);
       if (path.endsWith("/fr/cart.js")) return response(currentCart);
       if (path.endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       if (path.endsWith("/apps/moda-consent/cart/receipt")) {
         expect(JSON.parse(init.body)).toMatchObject({
@@ -399,7 +502,9 @@ describe("cart WhatsApp consent block", () => {
         return response({ receipt: RECEIPT });
       }
       if (path.endsWith("/fr/cart/update.js")) {
-        throw new Error("A receipt must not be written to the replacement cart.");
+        throw new Error(
+          "A receipt must not be written to the replacement cart.",
+        );
       }
       throw new Error("Unexpected request");
     });
@@ -410,14 +515,19 @@ describe("cart WhatsApp consent block", () => {
     await vi.waitFor(() => expect(checkbox.disabled).toBe(false));
 
     expect(checkbox.checked).toBe(false);
-    expect(fetcher.mock.calls.some(([url]) => String(url).endsWith("/cart/update.js"))).toBe(false);
+    expect(
+      fetcher.mock.calls.some(([url]) =>
+        String(url).endsWith("/cart/update.js"),
+      ),
+    ).toBe(false);
   });
 
   it("logs a redacted, staged HTTP failure while keeping the cart checkbox hidden", async () => {
     const root = makeBlock();
     const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const fetcher = vi.fn(async url => {
-      if (String(url).endsWith("/fr/cart.js")) return response(cart("redacted-cart"));
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).endsWith("/fr/cart.js"))
+        return response(cart("redacted-cart"));
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
         return response({ error: "UNAVAILABLE" }, 503);
       }
@@ -443,10 +553,15 @@ describe("cart WhatsApp consent block", () => {
 
   it("initializes a newly loaded theme editor section once without duplicating existing handlers", async () => {
     const firstRoot = makeBlock();
-    const fetcher = vi.fn(async url => {
-      if (String(url).endsWith("/fr/cart.js")) return response(cart("section-cart"));
+    const fetcher = vi.fn(async (url) => {
+      if (String(url).endsWith("/fr/cart.js"))
+        return response(cart("section-cart"));
       if (String(url).endsWith("/apps/moda-consent/cart/status")) {
-        return response({ checked: false, decision: "NO_CUSTOMER", source: "postgresql" });
+        return response({
+          checked: false,
+          decision: "NO_CUSTOMER",
+          source: "postgresql",
+        });
       }
       throw new Error("Unexpected request");
     });
@@ -470,14 +585,22 @@ describe("cart WhatsApp consent block", () => {
       </div>
     `;
     document.body.append(section);
-    section.dispatchEvent(new window.CustomEvent("shopify:section:load", { bubbles: true }));
-    section.dispatchEvent(new window.CustomEvent("shopify:section:load", { bubbles: true }));
+    section.dispatchEvent(
+      new window.CustomEvent("shopify:section:load", { bubbles: true }),
+    );
+    section.dispatchEvent(
+      new window.CustomEvent("shopify:section:load", { bubbles: true }),
+    );
     await vi.waitFor(() => {
-      expect(section.querySelector("[data-moda-whatsapp-consent]").hidden).toBe(false);
+      expect(section.querySelector("[data-moda-whatsapp-consent]").hidden).toBe(
+        false,
+      );
     });
     window.fetch = originalFetch;
 
     expect(fetcher.mock.calls.length).toBe(callsBeforeSectionLoad + 2);
-    expect(firstRoot.querySelector("[data-consent-checkbox]").checked).toBe(false);
+    expect(firstRoot.querySelector("[data-consent-checkbox]").checked).toBe(
+      false,
+    );
   });
 });

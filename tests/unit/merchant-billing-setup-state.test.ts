@@ -19,9 +19,11 @@ describe("merchant billing setup state", () => {
     };
 
     expect(shouldShowMerchantBillingSetup(false, subscription)).toBe(true);
-    expect(buildMerchantBillingSetupState(subscription, [
-      { shopifyPlanHandle: "growth", displayName: "Growth" },
-    ])).toMatchObject({
+    expect(
+      buildMerchantBillingSetupState(subscription, [
+        { shopifyPlanHandle: "growth", displayName: "Growth" },
+      ]),
+    ).toMatchObject({
       phase: "AWAITING_SHOPIFY_CONFIRMATION",
       planHandle: "growth",
       planName: "Growth",
@@ -40,9 +42,11 @@ describe("merchant billing setup state", () => {
     };
 
     expect(shouldShowMerchantBillingSetup(true, subscription)).toBe(true);
-    expect(buildMerchantBillingSetupState(subscription, [
-      { shopifyPlanHandle: "free", displayName: "Free" },
-    ])).toMatchObject({
+    expect(
+      buildMerchantBillingSetupState(subscription, [
+        { shopifyPlanHandle: "free", displayName: "Free" },
+      ]),
+    ).toMatchObject({
       phase: "VERIFYING_SUBSCRIPTION",
       planHandle: "free",
       planName: "Free",
@@ -60,9 +64,11 @@ describe("merchant billing setup state", () => {
       providerSubscriptionId: "gid://shopify/AppSubscription/1",
     };
 
-    expect(buildMerchantBillingSetupState(subscription, [
-      { shopifyPlanHandle: "free", displayName: "Free" },
-    ])).toMatchObject({
+    expect(
+      buildMerchantBillingSetupState(subscription, [
+        { shopifyPlanHandle: "free", displayName: "Free" },
+      ]),
+    ).toMatchObject({
       phase: "FINALIZING_SUBSCRIPTION",
       planHandle: "free",
       planName: "Free",
@@ -70,10 +76,12 @@ describe("merchant billing setup state", () => {
   });
 
   it("leaves setup once an onboarded local projection is active", () => {
-    expect(shouldShowMerchantBillingSetup(true, {
-      status: "ACTIVE",
-      observedShopifyPlanHandle: "growth",
-      providerSubscriptionId: "gid://shopify/AppSubscription/1",
-    })).toBe(false);
+    expect(
+      shouldShowMerchantBillingSetup(true, {
+        status: "ACTIVE",
+        observedShopifyPlanHandle: "growth",
+        providerSubscriptionId: "gid://shopify/AppSubscription/1",
+      }),
+    ).toBe(false);
   });
 });

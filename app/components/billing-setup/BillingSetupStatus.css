@@ -28,16 +28,21 @@
   background: transparent;
 }
 
-.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"] span:first-child,
-.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"] span:nth-child(-n + 2),
+.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"]
+  span:first-child,
+.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"]
+  span:nth-child(-n + 2),
 .mi-billing-setup-progress[data-phase="FINALIZING_SUBSCRIPTION"] span {
   border-color: #24684a;
   background: #24684a;
 }
 
-.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"] span:first-child,
-.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"] span:nth-child(2),
-.mi-billing-setup-progress[data-phase="FINALIZING_SUBSCRIPTION"] span:last-child {
+.mi-billing-setup-progress[data-phase="AWAITING_SHOPIFY_CONFIRMATION"]
+  span:first-child,
+.mi-billing-setup-progress[data-phase="VERIFYING_SUBSCRIPTION"]
+  span:nth-child(2),
+.mi-billing-setup-progress[data-phase="FINALIZING_SUBSCRIPTION"]
+  span:last-child {
   box-shadow: 0 0 0 4px rgba(36, 104, 74, 0.12);
 }
 

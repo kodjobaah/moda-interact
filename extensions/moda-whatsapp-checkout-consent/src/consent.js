@@ -16,13 +16,14 @@ function configuredReceiptOrigin() {
   }
   if (origin === undefined) return DEFAULT_RECEIPT_ORIGIN;
   if (typeof origin !== "string" || !/^https:\/\/[^\s/?#]+$/.test(origin)) {
-    throw new Error("Invalid MODA_CHECKOUT_RECEIPT_ORIGIN: expected an HTTPS origin");
+    throw new Error(
+      "Invalid MODA_CHECKOUT_RECEIPT_ORIGIN: expected an HTTPS origin",
+    );
   }
   return origin;
 }
 
-export const CHECKOUT_RECEIPT_ENDPOINT =
-  `${configuredReceiptOrigin()}/shopify/checkout/receipt`;
+export const CHECKOUT_RECEIPT_ENDPOINT = `${configuredReceiptOrigin()}/shopify/checkout/receipt`;
 
 export function readConsentReceipt(attributes) {
   if (!Array.isArray(attributes)) return undefined;
@@ -45,7 +46,11 @@ export function readConsentReceipt(attributes) {
   return matches[0].value;
 }
 
-export function canRenderConsent({ target, checkoutToken, canUpdateAttributes }) {
+export function canRenderConsent({
+  target,
+  checkoutToken,
+  canUpdateAttributes,
+}) {
   return (
     target === CHECKOUT_TARGET &&
     typeof checkoutToken === "string" &&
@@ -59,8 +64,10 @@ export function isConsentStatus(value) {
     value !== null &&
     typeof value === "object" &&
     typeof value.checked === "boolean" &&
-    (value.source === "checkout" || value.source === "postgresql" ||
+    (value.source === "checkout" ||
+      value.source === "postgresql" ||
       (value.source === "invalid_checkout_receipt" &&
-        value.checked === false && value.decision === "UNKNOWN"))
+        value.checked === false &&
+        value.decision === "UNKNOWN"))
   );
 }

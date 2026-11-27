@@ -5,49 +5,112 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useLoaderData } from "react-router";
 
-const readSource = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
+const readSource = (path: string) =>
+  readFile(new URL(path, import.meta.url), "utf8");
 const routesSource = await readSource("../../app/routes.ts");
-const optionsSource = await readSource("../../app/routes/app/billing/options/route.tsx");
-const selectSource = await readSource("../../app/routes/app/billing/select/route.jsx");
-const callbackSource = await readSource("../../app/routes/app/billing/callback/route.tsx");
-const onboardingSource = await readSource("../../app/components/onboarding/Onboarding.jsx");
-const breadcrumbsSource = await readSource("../../app/components/dashboard/Breadcrumbs.jsx");
-const systemActionsSource = await readSource("../../app/services/merchant-support/system-message-actions.ts");
-const { getMerchantSystemMessageAction } = await import("../../app/services/merchant-support/system-message-actions");
+const optionsSource = await readSource(
+  "../../app/routes/app/billing/options/route.tsx",
+);
+const selectSource = await readSource(
+  "../../app/routes/app/billing/select/route.jsx",
+);
+const callbackSource = await readSource(
+  "../../app/routes/app/billing/callback/route.tsx",
+);
+const onboardingSource = await readSource(
+  "../../app/components/onboarding/Onboarding.jsx",
+);
+const breadcrumbsSource = await readSource(
+  "../../app/components/dashboard/Breadcrumbs.jsx",
+);
+const systemActionsSource = await readSource(
+  "../../app/services/merchant-support/system-message-actions.ts",
+);
+const { getMerchantSystemMessageAction } =
+  await import("../../app/services/merchant-support/system-message-actions");
 
 describe("canonical merchant billing UI", () => {
   it("nests billing options and keeps transition routes standalone", () => {
-    expect(routesSource).toContain('route("billing/options", "./routes/app/billing/options/route.tsx"),');
-    expect(routesSource).toContain('route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),');
-    expect(routesSource).not.toContain('route("billing", "./routes/app/billing/route.tsx")');
-    expect(routesSource).not.toContain('route("app/billing/options", "./routes/app/billing/options/route.tsx")');
-    expect(routesSource).toContain('route("app/billing/select", "./routes/app/billing/select/route.jsx"),');
-    expect(routesSource).toContain('route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),');
+    expect(routesSource).toContain(
+      'route("billing/options", "./routes/app/billing/options/route.tsx"),',
+    );
+    expect(routesSource).toContain(
+      'route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),',
+    );
+    expect(routesSource).not.toContain(
+      'route("billing", "./routes/app/billing/route.tsx")',
+    );
+    expect(routesSource).not.toContain(
+      'route("app/billing/options", "./routes/app/billing/options/route.tsx")',
+    );
+    expect(routesSource).toContain(
+      'route("app/billing/select", "./routes/app/billing/select/route.jsx"),',
+    );
+    expect(routesSource).toContain(
+      'route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),',
+    );
   });
 
   it("uses the canonical billing heading and preserves callback returns", () => {
-    expect(optionsSource).toContain('heading={i18n.t("billingCommerce.page.title")}');
-    expect(optionsSource).toContain('<s-button href={data.usageHistoryHref} variant="secondary">');
-    expect(optionsSource).not.toContain('<s-link href={data.usageHistoryHref}>');
+    expect(optionsSource).toContain(
+      'heading={i18n.t("billingCommerce.page.title")}',
+    );
+    expect(optionsSource).toContain(
+      '<s-button href={data.usageHistoryHref} variant="secondary">',
+    );
+    expect(optionsSource).not.toContain(
+      "<s-link href={data.usageHistoryHref}>",
+    );
     expect(callbackSource).toContain("/app/billing/options");
     expect(selectSource).toContain('target: "_top"');
-    expect(selectSource).toContain('process.env.SHOPIFY_APP_HANDLE?.trim() || "moda-interact"');
-    expect(selectSource).not.toContain('throw new Error("SHOPIFY_APP_HANDLE is not configured")');
+    expect(selectSource).toContain(
+      'process.env.SHOPIFY_APP_HANDLE?.trim() || "moda-interact"',
+    );
+    expect(selectSource).not.toContain(
+      'throw new Error("SHOPIFY_APP_HANDLE is not configured")',
+    );
   });
 
   it("sends onboarding plan CTA directly to Shopify plan selection", () => {
     expect(onboardingSource).not.toContain('href="/app/billing"');
     expect(onboardingSource).not.toContain('href="/app/billing/select"');
     expect(onboardingSource).toContain('navigate("/app/billing/select")');
-    expect(onboardingSource).not.toContain('action: "/app/store-profile/category"');
+    expect(onboardingSource).not.toContain(
+      'action: "/app/store-profile/category"',
+    );
   });
 
   it("maps billing system messages to lifecycle-allowed destinations", () => {
-    expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING", "NO_CONTRACT")).toEqual({ href: "/app/billing/select", labelKey: "billing.viewPlans" });
-    expect(getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING", "FROZEN")).toBeNull();
-    expect(getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED", "NO_CONTRACT")).toEqual({ href: "/app/billing/options", labelKey: "billing.viewPlans" });
-    expect(getMerchantSystemMessageAction("BILLING_SAFETY_LIMIT_REACHED", "SUPPORT_ONLY")).toBeNull();
-    expect(getMerchantSystemMessageAction("BILLING_SUBSCRIPTION_ENDED", "POST_CONTRACT")).toEqual({
+    expect(
+      getMerchantSystemMessageAction(
+        "BILLING_FREE_ALLOWANCE_WARNING",
+        "NO_CONTRACT",
+      ),
+    ).toEqual({ href: "/app/billing/select", labelKey: "billing.viewPlans" });
+    expect(
+      getMerchantSystemMessageAction(
+        "BILLING_FREE_ALLOWANCE_WARNING",
+        "FROZEN",
+      ),
+    ).toBeNull();
+    expect(
+      getMerchantSystemMessageAction(
+        "BILLING_SAFETY_LIMIT_REACHED",
+        "NO_CONTRACT",
+      ),
+    ).toEqual({ href: "/app/billing/options", labelKey: "billing.viewPlans" });
+    expect(
+      getMerchantSystemMessageAction(
+        "BILLING_SAFETY_LIMIT_REACHED",
+        "SUPPORT_ONLY",
+      ),
+    ).toBeNull();
+    expect(
+      getMerchantSystemMessageAction(
+        "BILLING_SUBSCRIPTION_ENDED",
+        "POST_CONTRACT",
+      ),
+    ).toEqual({
       href: "/app/billing/options",
       labelKey: "billing.subscribeAgain",
     });
@@ -71,9 +134,8 @@ describe("canonical merchant billing UI", () => {
   });
 });
 vi.mock("react-router", async () => {
-  const actual = await vi.importActual<typeof import("react-router")>(
-    "react-router",
-  );
+  const actual =
+    await vi.importActual<typeof import("react-router")>("react-router");
   return {
     ...actual,
     Link: ({ to, children }: { to: string; children: ReactNode }) =>
@@ -118,8 +180,15 @@ const billingPurchaseHubSource = await readFile(
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
   getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await authenticateAdmin(request);
-    const shop = await resolveShopifyShop({ admin: authentication.admin, domain: authentication.session.shop });
-    return { authentication, shop, readSubscription: () => getSubscriptionProjection(shop.id) };
+    const shop = await resolveShopifyShop({
+      admin: authentication.admin,
+      domain: authentication.session.shop,
+    });
+    return {
+      authentication,
+      shop,
+      readSubscription: () => getSubscriptionProjection(shop.id),
+    };
   },
 }));
 vi.mock("../../app/shopify.server", () => ({
@@ -130,15 +199,43 @@ vi.mock("../../app/services/shop/shop.service", () => ({
 }));
 vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: {
-    readMerchantBillingPresentation: async ({ shop, subscription }: { shop: { id: string }; subscription: Record<string, any> | null }) => {
-      const [live, capacity] = await Promise.allSettled([getMerchantShopifySubscriptionState(shop.id), getMerchantRecoveryCapacityState(shop.id)]);
+    readMerchantBillingPresentation: async ({
+      shop,
+      subscription,
+    }: {
+      shop: { id: string };
+      subscription: Record<string, any> | null;
+    }) => {
+      const [live, capacity] = await Promise.allSettled([
+        getMerchantShopifySubscriptionState(shop.id),
+        getMerchantRecoveryCapacityState(shop.id),
+      ]);
       const commercial = live.status === "fulfilled" ? live.value : null;
-      const topUp = commercial?.status === "ACTIVE_SUBSCRIPTION" ? await getMerchantBillingState(shop.id, commercial).catch(() => null) : null;
-      return { commercial, capacity: capacity.status === "fulfilled" ? capacity.value : null, topUp,
-        currentContract: subscription?.plan ? { shopifyPlanHandle: subscription.observedShopifyPlanHandle ?? subscription.plan.shopifyPlanHandle,
-          mappedModaPlanName: subscription.plan.name, mappedModaPlanKind: subscription.plan.kind,
-          currentPeriodStart: subscription.currentPeriodStart?.toISOString() ?? null, currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-          cancelAtEndOfCycle: subscription.cancelAtPeriodEnd, price: null, interval: null } : null };
+      const topUp =
+        commercial?.status === "ACTIVE_SUBSCRIPTION"
+          ? await getMerchantBillingState(shop.id, commercial).catch(() => null)
+          : null;
+      return {
+        commercial,
+        capacity: capacity.status === "fulfilled" ? capacity.value : null,
+        topUp,
+        currentContract: subscription?.plan
+          ? {
+              shopifyPlanHandle:
+                subscription.observedShopifyPlanHandle ??
+                subscription.plan.shopifyPlanHandle,
+              mappedModaPlanName: subscription.plan.name,
+              mappedModaPlanKind: subscription.plan.kind,
+              currentPeriodStart:
+                subscription.currentPeriodStart?.toISOString() ?? null,
+              currentPeriodEnd:
+                subscription.currentPeriodEnd?.toISOString() ?? null,
+              cancelAtEndOfCycle: subscription.cancelAtPeriodEnd,
+              price: null,
+              interval: null,
+            }
+          : null,
+      };
     },
     getSubscriptionProjection,
     getMerchantShopifySubscriptionState,
@@ -221,10 +318,19 @@ beforeEach(() => {
   });
   findShopSettings.mockResolvedValue(null);
   getSubscription.mockResolvedValue({ status: "ACTIVE" });
-  getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "CONTRACT_REQUIRED" });
+  getMerchantRecoveryCapacityState.mockResolvedValue({
+    availability: "CONTRACT_REQUIRED",
+  });
   getSubscriptionProjection.mockResolvedValue(null);
-  getMerchantShopifySubscriptionState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
-  getMerchantShopifyLifecycleState.mockResolvedValue({ state: "NO_ACTIVE_SUBSCRIPTION", subscription: null, latestEvent: null });
+  getMerchantShopifySubscriptionState.mockResolvedValue({
+    status: "NO_ACTIVE_SUBSCRIPTION",
+    subscription: null,
+  });
+  getMerchantShopifyLifecycleState.mockResolvedValue({
+    state: "NO_ACTIVE_SUBSCRIPTION",
+    subscription: null,
+    latestEvent: null,
+  });
 });
 
 describe("merchant billing UI", () => {
@@ -251,7 +357,6 @@ describe("merchant billing UI", () => {
     expect(billingPurchaseHubSource).toContain("SubscriptionChangePanel");
   });
 
-
   it("reuses one verified active-subscription snapshot for commercial presentation and top-up offers", async () => {
     const commercial = {
       status: "ACTIVE_SUBSCRIPTION",
@@ -275,10 +380,18 @@ describe("merchant billing UI", () => {
     getSubscriptionProjection.mockResolvedValue({
       status: "ACTIVE",
       observedShopifyPlanHandle: "free",
-      plan: { id: "free-1", shopifyPlanHandle: "free", name: "Free", kind: "FREE", active: true },
+      plan: {
+        id: "free-1",
+        shopifyPlanHandle: "free",
+        name: "Free",
+        kind: "FREE",
+        active: true,
+      },
     });
     getMerchantShopifySubscriptionState.mockResolvedValue(commercial);
-    getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "AVAILABLE" });
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "AVAILABLE",
+    });
     getMerchantBillingState.mockResolvedValue({
       billingPeriodPhase: "ACTIVE",
       recoveryCreditOffers: [],
@@ -289,7 +402,9 @@ describe("merchant billing UI", () => {
     });
 
     const data = await billingOptionsLoader({
-      request: new Request("https://example.test/app/billing/options?plan_change=unverified&requested_plan_handle=free"),
+      request: new Request(
+        "https://example.test/app/billing/options?plan_change=unverified&requested_plan_handle=free",
+      ),
     } as never);
 
     expect(data.verificationState).toBe("ACTIVE_SUBSCRIPTION");
@@ -307,10 +422,20 @@ describe("merchant billing UI", () => {
       currentPeriodStart: new Date("2026-09-19T12:32:08.000Z"),
       currentPeriodEnd: new Date("2026-10-19T12:32:08.000Z"),
       cancelAtPeriodEnd: false,
-      plan: { id: "free-1", shopifyPlanHandle: "free", name: "Free", kind: "FREE", active: true },
+      plan: {
+        id: "free-1",
+        shopifyPlanHandle: "free",
+        name: "Free",
+        kind: "FREE",
+        active: true,
+      },
     });
-    getMerchantShopifySubscriptionState.mockRejectedValue(new Error("Partner API unavailable"));
-    getMerchantRecoveryCapacityState.mockResolvedValue({ availability: "AVAILABLE" });
+    getMerchantShopifySubscriptionState.mockRejectedValue(
+      new Error("Partner API unavailable"),
+    );
+    getMerchantRecoveryCapacityState.mockResolvedValue({
+      availability: "AVAILABLE",
+    });
 
     const data = await billingOptionsLoader({
       request: new Request("https://example.test/app/billing/options"),
@@ -357,7 +482,10 @@ describe("merchant billing UI", () => {
       eventHandle: "bronze-top-up-free",
     });
     const result = await billingAction({
-      request: new Request("https://example.test/app/billing/options", { method: "POST", body }),
+      request: new Request("https://example.test/app/billing/options", {
+        method: "POST",
+        body,
+      }),
     } as never);
 
     expect(requestRecoveryCreditPack).toHaveBeenCalledWith(
@@ -376,7 +504,9 @@ describe("merchant billing UI", () => {
   });
 
   it("delegates post-contract new-admission rejection to the owning mutation service", async () => {
-    requestRecoveryCreditPack.mockRejectedValueOnce(new Error("Recovery credit packs are unavailable for this subscription."));
+    requestRecoveryCreditPack.mockRejectedValueOnce(
+      new Error("Recovery credit packs are unavailable for this subscription."),
+    );
     getSubscriptionProjection.mockResolvedValue({
       status: "NO_CONTRACT",
       lastProviderLifecycleState: "CANCELED",
@@ -398,10 +528,20 @@ describe("merchant billing UI", () => {
 
     await expect(
       billingAction({
-        request: new Request("https://example.test/app/billing/options", { method: "POST", body }),
+        request: new Request("https://example.test/app/billing/options", {
+          method: "POST",
+          body,
+        }),
       } as never),
-    ).rejects.toThrow("Recovery credit packs are unavailable for this subscription.");
-    expect(requestRecoveryCreditPack).toHaveBeenCalledWith("shop-1", "BUY_RECOVERY_CREDIT_PACK", "purchase-post-contract", "bronze-top-up-free");
+    ).rejects.toThrow(
+      "Recovery credit packs are unavailable for this subscription.",
+    );
+    expect(requestRecoveryCreditPack).toHaveBeenCalledWith(
+      "shop-1",
+      "BUY_RECOVERY_CREDIT_PACK",
+      "purchase-post-contract",
+      "bronze-top-up-free",
+    );
     expect(getMerchantRecoveryCapacityState).not.toHaveBeenCalled();
   });
 
@@ -430,14 +570,19 @@ describe("merchant billing UI", () => {
       },
       topUp: {
         billingPeriodPhase: "ACTIVE",
-        recoveryCreditOffers: [{
-          eventHandle: "bronze-top-up-free",
-          label: "Bronze",
-          cataloguePosition: 0,
-          creditsGranted: 1,
-          providerPrice: { currency: "USD", tiers: [{ amountPerUnit: "0.00" }] },
-          providerUsage: null,
-        }],
+        recoveryCreditOffers: [
+          {
+            eventHandle: "bronze-top-up-free",
+            label: "Bronze",
+            cataloguePosition: 0,
+            creditsGranted: 1,
+            providerPrice: {
+              currency: "USD",
+              tiers: [{ amountPerUnit: "0.00" }],
+            },
+            providerUsage: null,
+          },
+        ],
         recoveryCreditOfferVerificationState: "VERIFIED",
         purchasedRecoveryCredits: { available: 0 },
         latestPurchase: null,
@@ -455,7 +600,10 @@ describe("merchant billing UI", () => {
     } as never);
 
     const markup = renderToStaticMarkup(createElement(BillingRoute));
-    const buyButton = markup.match(/<button[^>]*aria-label="Buy 1 recovery conversations"[^>]*>/)?.[0] ?? "";
+    const buyButton =
+      markup.match(
+        /<button[^>]*aria-label="Buy 1 recovery conversations"[^>]*>/,
+      )?.[0] ?? "";
 
     expect(markup).toContain("subscription is scheduled to end");
     expect(markup).toContain("top-ups normally available to it until then");
@@ -535,7 +683,9 @@ describe("merchant billing UI", () => {
     const markup = renderToStaticMarkup(createElement(BillingRoute));
 
     expect(markup).toContain("No active subscription");
-    expect(markup).toContain("remaining purchased and lifetime Free recovery credits");
+    expect(markup).toContain(
+      "remaining purchased and lifetime Free recovery credits",
+    );
     expect(markup).toContain("Subscribe again");
     expect(markup).toContain(">4<");
     expect(markup).toContain(">7<");
@@ -554,7 +704,10 @@ describe("merchant billing UI", () => {
 
   it("maps known billing codes once and leaves unknown codes non-actionable", () => {
     expect(
-      getMerchantSystemMessageAction("BILLING_FREE_ALLOWANCE_WARNING", "ACTIVE"),
+      getMerchantSystemMessageAction(
+        "BILLING_FREE_ALLOWANCE_WARNING",
+        "ACTIVE",
+      ),
     ).toEqual({
       href: "/app/billing/select",
       labelKey: "billing.viewPlans",
@@ -565,7 +718,9 @@ describe("merchant billing UI", () => {
       href: "/app/billing/options",
       labelKey: "billing.viewPlans",
     });
-    expect(getMerchantSystemMessageAction("UNKNOWN_BILLING_CODE", "ACTIVE")).toBeNull();
+    expect(
+      getMerchantSystemMessageAction("UNKNOWN_BILLING_CODE", "ACTIVE"),
+    ).toBeNull();
   });
 
   it("keeps purchase-history authorization on the canonical surface", () => {
@@ -578,24 +733,29 @@ describe("merchant billing UI", () => {
     ["NO_CONTRACT", true, true, "NO_CONTRACT"],
     ["FROZEN", true, true, "FROZEN"],
     ["BILLING_ATTENTION", true, true, "UNMAPPED"],
-  ] as const)("derives purchase-history presentation for %s", async (_state, expected, onboardingCompleted, subscriptionStatus) => {
-    resolveShopifyShop.mockResolvedValue({
-      id: "shop-1",
-      status: "ACTIVE",
-      onboardingCompleted,
-    });
-    getSubscriptionProjection.mockResolvedValue({ status: subscriptionStatus });
-    if (_state === "ONBOARDING") {
-      await expect(
-        billingOptionsLoader({
-          request: new Request("https://example.test/app/billing/options"),
-        } as never),
-      ).rejects.toMatchObject({ status: 302 });
-      return;
-    }
-    const data = await billingOptionsLoader({
-      request: new Request("https://example.test/app/billing/options"),
-    } as never);
-    expect(data.purchaseHistoryAvailable).toBe(expected);
-  });
+  ] as const)(
+    "derives purchase-history presentation for %s",
+    async (_state, expected, onboardingCompleted, subscriptionStatus) => {
+      resolveShopifyShop.mockResolvedValue({
+        id: "shop-1",
+        status: "ACTIVE",
+        onboardingCompleted,
+      });
+      getSubscriptionProjection.mockResolvedValue({
+        status: subscriptionStatus,
+      });
+      if (_state === "ONBOARDING") {
+        await expect(
+          billingOptionsLoader({
+            request: new Request("https://example.test/app/billing/options"),
+          } as never),
+        ).rejects.toMatchObject({ status: 302 });
+        return;
+      }
+      const data = await billingOptionsLoader({
+        request: new Request("https://example.test/app/billing/options"),
+      } as never);
+      expect(data.purchaseHistoryAvailable).toBe(expected);
+    },
+  );
 });

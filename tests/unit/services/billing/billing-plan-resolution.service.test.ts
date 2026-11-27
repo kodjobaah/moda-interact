@@ -2,10 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
 
 const providerRead = vi.hoisted(() => vi.fn());
-vi.mock("../../../../app/services/merchant-pricing/merchant-pricing.server.js", async importOriginal => ({
-  ...await importOriginal<typeof import("../../../../app/services/merchant-pricing/merchant-pricing.server.js")>(),
-  readMerchantPricingPlanForProvider: providerRead,
-}));
+vi.mock(
+  "../../../../app/services/merchant-pricing/merchant-pricing.server.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../../../app/services/merchant-pricing/merchant-pricing.server.js")
+    >()),
+    readMerchantPricingPlanForProvider: providerRead,
+  }),
+);
 
 import { BillingPlanResolutionService } from "../../../../app/services/billing/billing-plan-resolution.service";
 
@@ -36,44 +41,63 @@ function cataloguePlan(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createResolutionService(options: {
-  existingPlan?: Record<string, unknown> | null;
-  catalogue?: Record<string, unknown> | null;
-  compatibilityRows?: Array<{ purpose: { key: string }; dataFormat: { key: string } }>;
-  createPlan?: ReturnType<typeof vi.fn>;
-  merchantPlanFindUnique?: ReturnType<typeof vi.fn>;
-  transactions?: ReturnType<typeof vi.fn>;
-} = {}) {
-  const createPlan = options.createPlan ?? vi.fn().mockResolvedValue({
-    id: "billing-plan-1",
-    shopifyPlanHandle: "growth",
-    active: true,
-    kind: "FREE",
-  });
+function createResolutionService(
+  options: {
+    existingPlan?: Record<string, unknown> | null;
+    catalogue?: Record<string, unknown> | null;
+    compatibilityRows?: Array<{
+      purpose: { key: string };
+      dataFormat: { key: string };
+    }>;
+    createPlan?: ReturnType<typeof vi.fn>;
+    merchantPlanFindUnique?: ReturnType<typeof vi.fn>;
+    transactions?: ReturnType<typeof vi.fn>;
+  } = {},
+) {
+  const createPlan =
+    options.createPlan ??
+    vi.fn().mockResolvedValue({
+      id: "billing-plan-1",
+      shopifyPlanHandle: "growth",
+      active: true,
+      kind: "FREE",
+    });
   const tx = {
     billingPlan: {
       findUnique: vi.fn().mockResolvedValue(options.existingPlan ?? null),
       create: createPlan,
     },
     merchantPricingPlan: {
-      findUnique: options.merchantPlanFindUnique ?? vi.fn().mockResolvedValue(options.catalogue ?? cataloguePlan()),
+      findUnique:
+        options.merchantPlanFindUnique ??
+        vi.fn().mockResolvedValue(options.catalogue ?? cataloguePlan()),
       updateMany: vi.fn().mockResolvedValue({ count: 1 }),
     },
     merchantKnowledgePurposeDataFormat: {
-      findMany: vi.fn().mockResolvedValue(options.compatibilityRows ?? [{
-        purpose: { key: "FAQ" },
-        dataFormat: { key: "WEB_PAGE" },
-      }]),
+      findMany: vi.fn().mockResolvedValue(
+        options.compatibilityRows ?? [
+          {
+            purpose: { key: "FAQ" },
+            dataFormat: { key: "WEB_PAGE" },
+          },
+        ],
+      ),
     },
   };
-  const transact = options.transactions ?? vi.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx));
+  const transact =
+    options.transactions ??
+    vi.fn(async (callback: (transaction: typeof tx) => unknown) =>
+      callback(tx),
+    );
   const database = {
     $transaction: transact,
     billingPlan: tx.billingPlan,
     merchantPricingPlan: tx.merchantPricingPlan,
   };
   return {
-    service: new BillingPlanResolutionService(database as unknown as PrismaClient),
+    service: new BillingPlanResolutionService(
+      database as unknown as PrismaClient,
+    ),
     database,
     tx,
     createPlan,
@@ -85,12 +109,18 @@ describe("BillingPlanResolutionService", () => {
     const existingPlan = { id: "billing-plan-existing", active: true };
     const { service, database, tx } = createResolutionService({
       existingPlan,
-      merchantPlanFindUnique: vi.fn().mockResolvedValue({ materializedAt: null }),
+      merchantPlanFindUnique: vi
+        .fn()
+        .mockResolvedValue({ materializedAt: null }),
     });
 
     const result = await service.resolveOrMaterializeBillingPlan("growth");
 
-    expect(result).toEqual({ kind: "READY", plan: existingPlan, materialized: false });
+    expect(result).toEqual({
+      kind: "READY",
+      plan: existingPlan,
+      materialized: false,
+    });
     expect(database.$transaction).toHaveBeenCalledTimes(1);
     expect(tx.merchantPricingPlan.updateMany).toHaveBeenCalledWith({
       where: { shopifyPlanHandle: "growth", materializedAt: null },
@@ -113,7 +143,15 @@ describe("BillingPlanResolutionService", () => {
         shopifyPlanHandle: "growth",
         kind: "FREE",
         shopifyUsageEventHandle: null,
-        features: { create: [{ featureId: "checkout-recovery", enabled: true, configuration: { enabledFor: ["checkout"] } }] },
+        features: {
+          create: [
+            {
+              featureId: "checkout-recovery",
+              enabled: true,
+              configuration: { enabledFor: ["checkout"] },
+            },
+          ],
+        },
       }),
     });
     expect(tx.merchantPricingPlan.updateMany).toHaveBeenCalledTimes(1);
@@ -121,25 +159,47 @@ describe("BillingPlanResolutionService", () => {
 
   it.each([
     { kind: "PAID_METERED", handle: null, expected: null },
-    { kind: "PAID_METERED", handle: " custom-reporting-event ", expected: "custom-reporting-event" },
+    {
+      kind: "PAID_METERED",
+      handle: " custom-reporting-event ",
+      expected: "custom-reporting-event",
+    },
     { kind: "FREE", handle: "free-reporting-event", expected: null },
-  ])("materializes a $kind plan with reporting handle $handle", async ({ kind, handle, expected }) => {
-    const { service, createPlan } = createResolutionService({
-      catalogue: cataloguePlan({ planKind: kind, shopifyRecoveryUsageEventHandle: handle, includedRecoveryCredits: 25 }),
-    });
-    await expect(service.resolveOrMaterializeBillingPlan("growth")).resolves.toMatchObject({ kind: "READY" });
-    expect(createPlan).toHaveBeenCalledWith({ data: expect.objectContaining({ shopifyUsageEventHandle: expected }) });
-  });
+  ])(
+    "materializes a $kind plan with reporting handle $handle",
+    async ({ kind, handle, expected }) => {
+      const { service, createPlan } = createResolutionService({
+        catalogue: cataloguePlan({
+          planKind: kind,
+          shopifyRecoveryUsageEventHandle: handle,
+          includedRecoveryCredits: 25,
+        }),
+      });
+      await expect(
+        service.resolveOrMaterializeBillingPlan("growth"),
+      ).resolves.toMatchObject({ kind: "READY" });
+      expect(createPlan).toHaveBeenCalledWith({
+        data: expect.objectContaining({ shopifyUsageEventHandle: expected }),
+      });
+    },
+  );
 
   it("returns unknown and inactive outcomes without materializing", async () => {
-    const unknown = createResolutionService({ catalogue: { ...cataloguePlan(), isActive: false } });
-    await expect(unknown.service.resolveOrMaterializeBillingPlan("growth"))
-      .resolves.toEqual({ kind: "UNKNOWN_CATALOGUE_PLAN" });
+    const unknown = createResolutionService({
+      catalogue: { ...cataloguePlan(), isActive: false },
+    });
+    await expect(
+      unknown.service.resolveOrMaterializeBillingPlan("growth"),
+    ).resolves.toEqual({ kind: "UNKNOWN_CATALOGUE_PLAN" });
 
     const inactivePlan = { id: "billing-plan-inactive", active: false };
     const inactive = createResolutionService({ existingPlan: inactivePlan });
-    await expect(inactive.service.resolveOrMaterializeBillingPlan("growth"))
-      .resolves.toEqual({ kind: "INACTIVE_OPERATIONAL_PLAN", planId: inactivePlan.id });
+    await expect(
+      inactive.service.resolveOrMaterializeBillingPlan("growth"),
+    ).resolves.toEqual({
+      kind: "INACTIVE_OPERATIONAL_PLAN",
+      planId: inactivePlan.id,
+    });
     expect(inactive.createPlan).not.toHaveBeenCalled();
   });
 
@@ -152,45 +212,59 @@ describe("BillingPlanResolutionService", () => {
     };
     const { service, tx, createPlan } = createResolutionService({
       catalogue: cataloguePlan({
-        features: [checkoutRecoveryFeature(), {
-          featureId: "merchant-knowledge",
-          configuration,
-          feature: { key: "merchant_knowledge", systemRequired: false },
-        }],
+        features: [
+          checkoutRecoveryFeature(),
+          {
+            featureId: "merchant-knowledge",
+            configuration,
+            feature: { key: "merchant_knowledge", systemRequired: false },
+          },
+        ],
       }),
       compatibilityRows: [],
     });
 
-    await expect(service.resolveOrMaterializeBillingPlan("growth")).resolves.toEqual({
+    await expect(
+      service.resolveOrMaterializeBillingPlan("growth"),
+    ).resolves.toEqual({
       kind: "INVALID_CATALOGUE_PLAN",
       reason: "INVALID_MERCHANT_KNOWLEDGE_CONFIGURATION",
     });
-    expect(tx.merchantKnowledgePurposeDataFormat.findMany).toHaveBeenCalledTimes(1);
+    expect(
+      tx.merchantKnowledgePurposeDataFormat.findMany,
+    ).toHaveBeenCalledTimes(1);
     expect(createPlan).not.toHaveBeenCalled();
   });
 
   it("recovers a unique-handle create race and preserves materializedAt repair", async () => {
     const winner = { id: "winner", active: true };
-    const findPlan = vi.fn()
+    const findPlan = vi
+      .fn()
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(winner);
     const createPlan = vi.fn().mockRejectedValue({ code: "P2002" });
-    const findCatalogue = vi.fn()
+    const findCatalogue = vi
+      .fn()
       .mockResolvedValueOnce(cataloguePlan())
       .mockResolvedValueOnce({ materializedAt: null });
-    const transactions = vi.fn(async (callback: (transaction: unknown) => unknown) => callback({
-      billingPlan: { findUnique: findPlan, create: createPlan },
-      merchantPricingPlan: {
-        findUnique: findCatalogue,
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
-      },
-      merchantKnowledgePurposeDataFormat: {
-        findMany: vi.fn().mockResolvedValue([]),
-      },
-    }));
+    const transactions = vi.fn(
+      async (callback: (transaction: unknown) => unknown) =>
+        callback({
+          billingPlan: { findUnique: findPlan, create: createPlan },
+          merchantPricingPlan: {
+            findUnique: findCatalogue,
+            updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+          },
+          merchantKnowledgePurposeDataFormat: {
+            findMany: vi.fn().mockResolvedValue([]),
+          },
+        }),
+    );
     const { service } = createResolutionService({ transactions });
 
-    await expect(service.resolveOrMaterializeBillingPlan("growth")).resolves.toEqual({
+    await expect(
+      service.resolveOrMaterializeBillingPlan("growth"),
+    ).resolves.toEqual({
       kind: "READY",
       plan: winner,
       materialized: false,
@@ -211,33 +285,66 @@ describe("BillingPlanResolutionService", () => {
       merchantPricingPlan: { findUnique },
     } as unknown as PrismaClient);
 
-    await expect(service.readRecoveryCreditTopUpConfiguration("growth")).resolves.toEqual({
+    await expect(
+      service.readRecoveryCreditTopUpConfiguration("growth"),
+    ).resolves.toEqual({
       enabled: true,
       creditsPerPack: 100,
     });
     expect(findUnique).toHaveBeenCalledWith({
       where: { shopifyPlanHandle: "growth" },
-      select: { usageEvents: { orderBy: { position: "asc" }, select: { creditsGrantedPerUnit: true } } },
+      select: {
+        usageEvents: {
+          orderBy: { position: "asc" },
+          select: { creditsGrantedPerUnit: true },
+        },
+      },
     });
   });
 
   it("reads database catalogue events and falls back to provider when the model is unavailable", async () => {
     const findUnique = vi.fn().mockResolvedValue({
       shopifyPlanHandle: "growth",
-      usageEvents: [{ position: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25, tiers: [] }],
+      usageEvents: [
+        {
+          position: 2,
+          eventHandle: "meter",
+          adminLabel: "Meter",
+          creditsGrantedPerUnit: 25,
+          tiers: [],
+        },
+      ],
     });
     const databaseService = new BillingPlanResolutionService({
       merchantPricingPlan: { findUnique },
     } as unknown as PrismaClient);
-    await expect(databaseService.readMerchantPricingPlan("growth")).resolves.toEqual({
+    await expect(
+      databaseService.readMerchantPricingPlan("growth"),
+    ).resolves.toEqual({
       shopifyPlanHandle: "growth",
-      usageEvents: [{ cataloguePosition: 2, position: 2, eventHandle: "meter", adminLabel: "Meter", creditsGrantedPerUnit: 25, tiers: [] }],
+      usageEvents: [
+        {
+          cataloguePosition: 2,
+          position: 2,
+          eventHandle: "meter",
+          adminLabel: "Meter",
+          creditsGrantedPerUnit: 25,
+          tiers: [],
+        },
+      ],
     });
     expect(providerRead).not.toHaveBeenCalled();
 
-    providerRead.mockResolvedValue({ shopifyPlanHandle: "growth", usageEvents: [] });
-    const fallbackService = new BillingPlanResolutionService({} as PrismaClient);
-    await expect(fallbackService.readMerchantPricingPlan("growth")).resolves.toEqual({
+    providerRead.mockResolvedValue({
+      shopifyPlanHandle: "growth",
+      usageEvents: [],
+    });
+    const fallbackService = new BillingPlanResolutionService(
+      {} as PrismaClient,
+    );
+    await expect(
+      fallbackService.readMerchantPricingPlan("growth"),
+    ).resolves.toEqual({
       shopifyPlanHandle: "growth",
       usageEvents: [],
     });
@@ -248,17 +355,38 @@ describe("BillingPlanResolutionService", () => {
 describe("bounded presentation catalogue batch", () => {
   it("deduplicates the two exact handles and orders event/tier relations in one read", async () => {
     const findMany = vi.fn(async () => []);
-    const service = new BillingPlanResolutionService({ merchantPricingPlan: { findMany } } as never);
-    await expect(service.readMerchantPricingPlansForPresentation(["growth", "growth", "free"])).resolves.toEqual([]);
-    expect(findMany).toHaveBeenCalledWith({ where: { shopifyPlanHandle: { in: ["growth", "free"] } },
-      include: { usageEvents: { orderBy: { position: "asc" }, include: { tiers: { orderBy: { position: "asc" } } } } },
+    const service = new BillingPlanResolutionService({
+      merchantPricingPlan: { findMany },
+    } as never);
+    await expect(
+      service.readMerchantPricingPlansForPresentation([
+        "growth",
+        "growth",
+        "free",
+      ]),
+    ).resolves.toEqual([]);
+    expect(findMany).toHaveBeenCalledWith({
+      where: { shopifyPlanHandle: { in: ["growth", "free"] } },
+      include: {
+        usageEvents: {
+          orderBy: { position: "asc" },
+          include: { tiers: { orderBy: { position: "asc" } } },
+        },
+      },
     });
     expect(findMany).toHaveBeenCalledOnce();
   });
   it("rejects an unbounded presentation lookup and skips an empty lookup", async () => {
-    const findMany = vi.fn(); const service = new BillingPlanResolutionService({ merchantPricingPlan: { findMany } } as never);
-    await expect(service.readMerchantPricingPlansForPresentation(["one", "two", "three"])).rejects.toThrow("at most two");
-    await expect(service.readMerchantPricingPlansForPresentation([])).resolves.toEqual([]);
+    const findMany = vi.fn();
+    const service = new BillingPlanResolutionService({
+      merchantPricingPlan: { findMany },
+    } as never);
+    await expect(
+      service.readMerchantPricingPlansForPresentation(["one", "two", "three"]),
+    ).rejects.toThrow("at most two");
+    await expect(
+      service.readMerchantPricingPlansForPresentation([]),
+    ).resolves.toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
 });

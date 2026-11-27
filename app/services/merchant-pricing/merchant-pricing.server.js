@@ -28,36 +28,63 @@ function validateText(value, field, maxLength = Infinity) {
 
 function validateUsageEvent(event, planCurrency, eventIndex) {
   const prefix = `usage event ${eventIndex}`;
-  if (!event || !Array.isArray(event.tiers)) invalid(`${prefix} shape is invalid`);
+  if (!event || !Array.isArray(event.tiers))
+    invalid(`${prefix} shape is invalid`);
   validateText(event.eventHandle, `${prefix} handle`);
   validateCurrency(event.currency, `${prefix} currency`);
-  if (event.currency !== planCurrency) invalid(`${prefix} currency differs from plan`);
-  if (!Number.isSafeInteger(event.creditsGrantedPerUnit) || event.creditsGrantedPerUnit <= 0) {
+  if (event.currency !== planCurrency)
+    invalid(`${prefix} currency differs from plan`);
+  if (
+    !Number.isSafeInteger(event.creditsGrantedPerUnit) ||
+    event.creditsGrantedPerUnit <= 0
+  ) {
     invalid(`${prefix} creditsGrantedPerUnit is invalid`);
   }
-  if (event.maximumUnitsPerBillingPeriod !== null && (!Number.isSafeInteger(event.maximumUnitsPerBillingPeriod) || event.maximumUnitsPerBillingPeriod <= 0)) {
+  if (
+    event.maximumUnitsPerBillingPeriod !== null &&
+    (!Number.isSafeInteger(event.maximumUnitsPerBillingPeriod) ||
+      event.maximumUnitsPerBillingPeriod <= 0)
+  ) {
     invalid(`${prefix} maximumUnitsPerBillingPeriod is invalid`);
   }
 
   if (event.pricingMode === "FIXED") {
-    if (!isSafeNonNegativeInteger(event.fixedUnitAmountMinor) || event.tiers.length !== 0) {
+    if (
+      !isSafeNonNegativeInteger(event.fixedUnitAmountMinor) ||
+      event.tiers.length !== 0
+    ) {
       invalid(`${prefix} FIXED pricing is invalid`);
     }
-  } else if (event.pricingMode === "GRADUATED" || event.pricingMode === "VOLUME") {
+  } else if (
+    event.pricingMode === "GRADUATED" ||
+    event.pricingMode === "VOLUME"
+  ) {
     if (event.fixedUnitAmountMinor !== null) {
       invalid(`${prefix} tiered pricing cannot have a fixed amount`);
     }
-    if (!Array.isArray(event.tiers) || event.tiers.length < 1 || event.tiers.length > 6) {
+    if (
+      !Array.isArray(event.tiers) ||
+      event.tiers.length < 1 ||
+      event.tiers.length > 6
+    ) {
       invalid(`${prefix} tier count is invalid`);
     }
     let previousUpperBound = 0;
     event.tiers.forEach((tier, tierIndex) => {
-      if (tier.position !== tierIndex || !isSafeNonNegativeInteger(tier.amountPerUnitMinor) || !isSafeNonNegativeInteger(tier.flatAmountMinor)) {
+      if (
+        tier.position !== tierIndex ||
+        !isSafeNonNegativeInteger(tier.amountPerUnitMinor) ||
+        !isSafeNonNegativeInteger(tier.flatAmountMinor)
+      ) {
         invalid(`${prefix} tier ${tierIndex} is invalid`);
       }
       if (tierIndex === event.tiers.length - 1) {
-        if (tier.upTo !== null) invalid(`${prefix} final tier must be open-ended`);
-      } else if (!Number.isSafeInteger(tier.upTo) || tier.upTo <= previousUpperBound) {
+        if (tier.upTo !== null)
+          invalid(`${prefix} final tier must be open-ended`);
+      } else if (
+        !Number.isSafeInteger(tier.upTo) ||
+        tier.upTo <= previousUpperBound
+      ) {
         invalid(`${prefix} tier ${tierIndex} upper bound is invalid`);
       }
       if (tier.upTo !== null) previousUpperBound = tier.upTo;
@@ -71,14 +98,19 @@ function validatePlan(plan, translation, planIndex) {
   const prefix = `plan ${planIndex}`;
   validateText(plan.shopifyPlanHandle, `${prefix} handle`);
   validateText(plan.displayName, `${prefix} display name`);
-  if (!isSafeNonNegativeInteger(plan.cataloguePosition)) invalid(`${prefix} catalogue position is invalid`);
+  if (!isSafeNonNegativeInteger(plan.cataloguePosition))
+    invalid(`${prefix} catalogue position is invalid`);
   validateText(translation?.merchantDescription, `${prefix} translation`, 2000);
   validateCurrency(plan.currency, `${prefix} currency`);
-  if (!isSafeNonNegativeInteger(plan.recurringAmountMinor)) invalid(`${prefix} recurring amount is invalid`);
-  if (!isSafeNonNegativeInteger(plan.includedRecoveryCredits)) invalid(`${prefix} included credits are invalid`);
-  if (!Array.isArray(plan.usageEvents) || plan.usageEvents.length > 5) invalid(`${prefix} usage event count is invalid`);
+  if (!isSafeNonNegativeInteger(plan.recurringAmountMinor))
+    invalid(`${prefix} recurring amount is invalid`);
+  if (!isSafeNonNegativeInteger(plan.includedRecoveryCredits))
+    invalid(`${prefix} included credits are invalid`);
+  if (!Array.isArray(plan.usageEvents) || plan.usageEvents.length > 5)
+    invalid(`${prefix} usage event count is invalid`);
   plan.usageEvents.forEach((event, eventIndex) => {
-    if (event.position !== eventIndex) invalid(`${prefix} usage event order is invalid`);
+    if (event.position !== eventIndex)
+      invalid(`${prefix} usage event order is invalid`);
     validateUsageEvent(event, plan.currency, eventIndex);
   });
 }
@@ -87,15 +119,23 @@ function validateHighlights(highlights, planIndex) {
   let previousPosition = -1;
   highlights.forEach((highlight, highlightIndex) => {
     const prefix = `plan ${planIndex} highlight ${highlightIndex}`;
-    if (!isSafeNonNegativeInteger(highlight.position) || highlight.position <= previousPosition) {
+    if (
+      !isSafeNonNegativeInteger(highlight.position) ||
+      highlight.position <= previousPosition
+    ) {
       invalid(`${prefix} position is invalid`);
     }
     previousPosition = highlight.position;
     validateText(highlight.contentKey, `${prefix} content key`);
     const translation = highlight.translations?.[0];
-    if (highlight.translations?.length !== 1) invalid(`${prefix} translation is missing or duplicated`);
+    if (highlight.translations?.length !== 1)
+      invalid(`${prefix} translation is missing or duplicated`);
     validateText(translation?.merchantTitle, `${prefix} title`, 120);
-    validateText(translation?.merchantDescription, `${prefix} description`, 2000);
+    validateText(
+      translation?.merchantDescription,
+      `${prefix} description`,
+      2000,
+    );
   });
 }
 
@@ -119,9 +159,11 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
 
   let previousPosition = -1;
   return plans.map((plan, planIndex) => {
-    if (plan.cataloguePosition <= previousPosition) invalid("catalogue positions are not strictly increasing");
+    if (plan.cataloguePosition <= previousPosition)
+      invalid("catalogue positions are not strictly increasing");
     previousPosition = plan.cataloguePosition;
-    if (plan.translations?.length !== 1) invalid(`plan ${planIndex} translation is missing or duplicated`);
+    if (plan.translations?.length !== 1)
+      invalid(`plan ${planIndex} translation is missing or duplicated`);
     const translation = plan.translations[0];
     validatePlan(plan, translation, planIndex);
     validateHighlights(plan.highlights ?? [], planIndex);
@@ -146,31 +188,46 @@ export async function readActiveMerchantPricingCatalogue({ locale } = {}) {
       usageEvents: plan.usageEvents.map((event) => ({
         cataloguePosition: event.position,
         eventHandle: event.eventHandle,
-        adminLabel: typeof event.adminLabel === "string" && event.adminLabel.trim()
-          ? event.adminLabel.trim()
-          : event.eventHandle,
+        adminLabel:
+          typeof event.adminLabel === "string" && event.adminLabel.trim()
+            ? event.adminLabel.trim()
+            : event.eventHandle,
         creditsGrantedPerUnit: event.creditsGrantedPerUnit,
         maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
         pricingMode: event.pricingMode,
         currency: event.currency,
         fixedUnitAmountMinor: event.fixedUnitAmountMinor,
-        tiers: event.tiers.map(({ position, upTo, amountPerUnitMinor, flatAmountMinor }) => ({
-          position,
-          upTo,
-          amountPerUnitMinor,
-          flatAmountMinor,
-        })),
+        tiers: event.tiers.map(
+          ({ position, upTo, amountPerUnitMinor, flatAmountMinor }) => ({
+            position,
+            upTo,
+            amountPerUnitMinor,
+            flatAmountMinor,
+          }),
+        ),
       })),
     };
   });
 }
 
-export function resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan }) {
-  if (!providerSubscription || (providerSubscription.status !== "ACTIVE" && providerSubscription.status !== "TRIALING")) {
-    throw new Error("A live provider subscription is required to resolve recovery-credit offers.");
+export function resolveCurrentRecoveryCreditOffers({
+  providerSubscription,
+  merchantPricingPlan,
+}) {
+  if (
+    !providerSubscription ||
+    (providerSubscription.status !== "ACTIVE" &&
+      providerSubscription.status !== "TRIALING")
+  ) {
+    throw new Error(
+      "A live provider subscription is required to resolve recovery-credit offers.",
+    );
   }
 
-  if (!merchantPricingPlan || merchantPricingPlan.shopifyPlanHandle !== providerSubscription.planHandle) {
+  if (
+    !merchantPricingPlan ||
+    merchantPricingPlan.shopifyPlanHandle !== providerSubscription.planHandle
+  ) {
     return { offers: [], diagnostics: [] };
   }
 
@@ -186,21 +243,29 @@ export function resolveCurrentRecoveryCreditOffers({ providerSubscription, merch
     .flatMap((event) => {
       const providerItem = providerItems.get(event.eventHandle);
       if (!providerItem) return [];
-      return [{
-        eventHandle: event.eventHandle,
-        label: typeof event.adminLabel === "string" && event.adminLabel.trim()
-          ? event.adminLabel.trim()
-          : event.eventHandle,
-        cataloguePosition: event.position,
-        creditsGranted: event.creditsGrantedPerUnit,
-        providerPrice: providerItem.price,
-        providerUsage: providerItem.usage,
-      }];
+      return [
+        {
+          eventHandle: event.eventHandle,
+          label:
+            typeof event.adminLabel === "string" && event.adminLabel.trim()
+              ? event.adminLabel.trim()
+              : event.eventHandle,
+          cataloguePosition: event.position,
+          creditsGranted: event.creditsGrantedPerUnit,
+          providerPrice: providerItem.price,
+          providerUsage: providerItem.usage,
+        },
+      ];
     });
 
   for (const handle of providerItems.keys()) {
-    if (!(merchantPricingPlan.usageEvents ?? []).some((event) => event.eventHandle === handle)) {
-      if (diagnostics.length < 10) diagnostics.push({ code: "UNKNOWN_PROVIDER_METER", handle });
+    if (
+      !(merchantPricingPlan.usageEvents ?? []).some(
+        (event) => event.eventHandle === handle,
+      )
+    ) {
+      if (diagnostics.length < 10)
+        diagnostics.push({ code: "UNKNOWN_PROVIDER_METER", handle });
     }
   }
 
@@ -227,9 +292,10 @@ export async function readMerchantPricingPlanForProvider({ planHandle } = {}) {
       cataloguePosition: event.position,
       position: event.position,
       eventHandle: event.eventHandle,
-      adminLabel: typeof event.adminLabel === "string" && event.adminLabel.trim()
-        ? event.adminLabel.trim()
-        : event.eventHandle,
+      adminLabel:
+        typeof event.adminLabel === "string" && event.adminLabel.trim()
+          ? event.adminLabel.trim()
+          : event.eventHandle,
       creditsGrantedPerUnit: event.creditsGrantedPerUnit,
       maximumUnitsPerBillingPeriod: event.maximumUnitsPerBillingPeriod,
       pricingMode: event.pricingMode,
@@ -240,10 +306,17 @@ export async function readMerchantPricingPlanForProvider({ planHandle } = {}) {
   };
 }
 
-
 /** Derive presentation facts from already-read usage-event configuration. */
 export function deriveRecoveryCreditTopUpConfiguration(usageEvents = []) {
-  const credits = [...new Set(usageEvents.map(event => event.creditsGrantedPerUnit)
-    .filter(value => Number.isSafeInteger(value) && value > 0))];
-  return { enabled: usageEvents.length > 0, creditsPerPack: credits.length === 1 ? credits[0] : null };
+  const credits = [
+    ...new Set(
+      usageEvents
+        .map((event) => event.creditsGrantedPerUnit)
+        .filter((value) => Number.isSafeInteger(value) && value > 0),
+    ),
+  ];
+  return {
+    enabled: usageEvents.length > 0,
+    creditsPerPack: credits.length === 1 ? credits[0] : null,
+  };
 }

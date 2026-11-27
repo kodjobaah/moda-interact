@@ -4,9 +4,7 @@ import {
   BillingPeriodEntitlementCounterKind,
   BillingPlanKind,
 } from "@prisma/client";
-import {
-  APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
-} from "@modainteract/moda-interact-shared/billing";
+import { APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS } from "@modainteract/moda-interact-shared/billing";
 
 import type { BillingPeriodPhase } from "./billing.types";
 
@@ -50,28 +48,47 @@ type CurrentBillingPeriodProjectionResult =
       reason: CurrentBillingPeriodProjectionConflictReason;
     };
 
-export function hasDurableBillingPeriod(subscription: DurableBillingCycle): boolean {
+export function hasDurableBillingPeriod(
+  subscription: DurableBillingCycle,
+): boolean {
   return Boolean(
     subscription.billingPeriodId &&
     subscription.currentPeriodStart &&
     subscription.currentPeriodEnd &&
     subscription.billingPeriod &&
     subscription.billingPeriod.id === subscription.billingPeriodId &&
-    subscription.billingPeriod.periodStart.getTime() === subscription.currentPeriodStart.getTime() &&
-    subscription.billingPeriod.periodEnd.getTime() === subscription.currentPeriodEnd.getTime(),
+    subscription.billingPeriod.periodStart.getTime() ===
+      subscription.currentPeriodStart.getTime() &&
+    subscription.billingPeriod.periodEnd.getTime() ===
+      subscription.currentPeriodEnd.getTime(),
   );
 }
 
 export function hasMatchingBillingCycle(
   subscription: DurableBillingCycle,
-  providerSubscription: { currentPeriodStart: Date | null; currentPeriodEnd: Date | null },
+  providerSubscription: {
+    currentPeriodStart: Date | null;
+    currentPeriodEnd: Date | null;
+  },
   expectedBillingPeriodId?: string,
 ): boolean {
   if (!hasDurableBillingPeriod(subscription)) return false;
-  if (expectedBillingPeriodId && subscription.billingPeriodId !== expectedBillingPeriodId) return false;
-  if (!providerSubscription.currentPeriodStart || !providerSubscription.currentPeriodEnd) return false;
-  return providerSubscription.currentPeriodStart.getTime() === subscription.currentPeriodStart!.getTime() &&
-    providerSubscription.currentPeriodEnd.getTime() === subscription.currentPeriodEnd!.getTime();
+  if (
+    expectedBillingPeriodId &&
+    subscription.billingPeriodId !== expectedBillingPeriodId
+  )
+    return false;
+  if (
+    !providerSubscription.currentPeriodStart ||
+    !providerSubscription.currentPeriodEnd
+  )
+    return false;
+  return (
+    providerSubscription.currentPeriodStart.getTime() ===
+      subscription.currentPeriodStart!.getTime() &&
+    providerSubscription.currentPeriodEnd.getTime() ===
+      subscription.currentPeriodEnd!.getTime()
+  );
 }
 
 export async function ensureMappedCurrentBillingPeriodProjection(
@@ -85,17 +102,16 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     plan: CurrentBillingPeriodPlan;
   },
 ): Promise<CurrentBillingPeriodProjectionResult> {
-  const expectedGrant = input.plan.kind === BillingPlanKind.PAID_METERED
-    ? input.plan.includedRecoveryConversationAllowance
-    : null;
+  const expectedGrant =
+    input.plan.kind === BillingPlanKind.PAID_METERED
+      ? input.plan.includedRecoveryConversationAllowance
+      : null;
 
   if (
     input.plan.kind === BillingPlanKind.PAID_METERED &&
-    (
-      expectedGrant === null ||
+    (expectedGrant === null ||
       !Number.isSafeInteger(expectedGrant) ||
-      expectedGrant < 0
-    )
+      expectedGrant < 0)
   ) {
     return {
       kind: "CONFLICT",
@@ -135,7 +151,8 @@ export async function ensureMappedCurrentBillingPeriodProjection(
         data: {
           shopId: input.shopId,
           billingPeriodId: createdPeriod.id,
-          counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+          counter:
+            BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
           grantedQuantity: expectedGrant as number,
           committedQuantity: 0,
           reservedQuantity: 0,
@@ -152,23 +169,29 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     };
   }
 
-  const conflictReason = existingPeriod.status !== BillingPeriodStatus.OPEN
-    ? "CLOSED_PERIOD"
-    : existingPeriod.subscriptionId !== input.subscriptionId
-      ? "SUBSCRIPTION_MISMATCH"
-      : existingPeriod.shopifyPlanHandleSnapshot !== null &&
-          existingPeriod.shopifyPlanHandleSnapshot !== input.providerPlanHandle
-        ? "HANDLE_MISMATCH"
-        : existingPeriod.planId !== null && existingPeriod.planId !== input.plan.id
-          ? "PLAN_MISMATCH"
-          : existingPeriod.planNameSnapshot !== null && existingPeriod.planNameSnapshot !== input.plan.name
-            ? "PLAN_NAME_MISMATCH"
-            : existingPeriod.planKindSnapshot !== null && existingPeriod.planKindSnapshot !== input.plan.kind
-              ? "PLAN_KIND_MISMATCH"
-              : existingPeriod.includedRecoveryCreditsGranted !== null &&
-                  existingPeriod.includedRecoveryCreditsGranted !== expectedGrant
-                ? "INCLUDED_GRANT_MISMATCH"
-                : null;
+  const conflictReason =
+    existingPeriod.status !== BillingPeriodStatus.OPEN
+      ? "CLOSED_PERIOD"
+      : existingPeriod.subscriptionId !== input.subscriptionId
+        ? "SUBSCRIPTION_MISMATCH"
+        : existingPeriod.shopifyPlanHandleSnapshot !== null &&
+            existingPeriod.shopifyPlanHandleSnapshot !==
+              input.providerPlanHandle
+          ? "HANDLE_MISMATCH"
+          : existingPeriod.planId !== null &&
+              existingPeriod.planId !== input.plan.id
+            ? "PLAN_MISMATCH"
+            : existingPeriod.planNameSnapshot !== null &&
+                existingPeriod.planNameSnapshot !== input.plan.name
+              ? "PLAN_NAME_MISMATCH"
+              : existingPeriod.planKindSnapshot !== null &&
+                  existingPeriod.planKindSnapshot !== input.plan.kind
+                ? "PLAN_KIND_MISMATCH"
+                : existingPeriod.includedRecoveryCreditsGranted !== null &&
+                    existingPeriod.includedRecoveryCreditsGranted !==
+                      expectedGrant
+                  ? "INCLUDED_GRANT_MISMATCH"
+                  : null;
 
   if (conflictReason) {
     return {
@@ -178,14 +201,16 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     };
   }
 
-  const includedCounter = await transaction.billingPeriodEntitlementCounter.findUnique({
-    where: {
-      billingPeriodId_counter: {
-        billingPeriodId: existingPeriod.id,
-        counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+  const includedCounter =
+    await transaction.billingPeriodEntitlementCounter.findUnique({
+      where: {
+        billingPeriodId_counter: {
+          billingPeriodId: existingPeriod.id,
+          counter:
+            BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+        },
       },
-    },
-  });
+    });
 
   if (input.plan.kind === BillingPlanKind.FREE && includedCounter) {
     return {
@@ -195,16 +220,21 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     };
   }
 
-  if (input.plan.kind === BillingPlanKind.PAID_METERED && includedCounter && (
-    includedCounter.shopId !== input.shopId ||
-    includedCounter.grantedQuantity !== expectedGrant ||
-    !isSafeNonNegativeInteger(includedCounter.grantedQuantity) ||
-    !isSafeNonNegativeInteger(includedCounter.committedQuantity) ||
-    !isSafeNonNegativeInteger(includedCounter.reservedQuantity) ||
-    !isSafeNonNegativeInteger(includedCounter.forfeitedQuantity) ||
-    includedCounter.currentAllowanceQuantity !== null ||
-    includedCounter.committedQuantity + includedCounter.reservedQuantity + includedCounter.forfeitedQuantity > expectedGrant
-  )) {
+  if (
+    input.plan.kind === BillingPlanKind.PAID_METERED &&
+    includedCounter &&
+    (includedCounter.shopId !== input.shopId ||
+      includedCounter.grantedQuantity !== expectedGrant ||
+      !isSafeNonNegativeInteger(includedCounter.grantedQuantity) ||
+      !isSafeNonNegativeInteger(includedCounter.committedQuantity) ||
+      !isSafeNonNegativeInteger(includedCounter.reservedQuantity) ||
+      !isSafeNonNegativeInteger(includedCounter.forfeitedQuantity) ||
+      includedCounter.currentAllowanceQuantity !== null ||
+      includedCounter.committedQuantity +
+        includedCounter.reservedQuantity +
+        includedCounter.forfeitedQuantity >
+        expectedGrant)
+  ) {
     return {
       kind: "CONFLICT",
       billingPeriodId: existingPeriod.id,
@@ -212,7 +242,8 @@ export async function ensureMappedCurrentBillingPeriodProjection(
     };
   }
 
-  const repaired = existingPeriod.planId === null ||
+  const repaired =
+    existingPeriod.planId === null ||
     existingPeriod.shopifyPlanHandleSnapshot === null ||
     existingPeriod.planNameSnapshot === null ||
     existingPeriod.planKindSnapshot === null ||
@@ -260,12 +291,15 @@ export function deriveBillingPeriodPhase(
   now = new Date(),
 ): BillingPeriodPhase | null {
   if (!periodEnd) return null;
-  const drainStart = periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS;
+  const drainStart =
+    periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS;
   if (now.getTime() < drainStart) return "ACTIVE";
   if (now.getTime() < periodEnd.getTime()) return "DRAINING";
   return "RECONCILING";
 }
 
-export function isSafeNonNegativeInteger(value: number | null | undefined): value is number {
+export function isSafeNonNegativeInteger(
+  value: number | null | undefined,
+): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }

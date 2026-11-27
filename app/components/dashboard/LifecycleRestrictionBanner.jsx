@@ -4,7 +4,11 @@ import React from "react";
 import { createMerchantI18n } from "../../utils/merchant-i18n";
 
 /** @param {{ merchantUi: any, subscription: any, capacity: any }} props */
-export default function LifecycleRestrictionBanner({ merchantUi, subscription, capacity }) {
+export default function LifecycleRestrictionBanner({
+  merchantUi,
+  subscription,
+  capacity,
+}) {
   const i18n = createMerchantI18n(merchantUi);
   const pendingPlan = subscription?.pendingPlan;
   const scheduledCancellation = Boolean(
@@ -38,7 +42,10 @@ export default function LifecycleRestrictionBanner({ merchantUi, subscription, c
 }
 
 LifecycleRestrictionBanner.propTypes = {
-  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  merchantUi: PropTypes.shape({
+    locale: PropTypes.string,
+    timeZone: PropTypes.string,
+  }),
   subscription: PropTypes.object,
   capacity: PropTypes.object,
 };

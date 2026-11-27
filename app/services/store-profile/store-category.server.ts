@@ -10,7 +10,9 @@ import { resolveShopifyCommerceEnvironment } from "./store-category-activation.s
 
 type CategoryReader = Pick<
   typeof db,
-  "commercePromptTemplateCategory" | "commerceShopProfile" | "commerceAgentConfiguration"
+  | "commercePromptTemplateCategory"
+  | "commerceShopProfile"
+  | "commerceAgentConfiguration"
 >;
 
 type CategoryWithTranslations = {
@@ -18,10 +20,17 @@ type CategoryWithTranslations = {
   slug: string;
   displayName: string;
   description: string;
-  translations?: Array<{ locale: string; displayName: string; description: string }> | null;
+  translations?: Array<{
+    locale: string;
+    displayName: string;
+    description: string;
+  }> | null;
 };
 
-export async function listSelectableStoreCategories(locale: string, client: CategoryReader = db) {
+export async function listSelectableStoreCategories(
+  locale: string,
+  client: CategoryReader = db,
+) {
   const translationLocales = storeCategoryTranslationLocales(locale);
   const rows = await client.commercePromptTemplateCategory.findMany({
     where: { enabled: true, defaultTemplateId: { not: null } },
@@ -46,32 +55,41 @@ export async function listSelectableStoreCategories(locale: string, client: Cate
       !template.enabled ||
       template.categoryId !== category.id ||
       !template.promptText.trim()
-    ) return [];
+    )
+      return [];
 
-    return [{
-      id: category.id,
-      slug: category.slug,
-      ...localizeStoreCategory(category, locale),
-      mappings: category.taxonomyMappings.flatMap((mapping) =>
-        mapping.conditionKey
-          ? [{
-              id: mapping.id,
-              conditionKey: mapping.conditionKey,
-              ...localizeStoreCategoryMapping(mapping, locale),
-            }]
-          : [],
-      ),
-      defaultTemplate: {
-        id: template.id,
-        key: template.key,
-        displayName: template.displayName,
-        editVersion: template.editVersion,
+    return [
+      {
+        id: category.id,
+        slug: category.slug,
+        ...localizeStoreCategory(category, locale),
+        mappings: category.taxonomyMappings.flatMap((mapping) =>
+          mapping.conditionKey
+            ? [
+                {
+                  id: mapping.id,
+                  conditionKey: mapping.conditionKey,
+                  ...localizeStoreCategoryMapping(mapping, locale),
+                },
+              ]
+            : [],
+        ),
+        defaultTemplate: {
+          id: template.id,
+          key: template.key,
+          displayName: template.displayName,
+          editVersion: template.editVersion,
+        },
       },
-    }];
+    ];
   });
 }
 
-export async function loadStoreProfile(shopId: string, locale: string, client: CategoryReader = db) {
+export async function loadStoreProfile(
+  shopId: string,
+  locale: string,
+  client: CategoryReader = db,
+) {
   const translationLocales = storeCategoryTranslationLocales(locale);
   const environment = resolveShopifyCommerceEnvironment();
   const [profile, configurations] = await Promise.all([
@@ -79,10 +97,14 @@ export async function loadStoreProfile(shopId: string, locale: string, client: C
       where: { shopId },
       include: {
         activeCategory: {
-          include: { translations: { where: { locale: { in: translationLocales } } } },
+          include: {
+            translations: { where: { locale: { in: translationLocales } } },
+          },
         },
         pendingCategory: {
-          include: { translations: { where: { locale: { in: translationLocales } } } },
+          include: {
+            translations: { where: { locale: { in: translationLocales } } },
+          },
         },
         pendingPromptRevision: { include: { sourceTemplate: true } },
       },
@@ -99,39 +121,53 @@ export async function loadStoreProfile(shopId: string, locale: string, client: C
       take: 2,
     }),
   ]);
-  const categoryDto = (category: CategoryWithTranslations | null | undefined) =>
-    category ? {
-      id: category.id,
-      slug: category.slug,
-      ...localizeStoreCategory(category, locale),
-    } : null;
+  const categoryDto = (
+    category: CategoryWithTranslations | null | undefined,
+  ) =>
+    category
+      ? {
+          id: category.id,
+          slug: category.slug,
+          ...localizeStoreCategory(category, locale),
+        }
+      : null;
   const template = profile?.pendingPromptRevision?.sourceTemplate;
   const pendingSourceContext = readStoreCategoryPromptSourceContext(
     profile?.pendingPromptRevision?.sourceContext,
   );
-  const activeSourceContext = configurations.length === 1
-    ? readStoreCategoryPromptSourceContext(configurations[0]?.activePromptRevision?.sourceContext)
-    : null;
+  const activeSourceContext =
+    configurations.length === 1
+      ? readStoreCategoryPromptSourceContext(
+          configurations[0]?.activePromptRevision?.sourceContext,
+        )
+      : null;
 
   return {
     activeCategory: categoryDto(profile?.activeCategory),
     pendingCategory: categoryDto(profile?.pendingCategory),
     pendingSelectionGeneration: profile?.pendingSelectionGeneration ?? 0,
     activeMappingIds:
-      activeSourceContext && activeSourceContext.categoryId === profile?.activeCategoryId
+      activeSourceContext &&
+      activeSourceContext.categoryId === profile?.activeCategoryId
         ? activeSourceContext.mappings.map((mapping) => mapping.mappingId)
         : [],
     pendingMappingIds:
-      pendingSourceContext && pendingSourceContext.categoryId === profile?.pendingCategoryId
+      pendingSourceContext &&
+      pendingSourceContext.categoryId === profile?.pendingCategoryId
         ? pendingSourceContext.mappings.map((mapping) => mapping.mappingId)
         : [],
-    pendingState: profile?.pendingPromptRevisionId ? "PENDING_PUBLICATION" : "NONE",
-    pendingTemplate: template ? {
-      id: template.id,
-      key: template.key,
-      displayName: template.displayName,
-      editVersion: profile.pendingPromptRevision?.sourceTemplateEditVersion ?? null,
-    } : null,
+    pendingState: profile?.pendingPromptRevisionId
+      ? "PENDING_PUBLICATION"
+      : "NONE",
+    pendingTemplate: template
+      ? {
+          id: template.id,
+          key: template.key,
+          displayName: template.displayName,
+          editVersion:
+            profile.pendingPromptRevision?.sourceTemplateEditVersion ?? null,
+        }
+      : null,
   };
 }
 

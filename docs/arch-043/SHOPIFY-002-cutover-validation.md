@@ -29,7 +29,7 @@ The safe deployment sequence is: migrate the canonical schema; provision and ver
 
 ## R2 bucket/location changes
 
-`MerchantKnowledgeUploadedAsset` persists only `objectKey`, not the original bucket. An R2 endpoint or bucket edit during a pending upload makes that upload **not safely portable**: finalisation uses the *current* bucket and, if the object is not present there, returns `UPLOAD_OBJECT_NOT_FOUND` without marking the asset available. Operators must avoid editing the R2 bucket/endpoint while uploads are pending, and must coordinate relocation/re-upload with the separately owned storage-relocation flow. Historical assets need that separate relocation flow too; SHOPIFY-002 never silently guesses a former bucket or copies objects. No write/network request occurs inside the upload finalisation database transaction to simulate location compatibility.
+`MerchantKnowledgeUploadedAsset` persists only `objectKey`, not the original bucket. An R2 endpoint or bucket edit during a pending upload makes that upload **not safely portable**: finalisation uses the _current_ bucket and, if the object is not present there, returns `UPLOAD_OBJECT_NOT_FOUND` without marking the asset available. Operators must avoid editing the R2 bucket/endpoint while uploads are pending, and must coordinate relocation/re-upload with the separately owned storage-relocation flow. Historical assets need that separate relocation flow too; SHOPIFY-002 never silently guesses a former bucket or copies objects. No write/network request occurs inside the upload finalisation database transaction to simulate location compatibility.
 
 ## Review commands and evidence
 
@@ -46,6 +46,5 @@ git diff --check
 ```
 
 Record positive and negative results from the automated OAuth bootstrap/fail-closed, webhook-route, Partner billing, R2 signing/finalisation, configuration-revocation and secret-redaction tests. Do not include decrypted secrets in assertions, browser output, error messages or logs. Live deployment checks remain operational follow-up and must be recorded separately if later performed.
-
 
 Encryption uses the same deployment-owned `MODA_ENCRYPTION_KEYS_JSON` map and `MODA_ENCRYPTION_ACTIVE_KEY_ID` selector as the hosted services. During cutover, preserve the union of historical wrapping and provider keys under their existing IDs; ciphertext and authenticated data do not change. Encryption maps must not be stored in platform settings or exposed to merchant/browser code. Command-signing secrets remain separate from encryption keys.

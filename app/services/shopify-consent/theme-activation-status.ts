@@ -1,5 +1,6 @@
 /** Durable setup history is separate from Shopify's observed active placement. */
-export type CartConsentSetupPhase = "never" | "started" | "active" | "restoring" | "unknown";
+export type CartConsentSetupPhase =
+  "never" | "started" | "active" | "restoring" | "unknown";
 
 export type ThemeActivationEvidence = Readonly<{
   placement: "non_plus_cart" | "plus_checkout" | "unknown";
@@ -9,11 +10,7 @@ export type ThemeActivationEvidence = Readonly<{
 }>;
 
 export type ThemeActivationStatus =
-  | "active"
-  | "inactive"
-  | "unsupported"
-  | "unavailable"
-  | "unverified";
+  "active" | "inactive" | "unsupported" | "unavailable" | "unverified";
 
 export function getCartConsentThemeActivationStatus(
   evidence: ThemeActivationEvidence,
@@ -80,7 +77,8 @@ function isModaCartConsentBlockType(type: unknown): boolean {
  * `cart-consent` block counts, and blocks under a disabled ancestor section
  * are not treated as enabled.
  */
-export type CartConsentBlockPresence = "absent" | "disabled" | "enabled" | "duplicate" | "unknown";
+export type CartConsentBlockPresence =
+  "absent" | "disabled" | "enabled" | "duplicate" | "unknown";
 
 /**
  * Read-only inspection of the published cart template, including disabled
@@ -89,7 +87,12 @@ export type CartConsentBlockPresence = "absent" | "disabled" | "enabled" | "dupl
  */
 export type CartConsentTemplateInspection = Readonly<{
   presence: CartConsentBlockPresence;
-  outcome: "missing_template" | "unterminated_header" | "invalid_json" | "missing_sections" | "parsed";
+  outcome:
+    | "missing_template"
+    | "unterminated_header"
+    | "invalid_json"
+    | "missing_sections"
+    | "parsed";
   generatedHeader: boolean;
   matchingBlocks: number;
   candidateBlocks: number;
@@ -100,10 +103,18 @@ export type CartConsentTemplateInspection = Readonly<{
  * to JSON templates. Strip only that leading header, never JSON string content
  * or arbitrary inline comments. Invalid JSON remains unverified.
  */
-export function inspectCartConsentTemplate(content: string | null): CartConsentTemplateInspection {
-  const unknown = (outcome: Exclude<CartConsentTemplateInspection["outcome"], "parsed">,
-    generatedHeader = false): CartConsentTemplateInspection => ({
-    presence: "unknown", outcome, generatedHeader, matchingBlocks: 0, candidateBlocks: 0,
+export function inspectCartConsentTemplate(
+  content: string | null,
+): CartConsentTemplateInspection {
+  const unknown = (
+    outcome: Exclude<CartConsentTemplateInspection["outcome"], "parsed">,
+    generatedHeader = false,
+  ): CartConsentTemplateInspection => ({
+    presence: "unknown",
+    outcome,
+    generatedHeader,
+    matchingBlocks: 0,
+    candidateBlocks: 0,
   });
   if (content === null) return unknown("missing_template");
   let json = content.replace(/^\uFEFF/, "").trimStart();
@@ -138,7 +149,10 @@ export function inspectCartConsentTemplate(content: string | null): CartConsentT
     }
     const record = node as Record<string, unknown>;
     const disabled = ancestorDisabled || record.disabled === true;
-    if (typeof record.type === "string" && record.type.includes("/blocks/cart-consent/")) {
+    if (
+      typeof record.type === "string" &&
+      record.type.includes("/blocks/cart-consent/")
+    ) {
       candidateBlocks += 1;
     }
     if (isModaCartConsentBlockType(record.type)) {
@@ -149,13 +163,26 @@ export function inspectCartConsentTemplate(content: string | null): CartConsentT
     for (const value of Object.values(record)) visit(value, disabled);
   };
   visit(sections, false);
-  const presence: CartConsentBlockPresence = matchingBlocks > 1 ? "duplicate"
-    : matchingBlocks === 0 ? "absent"
-      : enabled > 0 ? "enabled" : "disabled";
-  return { presence, outcome: "parsed", generatedHeader, matchingBlocks, candidateBlocks };
+  const presence: CartConsentBlockPresence =
+    matchingBlocks > 1
+      ? "duplicate"
+      : matchingBlocks === 0
+        ? "absent"
+        : enabled > 0
+          ? "enabled"
+          : "disabled";
+  return {
+    presence,
+    outcome: "parsed",
+    generatedHeader,
+    matchingBlocks,
+    candidateBlocks,
+  };
 }
 
-export function inspectCartConsentBlockPresence(content: string | null): CartConsentBlockPresence {
+export function inspectCartConsentBlockPresence(
+  content: string | null,
+): CartConsentBlockPresence {
   return inspectCartConsentTemplate(content).presence;
 }
 
@@ -168,7 +195,8 @@ export function deriveCartTemplateEvidence(
   }
   return {
     cartTemplateSupported: true,
-    blockEnabledInPublishedTheme: presence === "enabled" || presence === "duplicate",
+    blockEnabledInPublishedTheme:
+      presence === "enabled" || presence === "duplicate",
   };
 }
 
@@ -219,8 +247,9 @@ export function matchPlusCheckoutExtensionEvidence(
 }
 
 /** Read-only, published-theme App Bridge evidence for the drawer App Embed. */
-export function matchCartDrawerEmbedEvidence(extensions: unknown):
-  "active" | "inactive" | "unverified" {
+export function matchCartDrawerEmbedEvidence(
+  extensions: unknown,
+): "active" | "inactive" | "unverified" {
   if (!Array.isArray(extensions)) return "unverified";
   let found = false;
   for (const entry of extensions) {
@@ -229,11 +258,16 @@ export function matchCartDrawerEmbedEvidence(extensions: unknown):
     // App Bridge scopes extensions() to the current app. Shopify can report
     // a generic top-level handle ("theme-app-extension"); the nested handle,
     // target and published status identify the specific drawer App Embed.
-    if (extension.type !== "theme_app_extension" || !Array.isArray(extension.activations)) continue;
+    if (
+      extension.type !== "theme_app_extension" ||
+      !Array.isArray(extension.activations)
+    )
+      continue;
     for (const activation of extension.activations) {
       if (!activation || typeof activation !== "object") continue;
       const block = activation as Record<string, unknown>;
-      if (block.handle !== "cart-drawer-consent" || block.target !== "body") continue;
+      if (block.handle !== "cart-drawer-consent" || block.target !== "body")
+        continue;
       found = true;
       if (block.status === "active") return "active";
     }

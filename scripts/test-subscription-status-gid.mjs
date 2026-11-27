@@ -7,21 +7,17 @@ const {
 const TARGET_EVENT_ID =
   "gid://partners/SubscriptionStatus/051bab77-a93e-593b-8b5a-ff21c0c400d0";
 
-const SHOP_ID =
-  "gid://shopify/Shop/101762498853";
+const SHOP_ID = "gid://shopify/Shop/101762498853";
 
-const APP_ID =
-  "gid://shopify/App/413747675137";
+const APP_ID = "gid://shopify/App/413747675137";
 
 // We already know this event happened at:
 // 2026-09-14T21:21:06Z
 //
 // Use a narrow window around it.
-const OCCURRED_AT_MIN =
-  "2026-09-14T21:20:00Z";
+const OCCURRED_AT_MIN = "2026-09-14T21:20:00Z";
 
-const OCCURRED_AT_MAX =
-  "2026-09-14T21:22:00Z";
+const OCCURRED_AT_MAX = "2026-09-14T21:22:00Z";
 
 function requireEnv(name, value) {
   if (!value) {
@@ -31,15 +27,9 @@ function requireEnv(name, value) {
   return value;
 }
 
-requireEnv(
-  "SHOPIFY_PARTNER_ORG_ID",
-  SHOPIFY_PARTNER_ORG_ID,
-);
+requireEnv("SHOPIFY_PARTNER_ORG_ID", SHOPIFY_PARTNER_ORG_ID);
 
-requireEnv(
-  "SHOPIFY_PARTNER_ACCESS_TOKEN",
-  SHOPIFY_PARTNER_ACCESS_TOKEN,
-);
+requireEnv("SHOPIFY_PARTNER_ACCESS_TOKEN", SHOPIFY_PARTNER_ACCESS_TOKEN);
 
 const endpoint =
   `https://partners.shopify.com/` +
@@ -106,9 +96,7 @@ const variables = {
     shopId: SHOP_ID,
     subjectId: APP_ID,
 
-    eventTypes: [
-      "SUBSCRIPTION_UPDATED",
-    ],
+    eventTypes: ["SUBSCRIPTION_UPDATED"],
 
     occurredAtMin: OCCURRED_AT_MIN,
     occurredAtMax: OCCURRED_AT_MAX,
@@ -124,8 +112,7 @@ const response = await fetch(endpoint, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
-    "X-Shopify-Access-Token":
-      SHOPIFY_PARTNER_ACCESS_TOKEN,
+    "X-Shopify-Access-Token": SHOPIFY_PARTNER_ACCESS_TOKEN,
   },
   body: JSON.stringify({
     query,
@@ -136,38 +123,23 @@ const response = await fetch(endpoint, {
 const body = await response.json();
 
 if (!response.ok || body.errors) {
-  console.error(
-    "\nPARTNER API ERROR\n=================",
-  );
+  console.error("\nPARTNER API ERROR\n=================");
 
-  console.error(
-    JSON.stringify(body, null, 2),
-  );
+  console.error(JSON.stringify(body, null, 2));
 
   process.exit(1);
 }
 
-const events =
-  body.data?.events?.edges?.map(
-    (edge) => edge.node,
-  ) ?? [];
+const events = body.data?.events?.edges?.map((edge) => edge.node) ?? [];
 
-console.log(
-  `\nReturned ${events.length} event(s).`,
-);
+console.log(`\nReturned ${events.length} event(s).`);
 
-const target = events.find(
-  (event) => event.id === TARGET_EVENT_ID,
-);
+const target = events.find((event) => event.id === TARGET_EVENT_ID);
 
 if (!target) {
-  console.log(
-    "\nTARGET EVENT NOT FOUND",
-  );
+  console.log("\nTARGET EVENT NOT FOUND");
 
-  console.log(
-    "Events returned by Shopify:",
-  );
+  console.log("Events returned by Shopify:");
 
   for (const event of events) {
     console.log({
@@ -180,14 +152,8 @@ if (!target) {
   process.exit(2);
 }
 
-console.log(
-  "\nSUBSCRIPTION STATUS FOUND",
-);
+console.log("\nSUBSCRIPTION STATUS FOUND");
 
-console.log(
-  "=========================",
-);
+console.log("=========================");
 
-console.log(
-  JSON.stringify(target, null, 2),
-);
+console.log(JSON.stringify(target, null, 2));

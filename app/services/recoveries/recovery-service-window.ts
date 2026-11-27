@@ -9,11 +9,21 @@ export function customerServiceWindow(
   verifiedInboundAt: Date | null | undefined,
   now: Date,
 ) {
-  const lastInboundAt = initialSentAt && verifiedInboundAt &&
-    verifiedInboundAt >= initialSentAt && verifiedInboundAt <= now
-    ? verifiedInboundAt : null;
-  const expiresAt = lastInboundAt ? new Date(lastInboundAt.getTime() + CUSTOMER_SERVICE_WINDOW_MS) : null;
-  return { lastInboundAt, expiresAt, open: Boolean(expiresAt && now < expiresAt) };
+  const lastInboundAt =
+    initialSentAt &&
+    verifiedInboundAt &&
+    verifiedInboundAt >= initialSentAt &&
+    verifiedInboundAt <= now
+      ? verifiedInboundAt
+      : null;
+  const expiresAt = lastInboundAt
+    ? new Date(lastInboundAt.getTime() + CUSTOMER_SERVICE_WINDOW_MS)
+    : null;
+  return {
+    lastInboundAt,
+    expiresAt,
+    open: Boolean(expiresAt && now < expiresAt),
+  };
 }
 
 /** Sequence one's durable due time snapshots the effective configured follow-up.
@@ -24,5 +34,10 @@ export function configuredFollowUpIsDue(
   followUpDueAt: Date | null | undefined,
   now: Date,
 ) {
-  return Boolean(initialSentAt && initialSentAt <= now && followUpDueAt && followUpDueAt <= now);
+  return Boolean(
+    initialSentAt &&
+    initialSentAt <= now &&
+    followUpDueAt &&
+    followUpDueAt <= now,
+  );
 }

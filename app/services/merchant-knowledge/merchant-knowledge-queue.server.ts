@@ -1,4 +1,7 @@
-import { recordMerchantKnowledgeFailure, recordMerchantKnowledgeQueueFailure } from "./merchant-knowledge-observability.server";
+import {
+  recordMerchantKnowledgeFailure,
+  recordMerchantKnowledgeQueueFailure,
+} from "./merchant-knowledge-observability.server";
 import { Queue } from "bullmq";
 import {
   MERCHANT_KNOWLEDGE_PROCESS_JOB_NAME,
@@ -17,7 +20,11 @@ async function getQueue(): Promise<KnowledgeQueue | null> {
   const redisUrl = process.env.REDIS_URL?.trim();
   if (!redisUrl) return null;
   if (queue && queueUrl === redisUrl) return queue;
-  if (queue) { await queue.close(); queue = null; queueUrl = null; }
+  if (queue) {
+    await queue.close();
+    queue = null;
+    queueUrl = null;
+  }
   queue = new Queue(MERCHANT_KNOWLEDGE_QUEUE_NAME, {
     connection: {
       url: redisUrl,
@@ -28,7 +35,9 @@ async function getQueue(): Promise<KnowledgeQueue | null> {
       commandTimeout: 2_500,
     },
   });
-  queue.on("error", error => recordMerchantKnowledgeQueueFailure(MERCHANT_KNOWLEDGE_QUEUE_NAME, error));
+  queue.on("error", (error) =>
+    recordMerchantKnowledgeQueueFailure(MERCHANT_KNOWLEDGE_QUEUE_NAME, error),
+  );
   queueUrl = redisUrl;
   return queue;
 }
@@ -43,8 +52,10 @@ export async function enqueueMerchantKnowledgeRevisionBestEffort(
   injectedQueue?: KnowledgeQueue | null,
 ): Promise<boolean> {
   try {
-    const targetQueue = injectedQueue === undefined ? await getQueue() : injectedQueue;
-    if (!targetQueue) throw new Error("Merchant knowledge queue configuration is unavailable.");
+    const targetQueue =
+      injectedQueue === undefined ? await getQueue() : injectedQueue;
+    if (!targetQueue)
+      throw new Error("Merchant knowledge queue configuration is unavailable.");
     const data = MerchantKnowledgeProcessSourceRevisionJobSchema.parse({
       schemaVersion: MERCHANT_KNOWLEDGE_PROCESS_SCHEMA_VERSION,
       shopId: input.shopId,
@@ -57,7 +68,20 @@ export async function enqueueMerchantKnowledgeRevisionBestEffort(
     });
     return true;
   } catch (error) {
-    recordMerchantKnowledgeFailure({shopId: input.shopId, operation: "queue", error, origin: error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^E[A-Z_]+$/.test(error.code) ? "transport" : "internal", warn: true});
+    recordMerchantKnowledgeFailure({
+      shopId: input.shopId,
+      operation: "queue",
+      error,
+      origin:
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        /^E[A-Z_]+$/.test(error.code)
+          ? "transport"
+          : "internal",
+      warn: true,
+    });
     // The revision is durable before this queue hint is published.
     return false;
   }

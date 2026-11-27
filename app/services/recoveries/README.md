@@ -5,7 +5,10 @@ loader must first authenticate, resolve the owned shop/lifecycle and enforce its
 merchant surface guard. Never use a browser shop ID. No routes are added here.
 
 ```ts
-const query = normalizeRecoveryQuery(new URL(request.url).searchParams, merchantUi);
+const query = normalizeRecoveryQuery(
+  new URL(request.url).searchParams,
+  merchantUi,
+);
 const page = await readRecoveryPage(shop.id, query);
 const summary = await readRecoveryCohortSummary(shop.id, query);
 // Overview instead uses one repeatable-read snapshot and five newest cohort rows:

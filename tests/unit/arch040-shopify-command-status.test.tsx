@@ -2,19 +2,35 @@ import { createElement } from "react";
 import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { MerchantCommandStatus, isTerminalMerchantCommandState } from "../../app/routes/app/recovery-detail/merchant-command-status";
+import {
+  MerchantCommandStatus,
+  isTerminalMerchantCommandState,
+} from "../../app/routes/app/recovery-detail/merchant-command-status";
 import { RecoveryMessageList } from "../../app/routes/app/recovery-detail/recovery-message-list";
 import { createMerchantI18n } from "../../app/utils/merchant-i18n";
-import { recoveryMessageDto, type RecoveryMessageRow } from "../../app/services/recoveries/detail-message";
+import {
+  recoveryMessageDto,
+  type RecoveryMessageRow,
+} from "../../app/services/recoveries/detail-message";
 import type { Translate } from "../../app/routes/app/recovery-detail/recovery-ui-types";
 
 // Translation keys make state precedence independently testable across all locales.
 const t = ((key: string) => key) as Translate;
-const render = (overrides: Partial<Parameters<typeof MerchantCommandStatus>[0]> = {}) =>
-  renderToStaticMarkup(createElement(MerchantCommandStatus, {
-    commandId: "command-1", moderation: "PENDING", deliveryState: "ACCEPTED",
-    providerStatus: null, statusBusy: false, onRefresh: vi.fn(), t, ...overrides,
-  }));
+const render = (
+  overrides: Partial<Parameters<typeof MerchantCommandStatus>[0]> = {},
+) =>
+  renderToStaticMarkup(
+    createElement(MerchantCommandStatus, {
+      commandId: "command-1",
+      moderation: "PENDING",
+      deliveryState: "ACCEPTED",
+      providerStatus: null,
+      statusBusy: false,
+      onRefresh: vi.fn(),
+      t,
+      ...overrides,
+    }),
+  );
 
 describe("ARCH-040 merchant reply status presentation", () => {
   it("displays checks while an accepted command awaits moderation", () => {
@@ -39,7 +55,10 @@ describe("ARCH-040 merchant reply status presentation", () => {
   });
 
   it("uses the observed provider outcome over stale pending moderation", () => {
-    const html = render({ deliveryState: "DISPATCH_ADMITTED", providerStatus: "DELIVERED" });
+    const html = render({
+      deliveryState: "DISPATCH_ADMITTED",
+      providerStatus: "DELIVERED",
+    });
     expect(html).toContain("recoveryDetail.sendStatus.DELIVERED");
     expect(html).not.toContain("recoveryDetail.moderationChecking");
     expect(html).not.toContain("recoveryDetail.sendFailed");
@@ -50,55 +69,117 @@ describe("ARCH-040 merchant reply status presentation", () => {
 // Keep all supported merchant locales complete, and do not trust unknown codes.
 describe("ARCH-040 merchant reply status catalogue", () => {
   const locales = [
-    "cs", "da", "de", "en", "es", "fi", "fr", "it", "ja", "ko",
-    "nb", "nl", "pl", "pt-BR", "pt-PT", "sv", "th", "tr", "zh-Hans", "zh-Hant",
+    "cs",
+    "da",
+    "de",
+    "en",
+    "es",
+    "fi",
+    "fr",
+    "it",
+    "ja",
+    "ko",
+    "nb",
+    "nl",
+    "pl",
+    "pt-BR",
+    "pt-PT",
+    "sv",
+    "th",
+    "tr",
+    "zh-Hans",
+    "zh-Hant",
   ];
 
   it.each(locales)("defines the pending status in %s", (locale) => {
-    const catalogue = JSON.parse(readFileSync(
-      new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url), "utf8",
-    )) as Record<string, string>;
+    const catalogue = JSON.parse(
+      readFileSync(
+        new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url),
+        "utf8",
+      ),
+    ) as Record<string, string>;
     expect(catalogue["recoveryDetail.sendStatus.PENDING"]?.trim()).toBeTruthy();
   });
 
   it("shows provider PENDING without accessing a missing ICU key", () => {
-    const html = render({ deliveryState: "DISPATCH_ADMITTED", moderation: "ALLOW", providerStatus: "PENDING" });
+    const html = render({
+      deliveryState: "DISPATCH_ADMITTED",
+      moderation: "ALLOW",
+      providerStatus: "PENDING",
+    });
     expect(html).toContain("recoveryDetail.sendStatus.PENDING");
     expect(html).toContain("recoveryDetail.queuedNotSent");
   });
 
   it("does not obscure command UNKNOWN with a stale provider PENDING", () => {
-    const html = render({ deliveryState: "UNKNOWN", moderation: "ALLOW", providerStatus: "PENDING" });
+    const html = render({
+      deliveryState: "UNKNOWN",
+      moderation: "ALLOW",
+      providerStatus: "PENDING",
+    });
     expect(html).toContain("recoveryDetail.sendStatus.UNKNOWN");
     expect(html).not.toContain("recoveryDetail.sendStatus.PENDING");
     expect(html).not.toContain("recoveryDetail.sendFailed");
   });
 
   it("uses a safe catalogue key for unknown provider states", () => {
-    const html = render({ deliveryState: "DISPATCH_ADMITTED", moderation: "ALLOW", providerStatus: "NEW_UNEXPECTED_STATE" });
+    const html = render({
+      deliveryState: "DISPATCH_ADMITTED",
+      moderation: "ALLOW",
+      providerStatus: "NEW_UNEXPECTED_STATE",
+    });
     expect(html).toContain("recoveryDetail.sendStatus.UNKNOWN");
-    expect(html).not.toContain("recoveryDetail.sendStatus.NEW_UNEXPECTED_STATE");
+    expect(html).not.toContain(
+      "recoveryDetail.sendStatus.NEW_UNEXPECTED_STATE",
+    );
   });
 
-  it.each(locales)("already localises Delivery not confirmed in %s", (locale) => {
-    const catalogue = JSON.parse(readFileSync(
-      new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url), "utf8",
-    )) as Record<string, string>;
-    expect(catalogue["recoveryDetail.sendStatus.UNKNOWN"]?.trim()).toBeTruthy();
-  });
+  it.each(locales)(
+    "already localises Delivery not confirmed in %s",
+    (locale) => {
+      const catalogue = JSON.parse(
+        readFileSync(
+          new URL(`../../app/i18n/locales/${locale}.json`, import.meta.url),
+          "utf8",
+        ),
+      ) as Record<string, string>;
+      expect(
+        catalogue["recoveryDetail.sendStatus.UNKNOWN"]?.trim(),
+      ).toBeTruthy();
+    },
+  );
 });
 
 describe("ARCH-040 historical HUMAN message delivery evidence", () => {
-  const i18n = createMerchantI18n({ locale: "en", fallbackLocale: "en", timeZone: "Europe/London" });
+  const i18n = createMerchantI18n({
+    locale: "en",
+    fallbackLocale: "en",
+    timeZone: "Europe/London",
+  });
   const date = new Date("2026-10-19T10:25:00.000Z");
   const row: RecoveryMessageRow = {
-    id: "message-1", createdAt: date, direction: "OUTBOUND", senderType: "HUMAN",
-    status: "PENDING", humanCommandState: "UNKNOWN", contentType: "TEXT", content: "Merchant reply",
-    transcriptionStatus: "NOT_REQUIRED", sentAt: null, deliveredAt: null, readAt: null,
+    id: "message-1",
+    createdAt: date,
+    direction: "OUTBOUND",
+    senderType: "HUMAN",
+    status: "PENDING",
+    humanCommandState: "UNKNOWN",
+    contentType: "TEXT",
+    content: "Merchant reply",
+    transcriptionStatus: "NOT_REQUIRED",
+    sentAt: null,
+    deliveredAt: null,
+    readAt: null,
   };
-  const show = (message: RecoveryMessageRow) => renderToStaticMarkup(createElement(RecoveryMessageList, {
-    items: [recoveryMessageDto(message)], i18n, t: i18n.t, stamp: (value: string) => createElement("time", {}, value),
-  }));
+  const show = (message: RecoveryMessageRow) =>
+    renderToStaticMarkup(
+      createElement(RecoveryMessageList, {
+        items: [recoveryMessageDto(message)],
+        i18n,
+        t: i18n.t,
+        stamp: (value: string) => createElement("time", {}, value),
+      }),
+    );
 
   it("shows Delivery not confirmed rather than Pending for a linked UNKNOWN command", () => {
     const html = show(row);
@@ -114,31 +195,52 @@ describe("ARCH-040 historical HUMAN message delivery evidence", () => {
   });
 
   it("keeps FAILED and CANCELLED pre-dispatch merchant attempts visible in the transcript", () => {
-    const failed = show({ ...row, id: "command-only", commandOnly: true, status: null,
-      commandKind: "HUMAN_TEXT", humanCommandState: "FAILED", content: "New attempt not sent" });
+    const failed = show({
+      ...row,
+      id: "command-only",
+      commandOnly: true,
+      status: null,
+      commandKind: "HUMAN_TEXT",
+      humanCommandState: "FAILED",
+      content: "New attempt not sent",
+    });
     expect(failed).toContain("New attempt not sent");
     expect(failed).toContain("Failed");
     expect(failed).not.toContain("Delivered");
-    const cancelled = show({ ...row, commandOnly: true, status: null, humanCommandState: "CANCELLED" });
+    const cancelled = show({
+      ...row,
+      commandOnly: true,
+      status: null,
+      humanCommandState: "CANCELLED",
+    });
     expect(cancelled).toContain("Not sent");
   });
 
   it("shows the approved template name, not an invented template message body", () => {
-    const html = show({ ...row, commandOnly: true, status: null,
-      content: null, contentType: "UNSUPPORTED", commandKind: "RECOVERY_FOLLOW_UP_TEMPLATE",
-      templateName: "recovery_reminder", humanCommandState: "UNKNOWN" });
+    const html = show({
+      ...row,
+      commandOnly: true,
+      status: null,
+      content: null,
+      contentType: "UNSUPPORTED",
+      commandKind: "RECOVERY_FOLLOW_UP_TEMPLATE",
+      templateName: "recovery_reminder",
+      humanCommandState: "UNKNOWN",
+    });
     expect(html).toContain("Approved recovery follow-up");
     expect(html).toContain("recovery_reminder");
     expect(html).toContain("Delivery not confirmed");
   });
 
   it.each(["SENT", "DELIVERED", "READ", "FAILED", "CANCELLED", "UNKNOWN"])(
-    "stops automatic status polling after terminal %s", (state) => {
+    "stops automatic status polling after terminal %s",
+    (state) => {
       expect(isTerminalMerchantCommandState(state)).toBe(true);
     },
   );
   it.each(["ACCEPTED", "CLAIMED", "DISPATCH_ADMITTED", "PENDING", null])(
-    "allows in-flight status polling for %s", (state) => {
+    "allows in-flight status polling for %s",
+    (state) => {
       expect(isTerminalMerchantCommandState(state)).toBe(false);
     },
   );

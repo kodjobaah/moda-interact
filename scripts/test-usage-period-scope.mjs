@@ -10,7 +10,11 @@ const period = {
 
 test("Shopify period usage is scoped to recovery credit events for this shop and provider", () => {
   const { OR, ...scope } = shopifyPeriodUsageWhere("shop-a", period);
-  assert.deepEqual(scope, { shopId: "shop-a", provider: "SHOPIFY", metric: "RECOVERY_CONVERSATION" });
+  assert.deepEqual(scope, {
+    shopId: "shop-a",
+    provider: "SHOPIFY",
+    metric: "RECOVERY_CONVERSATION",
+  });
   assert.equal(OR.length, 2);
 });
 
@@ -20,15 +24,27 @@ test("original debits retain the period FK or use a half-open window for purchas
     correctionOfUsageEventId: null,
     OR: [
       { billingPeriodId: period.id },
-      { billingPeriodId: null, sourceType: { in: ["PURCHASED_RECOVERY_CREDITS", "PROMOTIONAL_RECOVERY_CREDITS"] },
-        occurredAt: { gte: period.periodStart, lt: period.periodEnd } },
+      {
+        billingPeriodId: null,
+        sourceType: {
+          in: ["PURCHASED_RECOVERY_CREDITS", "PROMOTIONAL_RECOVERY_CREDITS"],
+        },
+        occurredAt: { gte: period.periodStart, lt: period.periodEnd },
+      },
     ],
   });
 });
 
 test("late corrections inherit only the matching original debit, not their own period or occurrence time", () => {
   const [original, correction] = shopifyPeriodUsageWhere("shop-a", period).OR;
-  assert.deepEqual(correction, { correctionOfUsageEvent: { is: {
-    shopId: "shop-a", provider: "SHOPIFY", metric: "RECOVERY_CONVERSATION", ...original,
-  } } });
+  assert.deepEqual(correction, {
+    correctionOfUsageEvent: {
+      is: {
+        shopId: "shop-a",
+        provider: "SHOPIFY",
+        metric: "RECOVERY_CONVERSATION",
+        ...original,
+      },
+    },
+  });
 });

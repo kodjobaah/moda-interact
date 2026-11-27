@@ -19,11 +19,14 @@ const loadStoreProfile = vi.fn();
 const suggestStoreCategory = vi.fn();
 
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await authenticateAdmin(request);
-    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    const shop = await resolveShopifyShop({
+      domain: authentication.session.shop,
+    });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => getSubscriptionProjection(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -41,14 +44,39 @@ vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: {
     getSubscription,
     getSubscriptionProjection,
-    readMerchantHomeBillingPresentation: async ({ shop, subscription }: { shop: { id: string }; subscription: Record<string, any> | null }) => ({
+    readMerchantHomeBillingPresentation: async ({
+      shop,
+      subscription,
+    }: {
+      shop: { id: string };
+      subscription: Record<string, any> | null;
+    }) => ({
       capacity: await getMerchantRecoveryCapacityState(shop.id),
-      subscription: subscription ? { status: subscription.status, planHandle: subscription.observedShopifyPlanHandle,
-        planName: subscription.plan?.name ?? subscription.observedShopifyPlanHandle,
-        cancelAtEndOfCycle: subscription.cancelAtPeriodEnd ?? false,
-        currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-        pendingPlan: subscription.pendingPlan ? { name: subscription.pendingPlan.name, effectiveAt: subscription.pendingEffectiveAt?.toISOString() ?? null } : null,
-      } : { status: "NO_CONTRACT", planHandle: null, planName: null, cancelAtEndOfCycle: false, currentPeriodEnd: null, pendingPlan: null },
+      subscription: subscription
+        ? {
+            status: subscription.status,
+            planHandle: subscription.observedShopifyPlanHandle,
+            planName:
+              subscription.plan?.name ?? subscription.observedShopifyPlanHandle,
+            cancelAtEndOfCycle: subscription.cancelAtPeriodEnd ?? false,
+            currentPeriodEnd:
+              subscription.currentPeriodEnd?.toISOString() ?? null,
+            pendingPlan: subscription.pendingPlan
+              ? {
+                  name: subscription.pendingPlan.name,
+                  effectiveAt:
+                    subscription.pendingEffectiveAt?.toISOString() ?? null,
+                }
+              : null,
+          }
+        : {
+            status: "NO_CONTRACT",
+            planHandle: null,
+            planName: null,
+            cancelAtEndOfCycle: false,
+            currentPeriodEnd: null,
+            pendingPlan: null,
+          },
     }),
   },
 }));
@@ -65,9 +93,12 @@ vi.mock("../../app/services/store-profile/store-category.server", () => ({
   listSelectableStoreCategories,
   loadStoreProfile,
 }));
-vi.mock("../../app/services/store-profile/shopify-taxonomy-suggestion.server", () => ({
-  suggestStoreCategory,
-}));
+vi.mock(
+  "../../app/services/store-profile/shopify-taxonomy-suggestion.server",
+  () => ({
+    suggestStoreCategory,
+  }),
+);
 vi.mock("../../app/services/recoveries/recovery-readers.server", () => ({
   readRecoveryOverview,
 }));
@@ -113,7 +144,10 @@ beforeEach(() => {
     pendingSelectionGeneration: 3,
     pendingMappingIds: ["mapping-pending"],
   });
-  suggestStoreCategory.mockResolvedValue({ categoryId: "category-home", matchedMappingIds: ["mapping-home"] });
+  suggestStoreCategory.mockResolvedValue({
+    categoryId: "category-home",
+    matchedMappingIds: ["mapping-home"],
+  });
   readRecoveryOverview.mockResolvedValue({
     summary: { started: 0 },
     preview: [],
@@ -181,7 +215,6 @@ describe("app home loader", () => {
     expect(findBillingPeriods).not.toHaveBeenCalled();
     expect(findUsageEvents).not.toHaveBeenCalled();
   });
-
 
   it("resumes existing Shopify billing without requiring category selection", async () => {
     resolveShopifyShop.mockResolvedValue({
@@ -342,7 +375,13 @@ describe("app home loader", () => {
       canStartRecovery: true,
       observedShopifyPlanHandle: null,
       freeLifetime: { granted: 5, committed: 1, reserved: 0, remaining: 4 },
-      purchased: { granted: 10, committed: 2, reserved: 1, refunding: 0, available: 7 },
+      purchased: {
+        granted: 10,
+        committed: 2,
+        reserved: 1,
+        refunding: 0,
+        available: 7,
+      },
     });
     readActiveMerchantPricingCatalogue.mockResolvedValue([
       { shopifyPlanHandle: "free", displayName: "Free" },

@@ -35,7 +35,11 @@
   border: 1px solid var(--mi-line);
   border-radius: 28px;
   background:
-    radial-gradient(circle at 10% 10%, rgba(214, 230, 220, 0.72), transparent 34%),
+    radial-gradient(
+      circle at 10% 10%,
+      rgba(214, 230, 220, 0.72),
+      transparent 34%
+    ),
     linear-gradient(135deg, #ffffff 0%, #f6faf7 100%);
   box-shadow: var(--mi-shadow);
   overflow: hidden;
@@ -130,7 +134,12 @@
   border: 1px solid rgba(42, 106, 77, 0.13);
   border-radius: 24px;
   background:
-    radial-gradient(circle at 50% 50%, rgba(185, 210, 194, 0.74), rgba(237, 244, 240, 0.64) 36%, transparent 37%),
+    radial-gradient(
+      circle at 50% 50%,
+      rgba(185, 210, 194, 0.74),
+      rgba(237, 244, 240, 0.64) 36%,
+      transparent 37%
+    ),
     linear-gradient(135deg, #ffffff, #f1f7f3);
 }
 
@@ -188,10 +197,22 @@
   font-weight: 750;
 }
 
-.mi-chip-one { top: 38px; left: 30px; }
-.mi-chip-two { top: 84px; right: 24px; }
-.mi-chip-three { bottom: 42px; left: 40px; }
-.mi-chip-four { bottom: 90px; right: 24px; }
+.mi-chip-one {
+  top: 38px;
+  left: 30px;
+}
+.mi-chip-two {
+  top: 84px;
+  right: 24px;
+}
+.mi-chip-three {
+  bottom: 42px;
+  left: 40px;
+}
+.mi-chip-four {
+  bottom: 90px;
+  right: 24px;
+}
 
 .mi-section {
   padding: 28px;
@@ -267,7 +288,11 @@
 
 .mi-how {
   background:
-    radial-gradient(circle at 90% 10%, rgba(214, 230, 220, 0.48), transparent 30%),
+    radial-gradient(
+      circle at 90% 10%,
+      rgba(214, 230, 220, 0.48),
+      transparent 30%
+    ),
     white;
 }
 
@@ -327,7 +352,11 @@
 
 .mi-topups {
   background:
-    radial-gradient(circle at 10% 100%, rgba(214, 230, 220, 0.5), transparent 30%),
+    radial-gradient(
+      circle at 10% 100%,
+      rgba(214, 230, 220, 0.5),
+      transparent 30%
+    ),
     white;
 }
 
@@ -346,14 +375,14 @@
 
 .mi-topup-explainer p {
   margin: 14px 0 0;
-  color: rgba(255,255,255,0.82);
+  color: rgba(255, 255, 255, 0.82);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .mi-topup-stat {
   padding: 14px 0;
-  border-bottom: 1px solid rgba(255,255,255,0.18);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 .mi-topup-stat span,
@@ -362,7 +391,7 @@
 }
 
 .mi-topup-stat span {
-  color: rgba(255,255,255,0.7);
+  color: rgba(255, 255, 255, 0.7);
   font-size: 12px;
 }
 
@@ -446,7 +475,11 @@
   padding: 28px;
   border-radius: 26px;
   background:
-    radial-gradient(circle at 10% 10%, rgba(93,149,119,0.35), transparent 36%),
+    radial-gradient(
+      circle at 10% 10%,
+      rgba(93, 149, 119, 0.35),
+      transparent 36%
+    ),
     linear-gradient(135deg, var(--mi-green-950), var(--mi-green-700));
   color: white;
   box-shadow: var(--mi-shadow);
@@ -458,7 +491,7 @@
 }
 
 .mi-cta p {
-  color: rgba(255,255,255,0.82);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .mi-cta-link {
@@ -480,8 +513,8 @@
 }
 
 .mi-eyebrow-light {
-  border-color: rgba(255,255,255,0.2);
-  background: rgba(255,255,255,0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
@@ -492,8 +525,8 @@
   margin-top: 14px;
   padding: 9px 12px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.1);
-  color: rgba(255,255,255,0.9);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
 }
 
@@ -503,7 +536,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: rgba(255,255,255,0.17);
+  background: rgba(255, 255, 255, 0.17);
   font-weight: 900;
 }
 
@@ -544,7 +577,7 @@
     border-right: 0;
   }
 
-  .mi-topup-values > div:nth-child(-n+2) {
+  .mi-topup-values > div:nth-child(-n + 2) {
     border-bottom: 1px solid var(--mi-line);
   }
 }

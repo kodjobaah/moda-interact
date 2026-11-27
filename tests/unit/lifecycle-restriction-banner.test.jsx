@@ -32,7 +32,6 @@ describe("LifecycleRestrictionBanner", () => {
     expect(html).not.toContain("scheduled to end");
   });
 
-
   it("keeps scheduled cancellation informational while top-ups remain available", () => {
     const html = renderBanner(
       {
@@ -49,26 +48,38 @@ describe("LifecycleRestrictionBanner", () => {
   });
 
   it("gives frozen state precedence and keeps never-subscribed contract-required state visible", () => {
-    expect(renderBanner(
-      { status: "ACTIVE", cancelAtEndOfCycle: true, currentPeriodEnd: "2026-10-01T00:00:00.000Z" },
-      { availability: "CONTRACT_FROZEN", canStartRecovery: false },
-    )).toContain("Subscription paused by Shopify");
+    expect(
+      renderBanner(
+        {
+          status: "ACTIVE",
+          cancelAtEndOfCycle: true,
+          currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+        },
+        { availability: "CONTRACT_FROZEN", canStartRecovery: false },
+      ),
+    ).toContain("Subscription paused by Shopify");
 
-    expect(renderBanner(
-      { status: "NO_CONTRACT" },
-      { availability: "CONTRACT_REQUIRED", canStartRecovery: false },
-    )).toContain("Choose a Free or paid plan");
+    expect(
+      renderBanner(
+        { status: "NO_CONTRACT" },
+        { availability: "CONTRACT_REQUIRED", canStartRecovery: false },
+      ),
+    ).toContain("Choose a Free or paid plan");
   });
 
   it("distinguishes post-contract credits from post-contract exhaustion", () => {
-    expect(renderBanner(
-      { status: "NO_CONTRACT" },
-      { availability: "POST_CONTRACT_AVAILABLE", canStartRecovery: true },
-    )).toContain("remaining purchased and lifetime Free recovery credits");
+    expect(
+      renderBanner(
+        { status: "NO_CONTRACT" },
+        { availability: "POST_CONTRACT_AVAILABLE", canStartRecovery: true },
+      ),
+    ).toContain("remaining purchased and lifetime Free recovery credits");
 
-    expect(renderBanner(
-      { status: "NO_CONTRACT" },
-      { availability: "POST_CONTRACT_EXHAUSTED", canStartRecovery: false },
-    )).toContain("no purchased or lifetime Free recovery credits remain");
+    expect(
+      renderBanner(
+        { status: "NO_CONTRACT" },
+        { availability: "POST_CONTRACT_EXHAUSTED", canStartRecovery: false },
+      ),
+    ).toContain("no purchased or lifetime Free recovery credits remain");
   });
 });

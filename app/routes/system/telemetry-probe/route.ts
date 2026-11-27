@@ -38,12 +38,22 @@ export const loader = async () => {
     const response = await fetch(target);
     if (!response.ok) {
       status = `UNEXPECTED_STATUS_${response.status}`;
-      recordTelemetryProbeFailure({stage: "response", httpStatus: response.status});
+      recordTelemetryProbeFailure({
+        stage: "response",
+        httpStatus: response.status,
+      });
     }
   } catch (caught) {
     status = "NETWORK_ERROR";
-    recordTelemetryProbeFailure({stage: "network", error: caught, sensitiveValues: [target]});
-    error = safeText(caught instanceof Error ? caught.message : String(caught), [target])?.value ?? "[REDACTED]";
+    recordTelemetryProbeFailure({
+      stage: "network",
+      error: caught,
+      sensitiveValues: [target],
+    });
+    error =
+      safeText(caught instanceof Error ? caught.message : String(caught), [
+        target,
+      ])?.value ?? "[REDACTED]";
   }
 
   const safeTarget = safeText(target, [target]);
@@ -67,7 +77,12 @@ export const loader = async () => {
         active: isOpenTelemetryActive(),
         environment: resolveDeploymentEnvironmentName(),
       },
-      probe: { target: safeTarget?.value ?? "[REDACTED]", status, error, elapsedMs },
+      probe: {
+        target: safeTarget?.value ?? "[REDACTED]",
+        status,
+        error,
+        elapsedMs,
+      },
     },
     {
       status: 200,

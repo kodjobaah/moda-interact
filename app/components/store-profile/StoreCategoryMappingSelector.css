@@ -28,7 +28,8 @@
   font-weight: 700;
 }
 
-.moda-store-mapping-selector--settings .moda-store-mapping-option:has(input:checked) {
+.moda-store-mapping-selector--settings
+  .moda-store-mapping-option:has(input:checked) {
   border-color: #5d9577;
   background: #edf4f0;
 }
@@ -39,7 +40,8 @@
   color: white;
 }
 
-.moda-store-mapping-selector--onboarding .moda-store-mapping-option:has(input:checked) {
+.moda-store-mapping-selector--onboarding
+  .moda-store-mapping-option:has(input:checked) {
   border-color: rgba(255, 255, 255, 0.52);
   background: rgba(255, 255, 255, 0.16);
 }

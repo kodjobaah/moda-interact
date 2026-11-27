@@ -6,11 +6,14 @@ const readPendingRecoveries = vi.fn();
 const getSubscriptionProjection = vi.fn();
 
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await authenticateAdmin(request);
-    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    const shop = await resolveShopifyShop({
+      domain: authentication.session.shop,
+    });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => getSubscriptionProjection(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -24,14 +27,18 @@ vi.mock("../../app/shopify.server", () => ({
 vi.mock("../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop },
 }));
-vi.mock("../../app/services/pending-recovery/pending-recovery-reader.server", () => ({
-  readPendingRecoveries,
-}));
+vi.mock(
+  "../../app/services/pending-recovery/pending-recovery-reader.server",
+  () => ({
+    readPendingRecoveries,
+  }),
+);
 vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: { getSubscriptionProjection },
 }));
 
-const { loader } = await import("../../app/routes/app/pending-recoveries/route");
+const { loader } =
+  await import("../../app/routes/app/pending-recoveries/route");
 
 describe("pending recoveries resource loader", () => {
   beforeEach(() => {
@@ -58,7 +65,9 @@ describe("pending recoveries resource loader", () => {
 
   it("refreshes only the authenticated shop's pending data", async () => {
     const response = await loader({
-      request: new Request("https://example.test/app/pending-recoveries?pendingPage=2&shopId=other-shop"),
+      request: new Request(
+        "https://example.test/app/pending-recoveries?pendingPage=2&shopId=other-shop",
+      ),
     });
 
     expect(resolveShopifyShop).toHaveBeenCalledWith({
@@ -143,7 +152,10 @@ describe("pending recoveries resource loader", () => {
   });
 
   it("fails closed for a no-contract shop", async () => {
-    getSubscriptionProjection.mockResolvedValue({ status: "NO_CONTRACT", lastProviderLifecycleState: null });
+    getSubscriptionProjection.mockResolvedValue({
+      status: "NO_CONTRACT",
+      lastProviderLifecycleState: null,
+    });
     readPendingRecoveries.mockClear();
 
     const response = await loader({

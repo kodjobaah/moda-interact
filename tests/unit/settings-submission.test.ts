@@ -87,14 +87,11 @@ describe("settings intent protection", () => {
     vi.useFakeTimers();
     const first = deferred();
     const notify = vi.fn();
-    const send = vi
-      .fn()
-      .mockReturnValueOnce(first.promise)
-      .mockResolvedValue({
-        ok: true,
-        operationId: "original",
-        revision: "saved",
-      });
+    const send = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValue({
+      ok: true,
+      operationId: "original",
+      revision: "saved",
+    });
     const c = createSettingsSubmission(send, notify, 10);
     c.submit(payload());
     vi.advanceTimersByTime(11);

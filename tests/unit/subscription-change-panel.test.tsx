@@ -51,7 +51,6 @@ describe("SubscriptionChangePanel", () => {
     expect(markup).toContain("Starter");
   });
 
-
   it("does not repeat the mapped current plan name", () => {
     const markup = render({ pending: null });
     expect(markup.match(/Growth/g)).toHaveLength(1);
@@ -59,20 +58,34 @@ describe("SubscriptionChangePanel", () => {
 
   it("keeps cancellation distinct from a pending provider update", () => {
     const markup = render();
-    expect(markup).not.toContain("end at the end of the current billing period");
+    expect(markup).not.toContain(
+      "end at the end of the current billing period",
+    );
     expect(markup).toContain("Starter");
   });
 
   it("renders unmapped current contracts and verification states distinctly", () => {
-    const unmapped = render({ current: { ...current, mappedModaPlanName: null } });
+    const unmapped = render({
+      current: { ...current, mappedModaPlanName: null },
+    });
     expect(unmapped).toContain("Billing configuration unavailable");
     expect(unmapped).toContain("growth");
 
-    const noActive = render({ providerVerificationState: "NO_ACTIVE_SUBSCRIPTION", current: null, pending: null });
+    const noActive = render({
+      providerVerificationState: "NO_ACTIVE_SUBSCRIPTION",
+      current: null,
+      pending: null,
+    });
     expect(noActive).toContain("plans");
 
-    const unavailable = render({ providerVerificationState: "VERIFICATION_UNAVAILABLE", current: null, pending: null });
-    expect(unavailable).toContain("verify your current Shopify billing details");
+    const unavailable = render({
+      providerVerificationState: "VERIFICATION_UNAVAILABLE",
+      current: null,
+      pending: null,
+    });
+    expect(unavailable).toContain(
+      "verify your current Shopify billing details",
+    );
     expect(unavailable).not.toContain("safely mapped");
   });
 
@@ -101,7 +114,9 @@ describe("SubscriptionChangePanel", () => {
     expect(markup).toContain("scale");
     expect(markup).toContain("Waiting for confirmation from Shopify.");
     expect(markup).toContain("moda-provider-plan-awaiting-confirmation");
-    const requestedCard = markup.slice(markup.indexOf("moda-provider-plan-awaiting-confirmation"));
+    const requestedCard = markup.slice(
+      markup.indexOf("moda-provider-plan-awaiting-confirmation"),
+    );
     expect(requestedCard).not.toContain("£75.00");
     expect(requestedCard).not.toContain("EVERY_30_DAYS");
   });
@@ -113,14 +128,32 @@ describe("SubscriptionChangePanel", () => {
     expect(markup).toContain("Change plan");
     expect(markup).toContain("moda-plan-actions");
 
-    const source = await readFile(new URL("../../app/components/dashboard/SubscriptionChangePanel.jsx", import.meta.url), "utf8");
+    const source = await readFile(
+      new URL(
+        "../../app/components/dashboard/SubscriptionChangePanel.jsx",
+        import.meta.url,
+      ),
+      "utf8",
+    );
     expect(source).toContain('import { Link } from "react-router"');
-    expect(source).toContain('<Link className="moda-action-button moda-action-button-primary" to={managePlansHref}>');
-    expect(source).not.toContain('<a className="moda-action-button moda-action-button-primary"');
+    expect(source).toContain(
+      '<Link className="moda-action-button moda-action-button-primary" to={managePlansHref}>',
+    );
+    expect(source).not.toContain(
+      '<a className="moda-action-button moda-action-button-primary"',
+    );
   });
 
   it("contains no local catalogue, rank inference, or provider mutation", async () => {
-    const source = await readFile(new URL("../../app/components/dashboard/SubscriptionChangePanel.jsx", import.meta.url), "utf8");
-    expect(source).not.toMatch(/plans\[\]|isUpgrade|isDowngrade|upgradeAction|downgradeAction|appSubscriptionCreate|billing\.request|console\./);
+    const source = await readFile(
+      new URL(
+        "../../app/components/dashboard/SubscriptionChangePanel.jsx",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    expect(source).not.toMatch(
+      /plans\[\]|isUpgrade|isDowngrade|upgradeAction|downgradeAction|appSubscriptionCreate|billing\.request|console\./,
+    );
   });
 });

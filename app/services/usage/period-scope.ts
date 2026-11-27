@@ -29,13 +29,18 @@ export function shopifyPeriodUsageWhere(
       { billingPeriodId: period.id },
       {
         billingPeriodId: null,
-        sourceType: { in: ["PURCHASED_RECOVERY_CREDITS", "PROMOTIONAL_RECOVERY_CREDITS"] },
+        sourceType: {
+          in: ["PURCHASED_RECOVERY_CREDITS", "PROMOTIONAL_RECOVERY_CREDITS"],
+        },
         occurredAt: { gte: period.periodStart, lt: period.periodEnd },
       },
     ],
   };
   return {
     ...scope,
-    OR: [original, { correctionOfUsageEvent: { is: { ...scope, ...original } } }],
+    OR: [
+      original,
+      { correctionOfUsageEvent: { is: { ...scope, ...original } } },
+    ],
   };
 }

@@ -16,7 +16,12 @@ import {
 const DEFAULT_LOCALE = "en-GB";
 const DEFAULT_TIME_ZONE = "UTC";
 
-export { CATALOGUE_KEYS, catalogues, sourceCatalogues, SUPPORTED_ADMIN_LOCALES };
+export {
+  CATALOGUE_KEYS,
+  catalogues,
+  sourceCatalogues,
+  SUPPORTED_ADMIN_LOCALES,
+};
 
 function resolveLocale(locale) {
   if (typeof locale !== "string" || !locale.trim()) return DEFAULT_LOCALE;
@@ -38,7 +43,8 @@ function isValidLocale(locale) {
 }
 
 function resolveTimeZone(timeZone) {
-  if (typeof timeZone !== "string" || !timeZone.trim()) return DEFAULT_TIME_ZONE;
+  if (typeof timeZone !== "string" || !timeZone.trim())
+    return DEFAULT_TIME_ZONE;
   try {
     return normalizeTimeZone(timeZone);
   } catch {
@@ -52,14 +58,20 @@ function resolveCatalogueLocale(locale, fallbackLocale) {
   if (catalogues[baseLocale]) return baseLocale;
   const fallback = resolveLocale(fallbackLocale);
   if (catalogues[fallback]) return fallback;
-  if (catalogues[fallback.split("-")[0].toLowerCase()]) return fallback.split("-")[0].toLowerCase();
+  if (catalogues[fallback.split("-")[0].toLowerCase()])
+    return fallback.split("-")[0].toLowerCase();
   return "en";
 }
 
 export function createMerchantI18n({ locale, timeZone, fallbackLocale } = {}) {
   const resolvedLocale = resolveLocale(locale);
-  const catalogueLocale = resolveCatalogueLocale(resolvedLocale, fallbackLocale);
-  validateIcuCatalogue(catalogues[catalogueLocale], CATALOGUE_KEYS, { locale: catalogueLocale });
+  const catalogueLocale = resolveCatalogueLocale(
+    resolvedLocale,
+    fallbackLocale,
+  );
+  validateIcuCatalogue(catalogues[catalogueLocale], CATALOGUE_KEYS, {
+    locale: catalogueLocale,
+  });
   const runtime = createInternationalizationRuntime({
     locale: resolvedLocale,
     catalogue: catalogues[catalogueLocale],
@@ -70,38 +82,45 @@ export function createMerchantI18n({ locale, timeZone, fallbackLocale } = {}) {
     ...runtime,
     catalogueLocale,
     formatMoney: (value, currency, options = {}) => {
-      if (typeof currency !== "string" || !currency.trim()) throw new Error("A currency is required to format money");
+      if (typeof currency !== "string" || !currency.trim())
+        throw new Error("A currency is required to format money");
       return runtime.formatMoney(value, currency, options);
     },
-    formatDateTime: (value, options = {}) => runtime.formatDateTime(value, {
-      day: "2-digit",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit",
-      ...options,
-    }),
-    formatDate: (value, options = {}) => runtime.formatDateTime(value, {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      ...options,
-    }),
-    formatTime: (value, options = {}) => runtime.formatDateTime(value, {
-      hour: "2-digit",
-      minute: "2-digit",
-      ...options,
-    }),
+    formatDateTime: (value, options = {}) =>
+      runtime.formatDateTime(value, {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        ...options,
+      }),
+    formatDate: (value, options = {}) =>
+      runtime.formatDateTime(value, {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        ...options,
+      }),
+    formatTime: (value, options = {}) =>
+      runtime.formatDateTime(value, {
+        hour: "2-digit",
+        minute: "2-digit",
+        ...options,
+      }),
   };
 }
 
 export function merchantUiContext(shop, authenticatedLocale) {
   const merchantLocale = shop?.defaultLanguageTag;
-  const sessionLocale = typeof authenticatedLocale === "string"
-    ? authenticatedLocale
-    : authenticatedLocale?.locale;
+  const sessionLocale =
+    typeof authenticatedLocale === "string"
+      ? authenticatedLocale
+      : authenticatedLocale?.locale;
   const selectedLocale = isValidLocale(sessionLocale)
     ? sessionLocale
-    : isValidLocale(merchantLocale) ? merchantLocale : DEFAULT_LOCALE;
+    : isValidLocale(merchantLocale)
+      ? merchantLocale
+      : DEFAULT_LOCALE;
 
   return {
     locale: resolveLocale(selectedLocale),

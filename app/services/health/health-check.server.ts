@@ -37,7 +37,12 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
     }),
     new Promise<never>((_, reject) => {
       timer = setTimeout(
-        () => reject(new HealthProbeTimeout(`Health check timed out after ${timeoutMs}ms`)),
+        () =>
+          reject(
+            new HealthProbeTimeout(
+              `Health check timed out after ${timeoutMs}ms`,
+            ),
+          ),
         timeoutMs,
       );
     }),
@@ -55,22 +60,30 @@ export async function checkRedisReadiness(
   redisUrl: string | undefined,
 ): Promise<boolean> {
   if (!redisUrl) {
-    recordProbeFailure("redis", "configuration"); return false;
+    recordProbeFailure("redis", "configuration");
+    return false;
   }
 
   let client: Redis;
-  try { client = new Redis(redisUrl, {
-    connectTimeout: HEALTH_CHECK_TIMEOUT_MS,
-    maxRetriesPerRequest: 1,
-    enableOfflineQueue: false,
-    lazyConnect: true,
-    retryStrategy: () => null,
-  }); } catch (error) { recordProbeFailure("redis", "constructor", error); throw error; }
+  try {
+    client = new Redis(redisUrl, {
+      connectTimeout: HEALTH_CHECK_TIMEOUT_MS,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      lazyConnect: true,
+      retryStrategy: () => null,
+    });
+  } catch (error) {
+    recordProbeFailure("redis", "constructor", error);
+    throw error;
+  }
 
   // Own source events immediately: a later operation may reject with a different error.
   // The existing boundary suppresses a repeated instance of the same source error.
   let stage = "connect";
-  client.on("error", error => recordProbeFailure("redis", "error_event", error));
+  client.on("error", (error) =>
+    recordProbeFailure("redis", "error_event", error),
+  );
 
   try {
     await withTimeout(client.connect(), HEALTH_CHECK_TIMEOUT_MS);
@@ -78,9 +91,14 @@ export async function checkRedisReadiness(
     await withTimeout(client.ping(), HEALTH_CHECK_TIMEOUT_MS);
     return true;
   } catch (error) {
-    recordProbeFailure("redis", stage, error); return false;
+    recordProbeFailure("redis", stage, error);
+    return false;
   } finally {
-    try { client.disconnect(); } catch (error) {recordProbeFailure("redis", "cleanup", error);}
+    try {
+      client.disconnect();
+    } catch (error) {
+      recordProbeFailure("redis", "cleanup", error);
+    }
   }
 }
 
@@ -109,9 +127,7 @@ export type PostgresProbe = {
   on?(event: "error", listener: (error: Error) => void): unknown;
 };
 
-export type PostgresProbeFactory = (
-  connectionString: string,
-) => PostgresProbe;
+export type PostgresProbeFactory = (connectionString: string) => PostgresProbe;
 
 export function createPostgresProbe(connectionString: string): PostgresProbe {
   return new Client({
@@ -134,20 +150,34 @@ export async function checkPostgresReadiness(
   databaseUrl: string | undefined = process.env.DATABASE_URL,
   createProbe: PostgresProbeFactory = createPostgresProbe,
 ): Promise<boolean> {
-  if (!databaseUrl) { recordProbeFailure("postgres", "configuration"); return false; }
+  if (!databaseUrl) {
+    recordProbeFailure("postgres", "configuration");
+    return false;
+  }
   let probe: PostgresProbe;
-  try { probe = createProbe(databaseUrl); } catch (error) {recordProbeFailure("postgres", "constructor", error); throw error;}
+  try {
+    probe = createProbe(databaseUrl);
+  } catch (error) {
+    recordProbeFailure("postgres", "constructor", error);
+    throw error;
+  }
   let stage = "connect";
-  probe.on?.("error", error => recordProbeFailure("postgres", "error_event", error));
+  probe.on?.("error", (error) =>
+    recordProbeFailure("postgres", "error_event", error),
+  );
 
   try {
     await probe.connect();
-    stage = "query"; await probe.query("SELECT 1");
+    stage = "query";
+    await probe.query("SELECT 1");
     return true;
   } catch (error) {
-    recordProbeFailure("postgres", stage, error); return false;
+    recordProbeFailure("postgres", stage, error);
+    return false;
   } finally {
-    await probe.end().catch(error => {recordProbeFailure("postgres", "cleanup", error);});
+    await probe.end().catch((error) => {
+      recordProbeFailure("postgres", "cleanup", error);
+    });
   }
 }
 
@@ -163,8 +193,26 @@ export async function checkReadiness(): Promise<ReadinessResult> {
   };
 }
 
-function recordProbeFailure(dependency: "redis" | "postgres", stage: string, error?: unknown): void {
-  logBillingBoundaryFailure({event: "shopify.health.dependency_failed", operation: `probe_${dependency}`, stage,
-    origin: stage === "configuration" || stage === "constructor" || error instanceof HealthProbeTimeout ? "internal" : dependency === "postgres" ? "database" : "transport",
-    identities: {dependency}, ...(error === undefined ? {reasonCode: "MISSING_CONFIGURATION"} : {error})});
+function recordProbeFailure(
+  dependency: "redis" | "postgres",
+  stage: string,
+  error?: unknown,
+): void {
+  logBillingBoundaryFailure({
+    event: "shopify.health.dependency_failed",
+    operation: `probe_${dependency}`,
+    stage,
+    origin:
+      stage === "configuration" ||
+      stage === "constructor" ||
+      error instanceof HealthProbeTimeout
+        ? "internal"
+        : dependency === "postgres"
+          ? "database"
+          : "transport",
+    identities: { dependency },
+    ...(error === undefined
+      ? { reasonCode: "MISSING_CONFIGURATION" }
+      : { error }),
+  });
 }

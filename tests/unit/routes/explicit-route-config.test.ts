@@ -18,26 +18,45 @@ describe("explicit route configuration", () => {
 
   it("keeps embedded UI pages under the app layout", () => {
     expect(source).toContain('route("app", "./routes/app/route.jsx", [');
-    expect(source).not.toContain('route("reinstalling", "./routes/app/reinstalling/route.jsx")');
-    expect(source).toContain('route("billing/options", "./routes/app/billing/options/route.tsx"),');
-    expect(source).toContain('route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),');
-    expect(source).not.toContain('route("billing", "./routes/app/billing/route.tsx")');
-    expect(source).not.toContain('route("additional", "./routes/app/additional/route.jsx")');
-    expect(source).toContain('route("promotions", "./routes/app/promotions/route.tsx"),');
-    expect(source).toContain('route("features", "./routes/app/features/route.tsx"),');
-    expect(source).toContain('route("merchant-support", "./routes/app/merchant-support/route.jsx"),');
-    expect(source).not.toContain('route("app/billing/options", "./routes/app/billing/options/route.tsx"),');
+    expect(source).not.toContain(
+      'route("reinstalling", "./routes/app/reinstalling/route.jsx")',
+    );
+    expect(source).toContain(
+      'route("billing/options", "./routes/app/billing/options/route.tsx"),',
+    );
+    expect(source).toContain(
+      'route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),',
+    );
+    expect(source).not.toContain(
+      'route("billing", "./routes/app/billing/route.tsx")',
+    );
+    expect(source).not.toContain(
+      'route("additional", "./routes/app/additional/route.jsx")',
+    );
+    expect(source).toContain(
+      'route("promotions", "./routes/app/promotions/route.tsx"),',
+    );
+    expect(source).toContain(
+      'route("features", "./routes/app/features/route.tsx"),',
+    );
+    expect(source).toContain(
+      'route("merchant-support", "./routes/app/merchant-support/route.jsx"),',
+    );
+    expect(source).not.toContain(
+      'route("app/billing/options", "./routes/app/billing/options/route.tsx"),',
+    );
   });
 
   it("keeps /app/features only as a compatibility redirect", () => {
-    expect(source).toContain('route("features", "./routes/app/features/route.tsx"),');
+    expect(source).toContain(
+      'route("features", "./routes/app/features/route.tsx"),',
+    );
     expect(featuresRouteSource).toContain(
       '"/app/recovery-settings#conversation-features"',
     );
     expect(featuresRouteSource).not.toContain("shopFeaturePreference");
     expect(featuresRouteSource).not.toContain("billingPlanFeature");
   });
-
 
   it("registers the Merchant Knowledge client failure reporting endpoint", () => {
     expect(source).toContain(
@@ -52,17 +71,27 @@ describe("explicit route configuration", () => {
   });
 
   it("declares the restoration route as a standalone exact path", () => {
-    expect(source).toContain('route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),');
+    expect(source).toContain(
+      'route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),',
+    );
   });
 
   it("keeps billing transitions standalone", () => {
-    expect(source).toContain('route("app/billing/select", "./routes/app/billing/select/route.jsx"),');
-    expect(source).toContain('route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),');
-    expect(source).toContain('route("app/billing/status", "./routes/app/billing/status/route.ts"),');
+    expect(source).toContain(
+      'route("app/billing/select", "./routes/app/billing/select/route.jsx"),',
+    );
+    expect(source).toContain(
+      'route("app/billing/callback", "./routes/app/billing/callback/route.tsx"),',
+    );
+    expect(source).toContain(
+      'route("app/billing/status", "./routes/app/billing/status/route.ts"),',
+    );
   });
 
   it("keeps pending recoveries standalone", () => {
-    expect(source).toContain('route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),');
+    expect(source).toContain(
+      'route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),',
+    );
   });
 
   it("preserves Shopify webhook URLs exactly", () => {
@@ -91,7 +120,9 @@ describe("explicit route configuration", () => {
       "app/routes/app/additional/route.jsx",
       "app/routes/app/billing/recovery-credits/route.ts",
     ]) {
-      await expect(access(new URL(`../../../${relativePath}`, import.meta.url))).rejects.toThrow();
+      await expect(
+        access(new URL(`../../../${relativePath}`, import.meta.url)),
+      ).rejects.toThrow();
     }
   });
 });

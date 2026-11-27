@@ -9,7 +9,8 @@ const controlReasons: Record<string, string> = {
   stale_control_revision: "recoveryDetail.staleRevision",
   control_already_selected: "recoveryDetail.controlAlreadySelected",
   forbidden: "recoveryDetail.controlNotAuthorised",
-  origin_configuration_unavailable: "recoveryDetail.controlTemporarilyUnavailable",
+  origin_configuration_unavailable:
+    "recoveryDetail.controlTemporarilyUnavailable",
   internal_error: "recoveryDetail.controlTemporarilyUnavailable",
   conflict_retry: "recoveryDetail.staleRevision",
   not_found: "recoveryDetail.unavailable",
@@ -28,37 +29,65 @@ const sendReasons: Record<string, string> = {
   conflict_retry: "recoveryDetail.staleRevision",
   invalid_request: "recoveryDetail.sendFailed",
   forbidden: "recoveryDetail.controlNotAuthorised",
-  origin_configuration_unavailable: "recoveryDetail.controlTemporarilyUnavailable",
+  origin_configuration_unavailable:
+    "recoveryDetail.controlTemporarilyUnavailable",
   internal_error: "recoveryDetail.sendFailed",
   not_found: "recoveryDetail.unavailable",
 };
 
-export function recoveryActionMessageKey(action: "control" | "send", code: string): string {
+export function recoveryActionMessageKey(
+  action: "control" | "send",
+  code: string,
+): string {
   return action === "control"
-    ? controlReasons[code] ?? "recoveryDetail.controlFailed"
-    : sendReasons[code] ?? "recoveryDetail.sendFailed";
+    ? (controlReasons[code] ?? "recoveryDetail.controlFailed")
+    : (sendReasons[code] ?? "recoveryDetail.sendFailed");
 }
 
-export function RecoveryActionFeedback({ action, code, t }: {
+export function RecoveryActionFeedback({
+  action,
+  code,
+  t,
+}: {
   action: "control" | "send";
   code: string | undefined;
   t: Translate;
 }) {
   return code ? (
-    <p role="alert" className="recovery-detail__action-error">{t(recoveryActionMessageKey(action, code))}</p>
+    <p role="alert" className="recovery-detail__action-error">
+      {t(recoveryActionMessageKey(action, code))}
+    </p>
   ) : null;
 }
 
-export function DisabledMerchantComposer({ reasonKey, t }: { reasonKey: string; t: Translate }) {
+export function DisabledMerchantComposer({
+  reasonKey,
+  t,
+}: {
+  reasonKey: string;
+  t: Translate;
+}) {
   return (
-    <div className="recovery-detail__composer recovery-detail__composer--disabled" role="status">
+    <div
+      className="recovery-detail__composer recovery-detail__composer--disabled"
+      role="status"
+    >
       <label htmlFor="human-reply-disabled">{t("recoveryDetail.reply")}</label>
-      <textarea id="human-reply-disabled" rows={2} disabled value=""
+      <textarea
+        id="human-reply-disabled"
+        rows={2}
+        disabled
+        value=""
         placeholder={t("recoveryDetail.replyDisabledPlaceholder")}
-        aria-describedby="human-reply-disabled-reason" />
-      <p id="human-reply-disabled-reason" className="recovery-detail__muted">{t(reasonKey)}</p>
+        aria-describedby="human-reply-disabled-reason"
+      />
+      <p id="human-reply-disabled-reason" className="recovery-detail__muted">
+        {t(reasonKey)}
+      </p>
       <div className="recovery-detail__composer-actions">
-        <button type="button" disabled>{t("recoveryDetail.sendReply")}</button>
+        <button type="button" disabled>
+          {t("recoveryDetail.sendReply")}
+        </button>
       </div>
     </div>
   );

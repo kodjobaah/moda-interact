@@ -4,10 +4,10 @@ The Admin 2026-07 `ShopPolicy` resource requires `read_legal_policies`. The two 
 
 ## Select the app and align runtime scopes
 
-| Configuration | Client ID | Application URL | Webhook API version |
-| --- | --- | --- | --- |
-| `shopify.app.moda-interact.toml` | `c323c5bd8585d875719db7570b91460e` | `https://app-test.modainteract.com` | `2026-07` |
-| `shopify.app.toml` | `ca78b7deba6ed1da8a15997bbe905242` | `https://moda-interact.onrender.com` | `2026-10` |
+| Configuration                    | Client ID                          | Application URL                      | Webhook API version |
+| -------------------------------- | ---------------------------------- | ------------------------------------ | ------------------- |
+| `shopify.app.moda-interact.toml` | `c323c5bd8585d875719db7570b91460e` | `https://app-test.modainteract.com`  | `2026-07`           |
+| `shopify.app.toml`               | `ca78b7deba6ed1da8a15997bbe905242` | `https://moda-interact.onrender.com` | `2026-10`           |
 
 Confirm the selected configuration against the intended deployed app/client in the Dev Dashboard and deployment records. The named configuration follows the existing ARCH-049/ARCH-045 integration precedent. The actual deployed selection requires operator verification. The `.good` and `.test` variants of the named file retain their ARCH-049 snapshot classification.
 

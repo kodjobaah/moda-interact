@@ -1,10 +1,16 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import prisma from "../../db.server";
-import { createLogger, type StructuredLogger } from "@modainteract/moda-interact-shared/logging";
+import {
+  createLogger,
+  type StructuredLogger,
+} from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
-const promotionLogger = createLogger({ serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName() });
+const promotionLogger = createLogger({
+  serviceName: "moda-interact",
+  environment: resolveDeploymentEnvironmentName(),
+});
 
 export const PROMOTION_SELECTION_ERROR_CODES = {
   ACTIVE_PROMOTION_ALREADY_SELECTED: "ACTIVE_PROMOTION_ALREADY_SELECTED",
@@ -38,7 +44,10 @@ export type CurrentPromotionSelectionState = {
 export class PromotionSelectionError extends Error {
   code: keyof typeof PROMOTION_SELECTION_ERROR_CODES;
 
-  constructor(code: keyof typeof PROMOTION_SELECTION_ERROR_CODES, options?: ErrorOptions) {
+  constructor(
+    code: keyof typeof PROMOTION_SELECTION_ERROR_CODES,
+    options?: ErrorOptions,
+  ) {
     super(code, options);
     this.name = "PromotionSelectionError";
     this.code = code;
@@ -59,18 +68,22 @@ type PromotionContext = {
 };
 
 function isExecutableSubscription(context: PromotionContext): boolean {
-  return context.shopStatus === "ACTIVE" &&
+  return (
+    context.shopStatus === "ACTIVE" &&
     (context.subscription?.status === "ACTIVE" ||
       context.subscription?.status === "TRIALING") &&
-    Boolean(context.subscription.plan?.active);
+    Boolean(context.subscription.plan?.active)
+  );
 }
 
-function isUsableGrant(grant: {
-  quantity: number;
-  reservedQuantity: number;
-  committedQuantity: number;
-  exhaustedAt: Date | null;
-} | null): boolean {
+function isUsableGrant(
+  grant: {
+    quantity: number;
+    reservedQuantity: number;
+    committedQuantity: number;
+    exhaustedAt: Date | null;
+  } | null,
+): boolean {
   return Boolean(
     grant &&
     grant.exhaustedAt === null &&
@@ -79,13 +92,21 @@ function isUsableGrant(grant: {
 }
 
 function isTargetEligible(
-  campaign: { scope: string; targetPlanId: string | null; targetShopId: string | null },
+  campaign: {
+    scope: string;
+    targetPlanId: string | null;
+    targetShopId: string | null;
+  },
   shopId: string,
   planId: string | null,
 ): boolean {
-  return campaign.scope === "GLOBAL" ||
+  return (
+    campaign.scope === "GLOBAL" ||
     (campaign.scope === "SHOP" && campaign.targetShopId === shopId) ||
-    (campaign.scope === "PLAN" && campaign.targetPlanId !== null && campaign.targetPlanId === planId);
+    (campaign.scope === "PLAN" &&
+      campaign.targetPlanId !== null &&
+      campaign.targetPlanId === planId)
+  );
 }
 
 export function promotionHistoryStatus(
@@ -101,7 +122,7 @@ export function promotionHistoryStatus(
   },
   campaign: {
     status: string;
-      scope: string;
+    scope: string;
     expiresAt: Date;
     targetPlanId: string | null;
     targetShopId: string | null;
@@ -115,8 +136,17 @@ export function promotionHistoryStatus(
   if (campaign.status === "CLOSED") return "CLOSED";
   if (campaign.expiresAt <= now) return "EXPIRED";
   if (!isTargetEligible(campaign, shopId, planId)) return "NO_LONGER_ELIGIBLE";
-  const remainingQuantity = Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity);
-  if (reopenedAt && grant.firstSelectedAt && reopenedAt > grant.firstSelectedAt && remainingQuantity > 0) return "REOPENED";
+  const remainingQuantity = Math.max(
+    0,
+    grant.quantity - grant.reservedQuantity - grant.committedQuantity,
+  );
+  if (
+    reopenedAt &&
+    grant.firstSelectedAt &&
+    reopenedAt > grant.firstSelectedAt &&
+    remainingQuantity > 0
+  )
+    return "REOPENED";
   return grant.firstUsedAt ? "USED" : "SELECTED";
 }
 
@@ -153,18 +183,32 @@ export function projectPromotionHistoryRow(
     campaignTitle: grant.campaign.translations?.[0]?.merchantTitle ?? null,
     quantityGranted: grant.quantity,
     committedQuantity: grant.committedQuantity,
-    remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity),
+    remainingQuantity: Math.max(
+      0,
+      grant.quantity - grant.reservedQuantity - grant.committedQuantity,
+    ),
     firstSelectedAt: grant.firstSelectedAt,
     lastSelectedAt: grant.lastSelectedAt,
     firstUsedAt: grant.firstUsedAt,
     lastUsedAt: grant.lastUsedAt,
     expiresAt: grant.campaign.expiresAt,
-    currentlySelected: grant.selection !== null && grant.campaign.expiresAt > now,
-    status: promotionHistoryStatus(grant, grant.campaign, shopId, planId, grant.reopenedAt, now),
+    currentlySelected:
+      grant.selection !== null && grant.campaign.expiresAt > now,
+    status: promotionHistoryStatus(
+      grant,
+      grant.campaign,
+      shopId,
+      planId,
+      grant.reopenedAt,
+      now,
+    ),
   };
 }
 
-async function readContext(database: PromotionReadDatabase, shopId: string): Promise<PromotionContext | null> {
+async function readContext(
+  database: PromotionReadDatabase,
+  shopId: string,
+): Promise<PromotionContext | null> {
   const shop = await database.shop.findUnique({
     where: { id: shopId },
     select: {
@@ -179,29 +223,39 @@ async function readContext(database: PromotionReadDatabase, shopId: string): Pro
       },
     },
   });
-  return shop ? { shopId: shop.id, shopStatus: shop.status, subscription: shop.subscription } : null;
+  return shop
+    ? {
+        shopId: shop.id,
+        shopStatus: shop.status,
+        subscription: shop.subscription,
+      }
+    : null;
 }
 
-function merchantOffer(campaign: {
-  id: string;
-  translations: Array<{ merchantTitle: string; merchantDescription: string }>;
-  scope: string;
-  quantity: number;
-  startsAt: Date;
-  expiresAt: Date;
-  status: string;
-  targetPlanId: string | null;
-  targetShopId: string | null;
-  promotionalCreditGrants: Array<{
+function merchantOffer(
+  campaign: {
+    id: string;
+    translations: Array<{ merchantTitle: string; merchantDescription: string }>;
+    scope: string;
     quantity: number;
-    reservedQuantity: number;
-    committedQuantity: number;
-    exhaustedAt: Date | null;
-    firstSelectedAt: Date | null;
-    lastSelectedAt: Date | null;
-    selection: { shopId: string } | null;
-  }>;
-}, shopId: string, planId: string | null) {
+    startsAt: Date;
+    expiresAt: Date;
+    status: string;
+    targetPlanId: string | null;
+    targetShopId: string | null;
+    promotionalCreditGrants: Array<{
+      quantity: number;
+      reservedQuantity: number;
+      committedQuantity: number;
+      exhaustedAt: Date | null;
+      firstSelectedAt: Date | null;
+      lastSelectedAt: Date | null;
+      selection: { shopId: string } | null;
+    }>;
+  },
+  shopId: string,
+  planId: string | null,
+) {
   const grant = campaign.promotionalCreditGrants[0] ?? null;
   return {
     id: campaign.id,
@@ -210,11 +264,17 @@ function merchantOffer(campaign: {
     scope: campaign.scope,
     quantity: campaign.quantity,
     expiresAt: campaign.expiresAt,
-    remainingQuantity: grant ? Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity) : campaign.quantity,
+    remainingQuantity: grant
+      ? Math.max(
+          0,
+          grant.quantity - grant.reservedQuantity - grant.committedQuantity,
+        )
+      : campaign.quantity,
     currentlySelected: Boolean(grant?.selection),
     previouslyClaimed: Boolean(grant),
     usable: isUsableGrant(grant),
-    exhausted: Boolean(grant?.exhaustedAt) || (grant ? !isUsableGrant(grant) : false),
+    exhausted:
+      Boolean(grant?.exhaustedAt) || (grant ? !isUsableGrant(grant) : false),
     eligible: isTargetEligible(campaign, shopId, planId),
   };
 }
@@ -241,7 +301,10 @@ export async function getEligiblePromotionOffers(
     },
     select: {
       id: true,
-      translations: { where: { locale }, select: { merchantTitle: true, merchantDescription: true } },
+      translations: {
+        where: { locale },
+        select: { merchantTitle: true, merchantDescription: true },
+      },
       scope: true,
       quantity: true,
       startsAt: true,
@@ -251,14 +314,27 @@ export async function getEligiblePromotionOffers(
       targetShopId: true,
       promotionalCreditGrants: {
         where: { shopId },
-        select: { quantity: true, reservedQuantity: true, committedQuantity: true, exhaustedAt: true, firstSelectedAt: true, lastSelectedAt: true, selection: { select: { shopId: true } } },
+        select: {
+          quantity: true,
+          reservedQuantity: true,
+          committedQuantity: true,
+          exhaustedAt: true,
+          firstSelectedAt: true,
+          lastSelectedAt: true,
+          selection: { select: { shopId: true } },
+        },
       },
     },
     orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }],
   });
   return campaigns
-    .filter((campaign: Parameters<typeof merchantOffer>[0]) => campaign.translations.length === 1)
-    .map((campaign: Parameters<typeof merchantOffer>[0]) => merchantOffer(campaign, shopId, planId));
+    .filter(
+      (campaign: Parameters<typeof merchantOffer>[0]) =>
+        campaign.translations.length === 1,
+    )
+    .map((campaign: Parameters<typeof merchantOffer>[0]) =>
+      merchantOffer(campaign, shopId, planId),
+    );
 }
 
 export async function getCurrentPromotionSelectionState(
@@ -268,7 +344,7 @@ export async function getCurrentPromotionSelectionState(
   database: PromotionDatabase = prisma,
   suppliedContext?: PromotionContext,
 ): Promise<CurrentPromotionSelectionState | null> {
-  const context = suppliedContext ?? await readContext(database, shopId);
+  const context = suppliedContext ?? (await readContext(database, shopId));
   if (!context) return null;
 
   const selection = await database.merchantPromotionSelection.findUnique({
@@ -289,7 +365,10 @@ export async function getCurrentPromotionSelectionState(
               scope: true,
               targetPlanId: true,
               targetShopId: true,
-              translations: { where: { locale }, select: { merchantTitle: true } },
+              translations: {
+                where: { locale },
+                select: { merchantTitle: true },
+              },
             },
           },
         },
@@ -337,8 +416,15 @@ export async function getPromotionHistory(
   database: PromotionDatabase = prisma,
   suppliedContext?: PromotionContext,
 ) {
-  const context = suppliedContext ?? await readContext(database, shopId);
-  if (!context) return { entries: [], page: 1, pageSize: PROMOTION_HISTORY_PAGE_SIZE, totalEntries: 0, totalPages: 1 };
+  const context = suppliedContext ?? (await readContext(database, shopId));
+  if (!context)
+    return {
+      entries: [],
+      page: 1,
+      pageSize: PROMOTION_HISTORY_PAGE_SIZE,
+      totalEntries: 0,
+      totalPages: 1,
+    };
   const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
   const where = { shopId };
   const [totalEntries, grants] = await Promise.all([
@@ -362,7 +448,10 @@ export async function getPromotionHistory(
         campaign: {
           select: {
             id: true,
-            translations: { where: { locale }, select: { merchantTitle: true } },
+            translations: {
+              where: { locale },
+              select: { merchantTitle: true },
+            },
             scope: true,
             expiresAt: true,
             status: true,
@@ -380,67 +469,147 @@ export async function getPromotionHistory(
     }),
   ]);
   return {
-    entries: grants.map((grant: Parameters<typeof projectPromotionHistoryRow>[0]) => projectPromotionHistoryRow({
-      ...grant,
-      reopenedAt: grant.campaign.events?.[0]?.createdAt ?? null,
-    }, shopId, context.subscription?.planId ?? null, now)),
+    entries: grants.map(
+      (grant: Parameters<typeof projectPromotionHistoryRow>[0]) =>
+        projectPromotionHistoryRow(
+          {
+            ...grant,
+            reopenedAt: grant.campaign.events?.[0]?.createdAt ?? null,
+          },
+          shopId,
+          context.subscription?.planId ?? null,
+          now,
+        ),
+    ),
     page: normalizedPage,
     pageSize: PROMOTION_HISTORY_PAGE_SIZE,
     totalEntries,
-    totalPages: Math.max(1, Math.ceil(totalEntries / PROMOTION_HISTORY_PAGE_SIZE)),
+    totalPages: Math.max(
+      1,
+      Math.ceil(totalEntries / PROMOTION_HISTORY_PAGE_SIZE),
+    ),
   };
 }
 
 export type MerchantPromotionPageInput = {
-  shopId: string; shopStatus: string; subscriptionStatus: string | null; planId: string | null;
-  locale: string; offerPage: number; historyPage: number; now: Date;
+  shopId: string;
+  shopStatus: string;
+  subscriptionStatus: string | null;
+  planId: string | null;
+  locale: string;
+  offerPage: number;
+  historyPage: number;
+  now: Date;
 };
 
-export async function getMerchantPromotionPage(input: MerchantPromotionPageInput, database: PromotionDatabase = prisma,
-  diagnostics: StructuredLogger = promotionLogger) {
+export async function getMerchantPromotionPage(
+  input: MerchantPromotionPageInput,
+  database: PromotionDatabase = prisma,
+  diagnostics: StructuredLogger = promotionLogger,
+) {
   const { shopId, planId, locale, now } = input;
-  const context: PromotionContext = { shopId, shopStatus: input.shopStatus,
-    subscription: input.subscriptionStatus ? { status: input.subscriptionStatus, planId, plan: null } : null };
-  async function read<T>(stage: string, operation: () => Promise<T>): Promise<T> {
-    try { return await operation(); } catch (error) {
-      logBillingBoundaryFailure({ event: "shopify.promotions.page_read_failed", operation: "read_promotion_page", stage, shopId, error }, diagnostics);
+  const context: PromotionContext = {
+    shopId,
+    shopStatus: input.shopStatus,
+    subscription: input.subscriptionStatus
+      ? { status: input.subscriptionStatus, planId, plan: null }
+      : null,
+  };
+  async function read<T>(
+    stage: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      logBillingBoundaryFailure(
+        {
+          event: "shopify.promotions.page_read_failed",
+          operation: "read_promotion_page",
+          stage,
+          shopId,
+          error,
+        },
+        diagnostics,
+      );
       throw error;
     }
   }
   const where: Prisma.PromotionCampaignWhereInput = {
-    status: "ACTIVE", startsAt: { lte: now }, expiresAt: { gt: now },
-    OR: [{ scope: "GLOBAL" }, { scope: "SHOP", targetShopId: shopId }, ...(planId ? [{ scope: "PLAN" as const, targetPlanId: planId }] : [])],
+    status: "ACTIVE",
+    startsAt: { lte: now },
+    expiresAt: { gt: now },
+    OR: [
+      { scope: "GLOBAL" },
+      { scope: "SHOP", targetShopId: shopId },
+      ...(planId ? [{ scope: "PLAN" as const, targetPlanId: planId }] : []),
+    ],
     translations: { some: { locale } },
   };
   const [totalEntries, promotionSelection, history] = await Promise.all([
     read("count_offers", () => database.promotionCampaign.count({ where })),
-    read("read_selection", () => getCurrentPromotionSelectionState(shopId, locale, now, database, context)),
-    read("read_history", () => getPromotionHistory(shopId, locale, input.historyPage, now, database, context)),
+    read("read_selection", () =>
+      getCurrentPromotionSelectionState(shopId, locale, now, database, context),
+    ),
+    read("read_history", () =>
+      getPromotionHistory(
+        shopId,
+        locale,
+        input.historyPage,
+        now,
+        database,
+        context,
+      ),
+    ),
   ]);
   const totalPages = Math.max(1, Math.ceil(totalEntries / 6));
-  const requested = Number.isSafeInteger(input.offerPage) && input.offerPage > 0 ? input.offerPage : 1;
+  const requested =
+    Number.isSafeInteger(input.offerPage) && input.offerPage > 0
+      ? input.offerPage
+      : 1;
   const page = Math.min(requested, totalPages);
-  const campaigns = await read("read_offers", () => database.promotionCampaign.findMany({
-    where,
-    select: {
-      id: true,
-      translations: { where: { locale }, select: { merchantTitle: true, merchantDescription: true } },
-      scope: true,
-      quantity: true,
-      startsAt: true,
-      expiresAt: true,
-      status: true,
-      targetPlanId: true,
-      targetShopId: true,
-      promotionalCreditGrants: {
-        where: { shopId },
-        select: { quantity: true, reservedQuantity: true, committedQuantity: true, exhaustedAt: true, firstSelectedAt: true, lastSelectedAt: true, selection: { select: { shopId: true } } },
+  const campaigns = await read("read_offers", () =>
+    database.promotionCampaign.findMany({
+      where,
+      select: {
+        id: true,
+        translations: {
+          where: { locale },
+          select: { merchantTitle: true, merchantDescription: true },
+        },
+        scope: true,
+        quantity: true,
+        startsAt: true,
+        expiresAt: true,
+        status: true,
+        targetPlanId: true,
+        targetShopId: true,
+        promotionalCreditGrants: {
+          where: { shopId },
+          select: {
+            quantity: true,
+            reservedQuantity: true,
+            committedQuantity: true,
+            exhaustedAt: true,
+            firstSelectedAt: true,
+            lastSelectedAt: true,
+            selection: { select: { shopId: true } },
+          },
+        },
       },
-    },
-    orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }, { id: "asc" }], skip: (page - 1) * 6, take: 6,
-  }));
-  return { offers: campaigns.map(campaign => merchantOffer(campaign, shopId, planId)),
-    offersPagination: { page, pageSize: 6, totalEntries, totalPages }, promotionSelection, history };
+      orderBy: [{ expiresAt: "asc" }, { createdAt: "desc" }, { id: "asc" }],
+      skip: (page - 1) * 6,
+      take: 6,
+    }),
+  );
+  return {
+    offers: campaigns.map((campaign) =>
+      merchantOffer(campaign, shopId, planId),
+    ),
+    offersPagination: { page, pageSize: 6, totalEntries, totalPages },
+    promotionSelection,
+    history,
+  };
 }
 
 export async function selectPromotionOffer(
@@ -452,81 +621,131 @@ export async function selectPromotionOffer(
 ) {
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      return await database.$transaction(async (transaction: Prisma.TransactionClient) => {
-      const context = await readContext(transaction, shopId);
-      if (!context || !isExecutableSubscription(context)) {
-        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE");
-      }
+      return await database.$transaction(
+        async (transaction: Prisma.TransactionClient) => {
+          const context = await readContext(transaction, shopId);
+          if (!context || !isExecutableSubscription(context)) {
+            throw new PromotionSelectionError(
+              "PROMOTION_SELECTION_UNAVAILABLE",
+            );
+          }
 
-      const campaign = await transaction.promotionCampaign.findUnique({
-        where: { id: campaignId },
-        select: {
-          id: true,
-          name: true,
-          merchantDescription: true,
-          scope: true,
-          quantity: true,
-          startsAt: true,
-          expiresAt: true,
-          status: true,
-          targetPlanId: true,
-          targetShopId: true,
-        },
-      });
-      if (!campaign || campaign.status !== "ACTIVE" || campaign.startsAt > now || campaign.expiresAt <= now || !isTargetEligible(campaign, shopId, context.subscription?.planId ?? null)) {
-        throw new PromotionSelectionError("PROMOTION_NOT_ELIGIBLE");
-      }
-
-      const current = await transaction.merchantPromotionSelection.findUnique({
-        where: { shopId },
-        include: {
-          promotionalCreditGrant: {
-            include: {
-              campaign: {
-                select: { id: true, status: true, startsAt: true, expiresAt: true, scope: true, targetPlanId: true, targetShopId: true },
-              },
+          const campaign = await transaction.promotionCampaign.findUnique({
+            where: { id: campaignId },
+            select: {
+              id: true,
+              name: true,
+              merchantDescription: true,
+              scope: true,
+              quantity: true,
+              startsAt: true,
+              expiresAt: true,
+              status: true,
+              targetPlanId: true,
+              targetShopId: true,
             },
-          },
-        },
-      });
-      const currentGrant = current?.promotionalCreditGrant ?? null;
-      if (
-        current
-        && currentGrant
-        && currentGrant.campaign.expiresAt > now
-      ) {
-        throw new PromotionSelectionError("ACTIVE_PROMOTION_ALREADY_SELECTED");
-      }
+          });
+          if (
+            !campaign ||
+            campaign.status !== "ACTIVE" ||
+            campaign.startsAt > now ||
+            campaign.expiresAt <= now ||
+            !isTargetEligible(
+              campaign,
+              shopId,
+              context.subscription?.planId ?? null,
+            )
+          ) {
+            throw new PromotionSelectionError("PROMOTION_NOT_ELIGIBLE");
+          }
 
-      const grant = await transaction.promotionalCreditGrant.upsert({
-        where: { campaignId_shopId: { campaignId, shopId } },
-        update: {},
-        create: { campaignId, shopId, quantity: campaign.quantity },
-      });
-      await transaction.promotionalCreditGrant.update({
-        where: { id_shopId: { id: grant.id, shopId } },
-        data: {
-          firstSelectedAt: grant.firstSelectedAt ?? now,
-          lastSelectedAt: now,
-          selectionCount: { increment: 1 },
+          const current =
+            await transaction.merchantPromotionSelection.findUnique({
+              where: { shopId },
+              include: {
+                promotionalCreditGrant: {
+                  include: {
+                    campaign: {
+                      select: {
+                        id: true,
+                        status: true,
+                        startsAt: true,
+                        expiresAt: true,
+                        scope: true,
+                        targetPlanId: true,
+                        targetShopId: true,
+                      },
+                    },
+                  },
+                },
+              },
+            });
+          const currentGrant = current?.promotionalCreditGrant ?? null;
+          if (
+            current &&
+            currentGrant &&
+            currentGrant.campaign.expiresAt > now
+          ) {
+            throw new PromotionSelectionError(
+              "ACTIVE_PROMOTION_ALREADY_SELECTED",
+            );
+          }
+
+          const grant = await transaction.promotionalCreditGrant.upsert({
+            where: { campaignId_shopId: { campaignId, shopId } },
+            update: {},
+            create: { campaignId, shopId, quantity: campaign.quantity },
+          });
+          await transaction.promotionalCreditGrant.update({
+            where: { id_shopId: { id: grant.id, shopId } },
+            data: {
+              firstSelectedAt: grant.firstSelectedAt ?? now,
+              lastSelectedAt: now,
+              selectionCount: { increment: 1 },
+            },
+          });
+          await transaction.merchantPromotionSelection.upsert({
+            where: { shopId },
+            update: { promotionalCreditGrantId: grant.id },
+            create: { shopId, promotionalCreditGrantId: grant.id },
+          });
+          return {
+            campaignId,
+            remainingQuantity: Math.max(
+              0,
+              grant.quantity - grant.reservedQuantity - grant.committedQuantity,
+            ),
+          };
         },
-      });
-      await transaction.merchantPromotionSelection.upsert({
-        where: { shopId },
-        update: { promotionalCreditGrantId: grant.id },
-        create: { shopId, promotionalCreditGrantId: grant.id },
-      });
-      return { campaignId, remainingQuantity: Math.max(0, grant.quantity - grant.reservedQuantity - grant.committedQuantity) };
-      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
     } catch (error) {
       if (error instanceof PromotionSelectionError) throw error;
-      const retrying = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034" && attempt < 3;
-      logBillingBoundaryFailure({ event: retrying ? "shopify.promotions.selection_retry" : "shopify.promotions.selection_failed",
-        operation: "select_promotion", stage: "selection_transaction", shopId, identities: { campaignId, attempt: String(attempt) }, error,
-      }, retrying ? { ...diagnostics, error: diagnostics.warn } : diagnostics);
+      const retrying =
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034" &&
+        attempt < 3;
+      logBillingBoundaryFailure(
+        {
+          event: retrying
+            ? "shopify.promotions.selection_retry"
+            : "shopify.promotions.selection_failed",
+          operation: "select_promotion",
+          stage: "selection_transaction",
+          shopId,
+          identities: { campaignId, attempt: String(attempt) },
+          error,
+        },
+        retrying ? { ...diagnostics, error: diagnostics.warn } : diagnostics,
+      );
       if (retrying) continue;
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034")
-        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE", { cause: error });
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2034"
+      )
+        throw new PromotionSelectionError("PROMOTION_SELECTION_UNAVAILABLE", {
+          cause: error,
+        });
       throw error;
     }
   }

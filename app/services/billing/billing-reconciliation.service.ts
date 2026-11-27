@@ -20,8 +20,16 @@ let queueUrl: string | null = null;
 
 const createQueue: BillingReconciliationQueueFactory = (name, options) => {
   const created = new Queue(name, options);
-  created.on("error", error => logBillingBoundaryFailure({event: "billing.subscription_reconcile.connection_failed",
-    operation: "billing_reconcile_connection", stage: "connection", origin: "transport", identities: {queue: name}, error}));
+  created.on("error", (error) =>
+    logBillingBoundaryFailure({
+      event: "billing.subscription_reconcile.connection_failed",
+      operation: "billing_reconcile_connection",
+      stage: "connection",
+      origin: "transport",
+      identities: { queue: name },
+      error,
+    }),
+  );
   return created;
 };
 
@@ -57,12 +65,19 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
 ): Promise<void> {
   let stage: "queue_acquisition" | "queue_add" = "queue_acquisition";
   try {
-    const targetQueue = injectedQueue === undefined
-      ? await getQueue(injectedQueueFactory)
-      : injectedQueue;
+    const targetQueue =
+      injectedQueue === undefined
+        ? await getQueue(injectedQueueFactory)
+        : injectedQueue;
     if (!targetQueue) {
-      logBillingBoundaryFailure({event: "billing.subscription_reconcile.enqueue_failed", operation: "enqueue_billing_subscription_reconcile",
-        stage: "configuration", origin: "internal", shopId: input.shopId, reasonCode: "QUEUE_NOT_CONFIGURED"});
+      logBillingBoundaryFailure({
+        event: "billing.subscription_reconcile.enqueue_failed",
+        operation: "enqueue_billing_subscription_reconcile",
+        stage: "configuration",
+        origin: "internal",
+        shopId: input.shopId,
+        reasonCode: "QUEUE_NOT_CONFIGURED",
+      });
       return;
     }
 
@@ -81,7 +96,10 @@ export async function enqueueBillingSubscriptionReconcileBestEffort(
           input.subscriptionId,
           expectedNextReconcileAt,
         ),
-        delay: Math.max(input.expectedNextReconcileAt.getTime() - Date.now(), 0),
+        delay: Math.max(
+          input.expectedNextReconcileAt.getTime() - Date.now(),
+          0,
+        ),
       },
     );
   } catch (error) {

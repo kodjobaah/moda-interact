@@ -33,8 +33,8 @@ function durableLifecycleState(
       return "FROZEN" as const;
     case SubscriptionProjectionStatus.NO_CONTRACT:
       return subscription.lastProviderLifecycleState === "CANCELED"
-        ? "POST_CONTRACT" as const
-        : "NO_ACTIVE_SUBSCRIPTION" as const;
+        ? ("POST_CONTRACT" as const)
+        : ("NO_ACTIVE_SUBSCRIPTION" as const);
     default:
       return "UNRESOLVED" as const;
   }
@@ -42,7 +42,10 @@ function durableLifecycleState(
 
 export async function loader({ request, context }: LoaderFunctionArgs) {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop, authentication: { session } } = merchant;
+  const {
+    shop,
+    authentication: { session },
+  } = merchant;
   const url = new URL(request.url);
   assertActiveShop(shop, {
     route: "/app/billing/options",
@@ -54,7 +57,9 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
     shop,
     subscription,
   });
-  let currentContract: Awaited<ReturnType<typeof billingService.readMerchantBillingPresentation>>["currentContract"] = null;
+  let currentContract: Awaited<
+    ReturnType<typeof billingService.readMerchantBillingPresentation>
+  >["currentContract"] = null;
   if (!canAccessMerchantSurface(merchantExperienceState, "BILLING_OPTIONS"))
     throw new Response(null, {
       status: 302,
@@ -77,7 +82,11 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const merchantUi = merchantUiContext(shop, session);
 
   try {
-    const presentation = await billingService.readMerchantBillingPresentation({ shop, subscription, now: new Date() });
+    const presentation = await billingService.readMerchantBillingPresentation({
+      shop,
+      subscription,
+      now: new Date(),
+    });
     const { commercial, capacity, topUp } = presentation;
     currentContract = presentation.currentContract;
 
@@ -120,7 +129,16 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
       purchaseHistoryAvailable,
     };
   } catch (error) {
-    logBillingBoundaryFailure({ event: "shopify.billing.options_read_failed", operation: "read_billing_options", stage: "project_options", shopId: shop.id, error }, logger);
+    logBillingBoundaryFailure(
+      {
+        event: "shopify.billing.options_read_failed",
+        operation: "read_billing_options",
+        stage: "project_options",
+        shopId: shop.id,
+        error,
+      },
+      logger,
+    );
     const requestedPlanHandle =
       url.searchParams.get("requested_plan_handle")?.trim() ?? "";
     const planChange = url.searchParams.get("plan_change");
@@ -237,9 +255,10 @@ export default function BillingOptionsPage() {
         configured: false,
         purchaseEligible: false,
         offers: [],
-        offerVerificationState: data.verificationState === "VERIFICATION_UNAVAILABLE"
-          ? "VERIFICATION_UNAVAILABLE"
-          : "VERIFIED",
+        offerVerificationState:
+          data.verificationState === "VERIFICATION_UNAVAILABLE"
+            ? "VERIFICATION_UNAVAILABLE"
+            : "VERIFIED",
         freeLifetime: data.capacity?.freeLifetime
           ? {
               granted: data.capacity.freeLifetime.granted,
@@ -269,9 +288,12 @@ export default function BillingOptionsPage() {
         effectiveAt: providerSubscription.pendingUpdate.effectiveAt,
       }
     : null;
-  const initialView = data.requestedSelection || data.lifecycleState === "POST_CONTRACT" || data.lifecycleState === "NO_ACTIVE_SUBSCRIPTION"
-    ? "plans"
-    : "topup";
+  const initialView =
+    data.requestedSelection ||
+    data.lifecycleState === "POST_CONTRACT" ||
+    data.lifecycleState === "NO_ACTIVE_SUBSCRIPTION"
+      ? "plans"
+      : "topup";
 
   return (
     <s-page heading={i18n.t("billingCommerce.page.title")}>

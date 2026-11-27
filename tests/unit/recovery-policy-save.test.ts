@@ -24,10 +24,13 @@ function persistence(
         (where.id
           ? ownedIds.filter((id) => where.id!.in.includes(id))
           : selectedIds
-        ).map((id) => ({ id }))),
-      updateMany: vi.fn(async ({ where }: { where: { id?: { in: string[] } } }) => ({
-        count: where.id?.in.length ?? 0,
-      })),
+        ).map((id) => ({ id })),
+      ),
+      updateMany: vi.fn(
+        async ({ where }: { where: { id?: { in: string[] } } }) => ({
+          count: where.id?.in.length ?? 0,
+        }),
+      ),
     },
     shopSettings: {
       findUniqueOrThrow: vi.fn(async () => current),
@@ -40,7 +43,8 @@ function persistence(
     shopifyDiscountCatalogue: { findUnique: vi.fn() },
   };
   const client = {
-    $transaction: (callback: (tx: typeof transaction) => unknown) => callback(transaction),
+    $transaction: (callback: (tx: typeof transaction) => unknown) =>
+      callback(transaction),
   } as unknown as PrismaClient;
   return { client, transaction };
 }
@@ -58,22 +62,27 @@ describe("initial recovery outreach preference persistence", () => {
   it.each([
     { current: false, next: true },
     { current: true, next: false },
-  ])("persists preference-only changes from $current to $next", async ({ current, next }) => {
-    const updatedAt = new Date("2026-10-27T12:00:00.000Z");
-    const { client, transaction } = persistence(current, updatedAt);
+  ])(
+    "persists preference-only changes from $current to $next",
+    async ({ current, next }) => {
+      const updatedAt = new Date("2026-10-27T12:00:00.000Z");
+      const { client, transaction } = persistence(current, updatedAt);
 
-    await saveMerchantRecoveryPolicy(
-      "shop-123",
-      policyInput(next),
-      updatedAt.toISOString(),
-      client,
-    );
+      await saveMerchantRecoveryPolicy(
+        "shop-123",
+        policyInput(next),
+        updatedAt.toISOString(),
+        client,
+      );
 
-    expect(transaction.shopSettings.update).toHaveBeenCalledWith({
-      where: { shopId: "shop-123" },
-      data: expect.objectContaining({ notifyOnInitialRecoveryOutreach: next }),
-    });
-  });
+      expect(transaction.shopSettings.update).toHaveBeenCalledWith({
+        where: { shopId: "shop-123" },
+        data: expect.objectContaining({
+          notifyOnInitialRecoveryOutreach: next,
+        }),
+      });
+    },
+  );
 
   it("rejects a stale preference-only save with a conflict", async () => {
     const updatedAt = new Date("2026-10-27T12:00:00.000Z");
@@ -108,14 +117,24 @@ describe("initial recovery outreach preference persistence", () => {
 
   it("replaces a sorted multi-selection atomically and allows dormant provider states", async () => {
     const updatedAt = new Date("2026-10-27T12:00:00.000Z");
-    const { client, transaction } = persistence(false, updatedAt, ["old"], ["a", "b", "old"]);
+    const { client, transaction } = persistence(
+      false,
+      updatedAt,
+      ["old"],
+      ["a", "b", "old"],
+    );
     const input = {
       ...policyInput(false),
       recoveryOfferMode: "FIXED",
       selectedDiscountIds: ["b", "a"],
     };
 
-    await saveMerchantRecoveryPolicy("shop-123", input, updatedAt.toISOString(), client);
+    await saveMerchantRecoveryPolicy(
+      "shop-123",
+      input,
+      updatedAt.toISOString(),
+      client,
+    );
 
     expect(transaction.shopifyDiscount.updateMany).toHaveBeenNthCalledWith(1, {
       where: { shopId: "shop-123", id: { in: ["old"] }, isAvailable: true },
@@ -127,7 +146,10 @@ describe("initial recovery outreach preference persistence", () => {
     });
     expect(transaction.shopSettings.update).toHaveBeenCalledWith({
       where: { shopId: "shop-123" },
-      data: expect.objectContaining({ recoveryOfferMode: "FIXED", fixedShopifyDiscountId: "a" }),
+      data: expect.objectContaining({
+        recoveryOfferMode: "FIXED",
+        fixedShopifyDiscountId: "a",
+      }),
     });
   });
 
@@ -135,9 +157,17 @@ describe("initial recovery outreach preference persistence", () => {
     const updatedAt = new Date("2026-10-27T12:00:00.000Z");
     const { client, transaction } = persistence(false, updatedAt, [], []);
 
-    await expect(saveMerchantRecoveryPolicy("shop-123", {
-      ...policyInput(false), selectedDiscountIds: ["foreign-discount"],
-    }, updatedAt.toISOString(), client)).rejects.toMatchObject({
+    await expect(
+      saveMerchantRecoveryPolicy(
+        "shop-123",
+        {
+          ...policyInput(false),
+          selectedDiscountIds: ["foreign-discount"],
+        },
+        updatedAt.toISOString(),
+        client,
+      ),
+    ).rejects.toMatchObject({
       code: "INVALID_DISCOUNT_SELECTION",
     });
     expect(transaction.shopifyDiscount.updateMany).not.toHaveBeenCalled();
@@ -148,26 +178,65 @@ describe("initial recovery outreach preference persistence", () => {
     const updatedAt = new Date("2026-10-27T12:00:00.000Z");
     const { client, transaction } = persistence(false, updatedAt);
 
-    await expect(saveMerchantRecoveryPolicy("shop-123", {
-      ...policyInput(true), selectedDiscountIds: [],
-    }, "stale", client)).rejects.toMatchObject({ message: "CONFLICT" });
+    await expect(
+      saveMerchantRecoveryPolicy(
+        "shop-123",
+        {
+          ...policyInput(true),
+          selectedDiscountIds: [],
+        },
+        "stale",
+        client,
+      ),
+    ).rejects.toMatchObject({ message: "CONFLICT" });
     expect(transaction.shopifyDiscount.updateMany).not.toHaveBeenCalled();
     expect(transaction.shopSettings.update).not.toHaveBeenCalled();
   });
 });
 
 it("keeps retained selections untouched and advances same-millisecond settings revision", async () => {
- const updatedAt = new Date("2099-01-01T00:00:00Z");
- const { client, transaction } = persistence(false, updatedAt, ["retained", "removed"], ["retained", "added"]);
- await saveMerchantRecoveryPolicy("shop-123", { ...policyInput(false), selectedDiscountIds: ["retained", "added"] }, updatedAt.toISOString(), client);
- expect(transaction.shopifyDiscount.updateMany.mock.calls.map(([call]) => call)).toEqual([
-  { where: { shopId: "shop-123", id: { in: ["removed"] }, isAvailable: true }, data: { isAvailable: false } },
-  { where: { shopId: "shop-123", id: { in: ["added"] }, isAvailable: false }, data: { isAvailable: true } },
- ]);
- expect(transaction.shopSettings.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ updatedAt: new Date(updatedAt.getTime() + 1) }) }));
+  const updatedAt = new Date("2099-01-01T00:00:00Z");
+  const { client, transaction } = persistence(
+    false,
+    updatedAt,
+    ["retained", "removed"],
+    ["retained", "added"],
+  );
+  await saveMerchantRecoveryPolicy(
+    "shop-123",
+    { ...policyInput(false), selectedDiscountIds: ["retained", "added"] },
+    updatedAt.toISOString(),
+    client,
+  );
+  expect(
+    transaction.shopifyDiscount.updateMany.mock.calls.map(([call]) => call),
+  ).toEqual([
+    {
+      where: { shopId: "shop-123", id: { in: ["removed"] }, isAvailable: true },
+      data: { isAvailable: false },
+    },
+    {
+      where: { shopId: "shop-123", id: { in: ["added"] }, isAvailable: false },
+      data: { isAvailable: true },
+    },
+  ]);
+  expect(transaction.shopSettings.update).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        updatedAt: new Date(updatedAt.getTime() + 1),
+      }),
+    }),
+  );
 });
 it("settings-only changes perform zero discount UPDATE calls", async () => {
- const updatedAt = new Date(); const { client, transaction } = persistence(false, updatedAt, ["retained"]);
- await saveMerchantRecoveryPolicy("shop-123", { ...policyInput(true), selectedDiscountIds: ["retained"] }, updatedAt.toISOString(), client);
- expect(transaction.shopifyDiscount.updateMany).not.toHaveBeenCalled(); expect(transaction.shopSettings.update).toHaveBeenCalledOnce();
+  const updatedAt = new Date();
+  const { client, transaction } = persistence(false, updatedAt, ["retained"]);
+  await saveMerchantRecoveryPolicy(
+    "shop-123",
+    { ...policyInput(true), selectedDiscountIds: ["retained"] },
+    updatedAt.toISOString(),
+    client,
+  );
+  expect(transaction.shopifyDiscount.updateMany).not.toHaveBeenCalled();
+  expect(transaction.shopSettings.update).toHaveBeenCalledOnce();
 });

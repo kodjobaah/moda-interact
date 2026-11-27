@@ -67,7 +67,8 @@ export async function publishStoreCategoryPromptRevisionInTransaction(input: {
     !revision.sourceTemplateId ||
     revision.sourceTemplateEditVersion === null ||
     !revision.promptText.trim()
-  ) throw pendingStateConflict();
+  )
+    throw pendingStateConflict();
 
   const configurations = await input.tx.commerceAgentConfiguration.findMany({
     where: {
@@ -144,7 +145,8 @@ export async function activateInitialPendingStoreCategoryIfEligible(
       (subscription.status !== SubscriptionProjectionStatus.ACTIVE &&
         subscription.status !== SubscriptionProjectionStatus.TRIALING) ||
       subscription.planId === null
-    ) return { kind: "SUBSCRIPTION_NOT_ACTIVE" };
+    )
+      return { kind: "SUBSCRIPTION_NOT_ACTIVE" };
 
     const profile = await tx.commerceShopProfile.findUnique({
       where: { shopId: input.shopId },
@@ -169,8 +171,10 @@ export async function activateInitialPendingStoreCategoryIfEligible(
       profile.pendingPromptRevisionId === null ||
       profile.pendingSelectedAt === null ||
       (input.expectedPendingSelectionGeneration !== undefined &&
-        input.expectedPendingSelectionGeneration !== profile.pendingSelectionGeneration)
-    ) throw pendingStateConflict();
+        input.expectedPendingSelectionGeneration !==
+          profile.pendingSelectionGeneration)
+    )
+      throw pendingStateConflict();
 
     const publication = await publishStoreCategoryPromptRevisionInTransaction({
       tx,

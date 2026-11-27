@@ -17,7 +17,6 @@ const statusKeys = {
   REFUNDED: "refunded",
 };
 
-
 function packLabel(eventHandle) {
   if (typeof eventHandle !== "string" || !eventHandle.trim()) return "";
   return eventHandle
@@ -155,7 +154,10 @@ export default function RecoveryCreditPurchaseManager({
   };
 
   return (
-    <section className="moda-billing-panel moda-purchase-history" aria-labelledby="purchase-manager-title">
+    <section
+      className="moda-billing-panel moda-purchase-history"
+      aria-labelledby="purchase-manager-title"
+    >
       <div className="moda-panel-heading-row moda-purchase-history-heading">
         <div>
           <div className="moda-eyebrow">
@@ -167,7 +169,11 @@ export default function RecoveryCreditPurchaseManager({
           <p>{i18n.t("billingPurchases.description")}</p>
         </div>
       </div>
-      <div className="moda-purchase-filter-tabs" role="tablist" aria-label={i18n.t("billingPurchases.filtersLabel")}>
+      <div
+        className="moda-purchase-filter-tabs"
+        role="tablist"
+        aria-label={i18n.t("billingPurchases.filtersLabel")}
+      >
         {FILTERS.map((value) => (
           <button
             key={value}
@@ -213,8 +219,12 @@ export default function RecoveryCreditPurchaseManager({
             <p key={outcome.purchaseId}>
               <strong>
                 {(() => {
-                  const purchase = purchases.find((entry) => entry.id === outcome.purchaseId);
-                  return purchase ? packLabel(purchase.eventHandle) : i18n.t("billingPurchases.purchaseLabel");
+                  const purchase = purchases.find(
+                    (entry) => entry.id === outcome.purchaseId,
+                  );
+                  return purchase
+                    ? packLabel(purchase.eventHandle)
+                    : i18n.t("billingPurchases.purchaseLabel");
                 })()}
               </strong>
               : {outcomeText(i18n, outcome)}
@@ -223,7 +233,9 @@ export default function RecoveryCreditPurchaseManager({
         </div>
       ) : null}
       {visible.length === 0 ? (
-        <div className="moda-empty-state">{i18n.t("billingPurchases.empty")}</div>
+        <div className="moda-empty-state">
+          {i18n.t("billingPurchases.empty")}
+        </div>
       ) : (
         <div className="moda-purchase-list" role="list">
           {visible.map((purchase) => {
@@ -236,12 +248,18 @@ export default function RecoveryCreditPurchaseManager({
               refund &&
               refund.status !== "REQUESTED";
             return (
-              <article className={`moda-purchase-card ${selected.includes(purchase.id) ? "is-selected" : ""}`} key={purchase.id} role="listitem">
+              <article
+                className={`moda-purchase-card ${selected.includes(purchase.id) ? "is-selected" : ""}`}
+                key={purchase.id}
+                role="listitem"
+              >
                 <div className="moda-purchase-card-header">
                   <div>
                     <div className="moda-purchase-card-title-row">
                       <h2>{packLabel(purchase.eventHandle)}</h2>
-                      <span className={`moda-purchase-status moda-purchase-status-${purchase.status.toLowerCase()}`}>
+                      <span
+                        className={`moda-purchase-status moda-purchase-status-${purchase.status.toLowerCase()}`}
+                      >
                         {i18n.t(
                           `billingPurchases.status.${statusKeys[purchase.status]}`,
                         )}
@@ -264,7 +282,9 @@ export default function RecoveryCreditPurchaseManager({
                   ) : null}
                 </div>
                 {filter === "ALL" && purchase.status === "REQUESTED" ? (
-                  <div className="moda-purchase-notice">{i18n.t("billingPurchases.awaitingConfirmation")}</div>
+                  <div className="moda-purchase-notice">
+                    {i18n.t("billingPurchases.awaitingConfirmation")}
+                  </div>
                 ) : null}
                 <dl className="moda-purchase-metrics">
                   <dt>{i18n.t("billingPurchases.purchaseDate")}</dt>
@@ -416,7 +436,12 @@ export default function RecoveryCreditPurchaseManager({
         </nav>
       </div>
       {dialog?.type === "refund" ? (
-        <dialog className="moda-purchase-dialog" open aria-modal="true" aria-labelledby="refund-confirm-title">
+        <dialog
+          className="moda-purchase-dialog"
+          open
+          aria-modal="true"
+          aria-labelledby="refund-confirm-title"
+        >
           <h2 id="refund-confirm-title">
             {i18n.t("billingPurchases.confirmRefundTitle")}
           </h2>
@@ -431,7 +456,11 @@ export default function RecoveryCreditPurchaseManager({
           <p>{i18n.t("billingPurchases.confirmNoNewConversation")}</p>
           <p>{i18n.t("billingPurchases.confirmIndependent")}</p>
           <div className="moda-purchase-dialog-actions">
-            <button className="moda-action-button moda-action-button-secondary" type="button" onClick={() => setDialog(null)}>
+            <button
+              className="moda-action-button moda-action-button-secondary"
+              type="button"
+              onClick={() => setDialog(null)}
+            >
               {i18n.t("billingPurchases.cancel")}
             </button>
             <button
@@ -460,16 +489,20 @@ export default function RecoveryCreditPurchaseManager({
           </h2>
           <p>{i18n.t("billingPurchases.confirmReactivate")}</p>
           <div className="moda-purchase-dialog-actions">
-            <button className="moda-action-button moda-action-button-secondary" type="button" onClick={() => setDialog(null)}>
+            <button
+              className="moda-action-button moda-action-button-secondary"
+              type="button"
+              onClick={() => setDialog(null)}
+            >
               {i18n.t("billingPurchases.cancel")}
             </button>
             <button
               className="moda-action-button moda-action-button-primary"
               autoFocus
-            type="button"
-            onClick={() => reactivate(dialog.purchase.id)}
-            disabled={isSubmitting}
-          >
+              type="button"
+              onClick={() => reactivate(dialog.purchase.id)}
+              disabled={isSubmitting}
+            >
               {i18n.t("billingPurchases.confirm")}
             </button>
           </div>

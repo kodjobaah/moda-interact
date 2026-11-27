@@ -46,47 +46,55 @@ export const action = async ({ request }) => {
     const syncRequest = await shopifyOfflineCoordination.withLifecycleLock(
       shop,
       async ({ transaction, shop: currentShop }) => {
-      if (!currentShop) return null;
-      if (session) {
-        const sessionUpdate = await transaction.session.updateMany({
-          where: { id: session.id, shop: currentShop.domain },
-          data: { scope: current },
+        if (!currentShop) return null;
+        if (session) {
+          const sessionUpdate = await transaction.session.updateMany({
+            where: { id: session.id, shop: currentShop.domain },
+            data: { scope: current },
+          });
+          missingAuthenticatedSession = sessionUpdate.count === 0;
+        }
+
+        const shopRecord = await transaction.shop.findUnique({
+          where: { id: currentShop.id },
+          select: {
+            id: true,
+            domain: true,
+            status: true,
+            onboardingCompleted: true,
+            subscription: { select: { status: true } },
+          },
         });
-        missingAuthenticatedSession = sessionUpdate.count === 0;
-      }
+        if (!shopRecord) return null;
 
-      const shopRecord = await transaction.shop.findUnique({
-        where: { id: currentShop.id },
-        select: {
-          id: true,
-          domain: true,
-          status: true,
-          onboardingCompleted: true,
-          subscription: { select: { status: true } },
-        },
-      });
-      if (!shopRecord) return null;
+        const offlineSession = await transaction.session.findFirst({
+          where: { shop: shopRecord.domain, isOnline: false },
+          select: { scope: true },
+          orderBy: { expires: "desc" },
+        });
+        const offlineScope = offlineSession?.scope ?? null;
+        const eligible = isDiscountSyncEligible({
+          shopStatus: shopRecord.status,
+          onboardingCompleted: shopRecord.onboardingCompleted,
+          subscriptionStatus: shopRecord.subscription?.status,
+          sessionScope: offlineScope,
+        });
+        if (!offlineSession || !hasReadDiscountsScope(offlineScope)) {
+          await markDiscountCatalogueUnavailable(
+            transaction,
+            shopRecord.id,
+            requestedAt,
+          );
+          return null;
+        }
+        if (!eligible) return null;
 
-      const offlineSession = await transaction.session.findFirst({
-        where: { shop: shopRecord.domain, isOnline: false },
-        select: { scope: true },
-        orderBy: { expires: "desc" },
-      });
-      const offlineScope = offlineSession?.scope ?? null;
-      const eligible = isDiscountSyncEligible({
-        shopStatus: shopRecord.status,
-        onboardingCompleted: shopRecord.onboardingCompleted,
-        subscriptionStatus: shopRecord.subscription?.status,
-        sessionScope: offlineScope,
-      });
-      if (!offlineSession || !hasReadDiscountsScope(offlineScope)) {
-        await markDiscountCatalogueUnavailable(transaction, shopRecord.id, requestedAt);
-        return null;
-      }
-      if (!eligible) return null;
-
-      await markDiscountCatalogueSyncRequired(transaction, shopRecord.id, requestedAt);
-      return { shopId: shopRecord.id, shopDomain: shopRecord.domain };
+        await markDiscountCatalogueSyncRequired(
+          transaction,
+          shopRecord.id,
+          requestedAt,
+        );
+        return { shopId: shopRecord.id, shopDomain: shopRecord.domain };
       },
       { sessionId: session?.id ?? null },
     );
@@ -114,7 +122,7 @@ export const action = async ({ request }) => {
         ? "PROCESSED_APP_SCOPES_UPDATE_SYNC_REQUESTED"
         : missingAuthenticatedSession
           ? "PROCESSED_APP_SCOPES_UPDATE_SESSION_MISSING"
-        : "PROCESSED_APP_SCOPES_UPDATE",
+          : "PROCESSED_APP_SCOPES_UPDATE",
       ackMs: Date.now() - startedAt,
     });
 

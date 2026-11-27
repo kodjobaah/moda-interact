@@ -28,7 +28,9 @@ function requireShopifyPurchaseSummaryEvidence<
     usageEventId: string | null;
     usageEvent: { shopifyReportState: string } | null;
   },
->(purchase: T): T & {
+>(
+  purchase: T,
+): T & {
   provider: "SHOPIFY";
   shopifyEventHandleSnapshot: string;
   usageEventId: string;
@@ -51,123 +53,159 @@ function requireShopifyPurchaseSummaryEvidence<
 }
 
 export function projectMerchantBillingState({
-  shop, subscription, lifetimeCounter: counter, purchasedCounter, providerSubscription,
-  merchantPricingPlan, latestPurchase, unresolvedPurchases, now, verificationUnavailable = false,
+  shop,
+  subscription,
+  lifetimeCounter: counter,
+  purchasedCounter,
+  providerSubscription,
+  merchantPricingPlan,
+  latestPurchase,
+  unresolvedPurchases,
+  now,
+  verificationUnavailable = false,
 }: MerchantTopUpFacts) {
   const shopId = shop.id;
-    let recoveryCreditOffers: import("./billing.types").RecoveryCreditOffer[] = [];
-    let recoveryCreditOfferDiagnostics: Array<{ code: string; handle: string }> = [];
-    let recoveryCreditOfferVerificationState: import("./billing.types").RecoveryCreditOfferVerificationState = "VERIFIED";
-    let recoveryCreditPackPurchaseEligible = false;
-    let unavailableReason: string | null = null;
-    const hasExactOpenLocalCycle = Boolean(
-      shop?.status === ShopStatus.ACTIVE &&
-      subscription?.status !== undefined &&
-      (subscription.status === SubscriptionProjectionStatus.ACTIVE || subscription.status === SubscriptionProjectionStatus.TRIALING) &&
-      subscription?.plan?.active === true &&
-      hasDurableBillingPeriod(subscription) &&
-      subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
-      subscription.currentPeriodStart &&
-      subscription.currentPeriodEnd &&
-      subscription.currentPeriodStart.getTime() < subscription.currentPeriodEnd.getTime(),
-    );
-    const billingPeriodPhase: BillingPeriodPhase | null = subscription &&
-      hasDurableBillingPeriod(subscription) &&
-      subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
-      subscription.currentPeriodStart!.getTime() < subscription.currentPeriodEnd!.getTime()
+  let recoveryCreditOffers: import("./billing.types").RecoveryCreditOffer[] =
+    [];
+  let recoveryCreditOfferDiagnostics: Array<{ code: string; handle: string }> =
+    [];
+  let recoveryCreditOfferVerificationState: import("./billing.types").RecoveryCreditOfferVerificationState =
+    "VERIFIED";
+  let recoveryCreditPackPurchaseEligible = false;
+  let unavailableReason: string | null = null;
+  const hasExactOpenLocalCycle = Boolean(
+    shop?.status === ShopStatus.ACTIVE &&
+    subscription?.status !== undefined &&
+    (subscription.status === SubscriptionProjectionStatus.ACTIVE ||
+      subscription.status === SubscriptionProjectionStatus.TRIALING) &&
+    subscription?.plan?.active === true &&
+    hasDurableBillingPeriod(subscription) &&
+    subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+    subscription.currentPeriodStart &&
+    subscription.currentPeriodEnd &&
+    subscription.currentPeriodStart.getTime() <
+      subscription.currentPeriodEnd.getTime(),
+  );
+  const billingPeriodPhase: BillingPeriodPhase | null =
+    subscription &&
+    hasDurableBillingPeriod(subscription) &&
+    subscription.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+    subscription.currentPeriodStart!.getTime() <
+      subscription.currentPeriodEnd!.getTime()
       ? deriveBillingPeriodPhase(subscription.currentPeriodEnd, now)
       : null;
-    if (
-      shop?.shopifyShopId &&
-      billingPeriodPhase !== null
-    ) {
-        if (providerSubscription) {
-          const resolved = resolveCurrentRecoveryCreditOffers({ providerSubscription, merchantPricingPlan });
-          recoveryCreditOffers = resolved.offers.map((offer: import("./billing.types").RecoveryCreditOffer) => {
-            const event = merchantPricingPlan?.usageEvents.find((item) => item.eventHandle === offer.eventHandle);
-            const providerQuantityBefore = event?.pricingMode === "FIXED"
+  if (shop?.shopifyShopId && billingPeriodPhase !== null) {
+    if (providerSubscription) {
+      const resolved = resolveCurrentRecoveryCreditOffers({
+        providerSubscription,
+        merchantPricingPlan,
+      });
+      recoveryCreditOffers = resolved.offers.map(
+        (offer: import("./billing.types").RecoveryCreditOffer) => {
+          const event = merchantPricingPlan?.usageEvents.find(
+            (item) => item.eventHandle === offer.eventHandle,
+          );
+          const providerQuantityBefore =
+            event?.pricingMode === "FIXED"
               ? 0
               : (offer.providerUsage?.quantity ?? Number.NaN);
-            // Quote from the same configured usage-event pricing rule used when
-            // recording the Shopify ONE_TIME_CHARGE operation, never from the
-            // first provider tier (which may be a zero-value development tier).
-            const amountMinor = event && "id" in event && typeof event.id === "string" &&
-              /^[A-Z]{3}$/.test(event.currency) && Array.isArray(event.tiers) &&
-              Number.isFinite(providerQuantityBefore) && providerQuantityBefore >= 0
-              ? calculateShopifyUsageEventQuoteMinor(event, providerQuantityBefore)
+          // Quote from the same configured usage-event pricing rule used when
+          // recording the Shopify ONE_TIME_CHARGE operation, never from the
+          // first provider tier (which may be a zero-value development tier).
+          const amountMinor =
+            event &&
+            "id" in event &&
+            typeof event.id === "string" &&
+            /^[A-Z]{3}$/.test(event.currency) &&
+            Array.isArray(event.tiers) &&
+            Number.isFinite(providerQuantityBefore) &&
+            providerQuantityBefore >= 0
+              ? calculateShopifyUsageEventQuoteMinor(
+                  event,
+                  providerQuantityBefore,
+                )
               : null;
-            return {
-              ...offer,
-              quotedPackPrice: event && amountMinor !== null && amountMinor > 0
+          return {
+            ...offer,
+            quotedPackPrice:
+              event && amountMinor !== null && amountMinor > 0
                 ? { amountMinor, currency: event.currency }
                 : null,
-            };
-          });
-          recoveryCreditOfferDiagnostics = resolved.diagnostics;
-          recoveryCreditPackPurchaseEligible = recoveryCreditOffers.length > 0;
-        }
-        recoveryCreditPackPurchaseEligible = Boolean(
-          recoveryCreditPackPurchaseEligible &&
-          subscription &&
-          hasExactOpenLocalCycle &&
-          providerSubscription &&
-          hasMatchingBillingCycle(subscription, providerSubscription) &&
-          subscription?.billingPeriod?.status === BillingPeriodStatus.OPEN &&
-          billingPeriodPhase === "ACTIVE",
-        );
-        if (!recoveryCreditPackPurchaseEligible) {
-          unavailableReason = "Recovery credit offers are not currently available.";
-        }
+          };
+        },
+      );
+      recoveryCreditOfferDiagnostics = resolved.diagnostics;
+      recoveryCreditPackPurchaseEligible = recoveryCreditOffers.length > 0;
     }
-    if (verificationUnavailable) {
-      recoveryCreditOffers = [];
-      recoveryCreditOfferDiagnostics = [];
-      recoveryCreditOfferVerificationState = "VERIFICATION_UNAVAILABLE";
-      recoveryCreditPackPurchaseEligible = false;
-      unavailableReason = "Shopify billing details could not be verified.";
-    }
-
-    const latestShopifyPurchase = latestPurchase
-      ? requireShopifyPurchaseSummaryEvidence(latestPurchase)
-      : null;
-    const unresolvedShopifyPurchases = unresolvedPurchases.map(
-      requireShopifyPurchaseSummaryEvidence,
+    recoveryCreditPackPurchaseEligible = Boolean(
+      recoveryCreditPackPurchaseEligible &&
+      subscription &&
+      hasExactOpenLocalCycle &&
+      providerSubscription &&
+      hasMatchingBillingCycle(subscription, providerSubscription) &&
+      subscription?.billingPeriod?.status === BillingPeriodStatus.OPEN &&
+      billingPeriodPhase === "ACTIVE",
     );
+    if (!recoveryCreditPackPurchaseEligible) {
+      unavailableReason = "Recovery credit offers are not currently available.";
+    }
+  }
+  if (verificationUnavailable) {
+    recoveryCreditOffers = [];
+    recoveryCreditOfferDiagnostics = [];
+    recoveryCreditOfferVerificationState = "VERIFICATION_UNAVAILABLE";
+    recoveryCreditPackPurchaseEligible = false;
+    unavailableReason = "Shopify billing details could not be verified.";
+  }
 
-    const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
-    const periodCounter = subscription?.billingPeriod?.entitlementCounters.find(
-      ({ counter }) => counter === BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+  const latestShopifyPurchase = latestPurchase
+    ? requireShopifyPurchaseSummaryEvidence(latestPurchase)
+    : null;
+  const unresolvedShopifyPurchases = unresolvedPurchases.map(
+    requireShopifyPurchaseSummaryEvidence,
+  );
+
+  const isPaid = subscription?.plan?.kind === BillingPlanKind.PAID_METERED;
+  const periodCounter =
+    subscription?.billingPeriod?.entitlementCounters.find(
+      ({ counter }) =>
+        counter ===
+        BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
     ) ?? null;
-    const paidPeriod = subscription?.billingPeriod;
-    const includedGrant = paidPeriod?.includedRecoveryCreditsGranted;
-    const hasValidPaidPeriod = Boolean(
-      isPaid &&
-      subscription?.status === SubscriptionProjectionStatus.ACTIVE &&
-      subscription.plan?.active === true &&
-      subscription.plan.kind === BillingPlanKind.PAID_METERED &&
-      subscription.observedShopifyPlanHandle === subscription.plan.shopifyPlanHandle &&
-      hasDurableBillingPeriod(subscription) &&
-      paidPeriod?.id === subscription.billingPeriodId &&
-      paidPeriod.shopId === shopId &&
-      paidPeriod.subscriptionId === subscription.id &&
-      paidPeriod.planId === subscription.plan.id &&
-      paidPeriod.shopifyPlanHandleSnapshot === subscription.plan.shopifyPlanHandle &&
-      paidPeriod.planKindSnapshot === BillingPlanKind.PAID_METERED &&
-      paidPeriod.status === BillingPeriodStatus.OPEN &&
-      paidPeriod.periodStart < paidPeriod.periodEnd &&
-      isSafeNonNegativeInteger(includedGrant) &&
-      periodCounter?.shopId === shopId &&
-      periodCounter.billingPeriodId === paidPeriod.id &&
-      periodCounter.grantedQuantity === includedGrant &&
-      isSafeNonNegativeInteger(periodCounter.committedQuantity) &&
-      isSafeNonNegativeInteger(periodCounter.reservedQuantity) &&
-      isSafeNonNegativeInteger(periodCounter.forfeitedQuantity) &&
-      periodCounter.currentAllowanceQuantity === null &&
-      periodCounter.committedQuantity +
-        periodCounter.reservedQuantity +
-        periodCounter.forfeitedQuantity <= periodCounter.grantedQuantity,
-    );
-    const paidIncluded = hasValidPaidPeriod && periodCounter
+  const paidPeriod = subscription?.billingPeriod;
+  const includedGrant = paidPeriod?.includedRecoveryCreditsGranted;
+  const hasValidPaidPeriod = Boolean(
+    isPaid &&
+    subscription?.status === SubscriptionProjectionStatus.ACTIVE &&
+    subscription.plan?.active === true &&
+    subscription.plan.kind === BillingPlanKind.PAID_METERED &&
+    subscription.observedShopifyPlanHandle ===
+      subscription.plan.shopifyPlanHandle &&
+    hasDurableBillingPeriod(subscription) &&
+    paidPeriod?.id === subscription.billingPeriodId &&
+    paidPeriod.shopId === shopId &&
+    paidPeriod.subscriptionId === subscription.id &&
+    paidPeriod.planId === subscription.plan.id &&
+    paidPeriod.shopifyPlanHandleSnapshot ===
+      subscription.plan.shopifyPlanHandle &&
+    paidPeriod.planKindSnapshot === BillingPlanKind.PAID_METERED &&
+    paidPeriod.status === BillingPeriodStatus.OPEN &&
+    paidPeriod.periodStart < paidPeriod.periodEnd &&
+    isSafeNonNegativeInteger(includedGrant) &&
+    periodCounter?.shopId === shopId &&
+    periodCounter.billingPeriodId === paidPeriod.id &&
+    periodCounter.grantedQuantity === includedGrant &&
+    isSafeNonNegativeInteger(periodCounter.committedQuantity) &&
+    isSafeNonNegativeInteger(periodCounter.reservedQuantity) &&
+    isSafeNonNegativeInteger(periodCounter.forfeitedQuantity) &&
+    periodCounter.currentAllowanceQuantity === null &&
+    periodCounter.committedQuantity +
+      periodCounter.reservedQuantity +
+      periodCounter.forfeitedQuantity <=
+      periodCounter.grantedQuantity,
+  );
+  const paidIncluded =
+    hasValidPaidPeriod && periodCounter
       ? {
           grantedQuantity: periodCounter.grantedQuantity,
           committedQuantity: periodCounter.committedQuantity,
@@ -182,78 +220,82 @@ export function projectMerchantBillingState({
           ),
         }
       : null;
-    const allowance = isPaid ? null : counter?.grantedQuantity ?? null;
-    const committed = isPaid ? 0 : counter?.committedQuantity ?? 0;
-    const reserved = isPaid ? 0 : counter?.reservedQuantity ?? 0;
-    const remaining = isPaid
+  const allowance = isPaid ? null : (counter?.grantedQuantity ?? null);
+  const committed = isPaid ? 0 : (counter?.committedQuantity ?? 0);
+  const reserved = isPaid ? 0 : (counter?.reservedQuantity ?? 0);
+  const remaining = isPaid
+    ? null
+    : allowance === null
       ? null
-      : allowance === null
-        ? null
-        : Math.max(allowance - committed - reserved, 0);
+      : Math.max(allowance - committed - reserved, 0);
 
-    return {
-      subscription,
-      allowance,
-      committed,
-      reserved,
-      remaining,
-      paidIncluded,
-      paidConfigurationUnavailable: isPaid && !paidIncluded,
-      lifetimeFree: {
-        grantedQuantity: counter?.grantedQuantity ?? 0,
-        committedQuantity: counter?.committedQuantity ?? 0,
-        reservedQuantity: counter?.reservedQuantity ?? 0,
-        remaining: Math.max(
-          (counter?.grantedQuantity ?? 0) -
-            (counter?.committedQuantity ?? 0) -
-            (counter?.reservedQuantity ?? 0),
-          0,
-        ),
-      },
-      purchasedRecoveryCredits: {
-        grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
-        committedQuantity: purchasedCounter?.committedQuantity ?? 0,
-        reservedQuantity: purchasedCounter?.reservedQuantity ?? 0,
-        refundingQuantity: purchasedCounter?.refundingQuantity ?? 0,
-        available: Math.max(
-          (purchasedCounter?.grantedQuantity ?? 0)
-            - (purchasedCounter?.committedQuantity ?? 0)
-            - (purchasedCounter?.reservedQuantity ?? 0)
-            - (purchasedCounter?.refundingQuantity ?? 0),
-          0,
-        ),
-      },
-      recoveryCreditOffers,
-      recoveryCreditOfferDiagnostics,
-      recoveryCreditOfferVerificationState,
-      recoveryCreditPackMeterVerified: recoveryCreditOfferVerificationState === "VERIFIED",
-      recoveryCreditPackPurchaseEligible,
-      configured: recoveryCreditOffers.length > 0,
-      purchaseEligible: recoveryCreditPackPurchaseEligible,
-      unavailableReason,
-      latestPurchase: latestShopifyPurchase
-        ? {
-            id: latestShopifyPurchase.id,
-            status: latestShopifyPurchase.status,
-            creditsGranted: latestShopifyPurchase.creditsGranted,
-            currentAmount: latestShopifyPurchase.currentAmount,
-            reservedAmount: latestShopifyPurchase.reservedAmount,
-            eventHandle: latestShopifyPurchase.shopifyEventHandleSnapshot,
-            label: recoveryCreditOffers.find(
-              (offer) => offer.eventHandle === latestShopifyPurchase.shopifyEventHandleSnapshot,
+  return {
+    subscription,
+    allowance,
+    committed,
+    reserved,
+    remaining,
+    paidIncluded,
+    paidConfigurationUnavailable: isPaid && !paidIncluded,
+    lifetimeFree: {
+      grantedQuantity: counter?.grantedQuantity ?? 0,
+      committedQuantity: counter?.committedQuantity ?? 0,
+      reservedQuantity: counter?.reservedQuantity ?? 0,
+      remaining: Math.max(
+        (counter?.grantedQuantity ?? 0) -
+          (counter?.committedQuantity ?? 0) -
+          (counter?.reservedQuantity ?? 0),
+        0,
+      ),
+    },
+    purchasedRecoveryCredits: {
+      grantedQuantity: purchasedCounter?.grantedQuantity ?? 0,
+      committedQuantity: purchasedCounter?.committedQuantity ?? 0,
+      reservedQuantity: purchasedCounter?.reservedQuantity ?? 0,
+      refundingQuantity: purchasedCounter?.refundingQuantity ?? 0,
+      available: Math.max(
+        (purchasedCounter?.grantedQuantity ?? 0) -
+          (purchasedCounter?.committedQuantity ?? 0) -
+          (purchasedCounter?.reservedQuantity ?? 0) -
+          (purchasedCounter?.refundingQuantity ?? 0),
+        0,
+      ),
+    },
+    recoveryCreditOffers,
+    recoveryCreditOfferDiagnostics,
+    recoveryCreditOfferVerificationState,
+    recoveryCreditPackMeterVerified:
+      recoveryCreditOfferVerificationState === "VERIFIED",
+    recoveryCreditPackPurchaseEligible,
+    configured: recoveryCreditOffers.length > 0,
+    purchaseEligible: recoveryCreditPackPurchaseEligible,
+    unavailableReason,
+    latestPurchase: latestShopifyPurchase
+      ? {
+          id: latestShopifyPurchase.id,
+          status: latestShopifyPurchase.status,
+          creditsGranted: latestShopifyPurchase.creditsGranted,
+          currentAmount: latestShopifyPurchase.currentAmount,
+          reservedAmount: latestShopifyPurchase.reservedAmount,
+          eventHandle: latestShopifyPurchase.shopifyEventHandleSnapshot,
+          label:
+            recoveryCreditOffers.find(
+              (offer) =>
+                offer.eventHandle ===
+                latestShopifyPurchase.shopifyEventHandleSnapshot,
             )?.label ?? latestShopifyPurchase.shopifyEventHandleSnapshot,
-            createdAt: latestShopifyPurchase.createdAt.toISOString(),
-            activatedAt: latestShopifyPurchase.activatedAt?.toISOString() ?? null,
-            usageReportState: latestShopifyPurchase.usageEvent.shopifyReportState,
-          }
-        : null,
-      unresolvedPurchases: unresolvedShopifyPurchases.map((purchase) => ({
-        id: purchase.id,
-        eventHandle: purchase.shopifyEventHandleSnapshot,
-        creditsGranted: purchase.creditsGranted,
-        createdAt: purchase.createdAt.toISOString(),
-        usageReportState: purchase.usageEvent.shopifyReportState,
-      })),
-      billingPeriodPhase,
-    };
+          createdAt: latestShopifyPurchase.createdAt.toISOString(),
+          activatedAt: latestShopifyPurchase.activatedAt?.toISOString() ?? null,
+          usageReportState: latestShopifyPurchase.usageEvent.shopifyReportState,
+        }
+      : null,
+    unresolvedPurchases: unresolvedShopifyPurchases.map((purchase) => ({
+      id: purchase.id,
+      eventHandle: purchase.shopifyEventHandleSnapshot,
+      creditsGranted: purchase.creditsGranted,
+      createdAt: purchase.createdAt.toISOString(),
+      usageReportState: purchase.usageEvent.shopifyReportState,
+    })),
+    billingPeriodPhase,
+  };
 }

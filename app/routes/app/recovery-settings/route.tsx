@@ -20,16 +20,22 @@ export async function loader({ request, context }: LoaderFunctionArgs) {
   const { shop, session, merchant } = await settingsAccess(request, context);
   const readContext = await loadSettingsReadContext(merchant);
   const merchantUi = merchantUiContext(shop, session);
-  const [storeCategories, storeProfile, whatsappActivation] = await Promise.all([
-    listSelectableStoreCategories(merchantUi.locale),
-    loadStoreProfile(shop.id, merchantUi.locale),
-    loadConsentActivation({
-      admin: merchant.authentication.admin,
-      shopDomain: shop.domain,
-      apiKey,
-    }),
-  ]);
-  const merchantKnowledge = await loadMerchantKnowledge(shop.id, undefined, readContext);
+  const [storeCategories, storeProfile, whatsappActivation] = await Promise.all(
+    [
+      listSelectableStoreCategories(merchantUi.locale),
+      loadStoreProfile(shop.id, merchantUi.locale),
+      loadConsentActivation({
+        admin: merchant.authentication.admin,
+        shopDomain: shop.domain,
+        apiKey,
+      }),
+    ],
+  );
+  const merchantKnowledge = await loadMerchantKnowledge(
+    shop.id,
+    undefined,
+    readContext,
+  );
   const features = (() => {
     try {
       return projectFeaturePreferences(readContext);

@@ -10,9 +10,12 @@ const markMerchantSupportMessagesRead = vi.fn();
 const findShopSettings = vi.fn();
 const getSubscription = vi.fn();
 const recordMerchantSupportSendFailure = vi.hoisted(() => vi.fn());
-vi.mock("../../app/services/merchant-support/merchant-support-observability.server", () => ({
-  recordMerchantSupportSendFailure,
-}));
+vi.mock(
+  "../../app/services/merchant-support/merchant-support-observability.server",
+  () => ({
+    recordMerchantSupportSendFailure,
+  }),
+);
 const merchantSupportRouteSource = await readFile(
   new URL("../../app/routes/app/merchant-support/route.jsx", import.meta.url),
   "utf8",
@@ -21,7 +24,10 @@ const merchantSupportRouteSource = await readFile(
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
   getMerchantRequestContext: async () => {
     const authentication = await authenticateAdmin();
-    const shop = await resolveShopifyShop({ admin: authentication.admin, domain: authentication.session.shop });
+    const shop = await resolveShopifyShop({
+      admin: authentication.admin,
+      domain: authentication.session.shop,
+    });
     return { shop, authentication, readSubscription: getSubscription };
   },
 }));
@@ -44,7 +50,8 @@ vi.mock("../../app/services/billing/billing.service", () => ({
   billingService: { getSubscription },
 }));
 
-const { action, loader, countGraphemes, markUnreadMessages } = await import("../../app/routes/app/merchant-support/route");
+const { action, loader, countGraphemes, markUnreadMessages } =
+  await import("../../app/routes/app/merchant-support/route");
 
 describe("merchant support resource route", () => {
   beforeEach(() => {
@@ -58,7 +65,10 @@ describe("merchant support resource route", () => {
       domain: "merchant.myshopify.com",
     });
     readMerchantSupportMessages.mockResolvedValue({ items: [] });
-    composeMerchantMessage.mockResolvedValue({ messageId: "message-1", translationId: null });
+    composeMerchantMessage.mockResolvedValue({
+      messageId: "message-1",
+      translationId: null,
+    });
     markMerchantSupportMessageRead.mockResolvedValue(true);
     markMerchantSupportMessagesRead.mockResolvedValue({ marked: true });
     findShopSettings.mockResolvedValue({ onboardingCompleted: true });
@@ -67,7 +77,9 @@ describe("merchant support resource route", () => {
 
   it("derives the tenant from authenticated Shopify context", async () => {
     await loader({
-      request: new Request("https://example.test/app/merchant-support?page=2&shopId=other-shop"),
+      request: new Request(
+        "https://example.test/app/merchant-support?page=2&shopId=other-shop",
+      ),
     });
 
     expect(resolveShopifyShop).toHaveBeenCalledWith({
@@ -89,12 +101,16 @@ describe("merchant support resource route", () => {
     });
 
     await loader({
-      request: new Request("https://example.test/app/merchant-support?shopId=other-shop"),
+      request: new Request(
+        "https://example.test/app/merchant-support?shopId=other-shop",
+      ),
     });
 
-    expect(readMerchantSupportMessages).toHaveBeenCalledWith(expect.objectContaining({
-      shopId: "internal-shop-1",
-    }));
+    expect(readMerchantSupportMessages).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "internal-shop-1",
+      }),
+    );
   });
 
   it("does not accept client-controlled shop or message provenance", async () => {
@@ -117,8 +133,12 @@ describe("merchant support resource route", () => {
       body: "Hello support",
       shopifyUserId: null,
     });
-    expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty("kind");
-    expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty("state");
+    expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty(
+      "kind",
+    );
+    expect(composeMerchantMessage.mock.calls[0]?.[0]).not.toHaveProperty(
+      "state",
+    );
   });
 
   it("verifies the tenant before marking a message read", async () => {
@@ -147,47 +167,76 @@ describe("merchant support resource route", () => {
 
   it("uses Shared grapheme counting and bounded shell revalidation after reads", () => {
     expect(merchantSupportRouteSource).toContain("countUnicodeGraphemes");
-    expect(merchantSupportRouteSource).toContain("export const countGraphemes = countUnicodeGraphemes;");
-    expect(merchantSupportRouteSource).toContain("if (unreadIds.length === 0) return false;");
+    expect(merchantSupportRouteSource).toContain(
+      "export const countGraphemes = countUnicodeGraphemes;",
+    );
+    expect(merchantSupportRouteSource).toContain(
+      "if (unreadIds.length === 0) return false;",
+    );
     expect(merchantSupportRouteSource).toContain("result?.marked !== true");
-    expect(merchantSupportRouteSource).toContain("[unreadMessageKey, revalidate]");
+    expect(merchantSupportRouteSource).toContain(
+      "[unreadMessageKey, revalidate]",
+    );
   });
 
   it("renders billing CTAs from system metadata rather than translated body URLs", () => {
-    expect(merchantSupportRouteSource).toContain("getMerchantSystemMessageAction");
+    expect(merchantSupportRouteSource).toContain(
+      "getMerchantSystemMessageAction",
+    );
     expect(merchantSupportRouteSource).toContain('message.kind === "SYSTEM"');
-    expect(merchantSupportRouteSource).not.toContain('message.originalBody.includes("http");');
+    expect(merchantSupportRouteSource).not.toContain(
+      'message.originalBody.includes("http");',
+    );
   });
 
   it("renders recovery actions only for available SYSTEM notices with the projected target", () => {
-    expect(merchantSupportRouteSource).toContain("getRecoverySupportMessageAction");
-    expect(merchantSupportRouteSource).toContain('message.kind === "SYSTEM" && message.state === "AVAILABLE"');
-    expect(merchantSupportRouteSource).toContain("checkoutRecoveryId: message.checkoutRecoveryId");
-    expect(merchantSupportRouteSource).toContain("{i18n.t(systemAction.labelKey)}");
-    expect(merchantSupportRouteSource).toContain("<Link to={systemAction.href}>");
+    expect(merchantSupportRouteSource).toContain(
+      "getRecoverySupportMessageAction",
+    );
+    expect(merchantSupportRouteSource).toContain(
+      'message.kind === "SYSTEM" && message.state === "AVAILABLE"',
+    );
+    expect(merchantSupportRouteSource).toContain(
+      "checkoutRecoveryId: message.checkoutRecoveryId",
+    );
+    expect(merchantSupportRouteSource).toContain(
+      "{i18n.t(systemAction.labelKey)}",
+    );
+    expect(merchantSupportRouteSource).toContain(
+      "<Link to={systemAction.href}>",
+    );
   });
 
   it("does not post or revalidate when there are no unread IDs", async () => {
     const fetchImpl = vi.fn();
     const revalidate = vi.fn();
 
-    await expect(markUnreadMessages({ messageIds: [], fetchImpl, revalidate })).resolves.toBe(false);
+    await expect(
+      markUnreadMessages({ messageIds: [], fetchImpl, revalidate }),
+    ).resolves.toBe(false);
 
     expect(fetchImpl).not.toHaveBeenCalled();
     expect(revalidate).not.toHaveBeenCalled();
   });
 
   it("posts one bounded set and revalidates exactly once after successful reads", async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ marked: true }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ marked: true }), { status: 200 }));
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ marked: true }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ marked: true }), { status: 200 }),
+      );
     const revalidate = vi.fn();
 
-    await expect(markUnreadMessages({
-      messageIds: ["message-1", "message-2"],
-      fetchImpl,
-      revalidate,
-    })).resolves.toBe(true);
+    await expect(
+      markUnreadMessages({
+        messageIds: ["message-1", "message-2"],
+        fetchImpl,
+        revalidate,
+      }),
+    ).resolves.toBe(true);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(revalidate).toHaveBeenCalledTimes(1);
@@ -195,36 +244,108 @@ describe("merchant support resource route", () => {
 
   it("does not revalidate for HTTP or semantic read failures", async () => {
     const revalidate = vi.fn();
-    const httpFailure = vi.fn().mockResolvedValue(new Response("", { status: 500 }));
-    const semanticFailure = vi.fn().mockResolvedValue(new Response(JSON.stringify({ marked: false }), { status: 200 }));
+    const httpFailure = vi
+      .fn()
+      .mockResolvedValue(new Response("", { status: 500 }));
+    const semanticFailure = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ marked: false }), { status: 200 }),
+      );
 
-    await expect(markUnreadMessages({ messageIds: ["message-1"], fetchImpl: httpFailure, revalidate })).resolves.toBe(false);
-    await expect(markUnreadMessages({ messageIds: ["message-1"], fetchImpl: semanticFailure, revalidate })).resolves.toBe(false);
+    await expect(
+      markUnreadMessages({
+        messageIds: ["message-1"],
+        fetchImpl: httpFailure,
+        revalidate,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      markUnreadMessages({
+        messageIds: ["message-1"],
+        fetchImpl: semanticFailure,
+        revalidate,
+      }),
+    ).resolves.toBe(false);
 
     expect(revalidate).not.toHaveBeenCalled();
   });
 
   it("stops without refresh after a transport failure", async () => {
     const revalidate = vi.fn();
-    expect(await markUnreadMessages({ messageIds: ["one", "two"], revalidate, fetchImpl: vi.fn().mockRejectedValue(new Error("offline")) })).toBe(false);
+    expect(
+      await markUnreadMessages({
+        messageIds: ["one", "two"],
+        revalidate,
+        fetchImpl: vi.fn().mockRejectedValue(new Error("offline")),
+      }),
+    ).toBe(false);
     expect(revalidate).not.toHaveBeenCalled();
   });
-  it.each(["duplicate", "extra", "empty", "invalid", "too_many", "long_id", "duplicate_field"])("rejects malformed batch %s", async kind => {
-    const form = new FormData(); form.set("intent", "read-batch");
-    form.set("messageIds", JSON.stringify(kind === "duplicate" ? ["a", "a"] : kind === "empty" ? [] : kind === "too_many" ? Array(51).fill("a") : kind === "long_id" ? ["x".repeat(192)] : ["a"]));
+  it.each([
+    "duplicate",
+    "extra",
+    "empty",
+    "invalid",
+    "too_many",
+    "long_id",
+    "duplicate_field",
+  ])("rejects malformed batch %s", async (kind) => {
+    const form = new FormData();
+    form.set("intent", "read-batch");
+    form.set(
+      "messageIds",
+      JSON.stringify(
+        kind === "duplicate"
+          ? ["a", "a"]
+          : kind === "empty"
+            ? []
+            : kind === "too_many"
+              ? Array(51).fill("a")
+              : kind === "long_id"
+                ? ["x".repeat(192)]
+                : ["a"],
+      ),
+    );
     if (kind === "invalid") form.set("messageIds", "{");
     if (kind === "extra") form.set("shopId", "foreign");
     if (kind === "duplicate_field") form.append("intent", "read-batch");
-    const response = await action({ request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }) });
-    expect(response.status).toBe(400); expect(await response.json()).toEqual({ marked: false });
+    const response = await action({
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: form,
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ marked: false });
     expect(markMerchantSupportMessagesRead).not.toHaveBeenCalled();
   });
   it("accepts a valid batch and rejects oversized bodies before parsing", async () => {
-    const response = await action({ request: new Request("https://example.test/app/merchant-support", {method: "POST", body: new URLSearchParams({ intent: "read-batch", messageIds: JSON.stringify(["one", "two"]) })}) });
+    const response = await action({
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: new URLSearchParams({
+          intent: "read-batch",
+          messageIds: JSON.stringify(["one", "two"]),
+        }),
+      }),
+    });
     expect(await response.json()).toEqual({ marked: true });
-    expect(markMerchantSupportMessagesRead).toHaveBeenCalledWith({ shopId: "internal-shop-1", messageIds: ["one", "two"] });
-    const oversized = await action({ request: new Request("https://example.test/app/merchant-support", {method: "POST", body: "x".repeat(65_537)}) });
-    expect(oversized.status).toBe(413); expect(await oversized.json()).toEqual({ marked: false, errorCode: "SEND_FAILED" });
+    expect(markMerchantSupportMessagesRead).toHaveBeenCalledWith({
+      shopId: "internal-shop-1",
+      messageIds: ["one", "two"],
+    });
+    const oversized = await action({
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: "x".repeat(65_537),
+      }),
+    });
+    expect(oversized.status).toBe(413);
+    expect(await oversized.json()).toEqual({
+      marked: false,
+      errorCode: "SEND_FAILED",
+    });
   });
   it("logs unexpected compose failures and returns a stable code without exposing service errors", async () => {
     const failure = new Error("Database failure");
@@ -234,13 +355,21 @@ describe("merchant support resource route", () => {
     form.set("body", "Please help with this order.");
 
     const response = await action({
-      request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }),
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: form,
+      }),
     });
 
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ errorCode: "SEND_FAILED" });
-    expect(composeMerchantMessage).toHaveBeenCalledWith(expect.objectContaining({ body: "Please help with this order." }));
-    expect(recordMerchantSupportSendFailure).toHaveBeenCalledWith("internal-shop-1", failure);
+    expect(composeMerchantMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ body: "Please help with this order." }),
+    );
+    expect(recordMerchantSupportSendFailure).toHaveBeenCalledWith(
+      "internal-shop-1",
+      failure,
+    );
   });
 
   it("rejects invalid authored bodies before persistence or error logging", async () => {
@@ -249,7 +378,10 @@ describe("merchant support resource route", () => {
     form.set("body", "👩‍💻".repeat(501));
 
     const response = await action({
-      request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }),
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: form,
+      }),
     });
 
     expect(response.status).toBe(400);
@@ -263,7 +395,10 @@ describe("merchant support resource route", () => {
     form.set("intent", "unsupported");
 
     const response = await action({
-      request: new Request("https://example.test/app/merchant-support", { method: "POST", body: form }),
+      request: new Request("https://example.test/app/merchant-support", {
+        method: "POST",
+        body: form,
+      }),
     });
 
     expect(response.status).toBe(400);

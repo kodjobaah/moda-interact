@@ -1,8 +1,4 @@
-import {
-  type RouteConfig,
-  index,
-  route,
-} from "@react-router/dev/routes";
+import { type RouteConfig, index, route } from "@react-router/dev/routes";
 
 /**
  * Explicit route ownership for Moda Interact.
@@ -17,7 +13,10 @@ export default [
   route("privacy", "./routes/public/privacy/route.tsx"),
 
   route("shopify/consent/*", "./routes/shopify/consent/route.ts"),
-  route("shopify/checkout/receipt", "./routes/shopify/checkout-receipt/route.ts"),
+  route(
+    "shopify/checkout/receipt",
+    "./routes/shopify/checkout-receipt/route.ts",
+  ),
 
   route("health", "./routes/system/health/route.ts"),
   route("ready", "./routes/system/ready/route.ts"),
@@ -36,25 +35,70 @@ export default [
     route("recovery-settings", "./routes/app/recovery-settings/route.tsx"),
     route("merchant-support", "./routes/app/merchant-support/route.jsx"),
     route("billing/options", "./routes/app/billing/options/route.tsx"),
-    route("billing/recovery-credit-purchases", "./routes/app/billing/recovery-credit-purchases/route.tsx"),
+    route(
+      "billing/recovery-credit-purchases",
+      "./routes/app/billing/recovery-credit-purchases/route.tsx",
+    ),
   ]),
 
-  route("app/recoveries/:recoveryId/messages", "./routes/app/recovery-detail/messages.ts"),
-  route("app/recoveries/:recoveryId/related", "./routes/app/recovery-detail/related.ts"),
-  route("app/recoveries/:recoveryId/control", "./routes/app/recovery-detail/control.ts"),
-  route("app/recoveries/:recoveryId/commands", "./routes/app/recovery-detail/commands.ts"),
-  route("app/recoveries/:recoveryId/commands/:commandId", "./routes/app/recovery-detail/command-status.ts"),
+  route(
+    "app/recoveries/:recoveryId/messages",
+    "./routes/app/recovery-detail/messages.ts",
+  ),
+  route(
+    "app/recoveries/:recoveryId/related",
+    "./routes/app/recovery-detail/related.ts",
+  ),
+  route(
+    "app/recoveries/:recoveryId/control",
+    "./routes/app/recovery-detail/control.ts",
+  ),
+  route(
+    "app/recoveries/:recoveryId/commands",
+    "./routes/app/recovery-detail/commands.ts",
+  ),
+  route(
+    "app/recoveries/:recoveryId/commands/:commandId",
+    "./routes/app/recovery-detail/command-status.ts",
+  ),
   route("app/settings-save", "./routes/app/settings-save/route.ts"),
   route("app/consent-activate", "./routes/app/consent-activate/route.ts"),
-  route("app/merchant-knowledge/source", "./routes/app/merchant-knowledge/source/route.ts"),
-  route("app/merchant-knowledge/reorder", "./routes/app/merchant-knowledge/reorder/route.ts"),
-  route("app/merchant-knowledge/refresh", "./routes/app/merchant-knowledge/refresh/route.ts"),
-  route("app/merchant-knowledge/delete", "./routes/app/merchant-knowledge/delete/route.ts"),
-  route("app/merchant-knowledge/upload-intent", "./routes/app/merchant-knowledge/upload-intent/route.ts"),
-  route("app/merchant-knowledge/upload-finalize", "./routes/app/merchant-knowledge/upload-finalize/route.ts"),
-  route("app/merchant-knowledge/upload-failure", "./routes/app/merchant-knowledge/upload-failure/route.ts"),
-  route("app/merchant-knowledge/reprocess", "./routes/app/merchant-knowledge/reprocess/route.ts"),
-  route("app/store-profile/category", "./routes/app/store-profile/category/route.ts"),
+  route(
+    "app/merchant-knowledge/source",
+    "./routes/app/merchant-knowledge/source/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/reorder",
+    "./routes/app/merchant-knowledge/reorder/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/refresh",
+    "./routes/app/merchant-knowledge/refresh/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/delete",
+    "./routes/app/merchant-knowledge/delete/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/upload-intent",
+    "./routes/app/merchant-knowledge/upload-intent/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/upload-finalize",
+    "./routes/app/merchant-knowledge/upload-finalize/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/upload-failure",
+    "./routes/app/merchant-knowledge/upload-failure/route.ts",
+  ),
+  route(
+    "app/merchant-knowledge/reprocess",
+    "./routes/app/merchant-knowledge/reprocess/route.ts",
+  ),
+  route(
+    "app/store-profile/category",
+    "./routes/app/store-profile/category/route.ts",
+  ),
   route("app/onboarding/resume", "./routes/app/onboarding/resume/route.ts"),
   route("app/reinstalling", "./routes/app/reinstalling/route.jsx"),
   route("app/billing/select", "./routes/app/billing/select/route.jsx"),
@@ -63,9 +107,21 @@ export default [
   route("app/pending-recoveries", "./routes/app/pending-recoveries/route.jsx"),
 
   route("webhooks", "./routes/webhooks/root/route.jsx"),
-  route("webhooks/app/scopes_update", "./routes/webhooks/app/scopes-update/route.jsx"),
-  route("webhooks/app/uninstalled", "./routes/webhooks/app/uninstalled/route.jsx"),
-  route("webhooks/customers/data_request", "./routes/webhooks/customers/data-request/route.jsx"),
-  route("webhooks/customers/redact", "./routes/webhooks/customers/redact/route.jsx"),
+  route(
+    "webhooks/app/scopes_update",
+    "./routes/webhooks/app/scopes-update/route.jsx",
+  ),
+  route(
+    "webhooks/app/uninstalled",
+    "./routes/webhooks/app/uninstalled/route.jsx",
+  ),
+  route(
+    "webhooks/customers/data_request",
+    "./routes/webhooks/customers/data-request/route.jsx",
+  ),
+  route(
+    "webhooks/customers/redact",
+    "./routes/webhooks/customers/redact/route.jsx",
+  ),
   route("webhooks/shop/redact", "./routes/webhooks/shop/redact/route.jsx"),
 ] satisfies RouteConfig;

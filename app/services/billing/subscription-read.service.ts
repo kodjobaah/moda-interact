@@ -29,7 +29,9 @@ export class SubscriptionReadService {
       include: { plan: true },
     });
 
-    return subscription && (subscription.status === SubscriptionProjectionStatus.ACTIVE || subscription.status === SubscriptionProjectionStatus.TRIALING)
+    return subscription &&
+      (subscription.status === SubscriptionProjectionStatus.ACTIVE ||
+        subscription.status === SubscriptionProjectionStatus.TRIALING)
       ? subscription
       : null;
   }
@@ -76,7 +78,9 @@ export class SubscriptionReadService {
       throw new Error(`Shop ${shopId} does not have a Shopify shop ID`);
     }
     if (!this.provider.getSubscriptionLifecycleSnapshot) {
-      throw new Error("Shopify lifecycle snapshot is not supported by the billing provider");
+      throw new Error(
+        "Shopify lifecycle snapshot is not supported by the billing provider",
+      );
     }
 
     const snapshot = await this.provider.getSubscriptionLifecycleSnapshot({
@@ -104,7 +108,10 @@ export class SubscriptionReadService {
           ? {
               id: frozenPlan.id,
               name: frozenPlan.name,
-              kind: frozenPlan.kind === BillingPlanKind.FREE ? "FREE" : "PAID_METERED",
+              kind:
+                frozenPlan.kind === BillingPlanKind.FREE
+                  ? "FREE"
+                  : "PAID_METERED",
             }
           : null,
         mappingStatus: frozenPlan ? "MAPPED" : "UNMAPPED",
@@ -120,12 +127,20 @@ export class SubscriptionReadService {
     if (latestEvent) {
       return { state: "UNRESOLVED", subscription: null, latestEvent };
     }
-    return { state: "NO_ACTIVE_SUBSCRIPTION", subscription: null, latestEvent: null };
+    return {
+      state: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+      latestEvent: null,
+    };
   }
 
   private async mapMerchantShopifySubscription(
-    providerSubscription: NonNullable<Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>>,
-  ): Promise<MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" }> {
+    providerSubscription: NonNullable<
+      Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>
+    >,
+  ): Promise<
+    MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" }
+  > {
     const [currentPlan, pendingPlan] = await Promise.all([
       this.database.billingPlan.findUnique({
         where: { shopifyPlanHandle: providerSubscription.planHandle },
@@ -134,65 +149,99 @@ export class SubscriptionReadService {
       providerSubscription.pendingFlatRatePlan
         ? this.database.billingPlan.findUnique({
             where: {
-              shopifyPlanHandle: providerSubscription.pendingFlatRatePlan.handle,
+              shopifyPlanHandle:
+                providerSubscription.pendingFlatRatePlan.handle,
             },
             select: { id: true, name: true, kind: true },
           })
         : null,
     ]);
 
-    return projectMerchantShopifySubscription(providerSubscription, [
-      currentPlan ? { ...currentPlan, shopifyPlanHandle: providerSubscription.planHandle } : null,
-      pendingPlan ? { ...pendingPlan, shopifyPlanHandle: providerSubscription.pendingFlatRatePlan!.handle } : null,
-    ].filter(
-      (plan): plan is NonNullable<typeof plan> => plan !== null,
-    ));
+    return projectMerchantShopifySubscription(
+      providerSubscription,
+      [
+        currentPlan
+          ? {
+              ...currentPlan,
+              shopifyPlanHandle: providerSubscription.planHandle,
+            }
+          : null,
+        pendingPlan
+          ? {
+              ...pendingPlan,
+              shopifyPlanHandle:
+                providerSubscription.pendingFlatRatePlan!.handle,
+            }
+          : null,
+      ].filter((plan): plan is NonNullable<typeof plan> => plan !== null),
+    );
   }
 }
 
 export function projectMerchantShopifySubscription(
-  providerSubscription: NonNullable<Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>>,
-  plans: readonly Pick<import("@prisma/client").BillingPlan, "id" | "shopifyPlanHandle" | "name" | "kind">[],
+  providerSubscription: NonNullable<
+    Awaited<ReturnType<BillingProvider["getActiveSubscription"]>>
+  >,
+  plans: readonly Pick<
+    import("@prisma/client").BillingPlan,
+    "id" | "shopifyPlanHandle" | "name" | "kind"
+  >[],
 ): MerchantShopifySubscriptionState & { status: "ACTIVE_SUBSCRIPTION" } {
-  const currentPlan = plans.find(plan => plan.shopifyPlanHandle === providerSubscription.planHandle);
-  const pendingPlan = plans.find(plan => plan.shopifyPlanHandle === providerSubscription.pendingFlatRatePlan?.handle);
-    const mapping = currentPlan
-      ? {
-          id: currentPlan.id,
-          name: currentPlan.name,
-          kind: currentPlan.kind === BillingPlanKind.FREE ? "FREE" as const : "PAID_METERED" as const,
-        }
-      : null;
-    const pendingMapping = pendingPlan
-      ? {
-          id: pendingPlan.id,
-          name: pendingPlan.name,
-          kind: pendingPlan.kind === BillingPlanKind.FREE ? "FREE" as const : "PAID_METERED" as const,
-        }
-      : null;
+  const currentPlan = plans.find(
+    (plan) => plan.shopifyPlanHandle === providerSubscription.planHandle,
+  );
+  const pendingPlan = plans.find(
+    (plan) =>
+      plan.shopifyPlanHandle ===
+      providerSubscription.pendingFlatRatePlan?.handle,
+  );
+  const mapping = currentPlan
+    ? {
+        id: currentPlan.id,
+        name: currentPlan.name,
+        kind:
+          currentPlan.kind === BillingPlanKind.FREE
+            ? ("FREE" as const)
+            : ("PAID_METERED" as const),
+      }
+    : null;
+  const pendingMapping = pendingPlan
+    ? {
+        id: pendingPlan.id,
+        name: pendingPlan.name,
+        kind:
+          pendingPlan.kind === BillingPlanKind.FREE
+            ? ("FREE" as const)
+            : ("PAID_METERED" as const),
+      }
+    : null;
 
-    return {
-      status: "ACTIVE_SUBSCRIPTION",
-      subscription: {
-        planHandle: providerSubscription.currentFlatRatePlan.handle,
-        description: providerSubscription.currentFlatRatePlan.description,
-        price: providerSubscription.currentFlatRatePlan.price,
-        billingPeriod: providerSubscription.billingPeriod,
-        currentPeriodStart: providerSubscription.currentPeriodStart?.toISOString() ?? null,
-        currentPeriodEnd: providerSubscription.currentPeriodEnd?.toISOString() ?? null,
-        trialEndsAt: providerSubscription.trialEndsAt?.toISOString() ?? null,
-        cancelAtEndOfCycle: providerSubscription.cancelAtPeriodEnd,
-        pendingUpdate: providerSubscription.pendingFlatRatePlan
-          ? {
-              planHandle: providerSubscription.pendingFlatRatePlan.handle,
-              price: providerSubscription.pendingFlatRatePlan.price,
-              effectiveAt: providerSubscription.pendingFlatRatePlan.effectiveAt?.toISOString() ?? null,
-            }
-          : null,
-        usageItems: providerSubscription.usageItems,
-      },
-      modaMapping: mapping,
-      mappingStatus: mapping ? "MAPPED" : "UNMAPPED",
-      pendingModaMapping: pendingMapping,
-    };
+  return {
+    status: "ACTIVE_SUBSCRIPTION",
+    subscription: {
+      planHandle: providerSubscription.currentFlatRatePlan.handle,
+      description: providerSubscription.currentFlatRatePlan.description,
+      price: providerSubscription.currentFlatRatePlan.price,
+      billingPeriod: providerSubscription.billingPeriod,
+      currentPeriodStart:
+        providerSubscription.currentPeriodStart?.toISOString() ?? null,
+      currentPeriodEnd:
+        providerSubscription.currentPeriodEnd?.toISOString() ?? null,
+      trialEndsAt: providerSubscription.trialEndsAt?.toISOString() ?? null,
+      cancelAtEndOfCycle: providerSubscription.cancelAtPeriodEnd,
+      pendingUpdate: providerSubscription.pendingFlatRatePlan
+        ? {
+            planHandle: providerSubscription.pendingFlatRatePlan.handle,
+            price: providerSubscription.pendingFlatRatePlan.price,
+            effectiveAt:
+              providerSubscription.pendingFlatRatePlan.effectiveAt?.toISOString() ??
+              null,
+          }
+        : null,
+      usageItems: providerSubscription.usageItems,
+    },
+    modaMapping: mapping,
+    mappingStatus: mapping ? "MAPPED" : "UNMAPPED",
+    pendingModaMapping: pendingMapping,
+  };
 }

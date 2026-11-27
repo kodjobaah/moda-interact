@@ -32,12 +32,21 @@
   }
 
   function sameOriginUrl(path) {
-    if (typeof path !== "string" || !path.startsWith("/") || path.startsWith("//"))
+    if (
+      typeof path !== "string" ||
+      !path.startsWith("/") ||
+      path.startsWith("//")
+    )
       throw new Error("Invalid same-origin path.");
 
     const url = new URL(path, window.location.origin);
-    if (url.origin !== window.location.origin || url.username || url.password ||
-        url.search || url.hash) {
+    if (
+      url.origin !== window.location.origin ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash
+    ) {
       throw new Error("Invalid same-origin path.");
     }
     return url.toString();
@@ -45,8 +54,15 @@
 
   function appProxyPaths(root) {
     const proxyRoot = root.dataset.proxyRoot || DEFAULT_APP_PROXY_ROOT;
-    const match = /^\/(?:a|apps|community|tools)\/([A-Za-z0-9_-]{1,30})$/.exec(proxyRoot);
-    if (!match || ["admin", "services", "password", "login"].includes(match[1].toLowerCase()))
+    const match = /^\/(?:a|apps|community|tools)\/([A-Za-z0-9_-]{1,30})$/.exec(
+      proxyRoot,
+    );
+    if (
+      !match ||
+      ["admin", "services", "password", "login"].includes(
+        match[1].toLowerCase(),
+      )
+    )
       throw new Error("The Shopify app proxy path is invalid.");
 
     const paths = {};
@@ -61,8 +77,11 @@
 
   function cartUrl() {
     const routesRoot = window.Shopify?.routes?.root;
-    if (typeof routesRoot !== "string" || !routesRoot.startsWith("/") ||
-        routesRoot.startsWith("//"))
+    if (
+      typeof routesRoot !== "string" ||
+      !routesRoot.startsWith("/") ||
+      routesRoot.startsWith("//")
+    )
       throw new Error("Shopify locale-aware routes are unavailable.");
     const root = routesRoot.endsWith("/") ? routesRoot : `${routesRoot}/`;
     return sameOriginUrl(`${root}cart.js`);
@@ -71,7 +90,9 @@
   async function responseJson(fetcher, url, init) {
     const response = await fetcher(url, init);
     if (!response.ok) {
-      const error = new Error(`Shopify consent request failed (HTTP ${response.status}).`);
+      const error = new Error(
+        `Shopify consent request failed (HTTP ${response.status}).`,
+      );
       error.httpStatus = response.status;
       throw error;
     }
@@ -79,7 +100,11 @@
   }
 
   function readCartShape(value) {
-    if (!isObject(value) || typeof value.token !== "string" || !isObject(value.attributes))
+    if (
+      !isObject(value) ||
+      typeof value.token !== "string" ||
+      !isObject(value.attributes)
+    )
       throw new Error("Shopify cart data is unavailable.");
     const baseToken = value.token.split("?", 1)[0];
     if (!baseToken) throw new Error("Shopify cart token is unavailable.");
@@ -93,12 +118,19 @@
   }
 
   function isReceipt(value) {
-    return typeof value === "string" && value.length <= 512 &&
-      /^v1\.[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{22}(?![\s\S])/.test(value);
+    return (
+      typeof value === "string" &&
+      value.length <= 512 &&
+      /^v1\.[A-Za-z0-9_-]{1,64}\.[A-Za-z0-9_-]{16}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{22}(?![\s\S])/.test(
+        value,
+      )
+    );
   }
 
   async function readCart(fetcher) {
-    return readCartShape(await responseJson(fetcher, cartUrl(), jsonGetOptions));
+    return readCartShape(
+      await responseJson(fetcher, cartUrl(), jsonGetOptions),
+    );
   }
 
   const jsonGetOptions = {
@@ -113,8 +145,11 @@
 
   function postJson(fetcher, url, body, noStore = false) {
     return responseJson(fetcher, url, {
-      method: "POST", credentials: "same-origin", headers: jsonPostHeaders,
-      body: JSON.stringify(body), ...(noStore ? { cache: "no-store" } : {}),
+      method: "POST",
+      credentials: "same-origin",
+      headers: jsonPostHeaders,
+      body: JSON.stringify(body),
+      ...(noStore ? { cache: "no-store" } : {}),
     });
   }
 
@@ -122,39 +157,57 @@
     const locale = root.dataset.locale;
     if (typeof locale !== "string" || locale.length < 2 || locale.length > 35)
       throw new Error("Shopper locale is unavailable.");
-    const data = await postJson(fetcher, proxyPaths.receipt, { cartToken, decision, locale });
+    const data = await postJson(fetcher, proxyPaths.receipt, {
+      cartToken,
+      decision,
+      locale,
+    });
     if (!isObject(data) || !isReceipt(data.receipt))
       throw new Error("Shopify consent receipt is unavailable.");
     return data.receipt;
   }
 
   async function verifyReceipt(fetcher, proxyPaths, cartToken, receipt) {
-    const data = await postJson(fetcher, proxyPaths.verify, { cartToken, receipt }, true);
-    if (!isObject(data) || data.source !== "verified_receipt" ||
-        (data.decision !== "GRANT" && data.decision !== "REVOKE")) {
+    const data = await postJson(
+      fetcher,
+      proxyPaths.verify,
+      { cartToken, receipt },
+      true,
+    );
+    if (
+      !isObject(data) ||
+      data.source !== "verified_receipt" ||
+      (data.decision !== "GRANT" && data.decision !== "REVOKE")
+    ) {
       throw new Error("Shopify consent receipt could not be verified.");
     }
     return data.decision === "GRANT";
   }
 
   function matchesReceipt(cart, expectedBaseToken, receipt) {
-    return cart.baseToken === expectedBaseToken &&
-      cart.attributes[RECEIPT_ATTRIBUTE] === receipt;
+    return (
+      cart.baseToken === expectedBaseToken &&
+      cart.attributes[RECEIPT_ATTRIBUTE] === receipt
+    );
   }
 
   async function updateAndConfirm(fetcher, expectedBaseToken, receipt) {
     const currentCart = await readCart(fetcher);
     if (currentCart.baseToken !== expectedBaseToken) {
-      throw new Error("The current Shopify cart changed before the receipt could be saved.");
+      throw new Error(
+        "The current Shopify cart changed before the receipt could be saved.",
+      );
     }
 
     let updateError;
     try {
-      const updatedCart = readCartShape(await postJson(
-        fetcher,
-        cartUrl().replace(/cart\.js$/, "cart/update.js"),
-        { attributes: { [RECEIPT_ATTRIBUTE]: receipt } },
-      ));
+      const updatedCart = readCartShape(
+        await postJson(
+          fetcher,
+          cartUrl().replace(/cart\.js$/, "cart/update.js"),
+          { attributes: { [RECEIPT_ATTRIBUTE]: receipt } },
+        ),
+      );
       if (matchesReceipt(updatedCart, expectedBaseToken, receipt)) return;
     } catch (error) {
       updateError = error;
@@ -164,19 +217,34 @@
     try {
       readback = await readCart(fetcher);
     } catch (error) {
-      throw new Error("Shopify consent receipt could not be confirmed.", { cause: error });
+      throw new Error("Shopify consent receipt could not be confirmed.", {
+        cause: error,
+      });
     }
     if (!matchesReceipt(readback, expectedBaseToken, receipt)) {
-      throw new Error("Shopify consent receipt could not be confirmed.", { cause: updateError });
+      throw new Error("Shopify consent receipt could not be confirmed.", {
+        cause: updateError,
+      });
     }
   }
 
   async function readSqlStatus(fetcher, proxyPaths) {
     const data = await responseJson(fetcher, proxyPaths.status, jsonGetOptions);
-    if (!isObject(data) || typeof data.checked !== "boolean" ||
-        typeof data.decision !== "string" ||
-        !["GRANTED", "REVOKED", "UNKNOWN", "NO_CUSTOMER", "NO_CONTACT", "AMBIGUOUS", "UNVERIFIED"].includes(data.decision) ||
-        data.source !== "postgresql") {
+    if (
+      !isObject(data) ||
+      typeof data.checked !== "boolean" ||
+      typeof data.decision !== "string" ||
+      ![
+        "GRANTED",
+        "REVOKED",
+        "UNKNOWN",
+        "NO_CUSTOMER",
+        "NO_CONTACT",
+        "AMBIGUOUS",
+        "UNVERIFIED",
+      ].includes(data.decision) ||
+      data.source !== "postgresql"
+    ) {
       throw new Error("Shopify consent status is unavailable.");
     }
     return data.checked && data.decision === "GRANTED";
@@ -189,7 +257,9 @@
 
     const checkbox = root.querySelector("[data-consent-checkbox]");
     if (!(checkbox instanceof HTMLInputElement)) {
-      console.warn(LOG_PREFIX, "consent.render.checkbox_missing", { stage: "initialize" });
+      console.warn(LOG_PREFIX, "consent.render.checkbox_missing", {
+        stage: "initialize",
+      });
       return;
     }
 
@@ -204,7 +274,12 @@
         if (typeof receipt !== "string")
           throw new Error("Shopify consent receipt is unavailable.");
         stage = "receipt_verify";
-        initialChecked = await verifyReceipt(fetcher, proxyPaths, cart.token, receipt);
+        initialChecked = await verifyReceipt(
+          fetcher,
+          proxyPaths,
+          cart.token,
+          receipt,
+        );
       } else {
         stage = "consent_status";
         initialChecked = await readSqlStatus(fetcher, proxyPaths);
@@ -220,7 +295,10 @@
           const currentCart = await readCart(fetcher);
           updateStage = "receipt_issue";
           const receipt = await issueReceipt(
-            fetcher, proxyPaths, root, currentCart.token,
+            fetcher,
+            proxyPaths,
+            root,
+            currentCart.token,
             requestedChoice ? "GRANT" : "REVOKE",
           );
           updateStage = "receipt_persist";
@@ -245,19 +323,25 @@
   window.modaWhatsappConsent = Object.freeze({ initialize });
   window.dispatchEvent(new Event("moda:cart-consent-ready"));
   const initializeBlocks = (section = document) => {
-    section.querySelectorAll("[data-moda-whatsapp-consent]").forEach(root => {
+    section.querySelectorAll("[data-moda-whatsapp-consent]").forEach((root) => {
       void initialize(root);
     });
   };
-  document.addEventListener("shopify:section:load", event => {
+  document.addEventListener("shopify:section:load", (event) => {
     const section = event.target;
-    if (section instanceof Element && section.matches("[data-moda-whatsapp-consent]")) {
+    if (
+      section instanceof Element &&
+      section.matches("[data-moda-whatsapp-consent]")
+    ) {
       void initialize(section);
     }
-    if (typeof section?.querySelectorAll === "function") initializeBlocks(section);
+    if (typeof section?.querySelectorAll === "function")
+      initializeBlocks(section);
   });
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", () => initializeBlocks(), { once: true });
+    document.addEventListener("DOMContentLoaded", () => initializeBlocks(), {
+      once: true,
+    });
   } else {
     initializeBlocks();
   }

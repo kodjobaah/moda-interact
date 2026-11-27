@@ -17,9 +17,7 @@ import {
   OTEL_WEBHOOK_METRIC_INGRESS,
   OTEL_WEBHOOK_SPAN_NAME,
 } from "../../../app/services/otel/otel.constants";
-import {
-  getActiveTraceId,
-} from "../../../app/services/otel/otel.runtime";
+import { getActiveTraceId } from "../../../app/services/otel/otel.runtime";
 let traceExporter;
 let metricExporter;
 let traceProvider;
@@ -47,9 +45,7 @@ function startProviders() {
   });
   traceProvider.register();
 
-  metricExporter = new InMemoryMetricExporter(
-    AggregationTemporality.DELTA,
-  );
+  metricExporter = new InMemoryMetricExporter(AggregationTemporality.DELTA);
   metricReader = new PeriodicExportingMetricReader({
     exporter: metricExporter,
     exportIntervalMillis: 60_000,
@@ -63,9 +59,8 @@ function startProviders() {
 
 beforeAll(async () => {
   startProviders();
-  ({ recordShopifyWebhookTelemetry } = await import(
-    "../../../app/services/otel/shopify-webhook-telemetry.server"
-  ));
+  ({ recordShopifyWebhookTelemetry } =
+    await import("../../../app/services/otel/shopify-webhook-telemetry.server"));
 });
 
 beforeEach(async () => {

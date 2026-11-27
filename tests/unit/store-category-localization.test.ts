@@ -22,8 +22,16 @@ describe("database-backed Store Category localization", () => {
       displayName: "Canonical Apparel",
       description: "Canonical description",
       translations: [
-        { locale: "en", displayName: "Apparel", description: "English description" },
-        { locale: "de", displayName: "Bekleidung", description: "Deutsche Beschreibung" },
+        {
+          locale: "en",
+          displayName: "Apparel",
+          description: "English description",
+        },
+        {
+          locale: "de",
+          displayName: "Bekleidung",
+          description: "Deutsche Beschreibung",
+        },
       ],
     };
 
@@ -35,7 +43,9 @@ describe("database-backed Store Category localization", () => {
       localizedDisplayName: "Apparel",
       localizedDescription: "English description",
     });
-    expect(localizeStoreCategory({ ...category, translations: [] }, "fr-FR")).toEqual({
+    expect(
+      localizeStoreCategory({ ...category, translations: [] }, "fr-FR"),
+    ).toEqual({
       localizedDisplayName: "Canonical Apparel",
       localizedDescription: "Canonical description",
     });
@@ -53,9 +63,15 @@ describe("database-backed Store Category localization", () => {
       ],
     };
 
-    expect(localizeStoreCategoryMapping(mapping, "de-DE")).toEqual({ localizedDisplayName: "Schuhe" });
-    expect(localizeStoreCategoryMapping(mapping, "fr-FR")).toEqual({ localizedDisplayName: "Footwear" });
-    expect(localizeStoreCategoryMapping({ ...mapping, translations: [] }, "fr-FR")).toEqual({
+    expect(localizeStoreCategoryMapping(mapping, "de-DE")).toEqual({
+      localizedDisplayName: "Schuhe",
+    });
+    expect(localizeStoreCategoryMapping(mapping, "fr-FR")).toEqual({
+      localizedDisplayName: "Footwear",
+    });
+    expect(
+      localizeStoreCategoryMapping({ ...mapping, translations: [] }, "fr-FR"),
+    ).toEqual({
       localizedDisplayName: "Footwear",
     });
   });

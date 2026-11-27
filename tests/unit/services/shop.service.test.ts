@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GraphqlQueryError, HttpResponseError, HttpRequestError } from "@shopify/shopify-api";
+import {
+  GraphqlQueryError,
+  HttpResponseError,
+  HttpRequestError,
+} from "@shopify/shopify-api";
 import type { AdminApiContext } from "@shopify/shopify-app-react-router/server";
 
 const shop = {
@@ -49,9 +53,7 @@ vi.mock("../../../app/db.server", () => ({
   default: dbMock,
 }));
 
-const { ShopService } = await import(
-  "../../../app/services/shop/shop.service"
-);
+const { ShopService } = await import("../../../app/services/shop/shop.service");
 
 function adminFor(shopData: Record<string, unknown>) {
   return {
@@ -113,7 +115,9 @@ describe("ShopService.markUninstalled", () => {
       .mockResolvedValueOnce({ ...shop, uninstalledAt: null });
     const uninstalledAt = new Date("2026-09-08T10:00:00.000Z");
 
-    await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
+    await expect(
+      new ShopService().markUninstalled(shop.domain, uninstalledAt),
+    ).resolves.toEqual({
       kind: "UNINSTALLED",
       shopId: shop.id,
       deletedSessionCount: 2,
@@ -124,7 +128,9 @@ describe("ShopService.markUninstalled", () => {
       data: { status: "UNINSTALLED", uninstalledAt, reinstallPendingAt: null },
     });
     expect(dbMock.subscription.updateMany).not.toHaveBeenCalled();
-    expect(dbMock.session.deleteMany).toHaveBeenCalledWith({ where: { shop: shop.domain } });
+    expect(dbMock.session.deleteMany).toHaveBeenCalledWith({
+      where: { shop: shop.domain },
+    });
     expect(dbMock.shopifyDiscountCatalogue.upsert).toHaveBeenCalledWith({
       where: { shopId: shop.id },
       create: {
@@ -158,7 +164,9 @@ describe("ShopService.markUninstalled", () => {
       .mockResolvedValueOnce({ ...shop, uninstalledAt: persistedAt });
     const uninstalledAt = new Date("2026-09-08T11:00:00.000Z");
 
-    await expect(new ShopService().markUninstalled(shop.domain, uninstalledAt)).resolves.toEqual({
+    await expect(
+      new ShopService().markUninstalled(shop.domain, uninstalledAt),
+    ).resolves.toEqual({
       kind: "ALREADY_UNINSTALLED",
       shopId: shop.id,
     });
@@ -196,11 +204,23 @@ describe("ShopService.markUninstalled", () => {
 describe("ShopService.beginReinstallReconciliation", () => {
   it("creates the pending marker and immediate schedule without changing subscription state", async () => {
     const now = new Date("2026-09-08T12:00:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: null });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
-    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt: now });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: null,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: null,
+    });
+    dbMock.subscription.upsert.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: now,
+    });
 
-    const result = await new ShopService().beginReinstallReconciliation(shop.id, now);
+    const result = await new ShopService().beginReinstallReconciliation(
+      shop.id,
+      now,
+    );
 
     expect(result).toEqual({
       kind: "SCHEDULED",
@@ -215,24 +235,41 @@ describe("ShopService.beginReinstallReconciliation", () => {
       where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: null },
       data: { reinstallPendingAt: now },
     });
-    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { shopId: shop.id },
-      update: { nextReconcileAt: now },
-    }));
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { shopId: shop.id },
+        update: { nextReconcileAt: now },
+      }),
+    );
   });
 
   it("does not reset an existing reinstall attempt", async () => {
     const pendingAt = new Date("2026-09-08T12:00:00.000Z");
     const nextReconcileAt = new Date("2026-09-08T12:05:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
-    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: pendingAt,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt,
+    });
+    dbMock.subscription.upsert.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt,
+    });
 
-    const result = await new ShopService().beginReinstallReconciliation(shop.id, new Date("2026-09-08T13:00:00.000Z"));
+    const result = await new ShopService().beginReinstallReconciliation(
+      shop.id,
+      new Date("2026-09-08T13:00:00.000Z"),
+    );
 
     expect(result).toMatchObject({
       kind: "SCHEDULED",
-      schedule: { reinstallPendingAt: pendingAt, expectedNextReconcileAt: nextReconcileAt },
+      schedule: {
+        reinstallPendingAt: pendingAt,
+        expectedNextReconcileAt: nextReconcileAt,
+      },
     });
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
@@ -240,8 +277,14 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
   it("does not restart a stopped reinstall attempt", async () => {
     const pendingAt = new Date("2026-09-08T12:00:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: pendingAt,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: null,
+    });
 
     await expect(
       new ShopService().beginReinstallReconciliation(shop.id),
@@ -254,8 +297,14 @@ describe("ShopService.beginReinstallReconciliation", () => {
     const pendingAt = new Date("2026-09-08T12:01:00.000Z");
     const nextReconcileAt = new Date("2026-09-08T12:02:00.000Z");
     dbMock.shop.findUnique
-      .mockResolvedValueOnce({ status: "UNINSTALLED", reinstallPendingAt: null })
-      .mockResolvedValueOnce({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
+      .mockResolvedValueOnce({
+        status: "UNINSTALLED",
+        reinstallPendingAt: null,
+      })
+      .mockResolvedValueOnce({
+        status: "UNINSTALLED",
+        reinstallPendingAt: pendingAt,
+      });
     dbMock.subscription.findUnique
       .mockResolvedValueOnce({ id: null, nextReconcileAt: null })
       .mockResolvedValueOnce({ id: "subscription-1", nextReconcileAt });
@@ -277,8 +326,14 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
   it("rejects retry while an attempt is still scheduled", async () => {
     const pendingAt = new Date("2026-09-08T12:00:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: new Date() });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: pendingAt,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: new Date(),
+    });
 
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id),
@@ -289,15 +344,25 @@ describe("ShopService.beginReinstallReconciliation", () => {
 
   it("does not update a subscription when retry loses its exact-marker CAS", async () => {
     const pendingAt = new Date("2026-09-08T12:00:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: pendingAt });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: pendingAt,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: null,
+    });
     dbMock.shop.updateMany.mockResolvedValue({ count: 0 });
 
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id),
     ).resolves.toEqual({ kind: "NO_CHANGE" });
     expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
-      where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: pendingAt },
+      where: {
+        id: shop.id,
+        status: "UNINSTALLED",
+        reinstallPendingAt: pendingAt,
+      },
       data: { reinstallPendingAt: expect.any(Date) },
     });
     expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
@@ -306,10 +371,19 @@ describe("ShopService.beginReinstallReconciliation", () => {
   it("successfully retries a stopped attempt without changing entitlement fields", async () => {
     const oldPendingAt = new Date("2026-09-08T12:00:00.000Z");
     const now = new Date("2026-09-08T13:00:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({ status: "UNINSTALLED", reinstallPendingAt: oldPendingAt });
-    dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", nextReconcileAt: null });
+    dbMock.shop.findUnique.mockResolvedValue({
+      status: "UNINSTALLED",
+      reinstallPendingAt: oldPendingAt,
+    });
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: null,
+    });
     dbMock.shop.updateMany.mockResolvedValue({ count: 1 });
-    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt: now });
+    dbMock.subscription.upsert.mockResolvedValue({
+      id: "subscription-1",
+      nextReconcileAt: now,
+    });
 
     await expect(
       new ShopService().retryReinstallReconciliation(shop.id, now),
@@ -323,13 +397,19 @@ describe("ShopService.beginReinstallReconciliation", () => {
       },
     });
     expect(dbMock.shop.updateMany).toHaveBeenCalledWith({
-      where: { id: shop.id, status: "UNINSTALLED", reinstallPendingAt: oldPendingAt },
+      where: {
+        id: shop.id,
+        status: "UNINSTALLED",
+        reinstallPendingAt: oldPendingAt,
+      },
       data: { reinstallPendingAt: now },
     });
-    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      where: { shopId: shop.id },
-      update: { nextReconcileAt: now },
-    }));
+    expect(dbMock.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { shopId: shop.id },
+        update: { nextReconcileAt: now },
+      }),
+    );
   });
 
   it("requires durable credentials before creating a marker or schedule", async () => {
@@ -340,7 +420,9 @@ describe("ShopService.beginReinstallReconciliation", () => {
     });
     dbMock.session.findFirst.mockResolvedValue(null);
 
-    await expect(new ShopService().beginReinstallReconciliation(shop.id)).resolves.toEqual({
+    await expect(
+      new ShopService().beginReinstallReconciliation(shop.id),
+    ).resolves.toEqual({
       kind: "AUTHENTICATION_REQUIRED",
     });
     expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
@@ -349,87 +431,199 @@ describe("ShopService.beginReinstallReconciliation", () => {
   });
 
   it.each([
-    ["empty access token", { accessToken: "   ", expires: null, refreshToken: null, refreshTokenExpires: null }, false],
-    ["expired token without refresh", { accessToken: "expired", expires: new Date("2026-09-07T00:00:00.000Z"), refreshToken: " ", refreshTokenExpires: null }, false],
-    ["non-expiring token", { accessToken: "valid", expires: null, refreshToken: null, refreshTokenExpires: null }, true],
-    ["non-expiring token with refresh metadata", { accessToken: "valid", expires: null, refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-09T00:00:00.000Z") }, false],
-    ["access token beyond refresh skew", { accessToken: "valid", expires: new Date("2026-09-08T12:05:20.001Z"), refreshToken: null, refreshTokenExpires: null }, true],
-    ["access token at refresh skew without refresh", { accessToken: "valid", expires: new Date("2026-09-08T12:05:20.000Z"), refreshToken: null, refreshTokenExpires: null }, false],
-    ["refresh token with missing expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: null }, false],
-    ["refresh token expiring exactly now", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T12:00:00.000Z") }, false],
-    ["refresh token with past expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T11:59:59.999Z") }, false],
-    ["refresh token with future expiry", { accessToken: "valid", expires: new Date("2026-09-08T12:00:00.000Z"), refreshToken: "refresh", refreshTokenExpires: new Date("2026-09-08T12:00:00.001Z") }, true],
-  ] as const)("applies the durable credential predicate to %s", async (_caseName, credentials, usable) => {
-    const now = new Date("2026-09-08T12:00:00.000Z");
-    const nextReconcileAt = new Date("2026-09-08T12:01:00.000Z");
-    dbMock.shop.findUnique.mockResolvedValue({
-      domain: shop.domain,
-      status: "UNINSTALLED",
-      reinstallPendingAt: null,
-    });
-    dbMock.session.findFirst.mockResolvedValue(credentials);
-    dbMock.subscription.upsert.mockResolvedValue({ id: "subscription-1", nextReconcileAt });
+    [
+      "empty access token",
+      {
+        accessToken: "   ",
+        expires: null,
+        refreshToken: null,
+        refreshTokenExpires: null,
+      },
+      false,
+    ],
+    [
+      "expired token without refresh",
+      {
+        accessToken: "expired",
+        expires: new Date("2026-09-07T00:00:00.000Z"),
+        refreshToken: " ",
+        refreshTokenExpires: null,
+      },
+      false,
+    ],
+    [
+      "non-expiring token",
+      {
+        accessToken: "valid",
+        expires: null,
+        refreshToken: null,
+        refreshTokenExpires: null,
+      },
+      true,
+    ],
+    [
+      "non-expiring token with refresh metadata",
+      {
+        accessToken: "valid",
+        expires: null,
+        refreshToken: "refresh",
+        refreshTokenExpires: new Date("2026-09-09T00:00:00.000Z"),
+      },
+      false,
+    ],
+    [
+      "access token beyond refresh skew",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:05:20.001Z"),
+        refreshToken: null,
+        refreshTokenExpires: null,
+      },
+      true,
+    ],
+    [
+      "access token at refresh skew without refresh",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:05:20.000Z"),
+        refreshToken: null,
+        refreshTokenExpires: null,
+      },
+      false,
+    ],
+    [
+      "refresh token with missing expiry",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:00:00.000Z"),
+        refreshToken: "refresh",
+        refreshTokenExpires: null,
+      },
+      false,
+    ],
+    [
+      "refresh token expiring exactly now",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:00:00.000Z"),
+        refreshToken: "refresh",
+        refreshTokenExpires: new Date("2026-09-08T12:00:00.000Z"),
+      },
+      false,
+    ],
+    [
+      "refresh token with past expiry",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:00:00.000Z"),
+        refreshToken: "refresh",
+        refreshTokenExpires: new Date("2026-09-08T11:59:59.999Z"),
+      },
+      false,
+    ],
+    [
+      "refresh token with future expiry",
+      {
+        accessToken: "valid",
+        expires: new Date("2026-09-08T12:00:00.000Z"),
+        refreshToken: "refresh",
+        refreshTokenExpires: new Date("2026-09-08T12:00:00.001Z"),
+      },
+      true,
+    ],
+  ] as const)(
+    "applies the durable credential predicate to %s",
+    async (_caseName, credentials, usable) => {
+      const now = new Date("2026-09-08T12:00:00.000Z");
+      const nextReconcileAt = new Date("2026-09-08T12:01:00.000Z");
+      dbMock.shop.findUnique.mockResolvedValue({
+        domain: shop.domain,
+        status: "UNINSTALLED",
+        reinstallPendingAt: null,
+      });
+      dbMock.session.findFirst.mockResolvedValue(credentials);
+      dbMock.subscription.upsert.mockResolvedValue({
+        id: "subscription-1",
+        nextReconcileAt,
+      });
 
-    const result = await new ShopService().beginReinstallReconciliation(shop.id, now);
+      const result = await new ShopService().beginReinstallReconciliation(
+        shop.id,
+        now,
+      );
 
-    expect(result.kind).toBe(usable ? "SCHEDULED" : "AUTHENTICATION_REQUIRED");
-    expect(dbMock.session.findFirst).toHaveBeenCalledWith({
-      where: { shop: shop.domain, isOnline: false },
-      select: { accessToken: true, expires: true, refreshToken: true, refreshTokenExpires: true },
-      orderBy: { expires: "desc" },
-    });
-    if (usable) {
-      expect(dbMock.shop.updateMany).toHaveBeenCalledOnce();
-      expect(dbMock.subscription.upsert).toHaveBeenCalledOnce();
-    } else {
-      expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
-      expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
-    }
-  });
+      expect(result.kind).toBe(
+        usable ? "SCHEDULED" : "AUTHENTICATION_REQUIRED",
+      );
+      expect(dbMock.session.findFirst).toHaveBeenCalledWith({
+        where: { shop: shop.domain, isOnline: false },
+        select: {
+          accessToken: true,
+          expires: true,
+          refreshToken: true,
+          refreshTokenExpires: true,
+        },
+        orderBy: { expires: "desc" },
+      });
+      if (usable) {
+        expect(dbMock.shop.updateMany).toHaveBeenCalledOnce();
+        expect(dbMock.subscription.upsert).toHaveBeenCalledOnce();
+      } else {
+        expect(dbMock.shop.updateMany).not.toHaveBeenCalled();
+        expect(dbMock.subscription.upsert).not.toHaveBeenCalled();
+      }
+    },
+  );
 });
 
 describe("reinstall admission failure diagnostics", () => {
   it.each([
     ["beginReinstallReconciliation", "begin_reinstall_reconciliation"],
     ["retryReinstallReconciliation", "retry_reinstall_reconciliation"],
-  ] as const)("emits original database evidence for %s and rethrows the same error", async (method, operation) => {
-    const records: string[] = [];
-    vi.spyOn(console, "error").mockImplementation((record) => { records.push(String(record)); });
-    const error = Object.assign(new Error("reinstall database failure marker", {
-      cause: new Error("reinstall database cause marker"),
-    }), { code: "P2034" });
-    dbMock.$transaction.mockRejectedValue(error);
-
-    try {
-      await expect(new ShopService()[method](shop.id)).rejects.toBe(error);
-      const record = JSON.parse(records[0] ?? "{}");
-      expect(record.event).toBe("shopify.lifecycle.failed");
-      expect(record.data).toMatchObject({
-        operation,
-        stage: "transaction",
-        origin: "database",
-        shopId: shop.id,
-        databaseCode: "P2034",
-        error: { message: "reinstall database failure marker" },
-        causeChain: [{ message: "reinstall database cause marker" }],
+  ] as const)(
+    "emits original database evidence for %s and rethrows the same error",
+    async (method, operation) => {
+      const records: string[] = [];
+      vi.spyOn(console, "error").mockImplementation((record) => {
+        records.push(String(record));
       });
-    } finally {
-      vi.restoreAllMocks();
-    }
-  });
+      const error = Object.assign(
+        new Error("reinstall database failure marker", {
+          cause: new Error("reinstall database cause marker"),
+        }),
+        { code: "P2034" },
+      );
+      dbMock.$transaction.mockRejectedValue(error);
+
+      try {
+        await expect(new ShopService()[method](shop.id)).rejects.toBe(error);
+        const record = JSON.parse(records[0] ?? "{}");
+        expect(record.event).toBe("shopify.lifecycle.failed");
+        expect(record.data).toMatchObject({
+          operation,
+          stage: "transaction",
+          origin: "database",
+          shopId: shop.id,
+          databaseCode: "P2034",
+          error: { message: "reinstall database failure marker" },
+          causeChain: [{ message: "reinstall database cause marker" }],
+        });
+      } finally {
+        vi.restoreAllMocks();
+      }
+    },
+  );
 });
 
 describe("ShopService.resolveShopifyShop", () => {
   it("creates the no-contract projection once and keeps repeated resolution read-only", async () => {
-    dbMock.shop.findUnique
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        ...shop,
-        storeLocale: null,
-        defaultLanguageTag: null,
-        defaultTimeZone: null,
-        defaultCountryCode: null,
-      });
+    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      ...shop,
+      storeLocale: null,
+      defaultLanguageTag: null,
+      defaultTimeZone: null,
+      defaultCountryCode: null,
+    });
     dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1" });
     dbMock.shopSettings.findUnique.mockResolvedValue({
       id: "settings-1",
@@ -486,7 +680,10 @@ describe("ShopService.resolveShopifyShop", () => {
         defaultTimeZone: null,
         defaultCountryCode: null,
       });
-      dbMock.subscription.findUnique.mockResolvedValue({ id: "subscription-1", status });
+      dbMock.subscription.findUnique.mockResolvedValue({
+        id: "subscription-1",
+        status,
+      });
       dbMock.shopSettings.findUnique.mockResolvedValue({
         id: "settings-1",
         defaultLanguageTag: null,
@@ -561,12 +758,15 @@ describe("ShopService.resolveShopifyShop", () => {
       },
     });
 
-    const query = (admin.graphql as unknown as { mock: { calls: unknown[][] } }).mock.calls[0]?.[0] as string;
+    const query = (admin.graphql as unknown as { mock: { calls: unknown[][] } })
+      .mock.calls[0]?.[0] as string;
     expect(query).toContain("shopLocales");
     expect(query).toMatch(
       /shop \{[\s\S]*shopAddress \{[\s\S]*\}\s*\}\s*shopLocales \{/,
     );
-    expect(query).toContain("            }\n          }\n          shopLocales {");
+    expect(query).toContain(
+      "            }\n          }\n          shopLocales {",
+    );
     expect(query).not.toContain("currency");
     expect(query).not.toContain("Session.locale");
   });
@@ -627,18 +827,23 @@ describe("ShopService.resolveShopifyShop", () => {
       shopLocales: [{ locale: "haw-US", primary: true, published: true }],
     });
 
-    await new ShopService().resolveShopifyShop({ admin, sessionShop: shop.domain });
+    await new ShopService().resolveShopifyShop({
+      admin,
+      sessionShop: shop.domain,
+    });
 
-    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: expect.objectContaining({
-        storeLocale: "haw-US",
-        defaultLanguageTag: "haw-US",
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          storeLocale: "haw-US",
+          defaultLanguageTag: "haw-US",
+        }),
+        update: expect.objectContaining({
+          storeLocale: "haw-US",
+          defaultLanguageTag: "haw-US",
+        }),
       }),
-      update: expect.objectContaining({
-        storeLocale: "haw-US",
-        defaultLanguageTag: "haw-US",
-      }),
-    }));
+    );
   });
 
   it("does not change the shop lifecycle status during resolution", async () => {
@@ -698,116 +903,221 @@ describe("ShopService.resolveShopifyShop", () => {
         },
       }),
     );
-    expect(dbMock.shop.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: { shopifyShopId: shop.shopifyShopId },
-    }));
+    expect(dbMock.shop.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { shopifyShopId: shop.shopifyShopId },
+      }),
+    );
   });
 });
 
 describe("merchant snapshot source diagnostics", () => {
   function capture() {
     const records: string[] = [];
-    vi.spyOn(console, "error").mockImplementation((record) => {records.push(String(record));});
+    vi.spyOn(console, "error").mockImplementation((record) => {
+      records.push(String(record));
+    });
     return records;
   }
   it("returns the already-read full scalar rows without a duplicate existence probe", async () => {
     dbMock.shop.findUnique.mockResolvedValue(shop);
-    dbMock.subscription.findUnique.mockResolvedValue({id: "subscription", status: "FROZEN"});
-    dbMock.shopSettings.findUnique.mockResolvedValue({id: "settings"});
+    dbMock.subscription.findUnique.mockResolvedValue({
+      id: "subscription",
+      status: "FROZEN",
+    });
+    dbMock.shopSettings.findUnique.mockResolvedValue({ id: "settings" });
     const snapshot = await new ShopService().resolveShopifyMerchantSnapshot({
-      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
+      admin: adminFor({
+        shopifyShopId: shop.shopifyShopId,
+        myshopifyDomain: shop.domain,
+      }),
+      sessionShop: shop.domain,
     });
     expect(snapshot.subscription.status).toBe("FROZEN");
-    expect(dbMock.subscription.findUnique).toHaveBeenCalledExactlyOnceWith({where: {shopId: shop.id}});
-    expect(dbMock.shopSettings.findUnique).toHaveBeenCalledExactlyOnceWith({where: {shopId: shop.id}});
+    expect(dbMock.subscription.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { shopId: shop.id },
+    });
+    expect(dbMock.shopSettings.findUnique).toHaveBeenCalledExactlyOnceWith({
+      where: { shopId: shop.id },
+    });
   });
   it("retains errors-only provider message, code and request ID while redacting sensitive spans", async () => {
     const records = capture();
-    const admin = {graphql: vi.fn(async () => Response.json({
-      errors: [{message: "profile-original-marker token=private-token-sentinel email=private@example.test https://x.test/?signature=private-url-sentinel",
-        extensions: {code: "PROFILE_DENIED"}}],
-    }, {headers: {"x-request-id": "provider-request-marker"}}))} as unknown as AdminApiContext;
+    const admin = {
+      graphql: vi.fn(async () =>
+        Response.json(
+          {
+            errors: [
+              {
+                message:
+                  "profile-original-marker token=private-token-sentinel email=private@example.test https://x.test/?signature=private-url-sentinel",
+                extensions: { code: "PROFILE_DENIED" },
+              },
+            ],
+          },
+          { headers: { "x-request-id": "provider-request-marker" } },
+        ),
+      ),
+    } as unknown as AdminApiContext;
     try {
-      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, sessionShop: shop.domain}))
-        .rejects.toThrow("profile-original-marker");
+      await expect(
+        new ShopService().resolveShopifyMerchantSnapshot({
+          admin,
+          sessionShop: shop.domain,
+        }),
+      ).rejects.toThrow("profile-original-marker");
       const emitted = records.join("\n");
       expect(emitted).toContain("profile-original-marker");
       expect(emitted).toContain("PROFILE_DENIED");
       expect(emitted).toContain("provider-request-marker");
       expect(emitted).toContain("provider_response");
-      expect(emitted).not.toMatch(/private-token-sentinel|private@example.test|private-url-sentinel/);
+      expect(emitted).not.toMatch(
+        /private-token-sentinel|private@example.test|private-url-sentinel/,
+      );
       expect(dbMock.shop.findUnique).not.toHaveBeenCalled();
       expect(dbMock.$transaction).not.toHaveBeenCalled();
-    } finally {vi.restoreAllMocks();}
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
-  it.each(["network", "json", "identity", "domain"])("owns %s failure and performs no writes", async (kind) => {
-    const records = capture();
-    const original = Object.assign(new HttpRequestError("original-failure-marker"), {cause: new Error("cause-marker")});
-    const admin = {
-      graphql: vi.fn(async () => {
-        if (kind === "network") throw original;
-        if (kind === "json") return {json: async () => {throw original;}, status: 200, headers: new Headers()};
-        return Response.json({data: {shop: {shopifyShopId: kind === "identity" ? {} : shop.shopifyShopId,
-          myshopifyDomain: kind === "domain" ? "foreign.myshopify.com" : shop.domain}}});
-      }),
-    } as unknown as AdminApiContext;
-    try {
-      await expect(new ShopService().resolveShopifyMerchantSnapshot({admin, sessionShop: shop.domain})).rejects.toThrow();
-      const data = JSON.parse(records[0]).data;
-      expect(data.origin).toBe(kind === "network" ? "transport" : "internal");
-      expect(data.providerError).toBeUndefined();
-      if (kind === "network" || kind === "json") {
-        expect(data.error.message).toContain("original-failure-marker");
-        expect(data.causeChain[0].message).toContain("cause-marker");
+  it.each(["network", "json", "identity", "domain"])(
+    "owns %s failure and performs no writes",
+    async (kind) => {
+      const records = capture();
+      const original = Object.assign(
+        new HttpRequestError("original-failure-marker"),
+        { cause: new Error("cause-marker") },
+      );
+      const admin = {
+        graphql: vi.fn(async () => {
+          if (kind === "network") throw original;
+          if (kind === "json")
+            return {
+              json: async () => {
+                throw original;
+              },
+              status: 200,
+              headers: new Headers(),
+            };
+          return Response.json({
+            data: {
+              shop: {
+                shopifyShopId: kind === "identity" ? {} : shop.shopifyShopId,
+                myshopifyDomain:
+                  kind === "domain" ? "foreign.myshopify.com" : shop.domain,
+              },
+            },
+          });
+        }),
+      } as unknown as AdminApiContext;
+      try {
+        await expect(
+          new ShopService().resolveShopifyMerchantSnapshot({
+            admin,
+            sessionShop: shop.domain,
+          }),
+        ).rejects.toThrow();
+        const data = JSON.parse(records[0]).data;
+        expect(data.origin).toBe(kind === "network" ? "transport" : "internal");
+        expect(data.providerError).toBeUndefined();
+        if (kind === "network" || kind === "json") {
+          expect(data.error.message).toContain("original-failure-marker");
+          expect(data.causeChain[0].message).toContain("cause-marker");
+        }
+        expect(dbMock.shop.upsert).not.toHaveBeenCalled();
+        expect(dbMock.$transaction).not.toHaveBeenCalled();
+      } finally {
+        vi.restoreAllMocks();
       }
-      expect(dbMock.shop.upsert).not.toHaveBeenCalled();
-      expect(dbMock.$transaction).not.toHaveBeenCalled();
-    } finally {vi.restoreAllMocks();}
-  });
+    },
+  );
   it("retains multiline Prisma safe reason, actual code and cause through real Shared JSON", async () => {
     const records = capture();
-    const error = Object.assign(new Error(
-      "Invalid prisma.shop.findUnique() invocation:\n\nDatabase failure: original-database-marker\nConnection: postgresql://user:password@db.test/private\nCause: safe-failure-reason",
-      {cause: new Error("database-cause-marker")},
-    ), {code: "P2021"});
+    const error = Object.assign(
+      new Error(
+        "Invalid prisma.shop.findUnique() invocation:\n\nDatabase failure: original-database-marker\nConnection: postgresql://user:password@db.test/private\nCause: safe-failure-reason",
+        { cause: new Error("database-cause-marker") },
+      ),
+      { code: "P2021" },
+    );
     dbMock.shop.findUnique.mockRejectedValue(error);
     try {
-      await expect(new ShopService().resolveShopifyShop({
-        admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
-      })).rejects.toBe(error);
+      await expect(
+        new ShopService().resolveShopifyShop({
+          admin: adminFor({
+            shopifyShopId: shop.shopifyShopId,
+            myshopifyDomain: shop.domain,
+          }),
+          sessionShop: shop.domain,
+        }),
+      ).rejects.toBe(error);
       const emitted = records.join("\n");
       expect(emitted).toContain("original-database-marker");
       expect(emitted).toContain("safe-failure-reason");
       expect(emitted).toContain("database-cause-marker");
       expect(emitted).toContain("P2021");
       expect(emitted).not.toContain("user:password");
-    } finally {vi.restoreAllMocks();}
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
   it("throwing Shared sink preserves original failure identity and successful resolution", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {throw new Error("sink-failure");});
+    vi.spyOn(console, "error").mockImplementation(() => {
+      throw new Error("sink-failure");
+    });
     const error = new Error("original-database-marker");
     dbMock.shop.findUnique.mockRejectedValueOnce(error);
-    const admin = adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain});
+    const admin = adminFor({
+      shopifyShopId: shop.shopifyShopId,
+      myshopifyDomain: shop.domain,
+    });
     try {
-      await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(error);
-      await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).resolves.toEqual(shop);
-    } finally {vi.restoreAllMocks();}
+      await expect(
+        new ShopService().resolveShopifyShop({
+          admin,
+          sessionShop: shop.domain,
+        }),
+      ).rejects.toBe(error);
+      await expect(
+        new ShopService().resolveShopifyShop({
+          admin,
+          sessionShop: shop.domain,
+        }),
+      ).resolves.toEqual(shop);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });
 
-
 it("retains installed SDK GraphqlQueryError evidence without exposing its data body", async () => {
   const records: string[] = [];
-  vi.spyOn(console, "error").mockImplementation(record => {records.push(String(record));});
+  vi.spyOn(console, "error").mockImplementation((record) => {
+    records.push(String(record));
+  });
   const source = new GraphqlQueryError({
     message: "sdk-original-marker",
-    response: {status: 200}, headers: {"x-request-id": "sdk-request-marker"},
-    body: {errors: {graphQLErrors: [{message: "provider-original-marker token=private-sdk-sentinel",
-      extensions: {code: "SDK_PROVIDER_CODE"}}]}, data: {privateData: "private-data-sentinel"}},
+    response: { status: 200 },
+    headers: { "x-request-id": "sdk-request-marker" },
+    body: {
+      errors: {
+        graphQLErrors: [
+          {
+            message: "provider-original-marker token=private-sdk-sentinel",
+            extensions: { code: "SDK_PROVIDER_CODE" },
+          },
+        ],
+      },
+      data: { privateData: "private-data-sentinel" },
+    },
   });
-  const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
+  const admin = {
+    graphql: vi.fn().mockRejectedValue(source),
+  } as unknown as AdminApiContext;
   try {
-    await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(source);
+    await expect(
+      new ShopService().resolveShopifyShop({ admin, sessionShop: shop.domain }),
+    ).rejects.toBe(source);
     const data = JSON.parse(records[0]).data;
     expect(data.origin).toBe("provider_response");
     expect(data.error.message).toBe("sdk-original-marker");
@@ -815,35 +1125,60 @@ it("retains installed SDK GraphqlQueryError evidence without exposing its data b
     expect(data.providerError[0].code).toBe("SDK_PROVIDER_CODE");
     expect(data.providerRequestId).toBe("sdk-request-marker");
     expect(data.redactionApplied).toBe(true);
-    expect(records.join("")).not.toMatch(/private-sdk-sentinel|private-data-sentinel/);
-  } finally {vi.restoreAllMocks();}
+    expect(records.join("")).not.toMatch(
+      /private-sdk-sentinel|private-data-sentinel/,
+    );
+  } finally {
+    vi.restoreAllMocks();
+  }
 });
 it("rejects an authenticated provider identity that conflicts with an existing local tenant", async () => {
   const record = vi.spyOn(console, "error").mockImplementation(() => undefined);
-  dbMock.shop.findUnique.mockResolvedValue({...shop, shopifyShopId: "gid://shopify/Shop/999"});
+  dbMock.shop.findUnique.mockResolvedValue({
+    ...shop,
+    shopifyShopId: "gid://shopify/Shop/999",
+  });
   try {
-    await expect(new ShopService().resolveShopifyShop({
-      admin: adminFor({shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain}), sessionShop: shop.domain,
-    })).rejects.toThrow("conflicts with local tenant identity");
+    await expect(
+      new ShopService().resolveShopifyShop({
+        admin: adminFor({
+          shopifyShopId: shop.shopifyShopId,
+          myshopifyDomain: shop.domain,
+        }),
+        sessionShop: shop.domain,
+      }),
+    ).rejects.toThrow("conflicts with local tenant identity");
     expect(dbMock.shop.upsert).not.toHaveBeenCalled();
     expect(dbMock.shop.update).not.toHaveBeenCalled();
     expect(dbMock.$transaction).not.toHaveBeenCalled();
     expect(record).toHaveBeenCalled();
-  } finally {vi.restoreAllMocks();}
+  } finally {
+    vi.restoreAllMocks();
+  }
 });
-
 
 it("retains actual SDK HTTP provider status and safe error excerpt", async () => {
   const records: string[] = [];
-  vi.spyOn(console, "error").mockImplementation(record => {records.push(String(record));});
-  const source = new HttpResponseError({
-    message: "sdk-http-marker", code: 503, statusText: "Service Unavailable",
-    headers: {"x-request-id": "http-request-marker"},
-    body: {errors: "upstream-http-marker token=private-http-sentinel", data: "private-body-sentinel"},
+  vi.spyOn(console, "error").mockImplementation((record) => {
+    records.push(String(record));
   });
-  const admin = {graphql: vi.fn().mockRejectedValue(source)} as unknown as AdminApiContext;
+  const source = new HttpResponseError({
+    message: "sdk-http-marker",
+    code: 503,
+    statusText: "Service Unavailable",
+    headers: { "x-request-id": "http-request-marker" },
+    body: {
+      errors: "upstream-http-marker token=private-http-sentinel",
+      data: "private-body-sentinel",
+    },
+  });
+  const admin = {
+    graphql: vi.fn().mockRejectedValue(source),
+  } as unknown as AdminApiContext;
   try {
-    await expect(new ShopService().resolveShopifyShop({admin, sessionShop: shop.domain})).rejects.toBe(source);
+    await expect(
+      new ShopService().resolveShopifyShop({ admin, sessionShop: shop.domain }),
+    ).rejects.toBe(source);
     const data = JSON.parse(records[0]).data;
     expect(data.origin).toBe("provider_response");
     expect(data.httpStatus).toBe(503);
@@ -851,24 +1186,42 @@ it("retains actual SDK HTTP provider status and safe error excerpt", async () =>
     expect(data.providerError.message).toContain("upstream-http-marker");
     expect(data.providerRequestId).toBe("http-request-marker");
     expect(data.redactionApplied).toBe(true);
-    expect(records.join("")).not.toMatch(/private-http-sentinel|private-body-sentinel/);
-  } finally {vi.restoreAllMocks();}
+    expect(records.join("")).not.toMatch(
+      /private-http-sentinel|private-body-sentinel/,
+    );
+  } finally {
+    vi.restoreAllMocks();
+  }
 });
 
-
 describe("merchant bootstrap unique-index race", () => {
-  const input = () => ({admin: adminFor({
-    shopifyShopId: shop.shopifyShopId, myshopifyDomain: shop.domain,
-  }), sessionShop: shop.domain});
+  const input = () => ({
+    admin: adminFor({
+      shopifyShopId: shop.shopifyShopId,
+      myshopifyDomain: shop.domain,
+    }),
+    sessionShop: shop.domain,
+  });
   it("retries once against an exact committed tenant without another provider observation", async () => {
     const records: string[] = [];
-    vi.spyOn(console, "warn").mockImplementation(record => {records.push(String(record));});
-    const source = Object.assign(new Error("bootstrap-race-marker", {cause: new Error("race-cause-marker")}), {code: "P2002"});
-    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
+    vi.spyOn(console, "warn").mockImplementation((record) => {
+      records.push(String(record));
+    });
+    const source = Object.assign(
+      new Error("bootstrap-race-marker", {
+        cause: new Error("race-cause-marker"),
+      }),
+      { code: "P2002" },
+    );
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(shop);
     dbMock.$transaction.mockRejectedValueOnce(source);
     const args = input();
     try {
-      const result = await new ShopService().resolveShopifyMerchantSnapshot(args);
+      const result = await new ShopService().resolveShopifyMerchantSnapshot(
+        args,
+      );
       expect(result.shop.id).toBe(shop.id);
       expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
       expect(args.admin.graphql).toHaveBeenCalledTimes(1);
@@ -877,30 +1230,58 @@ describe("merchant bootstrap unique-index race", () => {
       expect(data.error.message).toBe("bootstrap-race-marker");
       expect(data.causeChain[0].message).toBe("race-cause-marker");
       expect(data.shopId).toBe(shop.id);
-    } finally {vi.restoreAllMocks();}
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
-  it.each(["missing", "different-identity", "different-platform"])("does not retry a %s winner", async kind => {
-    const source = Object.assign(new Error("bootstrap-conflict-marker"), {code: "P2002"});
-    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(kind === "missing" ? null : {
-      ...shop, ...(kind === "different-identity" ? {shopifyShopId: "gid://shopify/Shop/999"} : {platform: "WOOCOMMERCE"}),
-    });
-    dbMock.$transaction.mockRejectedValueOnce(source);
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    try {
-      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(source);
-      expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
-    } finally {log.mockRestore();}
-  });
+  it.each(["missing", "different-identity", "different-platform"])(
+    "does not retry a %s winner",
+    async (kind) => {
+      const source = Object.assign(new Error("bootstrap-conflict-marker"), {
+        code: "P2002",
+      });
+      dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(
+        kind === "missing"
+          ? null
+          : {
+              ...shop,
+              ...(kind === "different-identity"
+                ? { shopifyShopId: "gid://shopify/Shop/999" }
+                : { platform: "WOOCOMMERCE" }),
+            },
+      );
+      dbMock.$transaction.mockRejectedValueOnce(source);
+      const log = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      try {
+        await expect(
+          new ShopService().resolveShopifyShop(input()),
+        ).rejects.toBe(source);
+        expect(dbMock.$transaction).toHaveBeenCalledTimes(1);
+      } finally {
+        log.mockRestore();
+      }
+    },
+  );
   it("retains the second failure and never performs an unbounded retry", async () => {
-    const first = Object.assign(new Error("first-race"), {code: "P2002"});
-    const second = Object.assign(new Error("second-race"), {code: "P2002"});
-    dbMock.shop.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(shop);
-    dbMock.$transaction.mockRejectedValueOnce(first).mockRejectedValueOnce(second);
+    const first = Object.assign(new Error("first-race"), { code: "P2002" });
+    const second = Object.assign(new Error("second-race"), { code: "P2002" });
+    dbMock.shop.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(shop);
+    dbMock.$transaction
+      .mockRejectedValueOnce(first)
+      .mockRejectedValueOnce(second);
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(second);
+      await expect(new ShopService().resolveShopifyShop(input())).rejects.toBe(
+        second,
+      );
       expect(dbMock.$transaction).toHaveBeenCalledTimes(2);
-    } finally {vi.restoreAllMocks();}
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

@@ -56,7 +56,11 @@ const pricingCatalogue = [
   },
 ];
 
-function renderState(merchantExperienceState, catalogue = pricingCatalogue, overrides = {}) {
+function renderState(
+  merchantExperienceState,
+  catalogue = pricingCatalogue,
+  overrides = {},
+) {
   return renderToStaticMarkup(
     <UsageOverview
       {...baseProps}
@@ -89,7 +93,9 @@ describe("UsageOverview merchant pricing state", () => {
     expect(markup).toContain("No active subscription");
     expect(markup).toContain("Subscribe again");
     expect(markup).toContain("Database Plan");
-    expect(markup).toContain("remaining purchased and lifetime Free recovery credits");
+    expect(markup).toContain(
+      "remaining purchased and lifetime Free recovery credits",
+    );
   });
 
   it("fails closed without either billing action for an empty NO_CONTRACT catalogue", () => {

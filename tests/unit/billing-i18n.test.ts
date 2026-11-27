@@ -56,17 +56,25 @@ describe("ARCH-007 billing translations", () => {
   ]);
 
   it("defines every billing key in every locale catalogue", async () => {
-    const localeFiles = (await readdir(localeDirectory)).filter((file) => file.endsWith(".json"));
-    const english = JSON.parse(await readFile(new URL("en.json", localeDirectory), "utf8"));
-    const billingKeys = Object.keys(english).filter((key) => key.startsWith("billing."));
+    const localeFiles = (await readdir(localeDirectory)).filter((file) =>
+      file.endsWith(".json"),
+    );
+    const english = JSON.parse(
+      await readFile(new URL("en.json", localeDirectory), "utf8"),
+    );
+    const billingKeys = Object.keys(english).filter((key) =>
+      key.startsWith("billing."),
+    );
 
     expect(billingKeys.length).toBeGreaterThan(0);
 
     for (const localeFile of localeFiles) {
-      const locale = JSON.parse(await readFile(new URL(localeFile, localeDirectory), "utf8"));
-      expect(Object.keys(locale).filter((key) => key.startsWith("billing."))).toEqual(
-        expect.arrayContaining(billingKeys),
+      const locale = JSON.parse(
+        await readFile(new URL(localeFile, localeDirectory), "utf8"),
       );
+      expect(
+        Object.keys(locale).filter((key) => key.startsWith("billing.")),
+      ).toEqual(expect.arrayContaining(billingKeys));
     }
   });
 
@@ -83,38 +91,55 @@ describe("ARCH-007 billing translations", () => {
 
     for (const locale of ["pt-BR", "pt-PT"] as const) {
       const catalogue = catalogues[locale] as Record<string, string>;
-      expect(catalogue["onboarding.topups.description"]).not.toBe(english["onboarding.topups.description"]);
-      expect(catalogue["onboarding.cta.description"]).not.toBe(english["onboarding.cta.description"]);
+      expect(catalogue["onboarding.topups.description"]).not.toBe(
+        english["onboarding.topups.description"],
+      );
+      expect(catalogue["onboarding.cta.description"]).not.toBe(
+        english["onboarding.cta.description"],
+      );
     }
   });
 
   it("preserves ICU placeholders and resolves every task key through the merchant runtime", () => {
     const english = catalogues.en as Record<string, string>;
-    const placeholders = (value: string) => [...value.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g)].map((match) => match[1]).sort();
+    const placeholders = (value: string) =>
+      [...value.matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*)\}/g)]
+        .map((match) => match[1])
+        .sort();
 
     expect(CATALOGUE_KEYS).toEqual(expect.arrayContaining(taskKeys));
     for (const locale of Object.keys(catalogues)) {
-      const catalogue = catalogues[locale as keyof typeof catalogues] as Record<string, string>;
-      const i18n = createMerchantI18n({ locale, fallbackLocale: "en", timeZone: "UTC" });
+      const catalogue = catalogues[locale as keyof typeof catalogues] as Record<
+        string,
+        string
+      >;
+      const i18n = createMerchantI18n({
+        locale,
+        fallbackLocale: "en",
+        timeZone: "UTC",
+      });
       expect(i18n.catalogueLocale).toBe(locale);
       for (const key of taskKeys) {
-        expect(placeholders(catalogue[key])).toEqual(placeholders(english[key]));
+        expect(placeholders(catalogue[key])).toEqual(
+          placeholders(english[key]),
+        );
         expect(catalogue[key]).toBeTruthy();
         if (locale !== "en" && localizedPhaseKeys.has(key)) {
           expect(catalogue[key]).not.toBe(english[key]);
         }
-        expect(i18n.t(key, {
-          granted: 100,
-          committed: 20,
-          reserved: 5,
-          refunding: 10,
-          available: 75,
-          quantity: 100,
-          remaining: 75,
-          allowance: 100,
-        })).toEqual(expect.any(String));
+        expect(
+          i18n.t(key, {
+            granted: 100,
+            committed: 20,
+            reserved: 5,
+            refunding: 10,
+            available: 75,
+            quantity: 100,
+            remaining: 75,
+            allowance: 100,
+          }),
+        ).toEqual(expect.any(String));
       }
     }
   });
-
 });

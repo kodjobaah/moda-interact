@@ -111,7 +111,10 @@ function loadIssuingCredentialConfiguration(): {
 } {
   try {
     const keyring = parseCredentialKeyring(process.env[KEYRING_ENV]);
-    const activeKeyId = resolveActiveCredentialKey(keyring, process.env[ACTIVE_KEY_ENV]);
+    const activeKeyId = resolveActiveCredentialKey(
+      keyring,
+      process.env[ACTIVE_KEY_ENV],
+    );
     return { keyring, activeKeyId };
   } catch (error) {
     return credentialConfigurationFailure(error);
@@ -186,7 +189,13 @@ function consentAad(
   kind: ConsentReceiptKind,
   bindingDigest: string,
 ): string {
-  return JSON.stringify(["moda-shopify-wa-consent", 1, shopId, kind, bindingDigest]);
+  return JSON.stringify([
+    "moda-shopify-wa-consent",
+    1,
+    shopId,
+    kind,
+    bindingDigest,
+  ]);
 }
 
 function base64urlBytes(value: string): Uint8Array | null {
@@ -233,7 +242,8 @@ function parseEnvelope(receipt: unknown): CredentialEnvelope {
   const parts = receipt.split(".");
   if (parts.length !== 5 || parts[0] !== "v1") return invalidReceipt();
   const [, keyId, nonceText, ciphertextText, authTagText] = parts;
-  if (!KEY_ID_PATTERN.test(keyId) || RESERVED_KEY_IDS.has(keyId)) return invalidReceipt();
+  if (!KEY_ID_PATTERN.test(keyId) || RESERVED_KEY_IDS.has(keyId))
+    return invalidReceipt();
   const nonce = base64urlBytes(nonceText);
   const ciphertext = base64urlBytes(ciphertextText);
   const authTag = base64urlBytes(authTagText);
@@ -260,21 +270,32 @@ function validateExpectedCustomerId(customerId: string | null): void {
   }
 }
 
-function parseClaims(
-  plaintext: string,
-  nowMs: number,
-): ConsentReceiptClaims {
+function parseClaims(plaintext: string, nowMs: number): ConsentReceiptClaims {
   let value: unknown;
   try {
     value = JSON.parse(plaintext) as unknown;
   } catch (error) {
     return invalidReceipt(error);
   }
-  if (!Array.isArray(value) || value.length !== 9 || JSON.stringify(value) !== plaintext) {
+  if (
+    !Array.isArray(value) ||
+    value.length !== 9 ||
+    JSON.stringify(value) !== plaintext
+  ) {
     return invalidReceipt();
   }
 
-  const [version, shopId, kind, bindingDigest, decision, disclosureVersion, locale, acceptedAt, customerId] = value;
+  const [
+    version,
+    shopId,
+    kind,
+    bindingDigest,
+    decision,
+    disclosureVersion,
+    locale,
+    acceptedAt,
+    customerId,
+  ] = value;
   if (
     version !== 1 ||
     typeof shopId !== "string" ||
@@ -310,14 +331,17 @@ function parseClaims(
   };
 }
 
-export function issueConsentReceipt(input: {
-  shopId: string;
-  kind: ConsentReceiptKind;
-  token: string;
-  decision: ConsentReceiptDecision;
-  locale: string;
-  customerId: string | null;
-}, options: { now?: number } = {}): string {
+export function issueConsentReceipt(
+  input: {
+    shopId: string;
+    kind: ConsentReceiptKind;
+    token: string;
+    decision: ConsentReceiptDecision;
+    locale: string;
+    customerId: string | null;
+  },
+  options: { now?: number } = {},
+): string {
   validateShopId(input.shopId);
   if (input.kind !== "c" && input.kind !== "x") {
     invalidInput("The Shopify consent receipt kind is invalid.");
@@ -327,7 +351,8 @@ export function issueConsentReceipt(input: {
   }
   validateExpectedCustomerId(input.customerId);
   const nowMs = options.now ?? Date.now();
-  if (!Number.isSafeInteger(nowMs) || nowMs <= 0) invalidInput("The server clock is invalid.");
+  if (!Number.isSafeInteger(nowMs) || nowMs <= 0)
+    invalidInput("The server clock is invalid.");
 
   const token = bindingToken(input.kind, input.token);
   const bindingDigest = digestBindingToken(token);
@@ -348,12 +373,14 @@ export function issueConsentReceipt(input: {
   const aad = consentAad(input.shopId, input.kind, bindingDigest);
   const { keyring, activeKeyId } = loadIssuingCredentialConfiguration();
   try {
-    return serializeEnvelope(encryptCredential({
-      keyring,
-      activeKeyId,
-      plaintext,
-      aad,
-    }));
+    return serializeEnvelope(
+      encryptCredential({
+        keyring,
+        activeKeyId,
+        plaintext,
+        aad,
+      }),
+    );
   } catch (error) {
     if (error instanceof CredentialSecurityError) {
       throw new ConsentReceiptServiceError(
@@ -382,7 +409,8 @@ export function verifyConsentReceipt(
   }
   validateExpectedCustomerId(expected.customerId);
   const nowMs = options.now ?? Date.now();
-  if (!Number.isSafeInteger(nowMs) || nowMs <= 0) invalidInput("The server clock is invalid.");
+  if (!Number.isSafeInteger(nowMs) || nowMs <= 0)
+    invalidInput("The server clock is invalid.");
   const token = bindingToken(expected.kind, expected.token);
   const bindingDigest = digestBindingToken(token);
   const envelope = parseEnvelope(receipt);
@@ -429,18 +457,21 @@ export function verifyConsentReceiptAttributes(
   let receipt: unknown;
   let found = false;
   for (const attribute of attributes) {
-    if (!attribute || typeof attribute !== "object" || Array.isArray(attribute)) continue;
+    if (!attribute || typeof attribute !== "object" || Array.isArray(attribute))
+      continue;
     if (
       !Object.hasOwn(attribute, "key") ||
       !("key" in attribute) ||
       attribute.key !== SHOPIFY_CONSENT_RECEIPT_ATTRIBUTE
-    ) continue;
+    )
+      continue;
     if (
       found ||
       !Object.hasOwn(attribute, "value") ||
       !("value" in attribute) ||
       typeof attribute.value !== "string"
-    ) return invalidReceipt();
+    )
+      return invalidReceipt();
     found = true;
     receipt = attribute.value;
   }
@@ -479,7 +510,8 @@ async function readExistingCustomerConsent(
   const phone = customer.phones[0];
   if (!phone) return "UNKNOWN";
 
-  const unclearedNoContact = phone.whatsappNoContactReason !== null &&
+  const unclearedNoContact =
+    phone.whatsappNoContactReason !== null &&
     phone.whatsappNoContactClearedAt === null;
   if (phone.whatsappNoContact || unclearedNoContact) return "NO_CONTACT";
 
@@ -503,30 +535,47 @@ export async function readReturningShopperConsentStatus(input: {
   database?: Pick<PrismaClient, "customer">;
 }): Promise<ReturningShopperConsentStatus> {
   validateShopId(input.shopId);
-  if (input.shopifyCustomerId !== null && !isCustomerId(input.shopifyCustomerId)) {
+  if (
+    input.shopifyCustomerId !== null &&
+    !isCustomerId(input.shopifyCustomerId)
+  ) {
     invalidInput("The verified Shopify customer identity is invalid.");
   }
   const decision = input.shopifyCustomerId
-    ? await readExistingCustomerConsent(input.shopId, input.shopifyCustomerId, input.database ?? prisma)
+    ? await readExistingCustomerConsent(
+        input.shopId,
+        input.shopifyCustomerId,
+        input.database ?? prisma,
+      )
     : "NO_CUSTOMER";
   return { checked: decision === "GRANTED", decision, source: "postgresql" };
 }
 
 export function logShopifyConsentFailure(input: {
-  operation: "app_proxy_authentication" | "shop_resolution" | "status_read" | "cart_receipt" | "cart_verify" | "checkout_receipt" | "activation_status";
+  operation:
+    | "app_proxy_authentication"
+    | "shop_resolution"
+    | "status_read"
+    | "cart_receipt"
+    | "cart_verify"
+    | "checkout_receipt"
+    | "activation_status";
   stage: string;
   error: unknown;
   shopId?: string;
   sensitiveValues?: string[];
   reasonCode?: string;
 }): void {
-  const consentError = input.error instanceof ConsentReceiptServiceError ? input.error : null;
+  const consentError =
+    input.error instanceof ConsentReceiptServiceError ? input.error : null;
   logBillingBoundaryFailure({
     event: "shopify.consent.request.failed",
     operation: input.operation,
     stage: input.stage,
     ...(input.shopId ? { shopId: input.shopId } : {}),
-    ...(input.reasonCode || consentError ? { reasonCode: input.reasonCode ?? consentError?.code } : {}),
+    ...(input.reasonCode || consentError
+      ? { reasonCode: input.reasonCode ?? consentError?.code }
+      : {}),
     error: input.error,
     sensitiveValues: input.sensitiveValues,
   });

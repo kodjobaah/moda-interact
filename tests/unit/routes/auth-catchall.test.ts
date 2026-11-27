@@ -38,13 +38,18 @@ beforeEach(() => {
 
 describe("auth catchall reinstall gate", () => {
   it("leaves an active shop lifecycle unchanged", async () => {
-    await expect(loader(loaderArgs("https://example.test/auth/callback"))).resolves.toBeNull();
+    await expect(
+      loader(loaderArgs("https://example.test/auth/callback")),
+    ).resolves.toBeNull();
 
     expect(resolveShopifyShop).toHaveBeenCalledWith({
-      admin: {id: "shopify-admin"}, sessionShop: "merchant.myshopify.com",
+      admin: { id: "shopify-admin" },
+      sessionShop: "merchant.myshopify.com",
     });
     expect(beginReinstallReconciliation).not.toHaveBeenCalled();
-    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+    expect(
+      enqueueBillingSubscriptionReconcileBestEffort,
+    ).not.toHaveBeenCalled();
   });
 
   it("schedules an uninstalled shop before redirecting to restoration", async () => {
@@ -54,8 +59,14 @@ describe("auth catchall reinstall gate", () => {
       reinstallPendingAt: new Date("2026-09-14T00:00:00.000Z"),
       expectedNextReconcileAt: new Date("2026-09-14T00:00:00.000Z"),
     };
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED" });
-    beginReinstallReconciliation.mockResolvedValue({ kind: "SCHEDULED", schedule: reconciliation });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+    });
+    beginReinstallReconciliation.mockResolvedValue({
+      kind: "SCHEDULED",
+      schedule: reconciliation,
+    });
 
     let error: unknown;
     try {
@@ -65,17 +76,30 @@ describe("auth catchall reinstall gate", () => {
     }
 
     expect(error).toBeInstanceOf(Response);
-    expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
-    expect(enqueueBillingSubscriptionReconcileBestEffort).toHaveBeenCalledWith(reconciliation);
+    expect((error as Response).headers.get("Location")).toBe(
+      "/app/reinstalling",
+    );
+    expect(enqueueBillingSubscriptionReconcileBestEffort).toHaveBeenCalledWith(
+      reconciliation,
+    );
   });
 
   it("redirects missing durable credentials to login using only the authenticated shop", async () => {
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED" });
-    beginReinstallReconciliation.mockResolvedValue({ kind: "AUTHENTICATION_REQUIRED" });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+    });
+    beginReinstallReconciliation.mockResolvedValue({
+      kind: "AUTHENTICATION_REQUIRED",
+    });
 
     let error: unknown;
     try {
-      await loader(loaderArgs("https://example.test/auth/callback?shop=attacker.myshopify.com"));
+      await loader(
+        loaderArgs(
+          "https://example.test/auth/callback?shop=attacker.myshopify.com",
+        ),
+      );
     } catch (caught) {
       error = caught;
     }
@@ -84,11 +108,16 @@ describe("auth catchall reinstall gate", () => {
     expect((error as Response).headers.get("Location")).toBe(
       "/auth/login?shop=merchant.myshopify.com",
     );
-    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+    expect(
+      enqueueBillingSubscriptionReconcileBestEffort,
+    ).not.toHaveBeenCalled();
   });
 
   it("redirects a stopped reinstall without restarting or enqueueing it", async () => {
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED" });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+    });
     beginReinstallReconciliation.mockResolvedValue({ kind: "NO_CHANGE" });
 
     let error: unknown;
@@ -99,16 +128,24 @@ describe("auth catchall reinstall gate", () => {
     }
 
     expect(error).toBeInstanceOf(Response);
-    expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
-    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+    expect((error as Response).headers.get("Location")).toBe(
+      "/app/reinstalling",
+    );
+    expect(
+      enqueueBillingSubscriptionReconcileBestEffort,
+    ).not.toHaveBeenCalled();
   });
 
   it("does not begin or enqueue reconciliation for a suspended shop", async () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "SUSPENDED" });
 
-    await expect(loader(loaderArgs("https://example.test/auth/callback"))).resolves.toBeNull();
+    await expect(
+      loader(loaderArgs("https://example.test/auth/callback")),
+    ).resolves.toBeNull();
 
     expect(beginReinstallReconciliation).not.toHaveBeenCalled();
-    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+    expect(
+      enqueueBillingSubscriptionReconcileBestEffort,
+    ).not.toHaveBeenCalled();
   });
 });

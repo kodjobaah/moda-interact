@@ -11,10 +11,10 @@ https://shopify.dev/docs/api/admin-graphql/2026-07/objects/BrandingBrand
 
 The 2026-10-27 source snapshot contains **two different Shopify app client IDs**:
 
-| File | API version | Previously declared scopes | Change |
-| --- | --- | --- | --- |
-| `shopify.app.toml` | `2026-10` | `write_products,write_metaobjects,write_metaobject_definitions` | Append required `read_brand`; preserve existing `app/scopes_update` subscription. |
-| `shopify.app.moda-interact.toml` | `2026-07` | `read_customers,read_discounts,read_locales,read_markets,read_orders,read_products` | Append required `read_brand`; subscribe the already implemented `/webhooks/app/scopes_update` route. |
+| File                             | API version | Previously declared scopes                                                          | Change                                                                                               |
+| -------------------------------- | ----------- | ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `shopify.app.toml`               | `2026-10`   | `write_products,write_metaobjects,write_metaobject_definitions`                     | Append required `read_brand`; preserve existing `app/scopes_update` subscription.                    |
+| `shopify.app.moda-interact.toml` | `2026-07`   | `read_customers,read_discounts,read_locales,read_markets,read_orders,read_products` | Append required `read_brand`; subscribe the already implemented `/webhooks/app/scopes_update` route. |
 
 The source snapshot's `.shopify/project.json` references the **named** app ID for a development store, and the existing ARCH-045 Shopify configuration notes identify the named file as intended for the 2026-07 consent integration. This is **not proof of which app version is deployed**, or of granted scopes on any installed merchant store. Do **not** deploy the template/default config to the named app, or assume modifying one app grants access to the other. `shopify.app.moda-interact.toml.good` and `.test` are preserved as snapshot artefacts, not treated as an authoritative deployment target.
 
@@ -38,7 +38,9 @@ https://shopify.dev/docs/apps/build/authentication-authorization/manage-access-s
    ```graphql
    query GrantedShopifyScopes {
      currentAppInstallation {
-       accessScopes { handle }
+       accessScopes {
+         handle
+       }
      }
    }
    ```

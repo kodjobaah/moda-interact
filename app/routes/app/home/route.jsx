@@ -10,7 +10,6 @@ import {
 
 import { boundary } from "@shopify/shopify-app-react-router/server";
 
-
 import LegacyBillingUnavailable from "@/components/dashboard/LegacyBillingUnavailable";
 import RecoveryOverview from "@/components/dashboard/RecoveryOverview";
 import { loadOverviewPerformance, overviewEmbed } from "./overview.server";
@@ -36,9 +35,15 @@ import db from "@/db.server";
 import { logBillingBoundaryFailure } from "@/services/billing/providers/shopify-billing-diagnostics.server";
 
 /** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
-export const loader = async ({ request, context = new RouterContextProvider() }) => {
+export const loader = async ({
+  request,
+  context = new RouterContextProvider(),
+}) => {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop, authentication: { session } } = merchant;
+  const {
+    shop,
+    authentication: { session },
+  } = merchant;
   const url = new URL(request.url);
   const embed = overviewEmbed(url, session.shop);
   const pendingPage = Number.parseInt(
@@ -128,14 +133,37 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     throw redirect(`/app/usage?${params}`);
   }
   const [billing, performance] = await Promise.all([
-    billingService.readMerchantHomeBillingPresentation({ shop, subscription: subscriptionProjection, now: new Date(), pricingCatalogue }).catch(error => {
-      logBillingBoundaryFailure({ event: "shopify.billing.home_read_failed", operation: "read_home_presentation", stage: "read_capacity", shopId: shop.id, error });
-      return { capacity: null, subscription: subscriptionProjection ? {
-        status: subscriptionProjection.status, planHandle: subscriptionProjection.observedShopifyPlanHandle,
-        planName: subscriptionProjection.observedShopifyPlanHandle, cancelAtEndOfCycle: subscriptionProjection.cancelAtPeriodEnd,
-        currentPeriodEnd: subscriptionProjection.currentPeriodEnd?.toISOString() ?? null, pendingPlan: null,
-      } : null };
-    }),
+    billingService
+      .readMerchantHomeBillingPresentation({
+        shop,
+        subscription: subscriptionProjection,
+        now: new Date(),
+        pricingCatalogue,
+      })
+      .catch((error) => {
+        logBillingBoundaryFailure({
+          event: "shopify.billing.home_read_failed",
+          operation: "read_home_presentation",
+          stage: "read_capacity",
+          shopId: shop.id,
+          error,
+        });
+        return {
+          capacity: null,
+          subscription: subscriptionProjection
+            ? {
+                status: subscriptionProjection.status,
+                planHandle: subscriptionProjection.observedShopifyPlanHandle,
+                planName: subscriptionProjection.observedShopifyPlanHandle,
+                cancelAtEndOfCycle: subscriptionProjection.cancelAtPeriodEnd,
+                currentPeriodEnd:
+                  subscriptionProjection.currentPeriodEnd?.toISOString() ??
+                  null,
+                pendingPlan: null,
+              }
+            : null,
+        };
+      }),
     loadOverviewPerformance(shop.id, url, merchantUi, embed),
   ]);
 
@@ -178,9 +206,7 @@ export default function Index() {
   const data = useLoaderData();
   const navigation = useNavigation();
   const revalidator = useRevalidator();
-  if (
-    data.merchantExperienceState === "ONBOARDING"
-  ) {
+  if (data.merchantExperienceState === "ONBOARDING") {
     return data.billingSetup ? (
       <BillingSetupStatus
         merchantUi={data.merchantUi}

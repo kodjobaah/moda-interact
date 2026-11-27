@@ -1,5 +1,8 @@
 import { RouterContextProvider } from "react-router";
-import { getMerchantRequestContext, merchantPageContextMiddleware } from "@/services/shop/merchant-request-context.server";
+import {
+  getMerchantRequestContext,
+  merchantPageContextMiddleware,
+} from "@/services/shop/merchant-request-context.server";
 import { Outlet, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
@@ -16,9 +19,15 @@ import MerchantNavigation from "@/components/dashboard/MerchantNavigation";
 export const middleware = [merchantPageContextMiddleware];
 
 /** @param {{request: Request, context?: Readonly<import("react-router").RouterContextProvider>}} args */
-export const loader = async ({ request, context = new RouterContextProvider() }) => {
+export const loader = async ({
+  request,
+  context = new RouterContextProvider(),
+}) => {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop, authentication: { session } } = merchant;
+  const {
+    shop,
+    authentication: { session },
+  } = merchant;
   const pathname = new URL(request.url).pathname;
   const isMerchantSupport =
     pathname === "/app/merchant-support" ||

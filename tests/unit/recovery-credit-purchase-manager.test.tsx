@@ -51,7 +51,8 @@ function purchase(id: string, status: string, availableAmount: number) {
     heldForRefundAmount: status === "WITHDRAWN" ? 1 : 0,
     planName: "Growth",
     planHandle: "growth",
-    eventHandle: id === "active" ? "bronze-top-up-growth" : `${id}-top-up-growth`,
+    eventHandle:
+      id === "active" ? "bronze-top-up-growth" : `${id}-top-up-growth`,
     originalProviderPurchase: { amount: "12.50", currency: "USD" },
     latestRefund: status === "WITHDRAWN" ? { status: "REQUESTED" } : null,
     completedRefund:
@@ -119,11 +120,15 @@ describe("purchased credit history manager", () => {
 
   it("renders the dedicated purchase-history presentation and guards duplicate refund submission", () => {
     expect(managerSource).toContain('import "./BillingPurchaseHub.css"');
-    expect(managerSource).toContain('className="moda-billing-panel moda-purchase-history"');
+    expect(managerSource).toContain(
+      'className="moda-billing-panel moda-purchase-history"',
+    );
     expect(managerSource).toContain('className="moda-purchase-toolbar"');
     expect(managerSource).toContain('className="moda-purchase-dialog"');
     expect(managerSource).toContain("const submissionLock = useRef(false)");
-    expect(managerSource).toContain("if (selectedPurchases.length === 0 || submissionLock.current) return");
+    expect(managerSource).toContain(
+      "if (selectedPurchases.length === 0 || submissionLock.current) return",
+    );
     expect(managerSource).toContain("setSelected([purchase.id])");
   });
 
@@ -143,7 +148,9 @@ describe("purchased credit history manager", () => {
   });
 
   it("uses authenticated shop resolution and separate read/manage capabilities", () => {
-    expect(routeSource).toContain("await getMerchantRequestContext({ request, context })");
+    expect(routeSource).toContain(
+      "await getMerchantRequestContext({ request, context })",
+    );
     expect(routeSource).toContain('capability: "read-billing"');
     expect(routeSource).toContain('capability: "manage-billing"');
     expect(routeSource).toContain("shopId: shop.id");
@@ -168,7 +175,9 @@ describe("purchased credit history manager", () => {
     expect(managerSource).toContain(
       "const nextParams = new URLSearchParams(searchParams)",
     );
-    expect(managerSource).toContain('nextParams.set("pageSize", String(nextPageSize))');
+    expect(managerSource).toContain(
+      'nextParams.set("pageSize", String(nextPageSize))',
+    );
     expect(managerSource).toContain(
       "setSearchParams(nextParams, { preventScrollReset: true })",
     );

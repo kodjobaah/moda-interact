@@ -158,11 +158,21 @@ const router = createBrowserRouter([
         loader: ({ request, params }) => {
           const id = params.recoveryId!;
           const no = id === "empty";
-          const handover = new URL(request.url).searchParams.get("handover") ?? "ai";
+          const handover =
+            new URL(request.url).searchParams.get("handover") ?? "ai";
           const terminal = handover === "terminal";
           const suspended = handover === "suspended";
-          const human = ["human-open", "human-closed", "follow-up-used", "suspended"].includes(handover);
-          const closedWindow = ["human-closed", "follow-up-used", "suspended"].includes(handover);
+          const human = [
+            "human-open",
+            "human-closed",
+            "follow-up-used",
+            "suspended",
+          ].includes(handover);
+          const closedWindow = [
+            "human-closed",
+            "follow-up-used",
+            "suspended",
+          ].includes(handover);
           return {
             merchantUi,
             embed,
@@ -185,22 +195,48 @@ const router = createBrowserRouter([
                       incomplete: false,
                     },
                     hasConversation: !no,
-                    basket: projectRecoveryBasket([
-                      { title: "Blue shirt", variantTitle: "Large", quantity: 2, price: "29.75" },
-                      { title: "Black trousers", variantTitle: "Medium", quantity: 1, price: "75.00" },
-                    ], "GBP", "134.50"),
+                    basket: projectRecoveryBasket(
+                      [
+                        {
+                          title: "Blue shirt",
+                          variantTitle: "Large",
+                          quantity: 2,
+                          price: "29.75",
+                        },
+                        {
+                          title: "Black trousers",
+                          variantTitle: "Medium",
+                          quantity: 1,
+                          price: "75.00",
+                        },
+                      ],
+                      "GBP",
+                      "134.50",
+                    ),
                     initialOutreachSentAt: "2026-09-19T23:31:00.000Z",
-                    conversation: no ? null : {
-                      id: `fixture-conversation-${id}`,
-                      controlMode: human ? "HUMAN" as const : "AI" as const,
-                      controlRevision: 2,
-                      lastInboundAt: "2026-09-19T23:33:00.000Z",
-                      windowExpiresAt: closedWindow ? "2000-01-01T00:00:00.000Z" : "2099-01-01T00:00:00.000Z",
-                      followUp: { used: handover === "follow-up-used", initiatedBy: null,
-                        eligible: handover !== "follow-up-used", hasApprovedTemplate: true },
-                      humanMessagingStatus: suspended ? "SUSPENDED" as const : "ACTIVE" as const,
-                      latestCommand: null,
-                    },
+                    conversation: no
+                      ? null
+                      : {
+                          id: `fixture-conversation-${id}`,
+                          controlMode: human
+                            ? ("HUMAN" as const)
+                            : ("AI" as const),
+                          controlRevision: 2,
+                          lastInboundAt: "2026-09-19T23:33:00.000Z",
+                          windowExpiresAt: closedWindow
+                            ? "2000-01-01T00:00:00.000Z"
+                            : "2099-01-01T00:00:00.000Z",
+                          followUp: {
+                            used: handover === "follow-up-used",
+                            initiatedBy: null,
+                            eligible: handover !== "follow-up-used",
+                            hasApprovedTemplate: true,
+                          },
+                          humanMessagingStatus: suspended
+                            ? ("SUSPENDED" as const)
+                            : ("ACTIVE" as const),
+                          latestCommand: null,
+                        },
                     milestones: {
                       detectedAt: "2026-09-19T23:30:00.000Z",
                       messageSentAt: "2026-09-19T23:31:00.000Z",
@@ -209,7 +245,13 @@ const router = createBrowserRouter([
                       expiredAt: null,
                     },
                   },
-            templates: [{ id: "fixture-approved-template", name: "Approved recovery reminder", language: "en" }],
+            templates: [
+              {
+                id: "fixture-approved-template",
+                name: "Approved recovery reminder",
+                language: "en",
+              },
+            ],
             messages: {
               state: "ready",
               page: no

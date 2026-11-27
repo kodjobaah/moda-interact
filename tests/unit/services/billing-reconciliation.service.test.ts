@@ -14,9 +14,17 @@ async function captureSharedErrorRecords(
   const sink = vi.spyOn(console, "error").mockImplementation((line) => {
     if (options.throwFromSink) throw new Error("test Shared sink failure");
     if (typeof line !== "string") return;
-    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+    try {
+      records.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      return;
+    }
   });
-  try { await run(); } finally { sink.mockRestore(); }
+  try {
+    await run();
+  } finally {
+    sink.mockRestore();
+  }
   return records;
 }
 
@@ -51,20 +59,26 @@ describe("billing reconciliation producer", () => {
 
   it("isolates queue add failures", async () => {
     const cause = new Error("Redis socket marker merchant@example.com");
-    const failure = new Error("Redis queue marker password=redis-secret", { cause });
+    const failure = new Error("Redis queue marker password=redis-secret", {
+      cause,
+    });
     const queue = { add: vi.fn().mockRejectedValue(failure) };
 
     const records = await captureSharedErrorRecords(async () => {
-      await expect(enqueueBillingSubscriptionReconcileBestEffort(
-        {
-          shopId: "shop-1",
-          subscriptionId: "subscription-1",
-          expectedNextReconcileAt: new Date(),
-        },
-        queue,
-      )).resolves.toBeUndefined();
+      await expect(
+        enqueueBillingSubscriptionReconcileBestEffort(
+          {
+            shopId: "shop-1",
+            subscriptionId: "subscription-1",
+            expectedNextReconcileAt: new Date(),
+          },
+          queue,
+        ),
+      ).resolves.toBeUndefined();
     });
-    const record = records.find((item) => item.event === "billing.subscription_reconcile.enqueue_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_reconcile.enqueue_failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -77,36 +91,61 @@ describe("billing reconciliation producer", () => {
         expectedNextReconcileAt: expect.any(String),
       },
       error: { name: "Error", message: "Redis queue marker [REDACTED]" },
-      causeChain: [{ name: "Error", message: "Redis socket marker [REDACTED]" }],
+      causeChain: [
+        { name: "Error", message: "Redis socket marker [REDACTED]" },
+      ],
     });
     expect(JSON.stringify(record)).not.toContain("redis-secret");
     expect(JSON.stringify(record)).not.toContain("merchant@example.com");
 
     const isolatedQueue = { add: vi.fn().mockRejectedValue(failure) };
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(enqueueBillingSubscriptionReconcileBestEffort({
-        shopId: "shop-1",
-        subscriptionId: "subscription-1",
-        expectedNextReconcileAt: new Date(),
-      }, isolatedQueue),).resolves.toBeUndefined();
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(
+          enqueueBillingSubscriptionReconcileBestEffort(
+            {
+              shopId: "shop-1",
+              subscriptionId: "subscription-1",
+              expectedNextReconcileAt: new Date(),
+            },
+            isolatedQueue,
+          ),
+        ).resolves.toBeUndefined();
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
     expect(isolatedQueue.add).toHaveBeenCalledOnce();
   });
 
   it("logs queue acquisition failure at its own best-effort boundary", async () => {
-    const cause = new Error("Redis connection configuration marker merchant@example.com");
-    const failure = new Error("Redis queue construction marker password=queue-secret", { cause });
-    const queueFactory = vi.fn(() => { throw failure; });
+    const cause = new Error(
+      "Redis connection configuration marker merchant@example.com",
+    );
+    const failure = new Error(
+      "Redis queue construction marker password=queue-secret",
+      { cause },
+    );
+    const queueFactory = vi.fn(() => {
+      throw failure;
+    });
     vi.stubEnv("REDIS_URL", "redis://localhost:6379");
     const records = await captureSharedErrorRecords(async () => {
-      await expect(enqueueBillingSubscriptionReconcileBestEffort({
-        shopId: "shop-2",
-        subscriptionId: "subscription-2",
-        expectedNextReconcileAt: new Date("2026-11-05T00:00:00.000Z"),
-      }, undefined, queueFactory)).resolves.toBeUndefined();
+      await expect(
+        enqueueBillingSubscriptionReconcileBestEffort(
+          {
+            shopId: "shop-2",
+            subscriptionId: "subscription-2",
+            expectedNextReconcileAt: new Date("2026-11-05T00:00:00.000Z"),
+          },
+          undefined,
+          queueFactory,
+        ),
+      ).resolves.toBeUndefined();
     });
-    const record = records.find((item) => item.event === "billing.subscription_reconcile.enqueue_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_reconcile.enqueue_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "enqueue_billing_subscription_reconcile",
@@ -117,8 +156,16 @@ describe("billing reconciliation producer", () => {
         subscriptionId: "subscription-2",
         expectedNextReconcileAt: "2026-11-05T00:00:00.000Z",
       },
-      error: { name: "Error", message: "Redis queue construction marker [REDACTED]" },
-      causeChain: [{ name: "Error", message: "Redis connection configuration marker [REDACTED]" }],
+      error: {
+        name: "Error",
+        message: "Redis queue construction marker [REDACTED]",
+      },
+      causeChain: [
+        {
+          name: "Error",
+          message: "Redis connection configuration marker [REDACTED]",
+        },
+      ],
     });
     expect(JSON.stringify(record)).not.toContain("queue-secret");
     expect(JSON.stringify(record)).not.toContain("merchant@example.com");

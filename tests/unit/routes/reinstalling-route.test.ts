@@ -13,11 +13,14 @@ const retryReinstallReconciliation = vi.fn();
 const enqueueBillingSubscriptionReconcileBestEffort = vi.fn();
 
 vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await authenticateAdmin(request);
-    const shop = await resolveShopifyShop({domain: authentication.session.shop});
+    const shop = await resolveShopifyShop({
+      domain: authentication.session.shop,
+    });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => Promise.resolve(null),
       readSettings: () => Promise.resolve(null),
     };
@@ -40,7 +43,8 @@ vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
   enqueueBillingSubscriptionReconcileBestEffort,
 }));
 
-const { action, loader } = await import("../../../app/routes/app/reinstalling/route");
+const { action, loader } =
+  await import("../../../app/routes/app/reinstalling/route");
 
 function loaderArgs(url: string) {
   return { request: new Request(url) } as Parameters<typeof loader>[0];
@@ -75,21 +79,31 @@ describe("reinstalling route", () => {
   it("redirects an active shop to the application", async () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "ACTIVE" });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).rejects.toBeInstanceOf(Response);
+    await expect(
+      loader(loaderArgs("https://example.test/app/reinstalling")),
+    ).rejects.toBeInstanceOf(Response);
     expect(getReinstallSubscription).not.toHaveBeenCalled();
   });
 
   it("redirects a suspended shop to support", async () => {
     resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "SUSPENDED" });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).rejects.toBeInstanceOf(Response);
+    await expect(
+      loader(loaderArgs("https://example.test/app/reinstalling")),
+    ).rejects.toBeInstanceOf(Response);
     expect(getReinstallSubscription).not.toHaveBeenCalled();
   });
 
   it("sends an unmarked uninstalled shop through normal auth handling", async () => {
-    resolveShopifyShop.mockResolvedValue({ id: "shop-1", status: "UNINSTALLED", reinstallPendingAt: null });
+    resolveShopifyShop.mockResolvedValue({
+      id: "shop-1",
+      status: "UNINSTALLED",
+      reinstallPendingAt: null,
+    });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).rejects.toBeInstanceOf(Response);
+    await expect(
+      loader(loaderArgs("https://example.test/app/reinstalling")),
+    ).rejects.toBeInstanceOf(Response);
     expect(getReinstallSubscription).not.toHaveBeenCalled();
   });
 
@@ -98,7 +112,9 @@ describe("reinstalling route", () => {
       nextReconcileAt: new Date("2026-09-14T00:05:00.000Z"),
     });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).resolves.toMatchObject({
+    await expect(
+      loader(loaderArgs("https://example.test/app/reinstalling")),
+    ).resolves.toMatchObject({
       state: "pending",
     });
     expect(getReinstallSubscription).toHaveBeenCalledWith("shop-1");
@@ -107,7 +123,9 @@ describe("reinstalling route", () => {
   it("renders stopped state when the durable schedule is absent", async () => {
     getReinstallSubscription.mockResolvedValue({ nextReconcileAt: null });
 
-    await expect(loader(loaderArgs("https://example.test/app/reinstalling"))).resolves.toMatchObject({
+    await expect(
+      loader(loaderArgs("https://example.test/app/reinstalling")),
+    ).resolves.toMatchObject({
       state: "stopped",
       nextReconcileAt: null,
       apiKey: "database-public-key",
@@ -121,24 +139,35 @@ describe("reinstalling route", () => {
       reinstallPendingAt: new Date("2026-09-14T00:10:00.000Z"),
       expectedNextReconcileAt: new Date("2026-09-14T00:10:00.000Z"),
     };
-    retryReinstallReconciliation.mockResolvedValue({ kind: "SCHEDULED", schedule: reconciliation });
+    retryReinstallReconciliation.mockResolvedValue({
+      kind: "SCHEDULED",
+      schedule: reconciliation,
+    });
     const formData = new FormData();
     formData.set("intent", "retry");
 
     let error: unknown;
     try {
-      await action(actionArgs(new Request("https://example.test/app/reinstalling", {
-          method: "POST",
-          body: formData,
-        })));
+      await action(
+        actionArgs(
+          new Request("https://example.test/app/reinstalling", {
+            method: "POST",
+            body: formData,
+          }),
+        ),
+      );
     } catch (caught) {
       error = caught;
     }
 
     expect(error).toBeInstanceOf(Response);
-    expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
+    expect((error as Response).headers.get("Location")).toBe(
+      "/app/reinstalling",
+    );
     expect(retryReinstallReconciliation).toHaveBeenCalledWith("shop-1");
-    expect(enqueueBillingSubscriptionReconcileBestEffort).toHaveBeenCalledWith(reconciliation);
+    expect(enqueueBillingSubscriptionReconcileBestEffort).toHaveBeenCalledWith(
+      reconciliation,
+    );
   });
 
   it("does not enqueue when retry is rejected by the service", async () => {
@@ -148,16 +177,24 @@ describe("reinstalling route", () => {
 
     let error: unknown;
     try {
-      await action(actionArgs(new Request("https://example.test/app/reinstalling", {
-        method: "POST",
-        body: formData,
-      })));
+      await action(
+        actionArgs(
+          new Request("https://example.test/app/reinstalling", {
+            method: "POST",
+            body: formData,
+          }),
+        ),
+      );
     } catch (caught) {
       error = caught;
     }
 
     expect(error).toBeInstanceOf(Response);
-    expect((error as Response).headers.get("Location")).toBe("/app/reinstalling");
-    expect(enqueueBillingSubscriptionReconcileBestEffort).not.toHaveBeenCalled();
+    expect((error as Response).headers.get("Location")).toBe(
+      "/app/reinstalling",
+    );
+    expect(
+      enqueueBillingSubscriptionReconcileBestEffort,
+    ).not.toHaveBeenCalled();
   });
 });

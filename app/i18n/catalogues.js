@@ -42,7 +42,9 @@ export const SUPPORTED_ADMIN_LOCALE_METADATA = [
   ["tr", "ltr"],
 ];
 
-export const SUPPORTED_ADMIN_LOCALES = SUPPORTED_ADMIN_LOCALE_METADATA.map(([locale]) => locale);
+export const SUPPORTED_ADMIN_LOCALES = SUPPORTED_ADMIN_LOCALE_METADATA.map(
+  ([locale]) => locale,
+);
 export const CATALOGUE_KEYS = Object.keys(enCatalogue);
 
 export const sourceCatalogues = {

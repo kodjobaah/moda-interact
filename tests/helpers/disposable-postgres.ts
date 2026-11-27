@@ -10,7 +10,10 @@ export type DisposablePostgres = {
   cleanup(): Promise<void>;
 };
 
-type PostgresCredentials = Pick<EphemeralPostgresOptions, "database" | "user" | "password">;
+type PostgresCredentials = Pick<
+  EphemeralPostgresOptions,
+  "database" | "user" | "password"
+>;
 
 /** The caller owns its migrations, database clients and seed data. Never use
  * DATABASE_URL or TEST_DATABASE_URL to select the database for these fixtures. */

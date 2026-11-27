@@ -33,10 +33,7 @@ body {
  */
 .moda-page-shell {
   --moda-page-max-width: 1240px;
-  width: min(
-    var(--moda-page-max-width),
-    calc(100% - clamp(24px, 5vw, 88px))
-  );
+  width: min(var(--moda-page-max-width), calc(100% - clamp(24px, 5vw, 88px)));
   margin-inline: auto;
   box-sizing: border-box;
 }
@@ -739,12 +736,24 @@ body {
 }
 
 @media (max-width: 640px) {
-  .customer-dialog-backdrop { padding: 12px; }
-  .customer-dialog { max-height: calc(100vh - 24px); }
-  .customer-dialog-header { padding: 20px; }
-  .customer-dialog-body { padding: 20px; }
-  .customer-dialog-header h2 { font-size: 20px; }
-  .customer-dialog-section-heading { display: block; }
+  .customer-dialog-backdrop {
+    padding: 12px;
+  }
+  .customer-dialog {
+    max-height: calc(100vh - 24px);
+  }
+  .customer-dialog-header {
+    padding: 20px;
+  }
+  .customer-dialog-body {
+    padding: 20px;
+  }
+  .customer-dialog-header h2 {
+    font-size: 20px;
+  }
+  .customer-dialog-section-heading {
+    display: block;
+  }
   .admin-brand-bar {
     padding: 12px 16px;
   }

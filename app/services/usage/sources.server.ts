@@ -91,11 +91,17 @@ export async function readUsageSources(
         WHERE foreign_conversation."checkoutRecoveryId" = s."recoveryId"
           AND foreign_conversation."shopId" IS NOT NULL AND foreign_conversation."shopId" <> ${shopId})
     LIMIT 401`);
-  if (rows.length > 400) throw new Error("Usage source result exceeds page limit");
+  if (rows.length > 400)
+    throw new Error("Usage source result exceeds page limit");
   const grouped = new Map<string, typeof rows>();
   for (const row of rows) {
-    if (row.logicalKey !== null && (!row.logicalIdentity ||
-      createRecoveryIdempotencyKey(shopId, row.logicalIdentity) !== row.logicalKey)) continue;
+    if (
+      row.logicalKey !== null &&
+      (!row.logicalIdentity ||
+        createRecoveryIdempotencyKey(shopId, row.logicalIdentity) !==
+          row.logicalKey)
+    )
+      continue;
     grouped.set(row.eventId, [...(grouped.get(row.eventId) ?? []), row]);
   }
   const result = new Map<string, SourceRecovery>();

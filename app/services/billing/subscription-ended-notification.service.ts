@@ -16,7 +16,8 @@ import {
 } from "../merchant-support/merchant-support.service";
 
 export type TranslationDispatch = (translationId: string) => Promise<void>;
-export const defaultTranslationDispatch: TranslationDispatch = enqueueTranslationBestEffort;
+export const defaultTranslationDispatch: TranslationDispatch =
+  enqueueTranslationBestEffort;
 
 export type SubscriptionLifecycle = {
   planHandle: string;
@@ -35,7 +36,9 @@ export type SubscriptionIdentityFacts = {
 export const MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY =
   "Unable to derive a durable subscription lifecycle identity.";
 
-export function deriveLifecycleIdentity(subscription: SubscriptionIdentityFacts): string | null {
+export function deriveLifecycleIdentity(
+  subscription: SubscriptionIdentityFacts,
+): string | null {
   if (subscription.providerSubscriptionId?.trim()) {
     return `provider:${subscription.providerSubscriptionId.trim()}`;
   }
@@ -59,8 +62,12 @@ export class SubscriptionEndedNotificationService {
     private readonly dispatchTranslation: TranslationDispatch = defaultTranslationDispatch,
   ) {}
 
-  async notifySubscriptionEnded(shopId: string, lifecycle: SubscriptionLifecycle): Promise<void> {
-    let stage: "notification_persistence" | "translation_dispatch" = "notification_persistence";
+  async notifySubscriptionEnded(
+    shopId: string,
+    lifecycle: SubscriptionLifecycle,
+  ): Promise<void> {
+    let stage: "notification_persistence" | "translation_dispatch" =
+      "notification_persistence";
     try {
       const translationId = await this.persistNotification(shopId, lifecycle);
       if (translationId) {
@@ -72,7 +79,13 @@ export class SubscriptionEndedNotificationService {
         event: "billing.subscription_ended_notification.failed",
         operation: "notify_subscription_ended",
         stage,
-        origin: error instanceof Error && error.message === MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY ? "internal" : stage === "notification_persistence" ? "database" : "transport",
+        origin:
+          error instanceof Error &&
+          error.message === MISSING_SUBSCRIPTION_LIFECYCLE_IDENTITY
+            ? "internal"
+            : stage === "notification_persistence"
+              ? "database"
+              : "transport",
         shopId,
         identities: {
           provider: lifecycle.provider,
@@ -95,7 +108,9 @@ export class SubscriptionEndedNotificationService {
     lifecycle: SubscriptionLifecycle,
   ): Promise<string | null> {
     return this.database.$transaction(async (transaction) => {
-      const shopContext = await transaction.$queryRaw<[{ defaultLanguageTag: string | null }]>(Prisma.sql`
+      const shopContext = await transaction.$queryRaw<
+        [{ defaultLanguageTag: string | null }]
+      >(Prisma.sql`
         SELECT "defaultLanguageTag"
         FROM "commerce"."Shop"
         WHERE "id" = ${shopId}
@@ -112,17 +127,20 @@ export class SubscriptionEndedNotificationService {
         shopId,
         lifecycle.provider,
         lifecycle.lifecycleIdentity,
-      ].map((part) => encodeURIComponent(part)).join(":");
-      const existing = await transaction.$queryRaw<[
-        { id: string; displayLanguageTag: string | null } | undefined
-      ]>(Prisma.sql`
+      ]
+        .map((part) => encodeURIComponent(part))
+        .join(":");
+      const existing = await transaction.$queryRaw<
+        [{ id: string; displayLanguageTag: string | null } | undefined]
+      >(Prisma.sql`
         SELECT "id", "displayLanguageTag"
         FROM "support"."MerchantSupportMessage"
         WHERE "sourceKey" = ${sourceKey}
       `);
       let messageId = existing[0]?.id;
       let messageWasInserted = false;
-      const displayLanguageTag = existing[0]?.displayLanguageTag ?? configuredLanguageTag;
+      const displayLanguageTag =
+        existing[0]?.displayLanguageTag ?? configuredLanguageTag;
       const needsTranslation = requiresMerchantTranslation(
         PLATFORM_SUPPORT_LANGUAGE_TAG,
         displayLanguageTag,
@@ -142,7 +160,9 @@ export class SubscriptionEndedNotificationService {
 
       if (!messageId) {
         messageId = randomUUID();
-        const inserted = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
+        const inserted = await transaction.$queryRaw<
+          [{ id: string } | undefined]
+        >(Prisma.sql`
           INSERT INTO "support"."MerchantSupportMessage" (
             "id", "threadId", "kind", "state", "originalBody",
             "sourceLanguageTag", "displayLanguageTag", "systemCode",
@@ -160,7 +180,9 @@ export class SubscriptionEndedNotificationService {
         messageId = inserted[0]?.id;
         messageWasInserted = Boolean(messageId);
         if (!messageId) {
-          const persisted = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
+          const persisted = await transaction.$queryRaw<
+            [{ id: string } | undefined]
+          >(Prisma.sql`
             SELECT "id"
             FROM "support"."MerchantSupportMessage"
             WHERE "sourceKey" = ${sourceKey}
@@ -168,7 +190,9 @@ export class SubscriptionEndedNotificationService {
           messageId = persisted[0]?.id;
         }
         if (!messageId) {
-          throw new Error("Unable to persist subscription-ended support message.");
+          throw new Error(
+            "Unable to persist subscription-ended support message.",
+          );
         }
       }
 
@@ -184,7 +208,9 @@ export class SubscriptionEndedNotificationService {
 
       if (!needsTranslation) return null;
 
-      const translations = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
+      const translations = await transaction.$queryRaw<
+        [{ id: string } | undefined]
+      >(Prisma.sql`
         SELECT "id"
         FROM "support"."MerchantMessageTranslation"
         WHERE "messageId" = ${messageId}
@@ -193,7 +219,9 @@ export class SubscriptionEndedNotificationService {
       if (translations[0]?.id) return null;
 
       const translationId = randomUUID();
-      const insertedTranslation = await transaction.$queryRaw<[{ id: string } | undefined]>(Prisma.sql`
+      const insertedTranslation = await transaction.$queryRaw<
+        [{ id: string } | undefined]
+      >(Prisma.sql`
         INSERT INTO "support"."MerchantMessageTranslation" (
           "id", "messageId", "direction", "sourceLanguageTag",
           "targetLanguageTag", "status", "createdAt", "updatedAt"

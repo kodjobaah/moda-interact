@@ -1,4 +1,7 @@
-import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
+import {
+  startDisposablePostgres,
+  type DisposablePostgres,
+} from "../helpers/disposable-postgres";
 import { Client } from "pg";
 import { readFile, readdir } from "node:fs/promises";
 import { PrismaClient } from "@prisma/client";
@@ -167,7 +170,9 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
     ).toBe(0);
   });
   it("persisted opt-in changes initial tools but cannot expand an existing grant; discount policy works on Free and Paid", async () => {
-    const candidates = [{ key: "optional", featureId: featureIds[0], enabled: true, position: 0 }];
+    const candidates = [
+      { key: "optional", featureId: featureIds[0], enabled: true, position: 0 },
+    ];
     const keys = async (offerMode: "NONE" | "FIXED" | "AI_BEST_APPLICABLE") => {
       const preference = await db.shopFeaturePreference.findUnique({
         where: {
@@ -185,14 +190,18 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
           },
         ],
       });
-      return offerMode === "NONE" ? selected : [...selected, "discount_assistance"];
+      return offerMode === "NONE"
+        ? selected
+        : [...selected, "discount_assistance"];
     };
     const tools = (selected: string[]) =>
       deduplicateTools(
-        selected.filter((key) => key === "optional").map((key) => ({
-          key,
-          toolDescriptor: exampleTool,
-        })),
+        selected
+          .filter((key) => key === "optional")
+          .map((key) => ({
+            key,
+            toolDescriptor: exampleTool,
+          })),
       );
     const original = exampleGrant(exampleManifest(() => "a".repeat(64)));
     original.grantedTools = tools(await keys("NONE"));
@@ -343,8 +352,12 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
         db,
       ),
     ]);
-    expect(outcomes.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(outcomes.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(
+      outcomes.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      outcomes.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
     await expect(
       saveMerchantRecoveryPolicy(
         shopId,

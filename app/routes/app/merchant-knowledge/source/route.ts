@@ -8,7 +8,9 @@ import {
 import { editMerchantKnowledgeUploadSource } from "@/services/merchant-knowledge/upload.server";
 
 function validFields(form: FormData, fields: readonly string[]): boolean {
-  return [...form.keys()].every((key) => fields.includes(key) && form.getAll(key).length === 1);
+  return [...form.keys()].every(
+    (key) => fields.includes(key) && form.getAll(key).length === 1,
+  );
 }
 
 function stringField(form: FormData, key: string): string | null {
@@ -20,15 +22,26 @@ export async function action({ request, context }: ActionFunctionArgs) {
   const { shop } = await settingsMutationAccess(request, context);
   const form = await request.formData();
   const operation = stringField(form, "operation");
-  const fields = operation === "create"
-    ? ["operation", "name", "purposeKey", "dataFormatKey", "url", "languageTag"]
-    : operation === "edit"
-      ? ["operation", "sourceId", "name", "url", "languageTag"]
-      : operation === "edit-upload"
-        ? ["operation", "sourceId", "name", "languageTag"]
-      : [];
+  const fields =
+    operation === "create"
+      ? [
+          "operation",
+          "name",
+          "purposeKey",
+          "dataFormatKey",
+          "url",
+          "languageTag",
+        ]
+      : operation === "edit"
+        ? ["operation", "sourceId", "name", "url", "languageTag"]
+        : operation === "edit-upload"
+          ? ["operation", "sourceId", "name", "languageTag"]
+          : [];
   if (!fields.length || !validFields(form, fields))
-    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "INVALID_INPUT" },
+      { status: 400 },
+    );
 
   try {
     if (operation === "create") {
@@ -40,11 +53,17 @@ export async function action({ request, context }: ActionFunctionArgs) {
         url: stringField(form, "url"),
         languageTag: stringField(form, "languageTag") ?? undefined,
       });
-      return Response.json({ ok: true, ...source }, { headers: { "Cache-Control": "no-store" } });
+      return Response.json(
+        { ok: true, ...source },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
     const sourceId = stringField(form, "sourceId");
     if (!sourceId || sourceId.length > 128)
-      return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+      return Response.json(
+        { ok: false, error: "INVALID_INPUT" },
+        { status: 400 },
+      );
     if (operation === "edit-upload") {
       await editMerchantKnowledgeUploadSource({
         shopId: shop.id,
@@ -61,8 +80,14 @@ export async function action({ request, context }: ActionFunctionArgs) {
         languageTag: stringField(form, "languageTag"),
       });
     }
-    return Response.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
+    return Response.json(
+      { ok: true },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
-    return merchantKnowledgeActionFailure(error, {shopId: shop.id, operation: "source"});
+    return merchantKnowledgeActionFailure(error, {
+      shopId: shop.id,
+      operation: "source",
+    });
   }
 }

@@ -5,11 +5,15 @@ import {
   RecoveryCreditRefundStatus,
   type PrismaClient,
 } from "@prisma/client";
-import { createLogger, type StructuredLogger } from "@modainteract/moda-interact-shared/logging";
+import {
+  createLogger,
+  type StructuredLogger,
+} from "@modainteract/moda-interact-shared/logging";
 import { resolveDeploymentEnvironmentName } from "../otel/otel.runtime";
 import { logBillingBoundaryFailure } from "./providers/shopify-billing-diagnostics.server";
 import {
-  matchesRecoveryCreditProviderContext, readRecoveryCreditProviderObservation,
+  matchesRecoveryCreditProviderContext,
+  readRecoveryCreditProviderObservation,
   type RecoveryCreditLocalContext,
 } from "./recovery-credit-provider-context.server";
 
@@ -18,12 +22,18 @@ import type { BillingProvider } from "./billing.types";
 import { ShopifyBillingProvider } from "./providers/shopify-billing.provider";
 
 const managementLogger = createLogger({
-  serviceName: "moda-interact", environment: resolveDeploymentEnvironmentName(),
+  serviceName: "moda-interact",
+  environment: resolveDeploymentEnvironmentName(),
 });
 const refundSummarySelect = {
-  status: true, reason: true, finalCreditQuantity: true,
-  expectedProviderAmount: true, expectedProviderCurrency: true,
-  createdAt: true, completedAt: true, providerActionKind: true,
+  status: true,
+  reason: true,
+  finalCreditQuantity: true,
+  expectedProviderAmount: true,
+  expectedProviderCurrency: true,
+  createdAt: true,
+  completedAt: true,
+  providerActionKind: true,
 } satisfies Prisma.RecoveryCreditRefundSelect;
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -337,23 +347,47 @@ function outcomeForPurchase(purchase: PurchaseRow): RefundOutcome {
   };
 }
 
-function hasRefundableValue(purchase: PurchaseRow, development?: boolean): boolean {
-  const amount = purchase.providerPurchaseAmount == null ? null : Number(purchase.providerPurchaseAmount);
-  return amount !== null && Number.isFinite(amount) && (amount > 0 || (amount === 0 && development === true));
+function hasRefundableValue(
+  purchase: PurchaseRow,
+  development?: boolean,
+): boolean {
+  const amount =
+    purchase.providerPurchaseAmount == null
+      ? null
+      : Number(purchase.providerPurchaseAmount);
+  return (
+    amount !== null &&
+    Number.isFinite(amount) &&
+    (amount > 0 || (amount === 0 && development === true))
+  );
 }
 
-function earlyRefundOutcome(purchase: PurchaseRow, input: RefundRequest): RefundOutcome | null {
-  if (purchase.refunds[0] || purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE)
+function earlyRefundOutcome(
+  purchase: PurchaseRow,
+  input: RefundRequest,
+): RefundOutcome | null {
+  if (
+    purchase.refunds[0] ||
+    purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE
+  )
     return outcomeForPurchase(purchase);
   const balances = {
-    purchaseId: purchase.id, currentAmount: purchase.currentAmount,
+    purchaseId: purchase.id,
+    currentAmount: purchase.currentAmount,
     reservedAmount: purchase.reservedAmount,
-    availableAmount: Math.max(purchase.currentAmount - purchase.reservedAmount, 0),
+    availableAmount: Math.max(
+      purchase.currentAmount - purchase.reservedAmount,
+      0,
+    ),
   };
   if (!nonBlank(input.shopifyShopId) || !hasShopifyRefundEvidence(purchase))
     return { ...balances, code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT" };
-  if (balances.availableAmount < 1) return { ...balances, code: "REFUND_NOT_AVAILABLE" };
-  const amount = purchase.providerPurchaseAmount == null ? null : Number(purchase.providerPurchaseAmount);
+  if (balances.availableAmount < 1)
+    return { ...balances, code: "REFUND_NOT_AVAILABLE" };
+  const amount =
+    purchase.providerPurchaseAmount == null
+      ? null
+      : Number(purchase.providerPurchaseAmount);
   if (amount === null || !Number.isFinite(amount) || amount < 0)
     return { ...balances, code: "REFUND_NOT_AVAILABLE" };
   if (amount === 0 && input.shopifyPartnerDevelopment !== true)
@@ -381,77 +415,124 @@ export class RecoveryCreditPurchaseManagementService {
       const requestedPage = pageNumber(input.page);
       const size = pageSize(input.pageSize);
       const where: Prisma.RecoveryCreditPurchaseWhereInput = {
-        shopId: input.shopId, provider: SHOPIFY_BILLING_PROVIDER,
+        shopId: input.shopId,
+        provider: SHOPIFY_BILLING_PROVIDER,
         ...(input.status ? { status: input.status } : {}),
       };
       const findPurchases = (pageToRead: number) =>
         this.database.recoveryCreditPurchase.findMany({
-          where, skip: (pageToRead - 1) * size, take: size,
+          where,
+          skip: (pageToRead - 1) * size,
+          take: size,
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           include: {
             plan: { select: { name: true, shopifyPlanHandle: true } },
             refunds: {
               where: { provider: SHOPIFY_BILLING_PROVIDER },
-              orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1,
+              orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+              take: 1,
               select: refundSummarySelect,
             },
           },
         });
       const [total, requestedPurchases] = await Promise.all([
-        this.database.recoveryCreditPurchase.count({ where }), findPurchases(requestedPage),
+        this.database.recoveryCreditPurchase.count({ where }),
+        findPurchases(requestedPage),
       ]);
-      const page = Math.min(requestedPage, Math.max(1, Math.ceil(total / size)));
-      const rows = page === requestedPage ? requestedPurchases : await findPurchases(page);
+      const page = Math.min(
+        requestedPage,
+        Math.max(1, Math.ceil(total / size)),
+      );
+      const rows =
+        page === requestedPage ? requestedPurchases : await findPurchases(page);
       const purchases = rows.map(requireShopifyPurchaseEvidence);
       stage = "read_completed_summary";
-      const completed = purchases.length ? await this.database.recoveryCreditPurchase.findMany({
-        where: { shopId: input.shopId, provider: SHOPIFY_BILLING_PROVIDER,
-          id: { in: purchases.map(purchase => purchase.id) } },
-        select: {
-          id: true,
-          refunds: {
-            where: { provider: SHOPIFY_BILLING_PROVIDER, status: RecoveryCreditRefundStatus.COMPLETED },
-            orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1,
-            select: refundSummarySelect,
-          },
-        },
-      }) : [];
-      const completedById = new Map(completed.map(purchase => [purchase.id, purchase.refunds[0]]));
-      const needsVerification = Boolean(input.shopifyShopId) && purchases.some(purchase =>
-        purchase.status === RecoveryCreditPurchaseStatus.ACTIVE &&
-        hasRefundableValue(purchase, input.shopifyPartnerDevelopment));
+      const completed = purchases.length
+        ? await this.database.recoveryCreditPurchase.findMany({
+            where: {
+              shopId: input.shopId,
+              provider: SHOPIFY_BILLING_PROVIDER,
+              id: { in: purchases.map((purchase) => purchase.id) },
+            },
+            select: {
+              id: true,
+              refunds: {
+                where: {
+                  provider: SHOPIFY_BILLING_PROVIDER,
+                  status: RecoveryCreditRefundStatus.COMPLETED,
+                },
+                orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                take: 1,
+                select: refundSummarySelect,
+              },
+            },
+          })
+        : [];
+      const completedById = new Map(
+        completed.map((purchase) => [purchase.id, purchase.refunds[0]]),
+      );
+      const needsVerification =
+        Boolean(input.shopifyShopId) &&
+        purchases.some(
+          (purchase) =>
+            purchase.status === RecoveryCreditPurchaseStatus.ACTIVE &&
+            hasRefundableValue(purchase, input.shopifyPartnerDevelopment),
+        );
       let local: RecoveryCreditLocalContext | undefined;
-      let observed: Awaited<ReturnType<typeof readRecoveryCreditProviderObservation>> | undefined;
+      let observed:
+        | Awaited<ReturnType<typeof readRecoveryCreditProviderObservation>>
+        | undefined;
       if (needsVerification) {
         stage = "read_local_context";
         local = await this.readLocalContext(this.database, input.shopId);
         stage = "read_provider_context";
-        observed = await readRecoveryCreditProviderObservation(this.provider, input.shopifyShopId!);
+        observed = await readRecoveryCreditProviderObservation(
+          this.provider,
+          input.shopifyShopId!,
+        );
       }
       return {
-        page, pageSize: size, total,
-        purchases: purchases.map(purchase => {
+        page,
+        pageSize: size,
+        total,
+        purchases: purchases.map((purchase) => {
           const completion = completedById.get(purchase.id);
-          if (!input.shopifyShopId || purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE)
+          if (
+            !input.shopifyShopId ||
+            purchase.status !== RecoveryCreditPurchaseStatus.ACTIVE
+          )
             return historyItem(purchase, null, null, completion);
           if (!hasRefundableValue(purchase, input.shopifyPartnerDevelopment))
             return historyItem(purchase, false, "ZERO_VALUE", completion);
-          const eligible = matchesRecoveryCreditProviderContext(purchase, local!, observed!);
-          return historyItem(purchase, eligible, eligible ? null : "PROVIDER_CONTEXT", completion);
+          const eligible = matchesRecoveryCreditProviderContext(
+            purchase,
+            local!,
+            observed!,
+          );
+          return historyItem(
+            purchase,
+            eligible,
+            eligible ? null : "PROVIDER_CONTEXT",
+            completion,
+          );
         }),
       };
     } catch (error) {
-      logBillingBoundaryFailure({
-        event: "shopify.billing.recovery_credit_history_failed", operation: "list_purchase_history",
-        stage, shopId: input.shopId, error,
-      }, this.diagnostics);
+      logBillingBoundaryFailure(
+        {
+          event: "shopify.billing.recovery_credit_history_failed",
+          operation: "list_purchase_history",
+          stage,
+          shopId: input.shopId,
+          error,
+        },
+        this.diagnostics,
+      );
       throw error;
     }
   }
 
-  async requestRefund(
-    input: RefundRequest,
-  ): Promise<RefundOutcome> {
+  async requestRefund(input: RefundRequest): Promise<RefundOutcome> {
     return this.requestRefundWithRetry(input);
   }
 
@@ -477,8 +558,8 @@ export class RecoveryCreditPurchaseManagementService {
       try {
         return await this.database.$transaction(
           async (transaction) => {
-            const purchase =
-              await transaction.recoveryCreditPurchase.findFirst({
+            const purchase = await transaction.recoveryCreditPurchase.findFirst(
+              {
                 where: {
                   id: input.purchaseId,
                   shopId: input.shopId,
@@ -494,7 +575,8 @@ export class RecoveryCreditPurchaseManagementService {
                     take: 1,
                   },
                 },
-              });
+              },
+            );
             if (!purchase)
               return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
             const refund = purchase.refunds[0];
@@ -640,7 +722,14 @@ export class RecoveryCreditPurchaseManagementService {
         );
       } catch (error) {
         const retrying = retryable(error) && attempt < MAX_RETRIES - 1;
-        this.recordMutationFailure("reactivate_refund", "reactivation_transaction", input, error, attempt, retrying);
+        this.recordMutationFailure(
+          "reactivate_refund",
+          "reactivation_transaction",
+          input,
+          error,
+          attempt,
+          retrying,
+        );
         if (!retrying) throw error;
       }
     }
@@ -654,16 +743,20 @@ export class RecoveryCreditPurchaseManagementService {
       let stage = "refund_preflight_read";
       try {
         const preflight = await this.readRefundPurchase(this.database, input);
-        if (!preflight) return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
+        if (!preflight)
+          return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
         const early = earlyRefundOutcome(preflight, input);
         if (early) return early;
         stage = "refund_provider_preflight";
-        const observed = await readRecoveryCreditProviderObservation(this.provider, input.shopifyShopId);
+        const observed = await readRecoveryCreditProviderObservation(
+          this.provider,
+          input.shopifyShopId,
+        );
         stage = "refund_transaction";
         return await this.database.$transaction(
           async (transaction) => {
-            const purchase =
-              await transaction.recoveryCreditPurchase.findFirst({
+            const purchase = await transaction.recoveryCreditPurchase.findFirst(
+              {
                 where: {
                   id: input.purchaseId,
                   shopId: input.shopId,
@@ -679,17 +772,29 @@ export class RecoveryCreditPurchaseManagementService {
                     take: 1,
                   },
                 },
-              });
+              },
+            );
             if (!purchase)
               return { purchaseId: input.purchaseId, code: "NOT_FOUND" };
             const early = earlyRefundOutcome(purchase, input);
             if (early) return early;
-            const availableAmount = Math.max(purchase.currentAmount - purchase.reservedAmount, 0);
-            const local = await this.readLocalContext(transaction, input.shopId);
-            if (!matchesRecoveryCreditProviderContext(purchase, local, observed)) {
+            const availableAmount = Math.max(
+              purchase.currentAmount - purchase.reservedAmount,
+              0,
+            );
+            const local = await this.readLocalContext(
+              transaction,
+              input.shopId,
+            );
+            if (
+              !matchesRecoveryCreditProviderContext(purchase, local, observed)
+            ) {
               return {
-                purchaseId: purchase.id, code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT",
-                currentAmount: purchase.currentAmount, reservedAmount: purchase.reservedAmount, availableAmount,
+                purchaseId: purchase.id,
+                code: "REFUND_NOT_CURRENT_PROVIDER_CONTEXT",
+                currentAmount: purchase.currentAmount,
+                reservedAmount: purchase.reservedAmount,
+                availableAmount,
               };
             }
             const aggregate =
@@ -782,38 +887,54 @@ export class RecoveryCreditPurchaseManagementService {
         );
       } catch (error) {
         if (retryable(error) && attempt < MAX_RETRIES - 1) {
-          this.recordMutationFailure("request_refund", stage, input, error, attempt, true);
+          this.recordMutationFailure(
+            "request_refund",
+            stage,
+            input,
+            error,
+            attempt,
+            true,
+          );
           continue;
         }
         if (isUniqueConflict(error)) {
-          const existing = await this.database.recoveryCreditRefund.findFirst({
-            where: {
-              shopId: input.shopId,
-              provider: SHOPIFY_BILLING_PROVIDER,
-              requestKey: requestKey(
-                input.shopId,
-                input.requestId,
-                input.purchaseId,
-              ),
-            },
-            include: {
-              purchase: {
-                include: {
-                  refunds: {
-                    where: {
-                      provider: SHOPIFY_BILLING_PROVIDER,
-                      status: { in: [...LIVE_REFUND_STATUSES] },
+          const existing = await this.database.recoveryCreditRefund
+            .findFirst({
+              where: {
+                shopId: input.shopId,
+                provider: SHOPIFY_BILLING_PROVIDER,
+                requestKey: requestKey(
+                  input.shopId,
+                  input.requestId,
+                  input.purchaseId,
+                ),
+              },
+              include: {
+                purchase: {
+                  include: {
+                    refunds: {
+                      where: {
+                        provider: SHOPIFY_BILLING_PROVIDER,
+                        status: { in: [...LIVE_REFUND_STATUSES] },
+                      },
+                      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+                      take: 1,
                     },
-                    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-                    take: 1,
                   },
                 },
               },
-            },
-          }).catch(recoveryError => {
-            this.recordMutationFailure("request_refund", "read_refund_receipt", input, recoveryError, attempt, false);
-            throw recoveryError;
-          });
+            })
+            .catch((recoveryError) => {
+              this.recordMutationFailure(
+                "request_refund",
+                "read_refund_receipt",
+                input,
+                recoveryError,
+                attempt,
+                false,
+              );
+              throw recoveryError;
+            });
           if (
             existing?.provider === SHOPIFY_BILLING_PROVIDER &&
             existing.purchase?.shopId === input.shopId &&
@@ -822,8 +943,8 @@ export class RecoveryCreditPurchaseManagementService {
             return outcomeForPurchase(existing.purchase as PurchaseRow);
           }
 
-          const purchase = await this.database.recoveryCreditPurchase.findFirst(
-            {
+          const purchase = await this.database.recoveryCreditPurchase
+            .findFirst({
               where: {
                 id: input.purchaseId,
                 shopId: input.shopId,
@@ -839,15 +960,29 @@ export class RecoveryCreditPurchaseManagementService {
                   take: 1,
                 },
               },
-            },
-          ).catch(recoveryError => {
-            this.recordMutationFailure("request_refund", "read_refund_replay", input, recoveryError, attempt, false);
-            throw recoveryError;
-          });
+            })
+            .catch((recoveryError) => {
+              this.recordMutationFailure(
+                "request_refund",
+                "read_refund_replay",
+                input,
+                recoveryError,
+                attempt,
+                false,
+              );
+              throw recoveryError;
+            });
           if (purchase?.refunds[0])
             return outcomeForPurchase(purchase as PurchaseRow);
         }
-        this.recordMutationFailure("request_refund", stage, input, error, attempt, false);
+        this.recordMutationFailure(
+          "request_refund",
+          stage,
+          input,
+          error,
+          attempt,
+          false,
+        );
         throw error;
       }
     }
@@ -859,11 +994,21 @@ export class RecoveryCreditPurchaseManagementService {
     input: { shopId: string; purchaseId: string },
   ) {
     return database.recoveryCreditPurchase.findFirst({
-      where: { id: input.purchaseId, shopId: input.shopId, provider: SHOPIFY_BILLING_PROVIDER },
-      include: { refunds: {
-        where: { provider: SHOPIFY_BILLING_PROVIDER, status: { in: [...LIVE_REFUND_STATUSES] } },
-        orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 1,
-      } },
+      where: {
+        id: input.purchaseId,
+        shopId: input.shopId,
+        provider: SHOPIFY_BILLING_PROVIDER,
+      },
+      include: {
+        refunds: {
+          where: {
+            provider: SHOPIFY_BILLING_PROVIDER,
+            status: { in: [...LIVE_REFUND_STATUSES] },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+        },
+      },
     });
   }
 
@@ -878,24 +1023,45 @@ export class RecoveryCreditPurchaseManagementService {
       }),
       database.subscription.findUnique({
         where: { shopId },
-        select: { shopId: true, billingPeriodId: true,
-          billingPeriod: { select: { id: true, periodStart: true, periodEnd: true } } },
+        select: {
+          shopId: true,
+          billingPeriodId: true,
+          billingPeriod: {
+            select: { id: true, periodStart: true, periodEnd: true },
+          },
+        },
       }),
     ]);
     return { shop, subscription };
   }
 
   private recordMutationFailure(
-    operation: "request_refund" | "reactivate_refund", stage: string,
-    input: { shopId: string; purchaseId: string }, error: unknown, attempt: number, retrying: boolean,
+    operation: "request_refund" | "reactivate_refund",
+    stage: string,
+    input: { shopId: string; purchaseId: string },
+    error: unknown,
+    attempt: number,
+    retrying: boolean,
   ) {
-    logBillingBoundaryFailure({
-      event: retrying ? "shopify.billing.recovery_credit_retry" : "shopify.billing.recovery_credit_mutation_failed",
-      operation, stage, shopId: input.shopId,
-      identities: { purchaseId: input.purchaseId, attempt: String(attempt + 1) }, error,
-    }, retrying ? { ...this.diagnostics, error: this.diagnostics.warn } : this.diagnostics);
+    logBillingBoundaryFailure(
+      {
+        event: retrying
+          ? "shopify.billing.recovery_credit_retry"
+          : "shopify.billing.recovery_credit_mutation_failed",
+        operation,
+        stage,
+        shopId: input.shopId,
+        identities: {
+          purchaseId: input.purchaseId,
+          attempt: String(attempt + 1),
+        },
+        error,
+      },
+      retrying
+        ? { ...this.diagnostics, error: this.diagnostics.warn }
+        : this.diagnostics,
+    );
   }
-
 }
 
 function isUniqueConflict(error: unknown): boolean {

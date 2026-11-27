@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const readActiveMerchantPricingCatalogue = vi.fn();
 
-vi.mock("../../../app/services/merchant-pricing/merchant-pricing.server", () => ({
-  readActiveMerchantPricingCatalogue,
-}));
+vi.mock(
+  "../../../app/services/merchant-pricing/merchant-pricing.server",
+  () => ({
+    readActiveMerchantPricingCatalogue,
+  }),
+);
 vi.mock("../../../app/shopify.server", () => ({
   login: vi.fn(),
 }));
@@ -17,7 +20,9 @@ const routeSource = await readFile(
 );
 
 function loaderArgs(url: string, headers?: HeadersInit) {
-  return { request: new Request(url, { headers }) } as Parameters<typeof loader>[0];
+  return { request: new Request(url, { headers }) } as Parameters<
+    typeof loader
+  >[0];
 }
 
 beforeEach(() => {
@@ -43,22 +48,32 @@ beforeEach(() => {
 
 describe("public home route", () => {
   it("keeps the standalone experience manual and loads the active merchant pricing catalogue", async () => {
-    const result = await loader(loaderArgs("https://example.test/", {
-      "accept-language": "en-GB,en;q=0.9",
-    }));
+    const result = await loader(
+      loaderArgs("https://example.test/", {
+        "accept-language": "en-GB,en;q=0.9",
+      }),
+    );
 
     expect(result.pricingCatalogue).toHaveLength(1);
-    expect(JSON.stringify(result.pricingCatalogue)).not.toContain("shopifyPlanHandle");
-    expect(JSON.stringify(result.pricingCatalogue)).not.toContain("usageEvents");
-    expect(readActiveMerchantPricingCatalogue).toHaveBeenCalledWith({ locale: "en-GB" });
+    expect(JSON.stringify(result.pricingCatalogue)).not.toContain(
+      "shopifyPlanHandle",
+    );
+    expect(JSON.stringify(result.pricingCatalogue)).not.toContain(
+      "usageEvents",
+    );
+    expect(readActiveMerchantPricingCatalogue).toHaveBeenCalledWith({
+      locale: "en-GB",
+    });
   });
 
   it("redirects an embedded Shopify launch into the authenticated app shell", async () => {
     let response: Response | undefined;
     try {
-      await loader(loaderArgs(
-        "https://example.test/?shop=eugene-bdx7mzhn.myshopify.com&host=encoded&embedded=1",
-      ));
+      await loader(
+        loaderArgs(
+          "https://example.test/?shop=eugene-bdx7mzhn.myshopify.com&host=encoded&embedded=1",
+        ),
+      );
     } catch (error) {
       response = error as Response;
     }
@@ -71,12 +86,16 @@ describe("public home route", () => {
   });
 
   it("does not discover or redirect an unknown custom storefront input", async () => {
-    const result = await loader(loaderArgs("https://example.test/?shop=store.custom.example"));
+    const result = await loader(
+      loaderArgs("https://example.test/?shop=store.custom.example"),
+    );
 
     expect(result).not.toHaveProperty("detectedShop");
     expect(readActiveMerchantPricingCatalogue).toHaveBeenCalledOnce();
     expect(routeSource).toContain("Start installation from your Shopify admin");
-    expect(routeSource).not.toMatch(/dns|lookup|resolve.*domain|MYSHOPIFY_DOMAIN/i);
+    expect(routeSource).not.toMatch(
+      /dns|lookup|resolve.*domain|MYSHOPIFY_DOMAIN/i,
+    );
     expect(routeSource).not.toContain("detectedShopFromUrl");
   });
 
@@ -85,6 +104,8 @@ describe("public home route", () => {
     expect(routeSource).toContain("Connect your Shopify store");
     expect(routeSource).toContain("MerchantPricingCatalogue");
     expect(routeSource).toContain("showChoosePlanAction={false}");
-    expect(routeSource).toContain("Pricing shown here comes from the active Moda Interact merchant catalogue");
+    expect(routeSource).toContain(
+      "Pricing shown here comes from the active Moda Interact merchant catalogue",
+    );
   });
 });

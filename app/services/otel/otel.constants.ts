@@ -34,7 +34,8 @@ export const OTEL_WEBHOOK_ATTRIBUTE_KEYS = [
   "shopify.webhook.status_code",
 ] as const;
 
-export type ShopifyWebhookAttributeKey = (typeof OTEL_WEBHOOK_ATTRIBUTE_KEYS)[number];
+export type ShopifyWebhookAttributeKey =
+  (typeof OTEL_WEBHOOK_ATTRIBUTE_KEYS)[number];
 
 /** OTel's "invalid" trace id; used to detect absent trace context. */
 export const INVALID_TRACE_ID = "00000000000000000000000000000000";

@@ -14,7 +14,9 @@ export async function persistShopifyOnboardingMilestone(
         data: { onboardingCompleted: true },
       });
       if (shop.count !== 1) {
-        throw new Error(`Unable to mark onboarding complete for Shop ${shopId}`);
+        throw new Error(
+          `Unable to mark onboarding complete for Shop ${shopId}`,
+        );
       }
 
       const settings = await transaction.shopSettings.updateMany({

@@ -1,5 +1,12 @@
-import { lockSettingsShop, revisionOf, PreferenceError } from "../feature-preferences/feature-preferences.server";
-import { parseEffectiveRecoveryPolicy, type RecoveryOfferMode } from "@modainteract/moda-interact-shared/recovery-policy";
+import {
+  lockSettingsShop,
+  revisionOf,
+  PreferenceError,
+} from "../feature-preferences/feature-preferences.server";
+import {
+  parseEffectiveRecoveryPolicy,
+  type RecoveryOfferMode,
+} from "@modainteract/moda-interact-shared/recovery-policy";
 import type { Prisma, PrismaClient, ShopSettings } from "@prisma/client";
 import db from "@/db.server";
 import { recordMerchantSettingsFailure } from "../feature-preferences/merchant-settings-observability.server";
@@ -29,24 +36,42 @@ export class RecoveryPolicyValidationError extends Error {
   }
 }
 
-function toPolicy(value: RecoveryPolicyValue, source: "MERCHANT" | "ADMIN_OVERRIDE") {
+function toPolicy(
+  value: RecoveryPolicyValue,
+  source: "MERCHANT" | "ADMIN_OVERRIDE",
+) {
   return parseEffectiveRecoveryPolicy({
     recoveryDelayMinutes: value.recoveryDelayMinutes,
     recoveryOfferMode: value.recoveryOfferMode,
-    fixedShopifyDiscountId: value.recoveryOfferMode === "FIXED"
-      ? value.selectedDiscountIds?.[0] ?? value.fixedShopifyDiscountId ?? null
-      : null,
+    fixedShopifyDiscountId:
+      value.recoveryOfferMode === "FIXED"
+        ? (value.selectedDiscountIds?.[0] ??
+          value.fixedShopifyDiscountId ??
+          null)
+        : null,
     followUpEnabled: value.followUpEnabled,
     followUpDelayMinutes: value.followUpDelayMinutes ?? null,
     source,
   });
 }
 
-export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(), client: PrismaClient = db, supplied?: { settings: ShopSettings | null }) {
+export async function loadRecoveryPolicySnapshot(
+  shopId: string,
+  now = new Date(),
+  client: PrismaClient = db,
+  supplied?: { settings: ShopSettings | null },
+) {
   const [settings, override, catalogue] = await Promise.all([
-    supplied ? supplied.settings : client.shopSettings.findUnique({ where: { shopId } }),
-    client.shopRecoveryPolicyOverride.findFirst({ where: { shopId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] } }),
-    client.shopifyDiscountCatalogue.findUnique({ where: { shopId }, include: { discounts: { orderBy: { title: "asc" } } } }),
+    supplied
+      ? supplied.settings
+      : client.shopSettings.findUnique({ where: { shopId } }),
+    client.shopRecoveryPolicyOverride.findFirst({
+      where: { shopId, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] },
+    }),
+    client.shopifyDiscountCatalogue.findUnique({
+      where: { shopId },
+      include: { discounts: { orderBy: { title: "asc" } } },
+    }),
   ]).catch((error: unknown) => {
     recordMerchantSettingsFailure("read", "recovery_policy", shopId, error);
     throw error;
@@ -57,7 +82,8 @@ export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(
   const discounts = catalogue?.discounts ?? [];
   return {
     merchant,
-    notifyOnInitialRecoveryOutreach: settings.notifyOnInitialRecoveryOutreach ?? false,
+    notifyOnInitialRecoveryOutreach:
+      settings.notifyOnInitialRecoveryOutreach ?? false,
     revision: settings.updatedAt.toISOString(),
     effective,
     overrideActive: Boolean(override),
@@ -68,22 +94,40 @@ export async function loadRecoveryPolicySnapshot(shopId: string, now = new Date(
       .map((discount) => discount.id)
       .sort(compareAscii),
     discounts: discounts.map((discount) => ({
-      id: discount.id, title: discount.title, summary: discount.summary,
-      method: discount.method, providerStatus: discount.providerStatus,
-      startsAt: discount.startsAt, endsAt: discount.endsAt,
-      singleRedeemCode: discount.singleRedeemCode, fixedSelectable: discount.fixedSelectable,
-      isAvailable: discount.isAvailable, unavailableAt: discount.unavailableAt,
+      id: discount.id,
+      title: discount.title,
+      summary: discount.summary,
+      method: discount.method,
+      providerStatus: discount.providerStatus,
+      startsAt: discount.startsAt,
+      endsAt: discount.endsAt,
+      singleRedeemCode: discount.singleRedeemCode,
+      fixedSelectable: discount.fixedSelectable,
+      isAvailable: discount.isAvailable,
+      unavailableAt: discount.unavailableAt,
       lastSyncedAt: discount.lastSyncedAt,
       lastSeenSyncGeneration: discount.lastSeenSyncGeneration,
     })),
-    merchantFixedDiscount: resolveFixedIdentity(settings.fixedShopifyDiscountId, catalogue?.discounts ?? []),
-    effectiveFixedDiscount: resolveFixedIdentity(effective.fixedShopifyDiscountId, catalogue?.discounts ?? []),
+    merchantFixedDiscount: resolveFixedIdentity(
+      settings.fixedShopifyDiscountId,
+      catalogue?.discounts ?? [],
+    ),
+    effectiveFixedDiscount: resolveFixedIdentity(
+      effective.fixedShopifyDiscountId,
+      catalogue?.discounts ?? [],
+    ),
   };
 }
 
-function resolveFixedIdentity(id: string | null, discounts: Array<{ id: string; title: string | null }>) {
+function resolveFixedIdentity(
+  id: string | null,
+  discounts: Array<{ id: string; title: string | null }>,
+) {
   if (!id) return null;
-  return { id, title: discounts.find((discount) => discount.id === id)?.title ?? null };
+  return {
+    id,
+    title: discounts.find((discount) => discount.id === id)?.title ?? null,
+  };
 }
 
 function compareAscii(left: string, right: string) {
@@ -91,9 +135,11 @@ function compareAscii(left: string, right: string) {
 }
 
 export function isCurrentlyRunning(discount: DiscountValue, now: Date) {
-  return discount.providerStatus === "ACTIVE" &&
+  return (
+    discount.providerStatus === "ACTIVE" &&
     (!discount.startsAt || discount.startsAt <= now) &&
-    (!discount.endsAt || discount.endsAt > now);
+    (!discount.endsAt || discount.endsAt > now)
+  );
 }
 
 export function parseMerchantRecoveryPolicy(input: {
@@ -104,27 +150,46 @@ export function parseMerchantRecoveryPolicy(input: {
   followUpDelayMinutes?: unknown;
   notifyOnInitialRecoveryOutreach: unknown;
 }) {
-  if (typeof input.recoveryDelayMinutes !== "string" || !input.recoveryDelayMinutes.trim()) throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
+  if (
+    typeof input.recoveryDelayMinutes !== "string" ||
+    !input.recoveryDelayMinutes.trim()
+  )
+    throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
   const recoveryDelayMinutes = Number(input.recoveryDelayMinutes);
-  const recoveryOfferMode = String(input.recoveryOfferMode) as RecoveryOfferMode;
+  const recoveryOfferMode = String(
+    input.recoveryOfferMode,
+  ) as RecoveryOfferMode;
   if (
     !Array.isArray(input.selectedDiscountIds) ||
-    input.selectedDiscountIds.some((id) => typeof id !== "string" || id.length === 0) ||
+    input.selectedDiscountIds.some(
+      (id) => typeof id !== "string" || id.length === 0,
+    ) ||
     new Set(input.selectedDiscountIds).size !== input.selectedDiscountIds.length
-  ) throw new RecoveryPolicyValidationError("INVALID_DISCOUNT_SELECTION");
-  if (input.selectedDiscountIds.length > 50) throw new RecoveryPolicyValidationError("TOO_MANY_DISCOUNTS");
+  )
+    throw new RecoveryPolicyValidationError("INVALID_DISCOUNT_SELECTION");
+  if (input.selectedDiscountIds.length > 50)
+    throw new RecoveryPolicyValidationError("TOO_MANY_DISCOUNTS");
   const selectedDiscountIds = [...input.selectedDiscountIds].sort(compareAscii);
   if (recoveryOfferMode === "FIXED" && selectedDiscountIds.length === 0)
     throw new RecoveryPolicyValidationError("FIXED_SELECTION_REQUIRED");
-  const followUpEnabled = input.followUpEnabled === true || input.followUpEnabled === "true" || input.followUpEnabled === "on";
-  const followUpDelayMinutes = !followUpEnabled ? null : input.followUpDelayMinutes === "" || input.followUpDelayMinutes == null
+  const followUpEnabled =
+    input.followUpEnabled === true ||
+    input.followUpEnabled === "true" ||
+    input.followUpEnabled === "on";
+  const followUpDelayMinutes = !followUpEnabled
     ? null
-    : Number(input.followUpDelayMinutes);
-  if (typeof input.notifyOnInitialRecoveryOutreach !== "boolean") throw new RecoveryPolicyValidationError("INVALID_INITIAL_OUTREACH_NOTIFICATION");
+    : input.followUpDelayMinutes === "" || input.followUpDelayMinutes == null
+      ? null
+      : Number(input.followUpDelayMinutes);
+  if (typeof input.notifyOnInitialRecoveryOutreach !== "boolean")
+    throw new RecoveryPolicyValidationError(
+      "INVALID_INITIAL_OUTREACH_NOTIFICATION",
+    );
   const policy = parseEffectiveRecoveryPolicy({
     recoveryDelayMinutes,
     recoveryOfferMode,
-    fixedShopifyDiscountId: recoveryOfferMode === "FIXED" ? selectedDiscountIds[0] : null,
+    fixedShopifyDiscountId:
+      recoveryOfferMode === "FIXED" ? selectedDiscountIds[0] : null,
     followUpEnabled,
     followUpDelayMinutes,
     source: "MERCHANT",
@@ -132,16 +197,37 @@ export function parseMerchantRecoveryPolicy(input: {
   return { ...policy, selectedDiscountIds };
 }
 
-export async function saveMerchantRecoveryPolicy(shopId: string, input: Parameters<typeof parseMerchantRecoveryPolicy>[0], expectedRevision: string, client: PrismaClient = db) {
+export async function saveMerchantRecoveryPolicy(
+  shopId: string,
+  input: Parameters<typeof parseMerchantRecoveryPolicy>[0],
+  expectedRevision: string,
+  client: PrismaClient = db,
+) {
   const policy = parseMerchantRecoveryPolicy(input);
   const notifyOnInitialRecoveryOutreach = input.notifyOnInitialRecoveryOutreach;
-  if (typeof notifyOnInitialRecoveryOutreach !== "boolean") throw new RecoveryPolicyValidationError("INVALID_INITIAL_OUTREACH_NOTIFICATION");
-  if (policy.recoveryDelayMinutes < 0 || policy.recoveryDelayMinutes > MAX_DELAY_MINUTES) throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
-  if (policy.followUpEnabled && (policy.followUpDelayMinutes == null || policy.followUpDelayMinutes < 1 || policy.followUpDelayMinutes > MAX_DELAY_MINUTES)) throw new RecoveryPolicyValidationError("INVALID_FOLLOW_UP_DELAY");
+  if (typeof notifyOnInitialRecoveryOutreach !== "boolean")
+    throw new RecoveryPolicyValidationError(
+      "INVALID_INITIAL_OUTREACH_NOTIFICATION",
+    );
+  if (
+    policy.recoveryDelayMinutes < 0 ||
+    policy.recoveryDelayMinutes > MAX_DELAY_MINUTES
+  )
+    throw new RecoveryPolicyValidationError("INVALID_RECOVERY_DELAY");
+  if (
+    policy.followUpEnabled &&
+    (policy.followUpDelayMinutes == null ||
+      policy.followUpDelayMinutes < 1 ||
+      policy.followUpDelayMinutes > MAX_DELAY_MINUTES)
+  )
+    throw new RecoveryPolicyValidationError("INVALID_FOLLOW_UP_DELAY");
   return client.$transaction(async (transaction: Prisma.TransactionClient) => {
     await lockSettingsShop(transaction, shopId);
-    const current = await transaction.shopSettings.findUniqueOrThrow({where: {shopId}});
-    if (expectedRevision !== current.updatedAt.toISOString()) throw new PreferenceError("CONFLICT");
+    const current = await transaction.shopSettings.findUniqueOrThrow({
+      where: { shopId },
+    });
+    if (expectedRevision !== current.updatedAt.toISOString())
+      throw new PreferenceError("CONFLICT");
     const ownedDiscounts = policy.selectedDiscountIds.length
       ? await transaction.shopifyDiscount.findMany({
           where: { shopId, id: { in: policy.selectedDiscountIds } },
@@ -154,21 +240,28 @@ export async function saveMerchantRecoveryPolicy(shopId: string, input: Paramete
       where: { shopId, isAvailable: true },
       select: { id: true },
     });
-    const previousIds = previouslySelected.map((discount: { id: string }) => discount.id).sort(compareAscii);
-    const selectionsChanged = previousIds.length !== policy.selectedDiscountIds.length ||
+    const previousIds = previouslySelected
+      .map((discount: { id: string }) => discount.id)
+      .sort(compareAscii);
+    const selectionsChanged =
+      previousIds.length !== policy.selectedDiscountIds.length ||
       previousIds.some((id, index) => id !== policy.selectedDiscountIds[index]);
 
     if (
       !selectionsChanged &&
-      revisionOf(toPolicy(current, "MERCHANT")) === revisionOf(toPolicy(policy, "MERCHANT")) &&
-      current.notifyOnInitialRecoveryOutreach === notifyOnInitialRecoveryOutreach
-    ) return current;
+      revisionOf(toPolicy(current, "MERCHANT")) ===
+        revisionOf(toPolicy(policy, "MERCHANT")) &&
+      current.notifyOnInitialRecoveryOutreach ===
+        notifyOnInitialRecoveryOutreach
+    )
+      return current;
     const previous = new Set(previousIds);
     const desired = new Set(policy.selectedDiscountIds);
     const removed = previousIds.filter((id) => !desired.has(id));
     const added = policy.selectedDiscountIds.filter((id) => !previous.has(id));
     for (const [ids, wasAvailable, isAvailable] of [
-      [removed, true, false], [added, false, true],
+      [removed, true, false],
+      [added, false, true],
     ] as const) {
       if (!ids.length) continue;
       const changed = await transaction.shopifyDiscount.updateMany({
@@ -181,12 +274,15 @@ export async function saveMerchantRecoveryPolicy(shopId: string, input: Paramete
     return transaction.shopSettings.update({
       where: { shopId },
       data: {
-        updatedAt: new Date(Math.max(Date.now(), current.updatedAt.getTime() + 1)),
+        updatedAt: new Date(
+          Math.max(Date.now(), current.updatedAt.getTime() + 1),
+        ),
         recoveryDelayMinutes: policy.recoveryDelayMinutes,
         recoveryOfferMode: policy.recoveryOfferMode,
-        fixedShopifyDiscountId: policy.recoveryOfferMode === "FIXED"
-          ? policy.selectedDiscountIds[0] ?? null
-          : null,
+        fixedShopifyDiscountId:
+          policy.recoveryOfferMode === "FIXED"
+            ? (policy.selectedDiscountIds[0] ?? null)
+            : null,
         followUpEnabled: policy.followUpEnabled,
         followUpDelayMinutes: policy.followUpDelayMinutes,
         notifyOnInitialRecoveryOutreach,

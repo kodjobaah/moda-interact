@@ -26,13 +26,15 @@ vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.transaction.mockImplementation(async (callback) => callback({
-    shop: { findUnique: mocks.shopFindUnique },
-    $queryRaw: mocks.queryRaw,
-    session: { findFirst: mocks.sessionFindFirst },
-    shopifyDiscountCatalogue: { upsert: mocks.catalogueUpsert },
-    shopifyDiscount: { updateMany: mocks.discountUpdateMany },
-  }));
+  mocks.transaction.mockImplementation(async (callback) =>
+    callback({
+      shop: { findUnique: mocks.shopFindUnique },
+      $queryRaw: mocks.queryRaw,
+      session: { findFirst: mocks.sessionFindFirst },
+      shopifyDiscountCatalogue: { upsert: mocks.catalogueUpsert },
+      shopifyDiscount: { updateMany: mocks.discountUpdateMany },
+    }),
+  );
   mocks.catalogueUpsert.mockResolvedValue({});
   mocks.discountUpdateMany.mockResolvedValue({ count: 1 });
   mocks.publish.mockResolvedValue({ outcome: "enqueued" });
@@ -69,7 +71,9 @@ describe("Shopify discount lifecycle contract", () => {
       onboardingCompleted: true,
       subscription: { status: "TRIALING" },
     });
-    mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });
+    mocks.sessionFindFirst.mockResolvedValue({
+      scope: "read_products,read_discounts",
+    });
 
     await enqueueSubscriptionActivatedDiscountSyncBestEffort("shop-1");
 
@@ -82,12 +86,16 @@ describe("Shopify discount lifecycle contract", () => {
         reason: "SUBSCRIPTION_ACTIVATED",
       }),
     });
-    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.publish.mock.invocationCallOrder[0],
+    );
   });
 
   it("logs the original activation publication failure after commit without changing best-effort success", async () => {
     const records: string[] = [];
-    vi.spyOn(console, "error").mockImplementation((record) => { records.push(String(record)); });
+    vi.spyOn(console, "error").mockImplementation((record) => {
+      records.push(String(record));
+    });
     mocks.shopFindUnique
       .mockResolvedValueOnce({ id: "shop-1" })
       .mockResolvedValueOnce({
@@ -97,11 +105,17 @@ describe("Shopify discount lifecycle contract", () => {
         onboardingCompleted: true,
         subscription: { status: "ACTIVE" },
       });
-    mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });
-    const error = new Error("activation queue failure marker", { cause: new Error("activation queue cause") });
+    mocks.sessionFindFirst.mockResolvedValue({
+      scope: "read_products,read_discounts",
+    });
+    const error = new Error("activation queue failure marker", {
+      cause: new Error("activation queue cause"),
+    });
     mocks.publish.mockRejectedValue(error);
 
-    await expect(enqueueSubscriptionActivatedDiscountSyncBestEffort("shop-1")).resolves.toBeUndefined();
+    await expect(
+      enqueueSubscriptionActivatedDiscountSyncBestEffort("shop-1"),
+    ).resolves.toBeUndefined();
 
     const record = JSON.parse(records[0] ?? "{}");
     expect(record.event).toBe("shopify.lifecycle.failed");
@@ -113,15 +127,21 @@ describe("Shopify discount lifecycle contract", () => {
       error: { message: "activation queue failure marker" },
       causeChain: [{ message: "activation queue cause" }],
     });
-    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(mocks.publish.mock.invocationCallOrder[0]);
+    expect(mocks.transaction.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.publish.mock.invocationCallOrder[0],
+    );
   });
 
   it("preserves prior discount unavailableAt values while invalidating all rows", async () => {
     const eventTime = new Date("2026-09-16T17:00:00.000Z");
-    await markDiscountCatalogueUnavailable({
-      shopifyDiscountCatalogue: { upsert: mocks.catalogueUpsert },
-      shopifyDiscount: { updateMany: mocks.discountUpdateMany },
-    } as never, "shop-1", eventTime);
+    await markDiscountCatalogueUnavailable(
+      {
+        shopifyDiscountCatalogue: { upsert: mocks.catalogueUpsert },
+        shopifyDiscount: { updateMany: mocks.discountUpdateMany },
+      } as never,
+      "shop-1",
+      eventTime,
+    );
 
     expect(mocks.catalogueUpsert).toHaveBeenCalledTimes(1);
     expect(mocks.discountUpdateMany).toHaveBeenNthCalledWith(1, {
@@ -147,24 +167,31 @@ describe("Shopify discount lifecycle contract", () => {
     ["ACTIVE", true, "ACTIVE", "read_products", false],
     ["UNINSTALLED", true, "ACTIVE", "read_discounts", false],
     ["ACTIVE", false, "ACTIVE", "read_discounts", false],
-  ])("eligibility is %s", (shopStatus, onboardingCompleted, subscriptionStatus, scope, expected) => {
-    expect(isDiscountSyncEligible({
-      shopStatus,
-      onboardingCompleted,
-      subscriptionStatus,
-      sessionScope: scope,
-    })).toBe(expected);
-  });
+  ])(
+    "eligibility is %s",
+    (shopStatus, onboardingCompleted, subscriptionStatus, scope, expected) => {
+      expect(
+        isDiscountSyncEligible({
+          shopStatus,
+          onboardingCompleted,
+          subscriptionStatus,
+          sessionScope: scope,
+        }),
+      ).toBe(expected);
+    },
+  );
 
   it("builds a versioned webhook payload with canonical topic and timestamp", () => {
-    expect(buildDiscountSyncJob({
-      shopId: "shop-1",
-      shopDomain: "shop.myshopify.com",
-      reason: "DISCOUNT_WEBHOOK",
-      requestedAt: new Date("2026-09-16T16:00:00.000Z"),
-      deliveryId: "delivery-1",
-      webhookTopic: "discounts/create",
-    })).toEqual({
+    expect(
+      buildDiscountSyncJob({
+        shopId: "shop-1",
+        shopDomain: "shop.myshopify.com",
+        reason: "DISCOUNT_WEBHOOK",
+        requestedAt: new Date("2026-09-16T16:00:00.000Z"),
+        deliveryId: "delivery-1",
+        webhookTopic: "discounts/create",
+      }),
+    ).toEqual({
       schemaVersion: 1,
       shopId: "shop-1",
       shopDomain: "shop.myshopify.com",

@@ -1,7 +1,4 @@
-import type {
-  PrismaClient,
-  Subscription,
-} from "@prisma/client";
+import type { PrismaClient, Subscription } from "@prisma/client";
 
 import type {
   BillingProvider,
@@ -12,9 +9,7 @@ import type {
   MerchantHomeBillingReadInput,
 } from "./billing.types";
 
-import {
-  ShopifyBillingProvider,
-} from "./providers/shopify-billing.provider";
+import { ShopifyBillingProvider } from "./providers/shopify-billing.provider";
 import {
   deriveBillingPeriodPhase,
   SubscriptionSyncService,
@@ -34,9 +29,7 @@ import {
   type HostedPlanChangeReturnResult,
   type HostedPlanVerificationFence,
 } from "./hosted-plan-change.service";
-import {
-  SubscriptionActivationService,
-} from "./subscription-activation.service";
+import { SubscriptionActivationService } from "./subscription-activation.service";
 import type {
   CompletedFreeActivation,
   FreeActivationResult,
@@ -75,14 +68,15 @@ export class BillingService {
   private readonly subscriptionSyncService: SubscriptionSyncService;
 
   constructor(
-    private readonly provider: BillingProvider =
-      new ShopifyBillingProvider(),
+    private readonly provider: BillingProvider = new ShopifyBillingProvider(),
     private readonly database: PrismaClient = prisma,
-    dispatchTranslation: TranslationDispatch =
-      defaultTranslationDispatch,
+    dispatchTranslation: TranslationDispatch = defaultTranslationDispatch,
   ) {
     this.planResolutionService = new BillingPlanResolutionService(database);
-    this.subscriptionReadService = new SubscriptionReadService(provider, database);
+    this.subscriptionReadService = new SubscriptionReadService(
+      provider,
+      database,
+    );
     this.billingOperationService = new ShopifyBillingOperationService(database);
     this.subscriptionActivationService = new SubscriptionActivationService(
       database,
@@ -93,17 +87,19 @@ export class BillingService {
       database,
       this.billingOperationService,
     );
-    this.recoveryCreditPurchaseRequestService = new RecoveryCreditPurchaseRequestService(
+    this.recoveryCreditPurchaseRequestService =
+      new RecoveryCreditPurchaseRequestService(
+        provider,
+        database,
+        this.planResolutionService,
+        this.billingOperationService,
+      );
+    this.presentationReadService = new MerchantBillingPresentationReadService(
       provider,
       database,
-      this.planResolutionService,
-      this.billingOperationService,
     );
-    this.presentationReadService = new MerchantBillingPresentationReadService(provider, database);
-    const subscriptionEndedNotificationService = new SubscriptionEndedNotificationService(
-      database,
-      dispatchTranslation,
-    );
+    const subscriptionEndedNotificationService =
+      new SubscriptionEndedNotificationService(database, dispatchTranslation);
     this.subscriptionSyncService = new SubscriptionSyncService(
       provider,
       database,
@@ -117,21 +113,29 @@ export class BillingService {
   private async resolveOrMaterializeBillingPlan(
     planHandle: string,
   ): Promise<OperationalBillingPlanResolution> {
-    return this.planResolutionService.resolveOrMaterializeBillingPlan(planHandle);
+    return this.planResolutionService.resolveOrMaterializeBillingPlan(
+      planHandle,
+    );
   }
 
   async prepareFreeActivation(
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    return this.subscriptionActivationService.prepareFreeActivation(shopId, planHandle);
+    return this.subscriptionActivationService.prepareFreeActivation(
+      shopId,
+      planHandle,
+    );
   }
 
   async preparePaidActivation(
     shopId: string,
     planHandle: string,
   ): Promise<FreeActivationResult | null> {
-    return this.subscriptionActivationService.preparePaidActivation(shopId, planHandle);
+    return this.subscriptionActivationService.preparePaidActivation(
+      shopId,
+      planHandle,
+    );
   }
 
   async getSubscriptionProjection(shopId: string) {
@@ -149,31 +153,36 @@ export class BillingService {
     nextReconcileAt: Date;
     verificationFailure?: BillingVerificationFailure;
   }): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
-    return this.subscriptionActivationService.scheduleInitialFreeReconciliationIfCurrent({
-      shopId,
-      expected,
-      nextReconcileAt,
-      verificationFailure,
-    });
+    return this.subscriptionActivationService.scheduleInitialFreeReconciliationIfCurrent(
+      {
+        shopId,
+        expected,
+        nextReconcileAt,
+        verificationFailure,
+      },
+    );
   }
 
   async completeFreeActivation(
     shopId: string,
     requestedPlanHandle: string,
   ): Promise<CompletedFreeActivation | null> {
-    return this.subscriptionActivationService.completeFreeActivation(shopId, requestedPlanHandle);
+    return this.subscriptionActivationService.completeFreeActivation(
+      shopId,
+      requestedPlanHandle,
+    );
   }
 
-async getSubscription(
-  shopId: string,
-) {
+  async getSubscription(shopId: string) {
     return this.subscriptionReadService.getSubscription(shopId);
-}
+  }
 
   async getMerchantShopifySubscriptionState(
     shopId: string,
   ): Promise<MerchantShopifySubscriptionState> {
-    return this.subscriptionReadService.getMerchantShopifySubscriptionState(shopId);
+    return this.subscriptionReadService.getMerchantShopifySubscriptionState(
+      shopId,
+    );
   }
 
   async getHostedPlanVerificationFence(
@@ -192,7 +201,11 @@ async getSubscription(
     requestedPlanHandle: string;
     state: MerchantShopifySubscriptionState;
     verificationFence: HostedPlanVerificationFence | null;
-  }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
+  }): Promise<{
+    result: HostedPlanChangeReturnResult;
+    subscriptionId: string | null;
+    nextReconcileAt: Date | null;
+  }> {
     return this.hostedPlanChangeService.recordHostedPlanChangeReturn({
       shopId,
       requestedPlanHandle,
@@ -216,7 +229,9 @@ async getSubscription(
   async getMerchantShopifyLifecycleState(
     shopId: string,
   ): Promise<MerchantShopifyLifecycleState> {
-    return this.subscriptionReadService.getMerchantShopifyLifecycleState(shopId);
+    return this.subscriptionReadService.getMerchantShopifyLifecycleState(
+      shopId,
+    );
   }
 
   readMerchantBillingPresentation(input: MerchantBillingReadInput) {
@@ -227,7 +242,12 @@ async getSubscription(
     return this.presentationReadService.readHome(input);
   }
 
-  async requestRecoveryCreditPack(shopId: string, intent: string, purchaseId: string, eventHandle: string) {
+  async requestRecoveryCreditPack(
+    shopId: string,
+    intent: string,
+    purchaseId: string,
+    eventHandle: string,
+  ) {
     return this.recoveryCreditPurchaseRequestService.requestRecoveryCreditPack(
       shopId,
       intent,
@@ -235,7 +255,6 @@ async getSubscription(
       eventHandle,
     );
   }
-
 
   async syncSubscription(
     shopId: string,
@@ -248,6 +267,4 @@ async getSubscription(
   }
 }
 
-
-export const billingService =
-  new BillingService();
+export const billingService = new BillingService();

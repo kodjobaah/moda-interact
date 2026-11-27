@@ -5,7 +5,10 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { PrismaClient } from "@prisma/client";
-import { startDisposablePostgres, type DisposablePostgres } from "./disposable-postgres";
+import {
+  startDisposablePostgres,
+  type DisposablePostgres,
+} from "./disposable-postgres";
 
 const execFileAsync = promisify(execFile);
 export type QueryLoggingPrismaClient = PrismaClient<{
@@ -67,7 +70,9 @@ export async function startBillingPostgresFixture(): Promise<BillingPostgresFixt
   try {
     await database.$connect();
   } catch (error) {
-    await Promise.allSettled([...clients].map(client => client.$disconnect()));
+    await Promise.allSettled(
+      [...clients].map((client) => client.$disconnect()),
+    );
     await postgres.cleanup();
     throw error;
   }
@@ -79,7 +84,9 @@ export async function startBillingPostgresFixture(): Promise<BillingPostgresFixt
     async cleanup() {
       if (cleaned) return;
       cleaned = true;
-      await Promise.allSettled([...clients].map((client) => client.$disconnect()));
+      await Promise.allSettled(
+        [...clients].map((client) => client.$disconnect()),
+      );
       await postgres.cleanup();
     },
   };

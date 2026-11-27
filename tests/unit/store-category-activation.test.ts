@@ -15,42 +15,47 @@ import {
 const now = new Date("2026-09-30T19:00:00.000Z");
 const promptText = "Pinned canonical instructions\nSecond line.";
 
-function makeActivationStore(options: {
-  status?: SubscriptionProjectionStatus;
-  planId?: string | null;
-  profile?: Record<string, unknown> | null;
-  revision?: Record<string, unknown> | null;
-  category?: Record<string, unknown> | null;
-  configurations?: Array<Record<string, unknown>>;
-} = {}) {
+function makeActivationStore(
+  options: {
+    status?: SubscriptionProjectionStatus;
+    planId?: string | null;
+    profile?: Record<string, unknown> | null;
+    revision?: Record<string, unknown> | null;
+    category?: Record<string, unknown> | null;
+    configurations?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const state = {
     subscription: {
       status: options.status ?? SubscriptionProjectionStatus.ACTIVE,
       planId: options.planId === undefined ? "plan-1" : options.planId,
     },
-    profile: options.profile === undefined
-      ? {
-          activeCategoryId: null,
-          pendingCategoryId: "category-1",
-          pendingPromptRevisionId: "revision-1",
-          pendingSelectionGeneration: 3,
-          pendingSelectedAt: new Date("2026-09-29T12:00:00.000Z"),
-        }
-      : options.profile,
-    category: options.category === undefined
-      ? { id: "category-1", defaultTemplateId: "template-current-b" }
-      : options.category,
-    revision: options.revision === undefined
-      ? {
-          id: "revision-1",
-          promptId: "prompt-1",
-          status: CommercePromptRevisionStatus.DRAFT,
-          promptText,
-          sourceTemplateId: "template-1",
-          sourceTemplateEditVersion: 7,
-          prompt: { scope: CommerceAgentPromptScope.SHOP, shopId: "shop-1" },
-        }
-      : options.revision,
+    profile:
+      options.profile === undefined
+        ? {
+            activeCategoryId: null,
+            pendingCategoryId: "category-1",
+            pendingPromptRevisionId: "revision-1",
+            pendingSelectionGeneration: 3,
+            pendingSelectedAt: new Date("2026-09-29T12:00:00.000Z"),
+          }
+        : options.profile,
+    category:
+      options.category === undefined
+        ? { id: "category-1", defaultTemplateId: "template-current-b" }
+        : options.category,
+    revision:
+      options.revision === undefined
+        ? {
+            id: "revision-1",
+            promptId: "prompt-1",
+            status: CommercePromptRevisionStatus.DRAFT,
+            promptText,
+            sourceTemplateId: "template-1",
+            sourceTemplateEditVersion: 7,
+            prompt: { scope: CommerceAgentPromptScope.SHOP, shopId: "shop-1" },
+          }
+        : options.revision,
     configurations: options.configurations ?? [],
   };
   const tx = {
@@ -82,16 +87,23 @@ function makeActivationStore(options: {
       update: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         Object.assign(state.configurations[0], {
           activePromptRevisionId: data.activePromptRevisionId,
-          promptEditVersion: (state.configurations[0]?.promptEditVersion as number) + 1,
+          promptEditVersion:
+            (state.configurations[0]?.promptEditVersion as number) + 1,
         });
       }),
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
-        state.configurations.push({ ...data, modelId: null, modelEditVersion: 1 });
+        state.configurations.push({
+          ...data,
+          modelId: null,
+          modelEditVersion: 1,
+        });
       }),
     },
   };
   const client = {
-    $transaction: vi.fn(async (callback: (transaction: typeof tx) => unknown) => callback(tx)),
+    $transaction: vi.fn(async (callback: (transaction: typeof tx) => unknown) =>
+      callback(tx),
+    ),
   };
   return { client, tx, state };
 }
@@ -140,11 +152,13 @@ describe("initial pending Store Category activation", () => {
       configurations: [existingConfiguration],
     });
 
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1", expectedPendingSelectionGeneration: 3 },
-      client as never,
-      now,
-    )).resolves.toEqual({
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1", expectedPendingSelectionGeneration: 3 },
+        client as never,
+        now,
+      ),
+    ).resolves.toEqual({
       kind: "ACTIVATED",
       categoryId: "category-1",
       promptRevisionId: "revision-1",
@@ -159,7 +173,9 @@ describe("initial pending Store Category activation", () => {
       },
       data: {
         status: CommercePromptRevisionStatus.PUBLISHED,
-        contentHash: createHash("sha256").update(promptText, "utf8").digest("hex"),
+        contentHash: createHash("sha256")
+          .update(promptText, "utf8")
+          .digest("hex"),
         publishedAt: now,
       },
     });
@@ -188,7 +204,11 @@ describe("initial pending Store Category activation", () => {
 
   it("creates a SHOP configuration without a model when none exists", async () => {
     const { client, tx, state } = makeActivationStore();
-    await activateInitialPendingStoreCategoryIfEligible({ shopId: "shop-1" }, client as never, now);
+    await activateInitialPendingStoreCategoryIfEligible(
+      { shopId: "shop-1" },
+      client as never,
+      now,
+    );
 
     expect(tx.commerceAgentConfiguration.create).toHaveBeenCalledWith({
       data: {
@@ -208,13 +228,21 @@ describe("initial pending Store Category activation", () => {
 
   it("returns ALREADY_ACTIVE on replay without republishing or incrementing configuration again", async () => {
     const { client, tx, state } = makeActivationStore();
-    await activateInitialPendingStoreCategoryIfEligible({ shopId: "shop-1" }, client as never, now);
+    await activateInitialPendingStoreCategoryIfEligible(
+      { shopId: "shop-1" },
+      client as never,
+      now,
+    );
     const activatedRevision = { ...state.revision };
     const activatedConfiguration = { ...state.configurations[0] };
 
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, client as never, new Date("2026-10-01T00:00:00.000Z"),
-    )).resolves.toEqual({ kind: "ALREADY_ACTIVE" });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        client as never,
+        new Date("2026-10-01T00:00:00.000Z"),
+      ),
+    ).resolves.toEqual({ kind: "ALREADY_ACTIVE" });
 
     expect(state.revision).toEqual(activatedRevision);
     expect(state.configurations[0]).toEqual(activatedConfiguration);
@@ -228,11 +256,13 @@ describe("initial pending Store Category activation", () => {
       { status: SubscriptionProjectionStatus.ACTIVE, planId: null },
     ] as const) {
       const { client, tx } = makeActivationStore(options);
-      await expect(activateInitialPendingStoreCategoryIfEligible(
-        { shopId: "shop-1" },
-        client as never,
-        now,
-      )).resolves.toEqual({ kind: "SUBSCRIPTION_NOT_ACTIVE" });
+      await expect(
+        activateInitialPendingStoreCategoryIfEligible(
+          { shopId: "shop-1" },
+          client as never,
+          now,
+        ),
+      ).resolves.toEqual({ kind: "SUBSCRIPTION_NOT_ACTIVE" });
       expect(tx.commerceShopProfile.findUnique).not.toHaveBeenCalled();
       expect(tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
     }
@@ -240,20 +270,30 @@ describe("initial pending Store Category activation", () => {
 
   it("returns NO_PENDING when the profile or pending state is absent", async () => {
     const noProfile = makeActivationStore({ profile: null });
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, noProfile.client as never, now,
-    )).resolves.toEqual({ kind: "NO_PENDING" });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        noProfile.client as never,
+        now,
+      ),
+    ).resolves.toEqual({ kind: "NO_PENDING" });
 
-    const noPending = makeActivationStore({ profile: {
-      activeCategoryId: null,
-      pendingCategoryId: null,
-      pendingPromptRevisionId: null,
-      pendingSelectionGeneration: 0,
-      pendingSelectedAt: null,
-    } });
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, noPending.client as never, now,
-    )).resolves.toEqual({ kind: "NO_PENDING" });
+    const noPending = makeActivationStore({
+      profile: {
+        activeCategoryId: null,
+        pendingCategoryId: null,
+        pendingPromptRevisionId: null,
+        pendingSelectionGeneration: 0,
+        pendingSelectedAt: null,
+      },
+    });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        noPending.client as never,
+        now,
+      ),
+    ).resolves.toEqual({ kind: "NO_PENDING" });
   });
 
   it("preserves later pending category state when an active category already exists", async () => {
@@ -266,25 +306,35 @@ describe("initial pending Store Category activation", () => {
     };
     const { client, tx, state } = makeActivationStore({ profile });
 
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, client as never, now,
-    )).resolves.toEqual({ kind: "ALREADY_ACTIVE" });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        client as never,
+        now,
+      ),
+    ).resolves.toEqual({ kind: "ALREADY_ACTIVE" });
     expect(state.profile).toEqual(profile);
     expect(tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
   });
 
   it("accepts changed category defaults while failing closed on missing pending provenance", async () => {
     const stale = makeActivationStore();
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1", expectedPendingSelectionGeneration: 2 },
-      stale.client as never,
-      now,
-    )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1", expectedPendingSelectionGeneration: 2 },
+        stale.client as never,
+        now,
+      ),
+    ).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
 
     const changedDefault = makeActivationStore();
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, changedDefault.client as never, now,
-    )).resolves.toMatchObject({ kind: "ACTIVATED" });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        changedDefault.client as never,
+        now,
+      ),
+    ).resolves.toMatchObject({ kind: "ACTIVATED" });
     expect(changedDefault.state.revision).toMatchObject({
       sourceTemplateId: "template-1",
       sourceTemplateEditVersion: 7,
@@ -292,22 +342,42 @@ describe("initial pending Store Category activation", () => {
     });
 
     for (const revision of [
-      { ...makeActivationStore().state.revision as Record<string, unknown>, sourceTemplateId: null },
-      { ...makeActivationStore().state.revision as Record<string, unknown>, sourceTemplateEditVersion: null },
+      {
+        ...(makeActivationStore().state.revision as Record<string, unknown>),
+        sourceTemplateId: null,
+      },
+      {
+        ...(makeActivationStore().state.revision as Record<string, unknown>),
+        sourceTemplateEditVersion: null,
+      },
     ]) {
       const missingProvenance = makeActivationStore({ revision });
-      await expect(activateInitialPendingStoreCategoryIfEligible(
-        { shopId: "shop-1" }, missingProvenance.client as never, now,
-      )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
-      expect(missingProvenance.tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
+      await expect(
+        activateInitialPendingStoreCategoryIfEligible(
+          { shopId: "shop-1" },
+          missingProvenance.client as never,
+          now,
+        ),
+      ).rejects.toMatchObject({
+        code: "STORE_CATEGORY_PENDING_STATE_CONFLICT",
+      });
+      expect(
+        missingProvenance.tx.commerceAgentPromptRevision.updateMany,
+      ).not.toHaveBeenCalled();
     }
   });
 
   it("rejects duplicate configurations rather than selecting an arbitrary one", async () => {
-    const { client, tx } = makeActivationStore({ configurations: [{ id: "a" }, { id: "b" }] });
-    await expect(activateInitialPendingStoreCategoryIfEligible(
-      { shopId: "shop-1" }, client as never, now,
-    )).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
+    const { client, tx } = makeActivationStore({
+      configurations: [{ id: "a" }, { id: "b" }],
+    });
+    await expect(
+      activateInitialPendingStoreCategoryIfEligible(
+        { shopId: "shop-1" },
+        client as never,
+        now,
+      ),
+    ).rejects.toMatchObject({ code: "STORE_CATEGORY_PENDING_STATE_CONFLICT" });
     expect(tx.commerceAgentPromptRevision.updateMany).not.toHaveBeenCalled();
   });
 });

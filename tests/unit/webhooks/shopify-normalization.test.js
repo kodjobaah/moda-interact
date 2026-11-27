@@ -56,11 +56,18 @@ describe("normalizeShopifyInternationalContext", () => {
 
 describe("normalizeCartActivityPayload", () => {
   it("uses the cart token and proves empty or non-empty state from line_items", () => {
-    expect(normalizeCartActivityPayload({ token: "cart-1", line_items: [] })).toEqual({
+    expect(
+      normalizeCartActivityPayload({ token: "cart-1", line_items: [] }),
+    ).toEqual({
       cartToken: "cart-1",
       isEmpty: true,
     });
-    expect(normalizeCartActivityPayload({ token: "cart-1", line_items: [{ id: 1 }] })).toEqual({
+    expect(
+      normalizeCartActivityPayload({
+        token: "cart-1",
+        line_items: [{ id: 1 }],
+      }),
+    ).toEqual({
       cartToken: "cart-1",
       isEmpty: false,
     });
@@ -75,7 +82,9 @@ describe("normalizeCartActivityPayload", () => {
 
   it("rejects a missing or non-string cart token", () => {
     expect(normalizeCartActivityPayload({ line_items: [] })).toBeNull();
-    expect(normalizeCartActivityPayload({ token: 123, line_items: [] })).toBeNull();
+    expect(
+      normalizeCartActivityPayload({ token: 123, line_items: [] }),
+    ).toBeNull();
   });
 });
 
@@ -126,18 +135,17 @@ describe("normalizeCheckoutCreatedPayload", () => {
   it("returns null when the checkout token is missing", () => {
     expect(normalizeCheckoutCreatedPayload({})).toBeNull();
   });
-
 });
 
 describe("normalizeCheckoutUpdatedPayload", () => {
   it("retains only validated v3 lookup hints and normalises offset timestamps", () => {
     const payload = normalizeCheckoutUpdatedPayload({
-        token: "checkout-token-1",
-        cart_token: "cart-token-1",
-        created_at: "2021-12-31T19:00:00-05:00",
-        abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
-        line_items: [{ title: "ignored" }],
-      });
+      token: "checkout-token-1",
+      cart_token: "cart-token-1",
+      created_at: "2021-12-31T19:00:00-05:00",
+      abandoned_checkout_url: "https://shop.example/checkout/1?key=abc",
+      line_items: [{ title: "ignored" }],
+    });
 
     expect(payload).toEqual({
       checkoutToken: "checkout-token-1",
@@ -195,8 +203,12 @@ describe("normalizeCheckoutUpdatedPayload", () => {
         abandoned_checkout_url: `https://shop.example/${"x".repeat(2048)}`,
       }),
     ).toEqual({ checkoutToken: "checkout-token-1" });
-    expect(normalizeCheckoutUpdatedPayload({ token: "checkout-token-1", cart_token: "" }))
-      .toEqual({ checkoutToken: "checkout-token-1" });
+    expect(
+      normalizeCheckoutUpdatedPayload({
+        token: "checkout-token-1",
+        cart_token: "",
+      }),
+    ).toEqual({ checkoutToken: "checkout-token-1" });
   });
 
   it("returns null when checkout token is missing or not a non-empty string", () => {
@@ -204,7 +216,6 @@ describe("normalizeCheckoutUpdatedPayload", () => {
     expect(normalizeCheckoutUpdatedPayload({ token: 123 })).toBeNull();
     expect(normalizeCheckoutUpdatedPayload({ token: "" })).toBeNull();
   });
-
 });
 
 describe("normalizeOrderCompletedPayload", () => {
@@ -285,4 +296,3 @@ describe("normalizeOrderCompletedPayload", () => {
     );
   });
 });
-

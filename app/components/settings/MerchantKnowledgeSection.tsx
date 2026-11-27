@@ -4,24 +4,43 @@ import type { loader } from "@/routes/app/recovery-settings/route";
 import MerchantKnowledgeUploadForm from "./MerchantKnowledgeUploadForm";
 
 type KnowledgeData = Awaited<ReturnType<typeof loader>>["merchantKnowledge"];
-type Translate = (key: string, values?: Record<string, string | number>) => string;
+type Translate = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string;
 type FormatDateTime = (value: string | Date | number) => string;
 
 type KnowledgeSource = KnowledgeData["sources"][number];
-type SourceStatusTone = "processing" | "ready" | "failed" | "paused" | "inactive";
+type SourceStatusTone =
+  "processing" | "ready" | "failed" | "paused" | "inactive";
 
-function merchantKnowledgeSourceStatus(source: KnowledgeSource, t: Translate): { label: string; tone: SourceStatusTone } {
+function merchantKnowledgeSourceStatus(
+  source: KnowledgeSource,
+  t: Translate,
+): { label: string; tone: SourceStatusTone } {
   if (source.dormantReason === "MERCHANT_DISABLED") {
-    return { label: t("merchantKnowledge.status.processingPaused"), tone: "paused" };
+    return {
+      label: t("merchantKnowledge.status.processingPaused"),
+      tone: "paused",
+    };
   }
   if (source.dormantReason === "NO_CURRENT_PLAN") {
-    return { label: t("merchantKnowledge.status.unavailableOnPlan"), tone: "inactive" };
+    return {
+      label: t("merchantKnowledge.status.unavailableOnPlan"),
+      tone: "inactive",
+    };
   }
   if (source.dormantReason === "SOURCE_TYPE") {
-    return { label: t("merchantKnowledge.status.sourceTypeUnavailable"), tone: "inactive" };
+    return {
+      label: t("merchantKnowledge.status.sourceTypeUnavailable"),
+      tone: "inactive",
+    };
   }
   if (source.dormantReason === "SOURCE_COUNT") {
-    return { label: t("merchantKnowledge.status.overSourceLimit"), tone: "inactive" };
+    return {
+      label: t("merchantKnowledge.status.overSourceLimit"),
+      tone: "inactive",
+    };
   }
 
   switch (source.revision?.status) {
@@ -30,7 +49,10 @@ function merchantKnowledgeSourceStatus(source: KnowledgeSource, t: Translate): {
     case "FAILED":
       return { label: t("merchantKnowledge.status.failed"), tone: "failed" };
     case "SUPERSEDED":
-      return { label: t("merchantKnowledge.status.superseded"), tone: "inactive" };
+      return {
+        label: t("merchantKnowledge.status.superseded"),
+        tone: "inactive",
+      };
     case "PROCESSING":
     case "PENDING":
     default:
@@ -56,10 +78,23 @@ export default function MerchantKnowledgeSection({
   const deleteFetcher = useFetcher();
   const revalidator = useRevalidator();
   const unavailable = data.entitlementState === "unavailable";
-  const busy = unavailable || [createFetcher, reorderFetcher, refreshFetcher, reprocessFetcher, deleteFetcher].some((fetcher) => fetcher.state !== "idle");
-  const [selectedPurpose, setSelectedPurpose] = useState(data.catalogue[0]?.purpose.key ?? "");
-  const hasProcessingSources = data.sources.some((source) =>
-    source.processingEligible && (source.revision?.status === "PENDING" || source.revision?.status === "PROCESSING"),
+  const busy =
+    unavailable ||
+    [
+      createFetcher,
+      reorderFetcher,
+      refreshFetcher,
+      reprocessFetcher,
+      deleteFetcher,
+    ].some((fetcher) => fetcher.state !== "idle");
+  const [selectedPurpose, setSelectedPurpose] = useState(
+    data.catalogue[0]?.purpose.key ?? "",
+  );
+  const hasProcessingSources = data.sources.some(
+    (source) =>
+      source.processingEligible &&
+      (source.revision?.status === "PENDING" ||
+        source.revision?.status === "PROCESSING"),
   );
 
   const currentRevalidator = useRef(revalidator);
@@ -67,18 +102,35 @@ export default function MerchantKnowledgeSection({
   const episodeDeadline = useRef<number | null>(null);
   const polling = useRef(false);
   useEffect(() => {
-    if (!hasProcessingSources) { episodeDeadline.current = null; return; }
-    const deadline = episodeDeadline.current ?? (Date.now() + 60_000);
+    if (!hasProcessingSources) {
+      episodeDeadline.current = null;
+      return;
+    }
+    const deadline = episodeDeadline.current ?? Date.now() + 60_000;
     episodeDeadline.current = deadline;
     if (Date.now() >= deadline) return;
     const interval = window.setInterval(() => {
       const current = currentRevalidator.current;
-      if (Date.now() >= deadline || document.visibilityState === "hidden" || current.state !== "idle" || polling.current) return;
+      if (
+        Date.now() >= deadline ||
+        document.visibilityState === "hidden" ||
+        current.state !== "idle" ||
+        polling.current
+      )
+        return;
       polling.current = true;
-      void Promise.resolve(current.revalidate()).finally(() => { polling.current = false; });
+      void Promise.resolve(current.revalidate()).finally(() => {
+        polling.current = false;
+      });
     }, 4_000);
-    const timeout = window.setTimeout(() => window.clearInterval(interval), Math.max(0, deadline - Date.now()));
-    return () => { window.clearInterval(interval); window.clearTimeout(timeout); };
+    const timeout = window.setTimeout(
+      () => window.clearInterval(interval),
+      Math.max(0, deadline - Date.now()),
+    );
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(timeout);
+    };
   }, [hasProcessingSources]);
 
   function formAction(form: HTMLFormElement): string | undefined {
@@ -91,39 +143,56 @@ export default function MerchantKnowledgeSection({
     fetcher.submit(body, { method: "post", action: formAction(form) });
   }
 
-  const webCatalogue = data.catalogue.filter((item) => item.dataFormat.key === "WEB_PAGE");
-  const uploadCatalogue = data.catalogue.filter((item) => item.dataFormat.key === "CSV" || item.dataFormat.key === "XLSX");
-  const purposes = [...new Map(webCatalogue.map((item) => [item.purpose.key, item.purpose])).values()];
-  const purposeType = webCatalogue.find((item) => item.purpose.key === selectedPurpose);
+  const webCatalogue = data.catalogue.filter(
+    (item) => item.dataFormat.key === "WEB_PAGE",
+  );
+  const uploadCatalogue = data.catalogue.filter(
+    (item) => item.dataFormat.key === "CSV" || item.dataFormat.key === "XLSX",
+  );
+  const purposes = [
+    ...new Map(
+      webCatalogue.map((item) => [item.purpose.key, item.purpose]),
+    ).values(),
+  ];
+  const purposeType = webCatalogue.find(
+    (item) => item.purpose.key === selectedPurpose,
+  );
 
   return (
     <section
-      className={embedded
-        ? "moda-merchant-knowledge-panel moda-recovery-embedded-panel"
-        : "moda-recovery-panel moda-merchant-knowledge-panel"}
+      className={
+        embedded
+          ? "moda-merchant-knowledge-panel moda-recovery-embedded-panel"
+          : "moda-recovery-panel moda-merchant-knowledge-panel"
+      }
       aria-labelledby={embedded ? undefined : "merchant-knowledge-heading"}
       aria-label={embedded ? t("merchantKnowledge.title") : undefined}
     >
       {!embedded ? (
         <div className="moda-recovery-section-heading">
-          <h2 id="merchant-knowledge-heading">{t("merchantKnowledge.title")}</h2>
+          <h2 id="merchant-knowledge-heading">
+            {t("merchantKnowledge.title")}
+          </h2>
           <p>{t("merchantKnowledge.description")}</p>
         </div>
       ) : null}
 
       {unavailable ? <p role="status">{t("common.unavailable")}</p> : null}
       {!data.planEntitled && !unavailable ? (
-          <p role="status">{t("merchantKnowledge.configurationUnavailable")}</p>
+        <p role="status">{t("merchantKnowledge.configurationUnavailable")}</p>
       ) : (
         <>
           {!data.merchantEnabled ? (
             <p className="moda-recovery-inline-message" role="status">
-                {t("merchantKnowledge.disabledNotice")}
+              {t("merchantKnowledge.disabledNotice")}
             </p>
           ) : null}
 
           <p className="moda-recovery-effective-value">
-              {t("merchantKnowledge.sourceCount", { configured: data.configuredCount, max: data.maxKnowledgeSources })}
+            {t("merchantKnowledge.sourceCount", {
+              configured: data.configuredCount,
+              max: data.maxKnowledgeSources,
+            })}
           </p>
 
           <div className="moda-merchant-knowledge-add-grid">
@@ -132,7 +201,11 @@ export default function MerchantKnowledgeSection({
                 <summary>
                   <span>{t("merchantKnowledge.addWebPage")}</span>
                   <small>
-                    {purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}
+                    {purposeType
+                      ? t(
+                          `merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`,
+                        )
+                      : ""}
                   </small>
                 </summary>
                 <div className="moda-settings-disclosure-body">
@@ -147,40 +220,82 @@ export default function MerchantKnowledgeSection({
                   >
                     <input type="hidden" name="operation" value="create" />
                     <label className="moda-merchant-knowledge-field">
-                        {t("merchantKnowledge.upload.sourceName")}
+                      {t("merchantKnowledge.upload.sourceName")}
                       <input name="name" maxLength={160} required />
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        {t("merchantKnowledge.upload.purpose")}
-                      <select name="purposeKey" value={selectedPurpose} onChange={(event) => setSelectedPurpose(event.currentTarget.value)} required>
+                      {t("merchantKnowledge.upload.purpose")}
+                      <select
+                        name="purposeKey"
+                        value={selectedPurpose}
+                        onChange={(event) =>
+                          setSelectedPurpose(event.currentTarget.value)
+                        }
+                        required
+                      >
                         {purposes.map((purpose) => (
-                          <option key={purpose.key} value={purpose.key}>{t(`merchantKnowledge.purposes.${purpose.key}.label`)}</option>
+                          <option key={purpose.key} value={purpose.key}>
+                            {t(
+                              `merchantKnowledge.purposes.${purpose.key}.label`,
+                            )}
+                          </option>
                         ))}
                       </select>
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        {t("merchantKnowledge.upload.dataFormat")}
-                      <input type="hidden" name="dataFormatKey" value={purposeType?.dataFormat.key ?? "WEB_PAGE"} />
-                      <span className="moda-merchant-knowledge-readonly">{purposeType ? t(`merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`) : ""}</span>
+                      {t("merchantKnowledge.upload.dataFormat")}
+                      <input
+                        type="hidden"
+                        name="dataFormatKey"
+                        value={purposeType?.dataFormat.key ?? "WEB_PAGE"}
+                      />
+                      <span className="moda-merchant-knowledge-readonly">
+                        {purposeType
+                          ? t(
+                              `merchantKnowledge.dataFormats.${purposeType.dataFormat.key}.label`,
+                            )
+                          : ""}
+                      </span>
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        {t("merchantKnowledge.url")}
-                      <input name="url" type="url" maxLength={2048} placeholder="https://" required />
+                      {t("merchantKnowledge.url")}
+                      <input
+                        name="url"
+                        type="url"
+                        maxLength={2048}
+                        placeholder="https://"
+                        required
+                      />
                     </label>
                     <label className="moda-merchant-knowledge-field">
-                        {t("merchantKnowledge.upload.language")}
-                      <select name="languageTag" defaultValue={data.defaultLanguageTag} required>
-                        {data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                      {t("merchantKnowledge.upload.language")}
+                      <select
+                        name="languageTag"
+                        defaultValue={data.defaultLanguageTag}
+                        required
+                      >
+                        {data.supportedLanguageTags.map((tag) => (
+                          <option key={tag} value={tag}>
+                            {tag}
+                          </option>
+                        ))}
                       </select>
                     </label>
-                    <button className="moda-merchant-knowledge-primary-action" type="submit" disabled={busy || data.planEligibleSourceCount >= data.maxKnowledgeSources}>
-                        {t("merchantKnowledge.addWebPage")}
+                    <button
+                      className="moda-merchant-knowledge-primary-action"
+                      type="submit"
+                      disabled={
+                        busy ||
+                        data.planEligibleSourceCount >= data.maxKnowledgeSources
+                      }
+                    >
+                      {t("merchantKnowledge.addWebPage")}
                     </button>
                   </form>
                 </div>
               </details>
             ) : (
-                <p role="status">{t("merchantKnowledge.noWebPageTypes")}</p>
+              <p role="status">{t("merchantKnowledge.noWebPageTypes")}</p>
             )}
 
             {uploadCatalogue.length ? (
@@ -188,8 +303,14 @@ export default function MerchantKnowledgeSection({
                 <summary>
                   <span>{t("merchantKnowledge.upload.submit")}</span>
                   <small>
-                    {[...new Set(uploadCatalogue.map((item) => item.dataFormat.key))]
-                      .map((key) => t(`merchantKnowledge.dataFormats.${key}.label`))
+                    {[
+                      ...new Set(
+                        uploadCatalogue.map((item) => item.dataFormat.key),
+                      ),
+                    ]
+                      .map((key) =>
+                        t(`merchantKnowledge.dataFormats.${key}.label`),
+                      )
                       .join(" / ")}
                   </small>
                 </summary>
@@ -208,101 +329,268 @@ export default function MerchantKnowledgeSection({
           </div>
 
           {!data.sources.length ? (
-              <p role="status">{t("merchantKnowledge.empty")}</p>
+            <p role="status">{t("merchantKnowledge.empty")}</p>
           ) : (
             <ol className="moda-recovery-behaviour-section moda-merchant-knowledge-source-list">
               {data.sources.map((source, index) => {
                 const status = merchantKnowledgeSourceStatus(source, t);
                 return (
-                <li key={source.id} className="moda-recovery-setting-row moda-merchant-knowledge-source-card">
-                  <div className="moda-merchant-knowledge-source-copy">
-                    <h3>{source.name}</h3>
-                    <p>{t(`merchantKnowledge.purposes.${source.purposeKey}.label`)} · {t(`merchantKnowledge.dataFormats.${source.dataFormatKey}.label`)} · {source.languageTag}</p>
-                    <p>{source.uploadedFileName ?? source.revision?.requestedUrl ?? t("merchantKnowledge.noUrl")}</p>
-                    <p className={`moda-merchant-knowledge-source-status is-${status.tone}`}>
-                      <strong>{status.label}</strong>
-                    </p>
-                    {status.tone === "processing" ? (
-                      <p className="moda-merchant-knowledge-processing-note">{t("merchantKnowledge.processingNote")}</p>
-                    ) : null}
-                    {source.revision?.activeContentUnits !== null && source.revision?.activeContentUnits !== undefined ? (
-                      <p>{t("merchantKnowledge.activeContentUnits", { count: source.revision.activeContentUnits })}{source.revision.activeTruncated ? ` · ${t("merchantKnowledge.truncated")}` : ""}</p>
-                    ) : null}
-                    {source.revision?.activeFetchedAt ? <p>{t("merchantKnowledge.lastProcessed", { date: formatDateTime(source.revision.activeFetchedAt) })}</p> : null}
-                  </div>
-                  <div className="moda-recovery-setting-actions">
-                    <button type="button" disabled={busy || index === 0} onClick={() => {
-                      const ids = data.sources.map(({ id }) => id);
-                      [ids[index - 1], ids[index]] = [ids[index], ids[index - 1]];
-                      reorderFetcher.submit({ sourceIds: JSON.stringify(ids) }, { method: "post", action: "/app/merchant-knowledge/reorder" });
-                    }} aria-label={t("merchantKnowledge.actions.moveUp")} title={t("merchantKnowledge.actions.moveUp")}>↑</button>
-                    <button type="button" disabled={busy || index === data.sources.length - 1} onClick={() => {
-                      const ids = data.sources.map(({ id }) => id);
-                      [ids[index], ids[index + 1]] = [ids[index + 1], ids[index]];
-                      reorderFetcher.submit({ sourceIds: JSON.stringify(ids) }, { method: "post", action: "/app/merchant-knowledge/reorder" });
-                    }} aria-label={t("merchantKnowledge.actions.moveDown")} title={t("merchantKnowledge.actions.moveDown")}>↓</button>
-                    <form action="/app/merchant-knowledge/refresh" method="post" onSubmit={(event) => {
-                      event.preventDefault();
-                      submit(refreshFetcher, event.currentTarget);
-                    }}>
-                      <input type="hidden" name="sourceId" value={source.id} />
-                      <button type="submit" disabled={busy || source.dataFormatKey !== "WEB_PAGE"}>{t("pending.refresh")}</button>
-                    </form>
-                    {source.dataFormatKey === "CSV" || source.dataFormatKey === "XLSX" ? (
-                      <>
-                        <form action="/app/merchant-knowledge/reprocess" method="post" onSubmit={(event) => {
+                  <li
+                    key={source.id}
+                    className="moda-recovery-setting-row moda-merchant-knowledge-source-card"
+                  >
+                    <div className="moda-merchant-knowledge-source-copy">
+                      <h3>{source.name}</h3>
+                      <p>
+                        {t(
+                          `merchantKnowledge.purposes.${source.purposeKey}.label`,
+                        )}{" "}
+                        ·{" "}
+                        {t(
+                          `merchantKnowledge.dataFormats.${source.dataFormatKey}.label`,
+                        )}{" "}
+                        · {source.languageTag}
+                      </p>
+                      <p>
+                        {source.uploadedFileName ??
+                          source.revision?.requestedUrl ??
+                          t("merchantKnowledge.noUrl")}
+                      </p>
+                      <p
+                        className={`moda-merchant-knowledge-source-status is-${status.tone}`}
+                      >
+                        <strong>{status.label}</strong>
+                      </p>
+                      {status.tone === "processing" ? (
+                        <p className="moda-merchant-knowledge-processing-note">
+                          {t("merchantKnowledge.processingNote")}
+                        </p>
+                      ) : null}
+                      {source.revision?.activeContentUnits !== null &&
+                      source.revision?.activeContentUnits !== undefined ? (
+                        <p>
+                          {t("merchantKnowledge.activeContentUnits", {
+                            count: source.revision.activeContentUnits,
+                          })}
+                          {source.revision.activeTruncated
+                            ? ` · ${t("merchantKnowledge.truncated")}`
+                            : ""}
+                        </p>
+                      ) : null}
+                      {source.revision?.activeFetchedAt ? (
+                        <p>
+                          {t("merchantKnowledge.lastProcessed", {
+                            date: formatDateTime(
+                              source.revision.activeFetchedAt,
+                            ),
+                          })}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="moda-recovery-setting-actions">
+                      <button
+                        type="button"
+                        disabled={busy || index === 0}
+                        onClick={() => {
+                          const ids = data.sources.map(({ id }) => id);
+                          [ids[index - 1], ids[index]] = [
+                            ids[index],
+                            ids[index - 1],
+                          ];
+                          reorderFetcher.submit(
+                            { sourceIds: JSON.stringify(ids) },
+                            {
+                              method: "post",
+                              action: "/app/merchant-knowledge/reorder",
+                            },
+                          );
+                        }}
+                        aria-label={t("merchantKnowledge.actions.moveUp")}
+                        title={t("merchantKnowledge.actions.moveUp")}
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy || index === data.sources.length - 1}
+                        onClick={() => {
+                          const ids = data.sources.map(({ id }) => id);
+                          [ids[index], ids[index + 1]] = [
+                            ids[index + 1],
+                            ids[index],
+                          ];
+                          reorderFetcher.submit(
+                            { sourceIds: JSON.stringify(ids) },
+                            {
+                              method: "post",
+                              action: "/app/merchant-knowledge/reorder",
+                            },
+                          );
+                        }}
+                        aria-label={t("merchantKnowledge.actions.moveDown")}
+                        title={t("merchantKnowledge.actions.moveDown")}
+                      >
+                        ↓
+                      </button>
+                      <form
+                        action="/app/merchant-knowledge/refresh"
+                        method="post"
+                        onSubmit={(event) => {
                           event.preventDefault();
-                          submit(reprocessFetcher, event.currentTarget);
-                        }}>
-                          <input type="hidden" name="sourceId" value={source.id} />
+                          submit(refreshFetcher, event.currentTarget);
+                        }}
+                      >
+                        <input
+                          type="hidden"
+                          name="sourceId"
+                          value={source.id}
+                        />
+                        <button
+                          type="submit"
+                          disabled={busy || source.dataFormatKey !== "WEB_PAGE"}
+                        >
+                          {t("pending.refresh")}
+                        </button>
+                      </form>
+                      {source.dataFormatKey === "CSV" ||
+                      source.dataFormatKey === "XLSX" ? (
+                        <>
+                          <form
+                            action="/app/merchant-knowledge/reprocess"
+                            method="post"
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              submit(reprocessFetcher, event.currentTarget);
+                            }}
+                          >
+                            <input
+                              type="hidden"
+                              name="sourceId"
+                              value={source.id}
+                            />
+                            <button
+                              type="submit"
+                              disabled={
+                                busy ||
+                                !source.currentlyPlanEntitled ||
+                                source.revision?.status === "PENDING" ||
+                                source.revision?.status === "PROCESSING"
+                              }
+                            >
+                              {t("merchantKnowledge.upload.reprocess")}
+                            </button>
+                          </form>
+                          <details>
+                            <summary>
+                              {t("merchantKnowledge.upload.replaceFile")}
+                            </summary>
+                            <MerchantKnowledgeUploadForm
+                              disabled={unavailable}
+                              catalogue={uploadCatalogue.filter(
+                                (item) =>
+                                  item.purpose.key === source.purposeKey &&
+                                  item.dataFormat.key === source.dataFormatKey,
+                              )}
+                              maxUploadBytes={data.maxUploadBytes}
+                              defaultLanguageTag={data.defaultLanguageTag}
+                              supportedLanguageTags={data.supportedLanguageTags}
+                              sourceId={source.id}
+                              initialName={source.name}
+                              initialLanguageTag={source.languageTag}
+                              t={t}
+                            />
+                          </details>
+                        </>
+                      ) : null}
+                      <details>
+                        <summary>{t("merchantKnowledge.upload.edit")}</summary>
+                        <form
+                          action="/app/merchant-knowledge/source"
+                          method="post"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            const body = new FormData(event.currentTarget);
+                            body.set(
+                              "operation",
+                              source.dataFormatKey === "WEB_PAGE"
+                                ? "edit"
+                                : "edit-upload",
+                            );
+                            createFetcher.submit(body, {
+                              method: "post",
+                              action: formAction(event.currentTarget),
+                            });
+                          }}
+                        >
+                          <input type="hidden" name="operation" value="edit" />
+                          <input
+                            type="hidden"
+                            name="sourceId"
+                            value={source.id}
+                          />
+                          <label>
+                            {t("merchantKnowledge.upload.sourceName")}
+                            <input
+                              name="name"
+                              maxLength={160}
+                              defaultValue={source.name}
+                              required
+                            />
+                          </label>
+                          {source.dataFormatKey === "WEB_PAGE" ? (
+                            <label>
+                              {t("merchantKnowledge.url")}
+                              <input
+                                name="url"
+                                type="url"
+                                maxLength={2048}
+                                defaultValue={
+                                  source.revision?.requestedUrl ?? ""
+                                }
+                                required
+                              />
+                            </label>
+                          ) : null}
+                          <label>
+                            {t("merchantKnowledge.upload.language")}
+                            <select
+                              name="languageTag"
+                              defaultValue={source.languageTag}
+                            >
+                              {data.supportedLanguageTags.map((tag) => (
+                                <option key={tag} value={tag}>
+                                  {tag}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <button
                             type="submit"
-                            disabled={busy || !source.currentlyPlanEntitled || source.revision?.status === "PENDING" || source.revision?.status === "PROCESSING"}
+                            disabled={busy || !source.currentlyPlanEntitled}
                           >
-                            {t("merchantKnowledge.upload.reprocess")}
+                            {t("merchantKnowledge.upload.save")}
                           </button>
                         </form>
-                        <details>
-                          <summary>{t("merchantKnowledge.upload.replaceFile")}</summary>
-                          <MerchantKnowledgeUploadForm
-                            disabled={unavailable}
-                            catalogue={uploadCatalogue.filter((item) => item.purpose.key === source.purposeKey && item.dataFormat.key === source.dataFormatKey)}
-                            maxUploadBytes={data.maxUploadBytes}
-                            defaultLanguageTag={data.defaultLanguageTag}
-                            supportedLanguageTags={data.supportedLanguageTags}
-                            sourceId={source.id}
-                            initialName={source.name}
-                            initialLanguageTag={source.languageTag}
-                            t={t}
-                          />
-                        </details>
-                      </>
-                    ) : null}
-                    <details>
-                      <summary>{t("merchantKnowledge.upload.edit")}</summary>
-                      <form action="/app/merchant-knowledge/source" method="post" onSubmit={(event) => {
-                        event.preventDefault();
-                        const body = new FormData(event.currentTarget);
-                        body.set("operation", source.dataFormatKey === "WEB_PAGE" ? "edit" : "edit-upload");
-                        createFetcher.submit(body, { method: "post", action: formAction(event.currentTarget) });
-                      }}>
-                        <input type="hidden" name="operation" value="edit" />
-                        <input type="hidden" name="sourceId" value={source.id} />
-                        <label>{t("merchantKnowledge.upload.sourceName")}<input name="name" maxLength={160} defaultValue={source.name} required /></label>
-                        {source.dataFormatKey === "WEB_PAGE" ? <label>{t("merchantKnowledge.url")}<input name="url" type="url" maxLength={2048} defaultValue={source.revision?.requestedUrl ?? ""} required /></label> : null}
-                        <label>{t("merchantKnowledge.upload.language")}<select name="languageTag" defaultValue={source.languageTag}>{data.supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}</select></label>
-                        <button type="submit" disabled={busy || !source.currentlyPlanEntitled}>{t("merchantKnowledge.upload.save")}</button>
+                      </details>
+                      <form
+                        action="/app/merchant-knowledge/delete"
+                        method="post"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          submit(deleteFetcher, event.currentTarget);
+                        }}
+                      >
+                        <input
+                          type="hidden"
+                          name="sourceId"
+                          value={source.id}
+                        />
+                        <button type="submit" disabled={busy}>
+                          {t("merchantKnowledge.actions.delete")}
+                        </button>
                       </form>
-                    </details>
-                    <form action="/app/merchant-knowledge/delete" method="post" onSubmit={(event) => {
-                      event.preventDefault();
-                      submit(deleteFetcher, event.currentTarget);
-                    }}>
-                      <input type="hidden" name="sourceId" value={source.id} />
-                      <button type="submit" disabled={busy}>{t("merchantKnowledge.actions.delete")}</button>
-                    </form>
-                  </div>
-                </li>
+                    </div>
+                  </li>
                 );
               })}
             </ol>

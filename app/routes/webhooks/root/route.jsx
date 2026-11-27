@@ -66,8 +66,14 @@ export const action = async ({ request }) => {
       eventId: eventId ?? null,
       shopDomain: shop,
       // Typed publication failures are owned by ingress; unexpected DB failures propagate here.
-      origin: error && typeof error === "object" && "code" in error && typeof error.code === "string" && /^P\d{4}$/.test(error.code)
-        ? "database" : "internal",
+      origin:
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        /^P\d{4}$/.test(error.code)
+          ? "database"
+          : "internal",
       error,
       ackMs: Date.now() - startedAt,
     });

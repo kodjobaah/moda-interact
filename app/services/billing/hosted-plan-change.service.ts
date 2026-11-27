@@ -1,15 +1,14 @@
 import type { PrismaClient } from "@prisma/client";
 import { INITIAL_BILLING_RETRY_DELAY_MS } from "./billing-retry-policy";
 import { lockSubscriptionLifecycleRows } from "./subscription-locks";
-import type { BillingVerificationFailure, MerchantShopifySubscriptionState } from "./billing.types";
+import type {
+  BillingVerificationFailure,
+  MerchantShopifySubscriptionState,
+} from "./billing.types";
 import { ShopifyBillingOperationService } from "./shopify-billing-operation.service";
 
 export type HostedPlanChangeReturnResult =
-  | "current"
-  | "pending"
-  | "mismatch"
-  | "no_active"
-  | "unverified";
+  "current" | "pending" | "mismatch" | "no_active" | "unverified";
 
 export type HostedPlanVerificationFence = {
   id: string | null;
@@ -44,7 +43,8 @@ function sameHostedPlanVerificationFence(
   right: HostedPlanVerificationFenceSource,
 ): boolean {
   if (!left || !right) return left === right;
-  return left.id === right.id &&
+  return (
+    left.id === right.id &&
     sameFenceDate(left.updatedAt, right.updatedAt) &&
     left.status === right.status &&
     left.observedShopifyPlanHandle === right.observedShopifyPlanHandle &&
@@ -62,14 +62,16 @@ function sameHostedPlanVerificationFence(
     left.lastSyncErrorCode === right.lastSyncErrorCode &&
     sameFenceDate(left.lastSyncErrorAt, right.lastSyncErrorAt) &&
     left.providerSubscriptionId === right.providerSubscriptionId &&
-    left.lastProviderLifecycleEventId === right.lastProviderLifecycleEventId;
+    left.lastProviderLifecycleEventId === right.lastProviderLifecycleEventId
+  );
 }
 
 export class HostedPlanChangeService {
   constructor(
     private readonly database: PrismaClient,
-    private readonly billingOperationService: ShopifyBillingOperationService =
-      new ShopifyBillingOperationService(database),
+    private readonly billingOperationService: ShopifyBillingOperationService = new ShopifyBillingOperationService(
+      database,
+    ),
   ) {}
 
   async getHostedPlanVerificationFence(
@@ -112,7 +114,11 @@ export class HostedPlanChangeService {
     requestedPlanHandle: string;
     state: MerchantShopifySubscriptionState;
     verificationFence: HostedPlanVerificationFence | null;
-  }): Promise<{ result: HostedPlanChangeReturnResult; subscriptionId: string | null; nextReconcileAt: Date | null }> {
+  }): Promise<{
+    result: HostedPlanChangeReturnResult;
+    subscriptionId: string | null;
+    nextReconcileAt: Date | null;
+  }> {
     const now = new Date();
     return this.database.$transaction(async (transaction) => {
       await lockSubscriptionLifecycleRows(transaction, shopId);
@@ -142,11 +148,20 @@ export class HostedPlanChangeService {
       });
 
       if (!sameHostedPlanVerificationFence(current, verificationFence)) {
-        return { result: "unverified", subscriptionId: current?.id ?? null, nextReconcileAt: null };
+        return {
+          result: "unverified",
+          subscriptionId: current?.id ?? null,
+          nextReconcileAt: null,
+        };
       }
 
       if (state.status === "NO_ACTIVE_SUBSCRIPTION") {
-        if (!current) return { result: "no_active", subscriptionId: null, nextReconcileAt: null };
+        if (!current)
+          return {
+            result: "no_active",
+            subscriptionId: null,
+            nextReconcileAt: null,
+          };
         await this.billingOperationService.recordHostedPlanChange(transaction, {
           shopId,
           requestedPlanHandle,
@@ -163,20 +178,29 @@ export class HostedPlanChangeService {
         const nextReconcileAt = now;
         const updated = await transaction.subscription.update({
           where: { shopId },
-          data: { nextReconcileAt, lastSyncErrorCode: null, lastSyncErrorAt: null },
+          data: {
+            nextReconcileAt,
+            lastSyncErrorCode: null,
+            lastSyncErrorAt: null,
+          },
           select: { id: true, nextReconcileAt: true },
         });
-        return { result: "no_active", subscriptionId: updated.id, nextReconcileAt: updated.nextReconcileAt };
+        return {
+          result: "no_active",
+          subscriptionId: updated.id,
+          nextReconcileAt: updated.nextReconcileAt,
+        };
       }
 
       const provider = state.subscription;
       const currentHandle = provider.planHandle;
       const pendingHandle = provider.pendingUpdate?.planHandle ?? null;
-      const result: HostedPlanChangeReturnResult = requestedPlanHandle === currentHandle
-        ? "current"
-        : requestedPlanHandle === pendingHandle
-          ? "pending"
-          : "mismatch";
+      const result: HostedPlanChangeReturnResult =
+        requestedPlanHandle === currentHandle
+          ? "current"
+          : requestedPlanHandle === pendingHandle
+            ? "pending"
+            : "mismatch";
 
       if (!current) {
         return { result, subscriptionId: null, nextReconcileAt: null };
@@ -197,14 +221,19 @@ export class HostedPlanChangeService {
       });
 
       if (result === "mismatch") {
-        return { result, subscriptionId: current.id, nextReconcileAt: current.nextReconcileAt };
+        return {
+          result,
+          subscriptionId: current.id,
+          nextReconcileAt: current.nextReconcileAt,
+        };
       }
 
-      const nextReconcileAt = result === "pending"
-        ? provider.pendingUpdate?.effectiveAt
-          ? new Date(provider.pendingUpdate.effectiveAt)
-          : now
-        : now;
+      const nextReconcileAt =
+        result === "pending"
+          ? provider.pendingUpdate?.effectiveAt
+            ? new Date(provider.pendingUpdate.effectiveAt)
+            : now
+          : now;
       const pendingPlan = pendingHandle
         ? await transaction.billingPlan.findUnique({
             where: { shopifyPlanHandle: pendingHandle },
@@ -216,9 +245,15 @@ export class HostedPlanChangeService {
         where: { shopId },
         data: {
           observedShopifyPlanHandle: currentHandle,
-          currentPeriodStart: provider.currentPeriodStart ? new Date(provider.currentPeriodStart) : null,
-          currentPeriodEnd: provider.currentPeriodEnd ? new Date(provider.currentPeriodEnd) : null,
-          trialEndsAt: provider.trialEndsAt ? new Date(provider.trialEndsAt) : null,
+          currentPeriodStart: provider.currentPeriodStart
+            ? new Date(provider.currentPeriodStart)
+            : null,
+          currentPeriodEnd: provider.currentPeriodEnd
+            ? new Date(provider.currentPeriodEnd)
+            : null,
+          trialEndsAt: provider.trialEndsAt
+            ? new Date(provider.trialEndsAt)
+            : null,
           cancelAtPeriodEnd: provider.cancelAtEndOfCycle,
           pendingShopifyPlanHandle: pendingHandle,
           pendingPlanId: mappedPendingPlanId,
@@ -232,7 +267,11 @@ export class HostedPlanChangeService {
         },
         select: { id: true, nextReconcileAt: true },
       });
-      return { result, subscriptionId: updated.id, nextReconcileAt: updated.nextReconcileAt };
+      return {
+        result,
+        subscriptionId: updated.id,
+        nextReconcileAt: updated.nextReconcileAt,
+      };
     });
   }
 
@@ -241,7 +280,9 @@ export class HostedPlanChangeService {
     verificationFence: HostedPlanVerificationFence | null,
     verificationFailure: Exclude<BillingVerificationFailure, null>,
   ): Promise<{ subscriptionId: string; nextReconcileAt: Date } | null> {
-    const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
+    const nextReconcileAt = new Date(
+      Date.now() + INITIAL_BILLING_RETRY_DELAY_MS,
+    );
     return this.database.$transaction(async (transaction) => {
       await lockSubscriptionLifecycleRows(transaction, shopId);
       const current = await transaction.subscription.findUnique({
@@ -268,7 +309,8 @@ export class HostedPlanChangeService {
           lastProviderLifecycleEventId: true,
         },
       });
-      if (!sameHostedPlanVerificationFence(current, verificationFence)) return null;
+      if (!sameHostedPlanVerificationFence(current, verificationFence))
+        return null;
       if (!current) return null;
       const updated = await transaction.subscription.updateMany({
         where: { shopId },
@@ -284,7 +326,10 @@ export class HostedPlanChangeService {
         select: { id: true, nextReconcileAt: true },
       });
       return subscription?.nextReconcileAt
-        ? { subscriptionId: subscription.id, nextReconcileAt: subscription.nextReconcileAt }
+        ? {
+            subscriptionId: subscription.id,
+            nextReconcileAt: subscription.nextReconcileAt,
+          }
         : null;
     });
   }

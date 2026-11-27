@@ -8,21 +8,21 @@ The product has not gone live. The user explicitly authorized replacing developm
 
 ## Exact namespace map
 
-| Previous runtime literal (removed) | Sole canonical literal | Builder |
-|---|---|---|
-| `arch027-shopify-operation-key-v1` | `shopify-billing-operation-key-v1` | Private `operationRequestKey` |
-| `arch027-recurring-v1` | `shopify-billing-recurring-v1` | Exported `shopifyRecurringRequestFingerprint` |
-| `arch027-topup-v1` | `shopify-billing-topup-v1` | Exported `shopifyOneTimeChargeRequestFingerprint` |
+| Previous runtime literal (removed) | Sole canonical literal             | Builder                                           |
+| ---------------------------------- | ---------------------------------- | ------------------------------------------------- |
+| `arch027-shopify-operation-key-v1` | `shopify-billing-operation-key-v1` | Private `operationRequestKey`                     |
+| `arch027-recurring-v1`             | `shopify-billing-recurring-v1`     | Exported `shopifyRecurringRequestFingerprint`     |
+| `arch027-topup-v1`                 | `shopify-billing-topup-v1`         | Exported `shopifyOneTimeChargeRequestFingerprint` |
 
 Only these three literals changed in the operation service. UTF-8 encoding, SHA-256, exact newline framing, field ordering, positive quote/control-character validation and public signatures are unchanged. There is no old-format runtime exception.
 
 Request keys keep `shopify:<kind lowercased>:<hex>` for recurring operations. Their digest input is `[canonical key namespace, actual enum kind, ...fields]` joined with newline and followed by one final newline:
 
-| Kind | Ordered request fields after kind |
-|---|---|
-| `SUBSCRIPTION_CREATE` | subscription ID, target catalogue plan ID |
-| `PLAN_SWITCH` | subscription ID, previous plan handle, target catalogue plan ID, selected period boundary |
-| `CANCEL` | subscription ID, previous plan handle, selected period boundary |
+| Kind                  | Ordered request fields after kind                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------- |
+| `SUBSCRIPTION_CREATE` | subscription ID, target catalogue plan ID                                                 |
+| `PLAN_SWITCH`         | subscription ID, previous plan handle, target catalogue plan ID, selected period boundary |
+| `CANCEL`              | subscription ID, previous plan handle, selected period boundary                           |
 
 The request-key digest does not itself include Shop ID; the persisted uniqueness scope remains `(shopId, requestKey)`. Recurring fingerprints contain canonical recurring namespace, actual kind and Shop ID, followed for create/switch by catalogue plan ID, quoted minor amount, currency and billing period. Cancellation excludes irrelevant quote fields. One-time fingerprints contain canonical top-up namespace, `ONE_TIME_CHARGE`, Shop ID, usage-event ID, amount and currency. Each fingerprint input also ends with newline.
 
@@ -34,11 +34,11 @@ Expected constants were derived independently with Python `hashlib.sha256(("\n".
 
 Inputs: Shop `shop-雪`; subscription `subscription-été`; catalogue plan `plan-東京`; previous handle `growth`; boundary `2026-11-30T00:00:00.000Z`; recurring4900 USD EVERY_30_DAYS; usage event `usage-é`; one-time500 USD; purchase `purchase-é`.
 
-| Vector | Fixed expected SHA-256 |
-|---|---|
-| `createKey` | `25d66ce262026a707985da0611ec9d7bbcd0b0538071325f0403d7da3f3bb84d` |
-| `switchKey` | `3392a6dcd3f37aec9df7949b781a994b2f76c68ebfe8ab9b9fd932fdac676e63` |
-| `cancelKey` | `523482f90f100498ca92f722de9ce65179b0752cb5acda8c3b95f1ad206a2788` |
+| Vector              | Fixed expected SHA-256                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| `createKey`         | `25d66ce262026a707985da0611ec9d7bbcd0b0538071325f0403d7da3f3bb84d` |
+| `switchKey`         | `3392a6dcd3f37aec9df7949b781a994b2f76c68ebfe8ab9b9fd932fdac676e63` |
+| `cancelKey`         | `523482f90f100498ca92f722de9ce65179b0752cb5acda8c3b95f1ad206a2788` |
 | `createFingerprint` | `3e42a42f6c3c7af1b1ca68b166a3a236cb743c3829de99a50f5486b1b131b21c` |
 | `switchFingerprint` | `0d3c7fcf3094462c85f4c38f88c259be6f044f768c948cceda4f7546b5ad40fa` |
 | `cancelFingerprint` | `6bed48ddeb1183b800ab6c6a7bd126726789552587b679fc831690c1b7a2e859` |
@@ -56,16 +56,16 @@ Selection excludes documentation (including the recovery README), test/fixture/v
 
 The eight rewritten comment locations retain their domain/security/ordering explanation:
 
-| File | Retained explanation |
-|---|---|
-| `app/services/webhooks/webhook-normalization-utils.ts` | Timestamp normalization shared by recovery webhook normalizers |
-| `app/services/platform-configuration/contracts.server.ts` | Shopify-owned server-only configuration; never serialize secrets |
-| `app/services/platform-configuration/seal.server.ts` | AAD JSON array namespace/environment/key/version/envelope-version ordering; encryption bytes unchanged |
-| `app/services/recoveries/recovery-follow-up-catalogue.server.ts` | Immutable English SOURCE_SAVED draft provenance and separate provider/target approval |
-| `app/services/platform-configuration/composition.server.ts` | Operation-scoped configuration/environment/keyring composition |
-| `app/services/merchant-knowledge/r2-config.server.ts` | Immutable operation-scoped sealed R2 snapshot and enforced contract |
-| `app/services/recoveries/recovery-follow-up-sender.server.ts` | Platform-owned configuration/AAD/keyring ownership |
-| `app/services/recoveries/recovery-human-commands.server.ts` | Shop → Conversation → command/outreach-attempt lock ordering and trusted session ownership |
+| File                                                             | Retained explanation                                                                                   |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `app/services/webhooks/webhook-normalization-utils.ts`           | Timestamp normalization shared by recovery webhook normalizers                                         |
+| `app/services/platform-configuration/contracts.server.ts`        | Shopify-owned server-only configuration; never serialize secrets                                       |
+| `app/services/platform-configuration/seal.server.ts`             | AAD JSON array namespace/environment/key/version/envelope-version ordering; encryption bytes unchanged |
+| `app/services/recoveries/recovery-follow-up-catalogue.server.ts` | Immutable English SOURCE_SAVED draft provenance and separate provider/target approval                  |
+| `app/services/platform-configuration/composition.server.ts`      | Operation-scoped configuration/environment/keyring composition                                         |
+| `app/services/merchant-knowledge/r2-config.server.ts`            | Immutable operation-scoped sealed R2 snapshot and enforced contract                                    |
+| `app/services/recoveries/recovery-follow-up-sender.server.ts`    | Platform-owned configuration/AAD/keyring ownership                                                     |
+| `app/services/recoveries/recovery-human-commands.server.ts`      | Shop → Conversation → command/outreach-attempt lock ordering and trusted session ownership             |
 
 Final selected scope: **241 files plus production manifest values; zero violations; zero exceptions**. No undeclared runtime naming defect was found. Exact selected paths are listed below; there were no local executable production-command or deployment-directory files beyond these actual surfaces.
 

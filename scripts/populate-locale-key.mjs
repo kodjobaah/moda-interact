@@ -273,17 +273,9 @@ import { fileURLToPath } from "node:url";
 const scriptFile = fileURLToPath(import.meta.url);
 const scriptsDirectory = path.dirname(scriptFile);
 
-const projectRoot = path.resolve(
-  scriptsDirectory,
-  "..",
-);
+const projectRoot = path.resolve(scriptsDirectory, "..");
 
-const localesDirectory = path.join(
-  projectRoot,
-  "app",
-  "i18n",
-  "locales",
-);
+const localesDirectory = path.join(projectRoot, "app", "i18n", "locales");
 
 /**
  * =============================================================================
@@ -306,13 +298,8 @@ function getArgument(name) {
 
   const value = args[index + 1];
 
-  if (
-    value === undefined ||
-    value.startsWith("--")
-  ) {
-    throw new Error(
-      `Argument "${name}" requires a value.`,
-    );
+  if (value === undefined || value.startsWith("--")) {
+    throw new Error(`Argument "${name}" requires a value.`);
   }
 
   return value;
@@ -360,18 +347,12 @@ function parseJson(source, description) {
   try {
     return JSON.parse(source);
   } catch (error) {
-    throw new Error(
-      `${description} is not valid JSON:\n\n${error.message}`,
-    );
+    throw new Error(`${description} is not valid JSON:\n\n${error.message}`);
   }
 }
 
 function assertPlainObject(value, description) {
-  if (
-    value === null ||
-    typeof value !== "object" ||
-    Array.isArray(value)
-  ) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(
       `${description} must contain a JSON object at the top level.`,
     );
@@ -382,10 +363,7 @@ function assertPlainObject(value, description) {
  * Escape text before putting it inside a RegExp.
  */
 function escapeRegExp(value) {
-  return value.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
@@ -421,11 +399,7 @@ function getTopLevelKeys(source) {
   let escaped = false;
   let stringStart = -1;
 
-  for (
-    let index = 0;
-    index < source.length;
-    index++
-  ) {
+  for (let index = 0; index < source.length; index++) {
     const character = source[index];
 
     if (inString) {
@@ -445,22 +419,14 @@ function getTopLevelKeys(source) {
         if (depth === 1) {
           let nextIndex = index + 1;
 
-          while (
-            nextIndex < source.length &&
-            /\s/.test(source[nextIndex])
-          ) {
+          while (nextIndex < source.length && /\s/.test(source[nextIndex])) {
             nextIndex++;
           }
 
           if (source[nextIndex] === ":") {
-            const rawKey = source.slice(
-              stringStart,
-              index + 1,
-            );
+            const rawKey = source.slice(stringStart, index + 1);
 
-            keys.push(
-              JSON.parse(rawKey),
-            );
+            keys.push(JSON.parse(rawKey));
           }
         }
 
@@ -493,10 +459,7 @@ function findDuplicateTopLevelKeys(source) {
   const counts = new Map();
 
   for (const key of getTopLevelKeys(source)) {
-    counts.set(
-      key,
-      (counts.get(key) ?? 0) + 1,
-    );
+    counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
   return [...counts.entries()]
@@ -536,12 +499,8 @@ function findDuplicateTopLevelKeys(source) {
  *
  * or null if the key does not exist.
  */
-function findTranslationLine(
-  source,
-  translationKey,
-) {
-  const escapedKey =
-    escapeRegExp(translationKey);
+function findTranslationLine(source, translationKey) {
+  const escapedKey = escapeRegExp(translationKey);
 
   /**
    * JSON string literal:
@@ -556,11 +515,7 @@ function findTranslationLine(
 
   const matches = [];
 
-  for (
-    let lineIndex = 0;
-    lineIndex < lines.length;
-    lineIndex++
-  ) {
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
 
     const match = line.match(pattern);
@@ -597,16 +552,10 @@ function findTranslationLine(
  *
  * Everything else on the line is retained.
  */
-function replaceTranslationValue(
-  source,
-  translationKey,
-  newValue,
-) {
-  const escapedKey =
-    escapeRegExp(translationKey);
+function replaceTranslationValue(source, translationKey, newValue) {
+  const escapedKey = escapeRegExp(translationKey);
 
-  const encodedValue =
-    JSON.stringify(newValue);
+  const encodedValue = JSON.stringify(newValue);
 
   const pattern = new RegExp(
     `^(\\s*"${escapedKey}"\\s*:\\s*)("(?:\\\\.|[^"\\\\])*")(\\s*,?\\s*)$`,
@@ -617,19 +566,10 @@ function replaceTranslationValue(
 
   const output = source.replace(
     pattern,
-    (
-      fullMatch,
-      prefix,
-      oldEncodedValue,
-      suffix,
-    ) => {
+    (fullMatch, prefix, oldEncodedValue, suffix) => {
       replacements++;
 
-      return (
-        prefix +
-        encodedValue +
-        suffix
-      );
+      return prefix + encodedValue + suffix;
     },
   );
 
@@ -648,25 +588,13 @@ function replaceTranslationValue(
  *
  * The existing anchor line remains completely unchanged.
  */
-function insertTranslationAfter(
-  source,
-  afterKey,
-  newKey,
-  newValue,
-) {
-  const newline = source.includes("\r\n")
-    ? "\r\n"
-    : "\n";
+function insertTranslationAfter(source, afterKey, newKey, newValue) {
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
 
-  const anchor = findTranslationLine(
-    source,
-    afterKey,
-  );
+  const anchor = findTranslationLine(source, afterKey);
 
   if (!anchor) {
-    throw new Error(
-      `Anchor key "${afterKey}" could not be found.`,
-    );
+    throw new Error(`Anchor key "${afterKey}" could not be found.`);
   }
 
   const lines = source.split(/\r?\n/);
@@ -679,18 +607,12 @@ function insertTranslationAfter(
    *
    * If it doesn't, add one to the anchor line only.
    */
-  let anchorLine =
-    lines[anchor.lineIndex];
+  let anchorLine = lines[anchor.lineIndex];
 
   if (!/,\s*$/.test(anchorLine)) {
-    anchorLine =
-      anchorLine.replace(
-        /\s*$/,
-        ",",
-      );
+    anchorLine = anchorLine.replace(/\s*$/, ",");
 
-    lines[anchor.lineIndex] =
-      anchorLine;
+    lines[anchor.lineIndex] = anchorLine;
   }
 
   const newLine =
@@ -698,11 +620,7 @@ function insertTranslationAfter(
     `${JSON.stringify(newKey)}: ` +
     `${JSON.stringify(newValue)},`;
 
-  lines.splice(
-    anchor.lineIndex + 1,
-    0,
-    newLine,
-  );
+  lines.splice(anchor.lineIndex + 1, 0, newLine);
 
   return lines.join(newline);
 }
@@ -712,14 +630,8 @@ function insertTranslationAfter(
  *
  * This is used when --after is not supplied.
  */
-function appendTranslation(
-  source,
-  newKey,
-  newValue,
-) {
-  const newline = source.includes("\r\n")
-    ? "\r\n"
-    : "\n";
+function appendTranslation(source, newKey, newValue) {
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
 
   const lines = source.split(/\r?\n/);
 
@@ -728,11 +640,7 @@ function appendTranslation(
    */
   let closingBraceIndex = -1;
 
-  for (
-    let index = lines.length - 1;
-    index >= 0;
-    index--
-  ) {
+  for (let index = lines.length - 1; index >= 0; index--) {
     if (lines[index].trim() === "}") {
       closingBraceIndex = index;
       break;
@@ -740,52 +648,34 @@ function appendTranslation(
   }
 
   if (closingBraceIndex === -1) {
-    throw new Error(
-      "Could not find the closing top-level JSON brace.",
-    );
+    throw new Error("Could not find the closing top-level JSON brace.");
   }
 
   /**
    * Find the previous non-empty line.
    */
-  let previousIndex =
-    closingBraceIndex - 1;
+  let previousIndex = closingBraceIndex - 1;
 
-  while (
-    previousIndex >= 0 &&
-    lines[previousIndex].trim() === ""
-  ) {
+  while (previousIndex >= 0 && lines[previousIndex].trim() === "") {
     previousIndex--;
   }
 
   if (previousIndex < 0) {
-    throw new Error(
-      "Locale file has an unexpected structure.",
-    );
+    throw new Error("Locale file has an unexpected structure.");
   }
 
   /**
    * Derive indentation from the previous property.
    */
-  const indentationMatch =
-    lines[previousIndex].match(/^(\s*)/);
+  const indentationMatch = lines[previousIndex].match(/^(\s*)/);
 
-  const indentation =
-    indentationMatch?.[1] ?? "  ";
+  const indentation = indentationMatch?.[1] ?? "  ";
 
   /**
    * Add a comma to the existing final property if necessary.
    */
-  if (
-    !/,\s*$/.test(
-      lines[previousIndex],
-    )
-  ) {
-    lines[previousIndex] =
-      lines[previousIndex].replace(
-        /\s*$/,
-        ",",
-      );
+  if (!/,\s*$/.test(lines[previousIndex])) {
+    lines[previousIndex] = lines[previousIndex].replace(/\s*$/, ",");
   }
 
   const newLine =
@@ -793,11 +683,7 @@ function appendTranslation(
     `${JSON.stringify(newKey)}: ` +
     `${JSON.stringify(newValue)}`;
 
-  lines.splice(
-    closingBraceIndex,
-    0,
-    newLine,
-  );
+  lines.splice(closingBraceIndex, 0, newLine);
 
   return lines.join(newline);
 }
@@ -814,20 +700,15 @@ async function main() {
     return;
   }
 
-  const translationKey =
-    getArgument("--key");
+  const translationKey = getArgument("--key");
 
-  const valuesArgument =
-    getArgument("--values");
+  const valuesArgument = getArgument("--values");
 
-  const afterKey =
-    getArgument("--after");
+  const afterKey = getArgument("--after");
 
-  const force =
-    hasFlag("--force");
+  const force = hasFlag("--force");
 
-  const checkOnly =
-    hasFlag("--check");
+  const checkOnly = hasFlag("--check");
 
   if (!translationKey) {
     throw new Error(
@@ -843,59 +724,31 @@ async function main() {
     );
   }
 
-  if (
-    afterKey &&
-    afterKey === translationKey
-  ) {
-    throw new Error(
-      "--after cannot be the same key as --key.",
-    );
+  if (afterKey && afterKey === translationKey) {
+    throw new Error("--after cannot be the same key as --key.");
   }
 
-  const valuesFile = path.resolve(
-    process.cwd(),
-    valuesArgument,
-  );
+  const valuesFile = path.resolve(process.cwd(), valuesArgument);
 
   console.log("");
-  console.log(
-    "=".repeat(78),
-  );
-  console.log(
-    "LOCALE TRANSLATION POPULATOR",
-  );
-  console.log(
-    "=".repeat(78),
-  );
+  console.log("=".repeat(78));
+  console.log("LOCALE TRANSLATION POPULATOR");
+  console.log("=".repeat(78));
   console.log("");
 
-  console.log(
-    `Project root : ${projectRoot}`,
-  );
+  console.log(`Project root : ${projectRoot}`);
 
-  console.log(
-    `Locales      : ${localesDirectory}`,
-  );
+  console.log(`Locales      : ${localesDirectory}`);
 
-  console.log(
-    `Key          : ${translationKey}`,
-  );
+  console.log(`Key          : ${translationKey}`);
 
-  console.log(
-    `Values       : ${valuesFile}`,
-  );
+  console.log(`Values       : ${valuesFile}`);
 
-  console.log(
-    `Insert after : ${afterKey ?? "(append when new)"}`,
-  );
+  console.log(`Insert after : ${afterKey ?? "(append when new)"}`);
 
-  console.log(
-    `Mode         : ${checkOnly ? "CHECK ONLY" : "WRITE"}`,
-  );
+  console.log(`Mode         : ${checkOnly ? "CHECK ONLY" : "WRITE"}`);
 
-  console.log(
-    `Force        : ${force ? "YES" : "NO"}`,
-  );
+  console.log(`Force        : ${force ? "YES" : "NO"}`);
 
   console.log("");
 
@@ -908,20 +761,13 @@ async function main() {
   let localeDirectoryStat;
 
   try {
-    localeDirectoryStat =
-      await fs.stat(
-        localesDirectory,
-      );
+    localeDirectoryStat = await fs.stat(localesDirectory);
   } catch {
-    throw new Error(
-      `Locale directory does not exist:\n\n${localesDirectory}`,
-    );
+    throw new Error(`Locale directory does not exist:\n\n${localesDirectory}`);
   }
 
   if (!localeDirectoryStat.isDirectory()) {
-    throw new Error(
-      `Locale path is not a directory:\n\n${localesDirectory}`,
-    );
+    throw new Error(`Locale path is not a directory:\n\n${localesDirectory}`);
   }
 
   /**
@@ -933,11 +779,7 @@ async function main() {
   let valuesSource;
 
   try {
-    valuesSource =
-      await fs.readFile(
-        valuesFile,
-        "utf8",
-      );
+    valuesSource = await fs.readFile(valuesFile, "utf8");
   } catch (error) {
     throw new Error(
       `Unable to read translation values file:\n\n` +
@@ -946,21 +788,12 @@ async function main() {
     );
   }
 
-  const duplicateValueLocales =
-    findDuplicateTopLevelKeys(
-      valuesSource,
-    );
+  const duplicateValueLocales = findDuplicateTopLevelKeys(valuesSource);
 
-  if (
-    duplicateValueLocales.length > 0
-  ) {
-    const details =
-      duplicateValueLocales
-        .map(
-          ({ key, count }) =>
-            `  - ${key}: ${count} occurrences`,
-        )
-        .join("\n");
+  if (duplicateValueLocales.length > 0) {
+    const details = duplicateValueLocales
+      .map(({ key, count }) => `  - ${key}: ${count} occurrences`)
+      .join("\n");
 
     throw new Error(
       `Translation values file contains duplicate locale keys:\n\n` +
@@ -969,16 +802,9 @@ async function main() {
     );
   }
 
-  const translations =
-    parseJson(
-      valuesSource,
-      "Translation values file",
-    );
+  const translations = parseJson(valuesSource, "Translation values file");
 
-  assertPlainObject(
-    translations,
-    "Translation values file",
-  );
+  assertPlainObject(translations, "Translation values file");
 
   /**
    * -------------------------------------------------------------------------
@@ -986,43 +812,22 @@ async function main() {
    * -------------------------------------------------------------------------
    */
 
-  const directoryEntries =
-    await fs.readdir(
-      localesDirectory,
-      {
-        withFileTypes: true,
-      },
-    );
+  const directoryEntries = await fs.readdir(localesDirectory, {
+    withFileTypes: true,
+  });
 
-  const localeFiles =
-    directoryEntries
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          entry.name.endsWith(".json"),
-      )
-      .map((entry) => {
-        const locale =
-          entry.name.slice(
-            0,
-            -".json".length,
-          );
+  const localeFiles = directoryEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => {
+      const locale = entry.name.slice(0, -".json".length);
 
-        return {
-          locale,
-          filename: entry.name,
-          absolutePath: path.join(
-            localesDirectory,
-            entry.name,
-          ),
-        };
-      })
-      .sort(
-        (left, right) =>
-          left.locale.localeCompare(
-            right.locale,
-          ),
-      );
+      return {
+        locale,
+        filename: entry.name,
+        absolutePath: path.join(localesDirectory, entry.name),
+      };
+    })
+    .sort((left, right) => left.locale.localeCompare(right.locale));
 
   if (localeFiles.length === 0) {
     throw new Error(
@@ -1030,15 +835,9 @@ async function main() {
     );
   }
 
-  console.log(
-    `Discovered ${localeFiles.length} locale files:`,
-  );
+  console.log(`Discovered ${localeFiles.length} locale files:`);
 
-  console.log(
-    `  ${localeFiles
-      .map(({ locale }) => locale)
-      .join(", ")}`,
-  );
+  console.log(`  ${localeFiles.map(({ locale }) => locale).join(", ")}`);
 
   console.log("");
 
@@ -1048,55 +847,28 @@ async function main() {
    * -------------------------------------------------------------------------
    */
 
-  const existingLocales =
-    new Set(
-      localeFiles.map(
-        ({ locale }) => locale,
-      ),
-    );
+  const existingLocales = new Set(localeFiles.map(({ locale }) => locale));
 
-  const missingLocales =
-    localeFiles
-      .map(({ locale }) => locale)
-      .filter(
-        (locale) =>
-          !Object.hasOwn(
-            translations,
-            locale,
-          ),
-      );
+  const missingLocales = localeFiles
+    .map(({ locale }) => locale)
+    .filter((locale) => !Object.hasOwn(translations, locale));
 
   if (missingLocales.length > 0) {
     throw new Error(
       `Translations are missing for:\n\n` +
-        missingLocales
-          .map(
-            (locale) =>
-              `  - ${locale}`,
-          )
-          .join("\n") +
+        missingLocales.map((locale) => `  - ${locale}`).join("\n") +
         `\n\nNo locale files were changed.`,
     );
   }
 
-  const unknownLocales =
-    Object.keys(translations)
-      .filter(
-        (locale) =>
-          !existingLocales.has(
-            locale,
-          ),
-      );
+  const unknownLocales = Object.keys(translations).filter(
+    (locale) => !existingLocales.has(locale),
+  );
 
   if (unknownLocales.length > 0) {
     throw new Error(
       `The values file contains locales that do not exist:\n\n` +
-        unknownLocales
-          .map(
-            (locale) =>
-              `  - ${locale}`,
-          )
-          .join("\n") +
+        unknownLocales.map((locale) => `  - ${locale}`).join("\n") +
         `\n\nNo locale files were changed.`,
     );
   }
@@ -1111,25 +883,15 @@ async function main() {
 
   const preparedFiles = [];
 
-  for (
-    const localeFile of localeFiles
-  ) {
-    const {
-      locale,
-      filename,
-      absolutePath,
-    } = localeFile;
+  for (const localeFile of localeFiles) {
+    const { locale, filename, absolutePath } = localeFile;
 
-    const translationValue =
-      translations[locale];
+    const translationValue = translations[locale];
 
     /**
      * Value must be a string.
      */
-    if (
-      typeof translationValue !==
-      "string"
-    ) {
+    if (typeof translationValue !== "string") {
       throw new Error(
         `Translation for "${locale}" must be a string.\n\n` +
           `No locale files were changed.`,
@@ -1139,9 +901,7 @@ async function main() {
     /**
      * Empty strings are rejected.
      */
-    if (
-      translationValue.trim() === ""
-    ) {
+    if (translationValue.trim() === "") {
       throw new Error(
         `Translation for "${locale}" is empty.\n\n` +
           `No locale files were changed.`,
@@ -1157,10 +917,7 @@ async function main() {
      *
      * before anything gets written.
      */
-    if (
-      translationValue !==
-      translationValue.trim()
-    ) {
+    if (translationValue !== translationValue.trim()) {
       throw new Error(
         `Translation for "${locale}" contains leading or trailing whitespace.\n\n` +
           `Value:\n` +
@@ -1170,28 +927,17 @@ async function main() {
       );
     }
 
-    const source =
-      await fs.readFile(
-        absolutePath,
-        "utf8",
-      );
+    const source = await fs.readFile(absolutePath, "utf8");
 
     /**
      * Detect duplicate keys BEFORE JSON.parse().
      */
-    const duplicates =
-      findDuplicateTopLevelKeys(
-        source,
-      );
+    const duplicates = findDuplicateTopLevelKeys(source);
 
     if (duplicates.length > 0) {
-      const details =
-        duplicates
-          .map(
-            ({ key, count }) =>
-              `  - ${key}: ${count} occurrences`,
-          )
-          .join("\n");
+      const details = duplicates
+        .map(({ key, count }) => `  - ${key}: ${count} occurrences`)
+        .join("\n");
 
       throw new Error(
         `${filename} contains duplicate translation keys:\n\n` +
@@ -1203,35 +949,18 @@ async function main() {
     /**
      * Also verify that the complete file is valid JSON.
      */
-    const parsed =
-      parseJson(
-        source,
-        filename,
-      );
+    const parsed = parseJson(source, filename);
 
-    assertPlainObject(
-      parsed,
-      filename,
-    );
+    assertPlainObject(parsed, filename);
 
-    const targetExists =
-      Object.hasOwn(
-        parsed,
-        translationKey,
-      );
+    const targetExists = Object.hasOwn(parsed, translationKey);
 
-    const existingValue =
-      targetExists
-        ? parsed[translationKey]
-        : undefined;
+    const existingValue = targetExists ? parsed[translationKey] : undefined;
 
     /**
      * Existing target must itself be a string.
      */
-    if (
-      targetExists &&
-      typeof existingValue !== "string"
-    ) {
+    if (targetExists && typeof existingValue !== "string") {
       throw new Error(
         `${filename} contains "${translationKey}", but its value is not a string.\n\n` +
           `No locale files were changed.`,
@@ -1242,11 +971,7 @@ async function main() {
      * Ensure our surgical text matcher can locate the target.
      */
     if (targetExists) {
-      const targetLine =
-        findTranslationLine(
-          source,
-          translationKey,
-        );
+      const targetLine = findTranslationLine(source, translationKey);
 
       if (!targetLine) {
         throw new Error(
@@ -1260,11 +985,7 @@ async function main() {
     /**
      * Existing different value requires --force.
      */
-    if (
-      targetExists &&
-      existingValue !== translationValue &&
-      !force
-    ) {
+    if (targetExists && existingValue !== translationValue && !force) {
       throw new Error(
         `${filename} already contains "${translationKey}" with a different value.\n\n` +
           `Existing:\n` +
@@ -1279,16 +1000,8 @@ async function main() {
     /**
      * --after matters only for NEW target keys.
      */
-    if (
-      !targetExists &&
-      afterKey
-    ) {
-      if (
-        !Object.hasOwn(
-          parsed,
-          afterKey,
-        )
-      ) {
+    if (!targetExists && afterKey) {
+      if (!Object.hasOwn(parsed, afterKey)) {
         throw new Error(
           `${filename} does not contain anchor key:\n\n` +
             `  ${afterKey}\n\n` +
@@ -1296,11 +1009,7 @@ async function main() {
         );
       }
 
-      const anchorLine =
-        findTranslationLine(
-          source,
-          afterKey,
-        );
+      const anchorLine = findTranslationLine(source, afterKey);
 
       if (!anchorLine) {
         throw new Error(
@@ -1326,29 +1035,17 @@ async function main() {
    * =========================================================================
    */
 
-  console.log(
-    "Pre-flight validation: PASS",
-  );
+  console.log("Pre-flight validation: PASS");
 
-  console.log(
-    `Validated ${preparedFiles.length} locale files.`,
-  );
+  console.log(`Validated ${preparedFiles.length} locale files.`);
 
-  console.log(
-    "Duplicate keys         : NONE",
-  );
+  console.log("Duplicate keys         : NONE");
 
-  console.log(
-    "Missing translations   : NONE",
-  );
+  console.log("Missing translations   : NONE");
 
-  console.log(
-    "Unknown locales        : NONE",
-  );
+  console.log("Unknown locales        : NONE");
 
-  console.log(
-    "Whitespace violations  : NONE",
-  );
+  console.log("Whitespace violations  : NONE");
 
   console.log("");
 
@@ -1359,53 +1056,31 @@ async function main() {
   let previewAdded = 0;
   let previewUnchanged = 0;
 
-  for (
-    const prepared of preparedFiles
-  ) {
-    const {
-      filename,
-      locale,
-      targetExists,
-      existingValue,
-      translationValue,
-    } = prepared;
+  for (const prepared of preparedFiles) {
+    const { filename, locale, targetExists, existingValue, translationValue } =
+      prepared;
 
-    if (
-      targetExists &&
-      existingValue === translationValue
-    ) {
-      console.log(
-        `UNCHANGED  ${filename} (${locale})`,
-      );
+    if (targetExists && existingValue === translationValue) {
+      console.log(`UNCHANGED  ${filename} (${locale})`);
 
       previewUnchanged++;
       continue;
     }
 
     if (targetExists) {
-      console.log(
-        `REPLACE    ${filename} (${locale})`,
-      );
+      console.log(`REPLACE    ${filename} (${locale})`);
 
-      console.log(
-        `           OLD: ${JSON.stringify(existingValue)}`,
-      );
+      console.log(`           OLD: ${JSON.stringify(existingValue)}`);
 
-      console.log(
-        `           NEW: ${JSON.stringify(translationValue)}`,
-      );
+      console.log(`           NEW: ${JSON.stringify(translationValue)}`);
 
       previewUpdated++;
       continue;
     }
 
-    console.log(
-      `ADD        ${filename} (${locale})`,
-    );
+    console.log(`ADD        ${filename} (${locale})`);
 
-    console.log(
-      `           NEW: ${JSON.stringify(translationValue)}`,
-    );
+    console.log(`           NEW: ${JSON.stringify(translationValue)}`);
 
     previewAdded++;
   }
@@ -1413,33 +1088,19 @@ async function main() {
   console.log("");
 
   if (checkOnly) {
-    console.log(
-      "=".repeat(78),
-    );
+    console.log("=".repeat(78));
 
-    console.log(
-      "CHECK COMPLETE — NO FILES MODIFIED",
-    );
+    console.log("CHECK COMPLETE — NO FILES MODIFIED");
 
-    console.log(
-      "=".repeat(78),
-    );
+    console.log("=".repeat(78));
 
-    console.log(
-      `Would replace : ${previewUpdated}`,
-    );
+    console.log(`Would replace : ${previewUpdated}`);
 
-    console.log(
-      `Would add     : ${previewAdded}`,
-    );
+    console.log(`Would add     : ${previewAdded}`);
 
-    console.log(
-      `Unchanged     : ${previewUnchanged}`,
-    );
+    console.log(`Unchanged     : ${previewUnchanged}`);
 
-    console.log(
-      `Total         : ${preparedFiles.length}`,
-    );
+    console.log(`Total         : ${preparedFiles.length}`);
 
     console.log("");
 
@@ -1456,9 +1117,7 @@ async function main() {
   let addedCount = 0;
   let unchangedCount = 0;
 
-  for (
-    const prepared of preparedFiles
-  ) {
+  for (const prepared of preparedFiles) {
     const {
       filename,
       locale,
@@ -1472,13 +1131,8 @@ async function main() {
     /**
      * Already correct.
      */
-    if (
-      targetExists &&
-      existingValue === translationValue
-    ) {
-      console.log(
-        `UNCHANGED  ${filename} (${locale})`,
-      );
+    if (targetExists && existingValue === translationValue) {
+      console.log(`UNCHANGED  ${filename} (${locale})`);
 
       unchangedCount++;
       continue;
@@ -1496,24 +1150,17 @@ async function main() {
      * No unrelated translation line is regenerated.
      */
     if (targetExists) {
-      output =
-        replaceTranslationValue(
-          source,
-          translationKey,
-          translationValue,
-        );
-
-      console.log(
-        `REPLACED   ${filename} (${locale})`,
+      output = replaceTranslationValue(
+        source,
+        translationKey,
+        translationValue,
       );
 
-      console.log(
-        `           OLD: ${JSON.stringify(existingValue)}`,
-      );
+      console.log(`REPLACED   ${filename} (${locale})`);
 
-      console.log(
-        `           NEW: ${JSON.stringify(translationValue)}`,
-      );
+      console.log(`           OLD: ${JSON.stringify(existingValue)}`);
+
+      console.log(`           NEW: ${JSON.stringify(translationValue)}`);
 
       replacedCount++;
     }
@@ -1522,25 +1169,18 @@ async function main() {
      * New target with --after.
      */
     else if (afterKey) {
-      output =
-        insertTranslationAfter(
-          source,
-          afterKey,
-          translationKey,
-          translationValue,
-        );
-
-      console.log(
-        `ADDED      ${filename} (${locale})`,
+      output = insertTranslationAfter(
+        source,
+        afterKey,
+        translationKey,
+        translationValue,
       );
 
-      console.log(
-        `           AFTER: ${afterKey}`,
-      );
+      console.log(`ADDED      ${filename} (${locale})`);
 
-      console.log(
-        `           VALUE: ${JSON.stringify(translationValue)}`,
-      );
+      console.log(`           AFTER: ${afterKey}`);
+
+      console.log(`           VALUE: ${JSON.stringify(translationValue)}`);
 
       addedCount++;
     }
@@ -1551,20 +1191,11 @@ async function main() {
      * append before closing brace.
      */
     else {
-      output =
-        appendTranslation(
-          source,
-          translationKey,
-          translationValue,
-        );
+      output = appendTranslation(source, translationKey, translationValue);
 
-      console.log(
-        `ADDED      ${filename} (${locale})`,
-      );
+      console.log(`ADDED      ${filename} (${locale})`);
 
-      console.log(
-        `           VALUE: ${JSON.stringify(translationValue)}`,
-      );
+      console.log(`           VALUE: ${JSON.stringify(translationValue)}`);
 
       addedCount++;
     }
@@ -1575,17 +1206,9 @@ async function main() {
      * Confirm resulting text is valid JSON and contains exactly the value
      * requested.
      */
-    const outputParsed =
-      parseJson(
-        output,
-        `${filename} after modification`,
-      );
+    const outputParsed = parseJson(output, `${filename} after modification`);
 
-    if (
-      outputParsed[
-        translationKey
-      ] !== translationValue
-    ) {
+    if (outputParsed[translationKey] !== translationValue) {
       throw new Error(
         `Safety verification failed for ${filename}.\n\n` +
           `No further files will be written.`,
@@ -1595,14 +1218,9 @@ async function main() {
     /**
      * Ensure we have not accidentally introduced duplicate keys.
      */
-    const outputDuplicates =
-      findDuplicateTopLevelKeys(
-        output,
-      );
+    const outputDuplicates = findDuplicateTopLevelKeys(output);
 
-    if (
-      outputDuplicates.length > 0
-    ) {
+    if (outputDuplicates.length > 0) {
       throw new Error(
         `Safety verification detected duplicate keys in ${filename}.\n\n` +
           `The file was NOT written.`,
@@ -1612,45 +1230,25 @@ async function main() {
     /**
      * Write only after validation of the generated result.
      */
-    await fs.writeFile(
-      absolutePath,
-      output,
-      "utf8",
-    );
+    await fs.writeFile(absolutePath, output, "utf8");
   }
 
   console.log("");
-  console.log(
-    "=".repeat(78),
-  );
+  console.log("=".repeat(78));
 
-  console.log(
-    "COMPLETE",
-  );
+  console.log("COMPLETE");
 
-  console.log(
-    "=".repeat(78),
-  );
+  console.log("=".repeat(78));
 
-  console.log(
-    `Key       : ${translationKey}`,
-  );
+  console.log(`Key       : ${translationKey}`);
 
-  console.log(
-    `Replaced  : ${replacedCount}`,
-  );
+  console.log(`Replaced  : ${replacedCount}`);
 
-  console.log(
-    `Added     : ${addedCount}`,
-  );
+  console.log(`Added     : ${addedCount}`);
 
-  console.log(
-    `Unchanged : ${unchangedCount}`,
-  );
+  console.log(`Unchanged : ${unchangedCount}`);
 
-  console.log(
-    `Total     : ${preparedFiles.length}`,
-  );
+  console.log(`Total     : ${preparedFiles.length}`);
 
   console.log("");
 }
@@ -1663,19 +1261,11 @@ async function main() {
 
 main().catch((error) => {
   console.error("");
-  console.error(
-    "=".repeat(78),
-  );
-  console.error(
-    "FAILED",
-  );
-  console.error(
-    "=".repeat(78),
-  );
+  console.error("=".repeat(78));
+  console.error("FAILED");
+  console.error("=".repeat(78));
   console.error("");
-  console.error(
-    error.message,
-  );
+  console.error(error.message);
   console.error("");
 
   process.exitCode = 1;
