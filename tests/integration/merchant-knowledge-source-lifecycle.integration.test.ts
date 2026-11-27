@@ -5,10 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { Prisma, PrismaClient } from "@prisma/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../app/db.server", () => ({ default: {} }));
@@ -44,7 +41,7 @@ const baseConfiguration = {
   ],
 };
 
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let firstClient: PrismaClient | undefined;
 let secondClient: PrismaClient | undefined;
@@ -178,12 +175,12 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
   beforeAll(async () => {
     try {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-      postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-        .withDatabase(`arch023_s004_${suffix}`)
-        .withUsername(`arch023_s004_${suffix}`)
-        .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-        .start();
-      const databaseUrl = postgres.getConnectionUri();
+      postgres = await startDisposablePostgres({
+        database: `arch023_s004_${suffix}`,
+        user: `arch023_s004_${suffix}`,
+        password: `test_${randomUUID().replaceAll("-", "")}`,
+      });
+      const databaseUrl = postgres.databaseUrl;
       await deployMigrations(databaseUrl);
 
       database = new PrismaClient({ datasourceUrl: databaseUrl, transactionOptions: { timeout: 30_000 } });
@@ -209,7 +206,7 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
         firstClient?.$disconnect() ?? Promise.resolve(),
         secondClient?.$disconnect() ?? Promise.resolve(),
       ]);
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
       throw error;
     }
@@ -223,7 +220,7 @@ describeWithDatabase("Merchant Knowledge WEB_PAGE lifecycle PostgreSQL transacti
         secondClient?.$disconnect() ?? Promise.resolve(),
       ]);
     } finally {
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
     }
   }, 60_000);

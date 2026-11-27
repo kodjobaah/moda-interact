@@ -1,7 +1,4 @@
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { Client } from "pg";
 import { readFile, readdir } from "node:fs/promises";
 import { PrismaClient } from "@prisma/client";
@@ -26,14 +23,14 @@ import {
 } from "../../app/services/recovery-policy/recovery-policy.server";
 const enabled = process.env.MODA_SETTINGS_POSTGRES === "1";
 let db: PrismaClient;
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 const prefix = `arch020-test-${randomUUID()}`;
 let shopId: string, otherId: string, planId: string;
 const featureIds: string[] = [];
 describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17").start();
-    const url = postgres.getConnectionUri();
+    postgres = await startDisposablePostgres();
+    const url = postgres.databaseUrl;
     const client = new Client({ connectionString: url });
     await client.connect();
     try {
@@ -97,7 +94,7 @@ describe.skipIf(!enabled)("merchant settings PostgreSQL persistence", () => {
     try {
       await db?.$disconnect();
     } finally {
-      await postgres?.stop();
+      await postgres?.cleanup();
     }
   }, 60000);
   it("arbitrary mapped features follow Free/Paid eligibility; missing opt-in is false and required/system features are immutable", async () => {

@@ -5,10 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { PrismaClient } from "@prisma/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "./disposable-postgres";
 
 const execFileAsync = promisify(execFile);
 export type QueryLoggingPrismaClient = PrismaClient<{
@@ -31,12 +28,12 @@ export type BillingPostgresFixture = {
 
 export async function startBillingPostgresFixture(): Promise<BillingPostgresFixture> {
   const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-  const postgres: StartedPostgreSqlContainer = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-    .withDatabase(`billing_${suffix}`)
-    .withUsername(`billing_${suffix}`)
-    .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-    .start();
-  const databaseUrl = postgres.getConnectionUri();
+  const postgres: DisposablePostgres = await startDisposablePostgres({
+    database: `billing_${suffix}`,
+    user: `billing_${suffix}`,
+    password: `test_${randomUUID().replaceAll("-", "")}`,
+  });
+  const databaseUrl = postgres.databaseUrl;
   const clients = new Set<PrismaClient>();
   let cleaned = false;
 
@@ -52,7 +49,7 @@ export async function startBillingPostgresFixture(): Promise<BillingPostgresFixt
       },
     );
   } catch (error) {
-    await postgres.stop();
+    await postgres.cleanup();
     throw error;
   }
 
@@ -67,7 +64,13 @@ export async function startBillingPostgresFixture(): Promise<BillingPostgresFixt
     return client;
   };
   const database = createClient(`billing-${suffix}-main`);
-  await database.$connect();
+  try {
+    await database.$connect();
+  } catch (error) {
+    await Promise.allSettled([...clients].map(client => client.$disconnect()));
+    await postgres.cleanup();
+    throw error;
+  }
 
   return {
     databaseUrl,
@@ -77,7 +80,7 @@ export async function startBillingPostgresFixture(): Promise<BillingPostgresFixt
       if (cleaned) return;
       cleaned = true;
       await Promise.allSettled([...clients].map((client) => client.$disconnect()));
-      await postgres.stop();
+      await postgres.cleanup();
     },
   };
 }

@@ -8,7 +8,7 @@ import { readCurrentFollowUpTemplates } from "../../app/services/recoveries/reco
 
 const identity = { shopId: "shop-1", recoveryId: "recovery-1" };
 const date = new Date("2026-11-01T00:00:00Z");
-const owner = { id: identity.recoveryId, conversationId: "conversation-1", customerId: "customer-1",
+const owner = { outreachHistory: [], id: identity.recoveryId, conversationId: "conversation-1", customerId: "customer-1",
   status: "ENGAGED", totalPrice: new Prisma.Decimal("10"), currency: "GBP", detectedAt: date };
 const message = { id: "message-1", createdAt: date, direction: "INBOUND", senderType: "CUSTOMER",
   status: "DELIVERED", contentType: "TEXT", content: "Hello", transcriptionStatus: "NOT_REQUIRED" };

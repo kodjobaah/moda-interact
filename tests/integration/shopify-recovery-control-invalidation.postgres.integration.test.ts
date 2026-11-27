@@ -5,10 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { Prisma, PrismaClient } from "@prisma/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -26,7 +23,7 @@ const planId = `${fixturePrefix}-plan`;
 const planHandle = `${fixturePrefix}-plan-handle`;
 const shopId = `${fixturePrefix}-shop`;
 
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let firstClient: PrismaClient | undefined;
 let secondClient: PrismaClient | undefined;
@@ -118,12 +115,12 @@ function clientWithControlEventFailure(client: PrismaClient): PrismaClient {
 
 describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", () => {
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-      .withDatabase("shopify_control_test")
-      .withUsername("shopify_control_test")
-      .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-      .start();
-    const databaseUrl = postgres.getConnectionUri();
+    postgres = await startDisposablePostgres({
+      database: "shopify_control_test",
+      user: "shopify_control_test",
+      password: `test_${randomUUID().replaceAll("-", "")}`,
+    });
+    const databaseUrl = postgres.databaseUrl;
     await deployMigrations(databaseUrl);
     database = new PrismaClient({ datasourceUrl: databaseUrl });
     firstClient = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -159,7 +156,7 @@ describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", 
       secondClient?.$disconnect() ?? Promise.resolve(),
       database?.$disconnect() ?? Promise.resolve(),
     ]);
-    await postgres?.stop();
+    await postgres?.cleanup();
   }, 60_000);
 
   it("allows one concurrent takeover and atomically invalidates the pending turn", async () => {

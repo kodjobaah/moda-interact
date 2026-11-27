@@ -3,11 +3,11 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { PostgreSqlContainer } from "@testcontainers/postgresql";
+import { startDisposablePostgres } from "./disposable-postgres";
 const exec = promisify(execFile);
 export async function settingsPostgres() {
- const postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17").start();
- const url = postgres.getConnectionUri();
+ const postgres = await startDisposablePostgres();
+ const url = postgres.databaseUrl;
  const clients: PrismaClient[] = [];
  const sql: string[] = [];
  try {
@@ -17,8 +17,8 @@ export async function settingsPostgres() {
    db.$on("query", event => sql.push(event.query)); clients.push(db); return db;
   };
   const db = client();
-  return { db, client, sql, async close() { try { await Promise.all(clients.map(c => c.$disconnect())); } finally { await postgres.stop(); } } };
- } catch (error) { await postgres.stop(); throw error; }
+  return { db, client, sql, async close() { try { await Promise.all(clients.map(c => c.$disconnect())); } finally { await postgres.cleanup(); } } };
+ } catch (error) { await postgres.cleanup(); throw error; }
 }
 export async function settingsShop(db: PrismaClient) {
  const id = randomUUID();

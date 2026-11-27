@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../app/db.server", () => ({ default: {} }));
@@ -39,7 +39,7 @@ const r2Config: MerchantKnowledgeR2Config = {
   region: "auto",
 };
 
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let featureId: string;
 
@@ -136,13 +136,13 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
   beforeAll(async () => {
     try {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-      postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-        .withDatabase(`arch023_s005_${suffix}`)
-        .withUsername(`arch023_s005_${suffix}`)
-        .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-        .start();
-      await deployMigrations(postgres.getConnectionUri());
-      database = new PrismaClient({ datasourceUrl: postgres.getConnectionUri() });
+      postgres = await startDisposablePostgres({
+        database: `arch023_s005_${suffix}`,
+        user: `arch023_s005_${suffix}`,
+        password: `test_${randomUUID().replaceAll("-", "")}`,
+      });
+      await deployMigrations(postgres.databaseUrl);
+      database = new PrismaClient({ datasourceUrl: postgres.databaseUrl });
       await database.$connect();
       const feature = await database.feature.findUnique({ where: { key: "merchant_knowledge" } })
         ?? await database.feature.create({
@@ -156,7 +156,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
       featureId = feature.id;
     } catch (error) {
       await database?.$disconnect();
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
       throw error;
     }
@@ -166,7 +166,7 @@ describeWithDatabase("Merchant Knowledge uploaded source lifecycle PostgreSQL tr
     try {
       await database?.$disconnect();
     } finally {
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
     }
   }, 60_000);

@@ -1,6 +1,7 @@
+import { createHash } from "node:crypto";
 import { loadRecoveryDetailSeed } from "../helpers/recovery-detail-seed.mjs";
 import { readFile, readdir } from "node:fs/promises";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { Client } from "pg";
 import { Prisma } from "@prisma/client";
 import { recoveryDetailPgTypes, recoveryDetailPgValues } from "../helpers/recovery-detail-pg-utc.mjs";
@@ -10,7 +11,7 @@ import { createRecoveryDetailReader, readRecoveryMessages, readRecoveryDetail, r
 
 // Explicit opt-in: this command provisions its own disposable container only.
 const enabled = process.env.MODA_RECOVERY_DETAIL_POSTGRES === "1";
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let client: Client | undefined;
 let db: RecoveryDetailDatabase;
 const emitted: Prisma.Sql[] = [];
@@ -18,8 +19,8 @@ const own = { shopId: "arch019-shop-1", recoveryId: "arch019-r-1-00001" };
 
 describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17").start();
-    client = new Client({ connectionString: postgres.getConnectionUri(), types: recoveryDetailPgTypes });
+    postgres = await startDisposablePostgres();
+    client = new Client({ connectionString: postgres.databaseUrl, types: recoveryDetailPgTypes });
     await client.connect();
     const migrations = new URL("../../database/prisma/migrations/", import.meta.url);
     for (const name of (await readdir(migrations)).sort()) {
@@ -30,7 +31,7 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     db = { async $queryRaw<T>(query: Prisma.Sql): Promise<T> { emitted.push(query); return (await client!.query(query.text, recoveryDetailPgValues(query.values))).rows as T; } };
     process.stdout.write(`POSTGRES_VERSION ${JSON.stringify((await client.query("SELECT version()")).rows)}\n`);
   }, 180_000);
-  afterAll(async () => { try { await client?.end(); } finally { await postgres?.stop(); } }, 60_000);
+  afterAll(async () => { try { await client?.end(); } finally { await postgres?.cleanup(); } }, 60_000);
 
   it("composes identical detail/sections with five data SELECTs instead of seven independent-reader SELECTs", async () => {
     emitted.length = 0;
@@ -87,6 +88,77 @@ describe.skipIf(!enabled)("recovery detail actual PostgreSQL queries", () => {
     expect(latest.items.at(-1)?.id).toBe("arch019-m-1-00001-1000");expect(latest.nextCursor).toBeNull();
     const related=(await readRelatedRecoveries(own,db))!;expect(related.items).toHaveLength(5);
     expect(related.items.every(r=>r.id.startsWith("arch019-r-1-")&&r.id!==own.recoveryId)).toBe(true);
+  });
+
+  it("reads the confirmed initial retry from real bounded SQL history without reopening follow-up or losing the verified window", async () => {
+    // The fixture owns a normal recovery and a separate, exact historical
+    // compensation chain. Roll back the entire fixture after forcing deferred
+    // constraints to run so none of the original paging counts are changed.
+    const connection = client!;
+    const conversation = "arch019-conv-1-00001";
+    const earlier = new Date(Date.now() - 48 * 3600_000).toISOString();
+    const failedAt = new Date(Date.parse(earlier) + 1000).toISOString();
+    const retryAt = new Date(Date.now() - 3600_000).toISOString();
+    const due = new Date(Date.now() - 1000).toISOString();
+    const account = "1234567890123", phone = "1234567890124";
+    const original = "shopify-retry-test-original", intent = "shopify-retry-test-intent", successor = `retry_${intent}`;
+    const dispatchKey = `recovery-retry-${createHash("sha256").update(successor).digest("hex")}`;
+    await connection.query("BEGIN");
+    try {
+      await connection.query(`INSERT INTO "billing"."ShopEntitlementCounter"
+        ("id","shopId","counter","grantedQuantity","updatedAt") VALUES ('shopify-retry-counter',$1,'LIFETIME_FREE_RECOVERY_CREDITS',2,now())`, [own.shopId]);
+      await connection.query(`INSERT INTO "billing"."UsageEvent"
+        ("id","shopId","metric","quantity","idempotencyKey","sourceType","sourceId","occurredAt")
+        VALUES ('shopify-retry-debit',$1,'RECOVERY_CONVERSATION',1,'shopify-retry-debit','FREE_RECOVERY_RESERVATION','shopify-retry-reservation',$2)`, [own.shopId,earlier]);
+      await connection.query(`INSERT INTO "billing"."UsageEvent"
+        ("id","shopId","metric","quantity","idempotencyKey","sourceType","sourceId","correctionOfUsageEventId","occurredAt")
+        VALUES ('shopify-retry-correction',$1,'RECOVERY_CONVERSATION',-1,'shopify-retry-correction','RECOVERY_UNDELIVERABLE_COMPENSATION','shopify-retry-reservation','shopify-retry-debit',$2)`, [own.shopId,failedAt]);
+      await connection.query(`INSERT INTO "billing"."UsageReservation"
+        ("id","shopId","counterId","sourceKey","quantity","status","committedUsageEventId","compensationUsageEventId",
+          "compensationReason","compensationDisposition","compensatedAt","updatedAt")
+        VALUES ('shopify-retry-reservation',$1,'shopify-retry-counter','shopify-retry-source',1,'COMMITTED','shopify-retry-debit',
+          'shopify-retry-correction','WHATSAPP_DELIVERY_FAILED','RESTORED_SPENDABLE',$2,now())`, [own.shopId,failedAt]);
+      await connection.query(`INSERT INTO "whatsapp"."ConversationMessage"
+        ("id","conversationId","direction","senderType","status","content","providerMessageId","sentAt","failedAt",
+         "providerFailureCode","dispatchProviderAccountId","dispatchProviderPhoneNumberId")
+        VALUES ('shopify-retry-original-message',$1,'OUTBOUND','AUTOMATION','FAILED','Original failed','wamid.shopify-retry-original',$2,$3,'131016',$4,$5)`, [conversation,earlier,failedAt,account,phone]);
+      await connection.query(`INSERT INTO "commerce"."RecoveryOutreachAttempt"
+        ("id","checkoutRecoveryId","recipient","sequence","trigger","status","configuredOfferMode","sentAt","outboundMessageId","followUpDueAt","updatedAt")
+        VALUES ($1,$2,'447700900001',1,'INITIAL','FAILED','NONE',$3,'shopify-retry-original-message',$3,now())`, [original,own.recoveryId,earlier]);
+      await connection.query(`INSERT INTO "commerce"."RecoveryOutreachRetryIntent"
+        ("id","failedAttemptId","failedMessageId","fundingReservationId","policy","notBeforeAt","expectedGeneration","expectedLastExternalActivityAt","updatedAt")
+        SELECT $1,$2,'shopify-retry-original-message','shopify-retry-reservation','AFTER_COOLDOWN',$3,r."generation",r."lastExternalActivityAt",now()
+        FROM "commerce"."CheckoutRecovery" r WHERE r."id"=$4`, [intent,original,retryAt,own.recoveryId]);
+      await connection.query(`INSERT INTO "whatsapp"."ConversationMessage"
+        ("id","conversationId","direction","senderType","status","content","providerMessageId","sentAt","providerDispatchKey",
+         "providerDispatchAdmittedAt","providerDispatchControlRevision","dispatchProviderAccountId","dispatchProviderPhoneNumberId")
+        VALUES ('shopify-retry-successor-message',$1,'OUTBOUND','AUTOMATION','SENT','Retry accepted','wamid.shopify-retry-successor',
+          ($2::timestamptz AT TIME ZONE 'UTC'),$3,$2::timestamptz,0,$4,$5)`, [conversation,retryAt,dispatchKey,account,phone]);
+      await connection.query(`INSERT INTO "commerce"."RecoveryOutreachAttempt"
+        ("id","checkoutRecoveryId","recipient","sequence","trigger","status","configuredOfferMode","sentAt","outboundMessageId","followUpDueAt","updatedAt")
+        VALUES ($1,$2,'447700900001',3,'INITIAL','WAITING_FOR_RESPONSE','NONE',$3,'shopify-retry-successor-message',$4,now())`, [successor,own.recoveryId,retryAt,due]);
+      await connection.query("SET CONSTRAINTS ALL IMMEDIATE");
+      expect((await readRecoveryDetail(own,db))!.conversation?.followUp.eligible).toBe(false);
+      await connection.query(`UPDATE "whatsapp"."ConversationMessage" SET "status"='DELIVERED', "deliveredAt"=$1 WHERE "id"='shopify-retry-successor-message'`, [retryAt]);
+      emitted.length = 0;
+      const delivered = (await readRecoveryDetail(own,db))!;
+      expect(emitted).toHaveLength(1);
+      expect(delivered.initialOutreachSentAt).toBe(retryAt);
+      expect(delivered.conversation?.followUp).toMatchObject({ used: false, eligible: true });
+      await connection.query(`INSERT INTO "whatsapp"."ConversationMessage"
+        ("id","conversationId","direction","senderType","status","content","providerMessageId","createdAt")
+        VALUES ('shopify-retry-inbound',$1,'INBOUND','CUSTOMER','DELIVERED','Reply','wamid.shopify-retry-inbound',$2)`, [conversation,due]);
+      const replied = (await readRecoveryDetail(own,db))!;
+      expect(replied.conversation?.lastInboundAt).toBe(due);
+      expect(replied.conversation?.followUp.eligible).toBe(false);
+      await connection.query(`INSERT INTO "commerce"."RecoveryOutreachAttempt"
+        ("id","checkoutRecoveryId","recipient","sequence","trigger","status","configuredOfferMode","initiatedBy","initiationKey","claimedAt","updatedAt")
+        VALUES ('shopify-retry-follow-up',$1,'447700900001',2,'NO_RESPONSE_FOLLOW_UP','PENDING','NONE','AUTOMATION','shopify-retry-follow-up',$2,now())`, [own.recoveryId,due]);
+      expect((await readRecoveryDetail(own,db))!.conversation?.followUp).toMatchObject({ used: true, initiatedBy: "AUTOMATION", eligible: false });
+      await connection.query(`UPDATE "whatsapp"."ConversationMessage" SET "status"='READ', "readAt"=$1 WHERE "id"='shopify-retry-original-message'`, [retryAt]);
+      expect((await readRecoveryDetail(own,db))!.conversation?.followUp.eligible).toBe(false);
+      expect(await readRecoveryDetail({ ...own, shopId: "arch019-shop-2" },db)).toBeNull();
+    } finally { await connection.query("ROLLBACK"); }
   });
 
   it.each(["first","next","previous","latest"] as const)("%s event plan bounds each source to 51 rows",async direction=>{

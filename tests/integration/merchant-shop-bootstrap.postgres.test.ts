@@ -5,7 +5,7 @@ import {randomUUID} from "node:crypto";
 import {resolve} from "node:path";
 import {PrismaClient} from "@prisma/client";
 import type {AdminApiContext} from "@shopify/shopify-app-react-router/server";
-import {PostgreSqlContainer, type StartedPostgreSqlContainer} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import {afterAll, beforeAll, describe, expect, it, vi} from "vitest";
 import {RouterContextProvider} from "react-router";
 
@@ -14,7 +14,7 @@ let baseDatabase: PrismaClient;
 const additionalClients: PrismaClient[] = [];
 const clientScope = new AsyncLocalStorage<ReturnType<typeof instrumentDatabase>>();
 let bootstrapReadBarrier: (() => Promise<void>) | undefined;
-let container: StartedPostgreSqlContainer | undefined;
+let container: DisposablePostgres | undefined;
 let admin: AdminApiContext;
 let domain: string;
 let breakBootstrap = false;
@@ -70,10 +70,12 @@ function instrumentDatabase(client: PrismaClient) {
 describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
   beforeAll(async () => {
     try {
-      container = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-        .withDatabase("moda_interact").withUsername("postgres")
-        .withPassword(randomUUID()).start();
-      const url = container.getConnectionUri();
+      container = await startDisposablePostgres({
+        database: "moda_interact",
+        user: "postgres",
+        password: randomUUID(),
+      });
+      const url = container.databaseUrl;
       await promisify(execFile)(resolve("node_modules/.bin/prisma"), [
         "migrate", "deploy", "--schema", "database/prisma/schema.prisma",
       ], {env: {...process.env, DATABASE_URL: url}, timeout: 180_000});
@@ -87,13 +89,13 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
       provider.mockImplementation(async () => Response.json(profile()));
     } catch (error) {
       await baseDatabase?.$disconnect();
-      await container?.stop();
+      await container?.cleanup();
       container = undefined;
       throw error;
     }
   }, 240_000);
   afterAll(async () => {
-    try {await Promise.all([baseDatabase?.$disconnect(), ...additionalClients.map(client => client.$disconnect())]);} finally {await container?.stop();}
+    try {await Promise.all([baseDatabase?.$disconnect(), ...additionalClients.map(client => client.$disconnect())]);} finally {await container?.cleanup();}
   });
   it("first install creates one Shop, scalar subscription and settings atomically", async () => {
     resetCounts();
@@ -186,7 +188,7 @@ describe.skipIf(!enabled)("canonical migrated merchant bootstrap", () => {
       if (++localReads === 2) releaseReads();
       await readsReady;
     };
-    const url = new URL(container!.getConnectionUri());
+    const url = new URL(container!.databaseUrl);
     url.searchParams.set("connection_limit", "1");
     const clients = [0, 1].map(() => {
       const client = new PrismaClient({datasourceUrl: url.toString(), log: [{emit: "event", level: "query"}]});

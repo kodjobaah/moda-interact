@@ -4,10 +4,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { resolve } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -28,7 +25,7 @@ const discountB = `${fixturePrefix}-discount-b`;
 const discountNew = `${fixturePrefix}-discount-new`;
 const now = new Date("2026-10-30T12:00:00.000Z");
 
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let firstClient: PrismaClient | undefined;
 let secondClient: PrismaClient | undefined;
@@ -185,12 +182,12 @@ async function revision(shopId: string) {
 
 describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => {
   beforeAll(async () => {
-    postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-      .withDatabase("shopify_recovery_test")
-      .withUsername("shopify_recovery_test")
-      .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-      .start();
-    const databaseUrl = postgres.getConnectionUri();
+    postgres = await startDisposablePostgres({
+      database: "shopify_recovery_test",
+      user: "shopify_recovery_test",
+      password: `test_${randomUUID().replaceAll("-", "")}`,
+    });
+    const databaseUrl = postgres.databaseUrl;
     await deployMigrations(databaseUrl);
     database = new PrismaClient({ datasourceUrl: databaseUrl });
     firstClient = new PrismaClient({ datasourceUrl: databaseUrl });
@@ -211,7 +208,7 @@ describeWithDatabase("Shopify recovery discount PostgreSQL transactions", () => 
         database?.$disconnect() ?? Promise.resolve(),
       ]);
     } finally {
-      await postgres?.stop();
+      await postgres?.cleanup();
     }
   }, 60_000);
 

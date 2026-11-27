@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { Prisma, PrismaClient } from "@prisma/client";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { ADMIN_ID, WABA, languages, recoveryDefaultFixture } from "../fixtures/onboarding-recovery-defaults";
 
@@ -22,7 +22,7 @@ const fixtures = new Map<string, ReturnType<typeof recoveryDefaultFixture>>(ONBO
 const context = { platform: "SHOPIFY" as const, environment: "test", readSenderWaba: trustedRecoverySenderWaba };
 
 describe.skipIf(!runPostgres)("onboarding recovery defaults on migrated PostgreSQL", () => {
-  let container: StartedPostgreSqlContainer | undefined;
+  let container: DisposablePostgres | undefined;
   let db: PrismaClient;
   const shop = (name: string) => db.shop.create({ data: { domain: `${name}.myshopify.com`, platform: "SHOPIFY",
     status: "ACTIVE", onboardingCompleted: true, storeLocale: "fr", defaultLanguageTag: "fr" } });
@@ -41,9 +41,12 @@ describe.skipIf(!runPostgres)("onboarding recovery defaults on migrated PostgreS
   }
   beforeAll(async () => {
     try {
-      container = await new PostgreSqlContainer("pgvector/pgvector:pg17").withDatabase("recovery_defaults_test")
-        .withUsername("postgres").withPassword(randomUUID()).start();
-      const url = container.getConnectionUri();
+      container = await startDisposablePostgres({
+        database: "recovery_defaults_test",
+        user: "postgres",
+        password: randomUUID(),
+      });
+      const url = container.databaseUrl;
       await promisify(execFile)(resolve("node_modules/.bin/prisma"), ["migrate", "deploy", "--schema", "database/prisma/schema.prisma"],
         { env: { ...process.env, DATABASE_URL: url }, timeout: 180_000 });
       db = new PrismaClient({ datasourceUrl: url }); await db.$connect();
@@ -57,11 +60,11 @@ describe.skipIf(!runPostgres)("onboarding recovery defaults on migrated PostgreS
       }
       expect(await db.whatsAppTemplatePublicationOperation.count()).toBe(0);
     } catch (error) {
-      try { await db?.$disconnect(); } finally { await container?.stop(); container = undefined; }
+      try { await db?.$disconnect(); } finally { await container?.cleanup(); container = undefined; }
       throw error;
     }
   }, 240_000);
-  afterAll(async () => { vi.unstubAllEnvs(); try { await db?.$disconnect(); } finally { await container?.stop(); } }, 60_000);
+  afterAll(async () => { vi.unstubAllEnvs(); try { await db?.$disconnect(); } finally { await container?.cleanup(); } }, 60_000);
 
   it("provisions twelve format defaults without publication history and preserves both merchant formats", async () => {
     const merchant = await shop("first-shop");

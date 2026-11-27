@@ -4,6 +4,9 @@ import { detailCursor, detailCursorScope, InvalidRecoveryDetailQuery, parseDetai
 import { recoveryMessageDto, type RecoveryMessageRow } from "./detail-message";
 import { projectRecoveryBasket } from "./recovery-basket";
 import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
+import { resolveMerchantOutreach } from "./merchant-outreach.server";
+import { outreachHistorySql } from "./outreach-history-query.server";
+import { decodeOutreachHistory, type OutreachHistoryRow } from "./outreach-history-wire";
 
 export type RecoveryDetailDatabase = { $queryRaw<T>(query: Prisma.Sql): Promise<T> };
 type Identity = { shopId: string; recoveryId: string };
@@ -13,9 +16,8 @@ type OwnedRecovery = {
   firstName: string | null; lastName: string | null; email: string | null;
   status: string; totalPrice: Prisma.Decimal | null; currency: string | null; lineItems?: unknown;
   controlMode?: string | null; controlRevision?: number | null; lastCustomerInboundAt?: Date | null;
-  humanRestriction?: string | null; followUpUsed?: boolean | null; followUpInitiator?: string | null;
-  initialSentAt?: Date | null; followUpDueAt?: Date | null;
-  followUpRecipient?: string | null; followUpAvailable?: boolean | null;
+  humanRestriction?: string | null;
+  outreachHistory: OutreachHistoryRow[];
   conversationLanguageTag?: string | null;
   latestCommandId?: string | null; latestCommandState?: string | null;
   latestCommandKind?: string | null; latestCommandModeration?: string | null;
@@ -44,18 +46,9 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
       (SELECT m."createdAt" FROM "whatsapp"."ConversationMessage" m
         WHERE m."conversationId"=v."id" AND m."direction"='INBOUND'
           AND m."senderType"='CUSTOMER' AND m."providerMessageId" IS NOT NULL
-          AND initial."sentAt" IS NOT NULL AND m."createdAt" >= initial."sentAt"
           AND m."createdAt" <= ${now}::timestamp
         ORDER BY m."createdAt" DESC, m."id" DESC LIMIT 1) AS "lastCustomerInboundAt",
-      initial."sentAt" AS "initialSentAt", initial."followUpDueAt" AS "followUpDueAt",
-      initial."recipient" AS "followUpRecipient",
-      CASE WHEN follow."id" IS NULL THEN FALSE ELSE (follow."initiationKey" IS NOT NULL
-        OR follow."claimedAt" IS NOT NULL OR follow."outboundMessageId" IS NOT NULL
-        OR follow."status" <> 'PENDING') END AS "followUpUsed",
-      follow."initiatedBy"::text AS "followUpInitiator",
-      (initial."sentAt" IS NOT NULL AND (follow."id" IS NULL OR
-        (follow."initiationKey" IS NULL AND follow."claimedAt" IS NULL
-          AND follow."status"='PENDING' AND follow."outboundMessageId" IS NULL))) AS "followUpAvailable",
+      ${outreachHistorySql} AS "outreachHistory",
       recent."id" AS "latestCommandId", recent."state"::text AS "latestCommandState",
       recent."kind"::text AS "latestCommandKind",
       (SELECT a."decision"::text FROM "whatsapp"."ConversationModerationAssessment" a
@@ -66,8 +59,6 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
     LEFT JOIN "whatsapp"."Conversation" v ON v."checkoutRecoveryId" = r."id"
       AND v."type"='RECOVERY' AND (v."shopId" IS NULL OR v."shopId"=r."shopId")
     LEFT JOIN "commerce"."ShopHumanMessagingRestriction" restriction ON restriction."shopId"=r."shopId"
-    LEFT JOIN "commerce"."RecoveryOutreachAttempt" initial ON initial."checkoutRecoveryId"=r."id" AND initial."sequence"=1
-    LEFT JOIN "commerce"."RecoveryOutreachAttempt" follow ON follow."checkoutRecoveryId"=r."id" AND follow."sequence"=2
     LEFT JOIN LATERAL (SELECT "id", "kind", "state" FROM "whatsapp"."MerchantConversationSendCommand"
       WHERE "conversationId"=v."id" AND "shopId"=r."shopId" ORDER BY "createdAt" DESC, "id" DESC LIMIT 1) recent ON true
     WHERE r."shopId" = ${shopId} AND r."id" = ${recoveryId} LIMIT 1`);
@@ -80,28 +71,40 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
 export async function readRecoveryDetail(input: Identity, db: RecoveryDetailDatabase = prisma) {
   const now = new Date();
   const row = await ownedRecovery(db, input, now);
-  return row ? projectDetail(row, now) : null;
+  return row ? projectDetail(row, input.shopId, now) : null;
 }
 
-function projectDetail(row: OwnedRecovery, now: Date) {
-  const window = customerServiceWindow(row.initialSentAt, row.lastCustomerInboundAt, now);
-  const followUpEligible = !!row.followUpAvailable && !window.open &&
-    configuredFollowUpIsDue(row.initialSentAt, row.followUpDueAt, now) &&
+function projectDetail(row: OwnedRecovery, shopId: string, now: Date) {
+  const attempts = decodeOutreachHistory(row.outreachHistory);
+  const evidence = row.conversationId ? resolveMerchantOutreach({ shopId, recoveryId: row.id,
+    conversationId: row.conversationId, platform: "SHOPIFY" }, attempts, now) : null;
+  const contact = evidence?.replyAnchor;
+  const initial = evidence?.initial;
+  // The SQL reads the latest provider-verified inbound no later than now;
+  // apply the exact historical contact anchor after resolving retry lineage.
+  const window = customerServiceWindow(contact?.sentAt, row.lastCustomerInboundAt, now);
+  const followUpEligible = !!initial && !evidence?.followUpUsed && !window.open &&
+    contact?.recipient === initial.recipient &&
+    configuredFollowUpIsDue(initial.sentAt, initial.followUpDueAt, now) &&
     !terminalRecovery(row.status) && row.humanRestriction !== "SUSPENDED" &&
-    !!row.followUpRecipient && /^\+?[0-9]{7,20}$/.test(row.followUpRecipient);
+    /^\+?[0-9]{7,20}$/.test(initial.recipient);
+  // Preserve historical send timestamps when no successful retry exists;
+  // display the effective confirmed retry timestamp when one does.
+  const historical = attempts.find(attempt => attempt.sequence === 1 && attempt.trigger === "INITIAL");
+  const initialSentAt = initial?.sentAt ?? historical?.sentAt ?? null;
   return {
     id: row.id, status: statusDto(row.status), value: valueDto(row),
     customer: row.customerId ? { firstName: row.firstName, lastName: row.lastName, email: row.email } : null,
     hasConversation: row.conversationId !== null,
     // Both timestamps are persisted; neither is inferred from current Shopify cart data.
-    initialOutreachSentAt: row.initialSentAt?.toISOString() ?? null,
+    initialOutreachSentAt: initialSentAt?.toISOString() ?? null,
     basket: projectRecoveryBasket(row.lineItems, row.currency, row.totalPrice?.toString() ?? null),
     conversation: row.conversationId ? {
       id: row.conversationId, controlMode: row.controlMode === "HUMAN" ? "HUMAN" as const : "AI" as const,
       controlRevision: row.controlRevision ?? 0, languageTag: row.conversationLanguageTag ?? null,
       lastInboundAt: window.lastInboundAt?.toISOString() ?? null,
       windowExpiresAt: window.expiresAt?.toISOString() ?? null,
-      followUp: { used: row.followUpUsed ?? false, initiatedBy: row.followUpInitiator ?? null,
+      followUp: { used: evidence?.followUpUsed ?? false, initiatedBy: evidence?.initiatedBy ?? null,
         eligible: followUpEligible, hasApprovedTemplate: false },
       humanMessagingStatus: row.humanRestriction === "SUSPENDED" ? "SUSPENDED" as const : "ACTIVE" as const,
       latestCommand: row.latestCommandId ? { commandId: row.latestCommandId,
@@ -136,7 +139,7 @@ export async function createRecoveryDetailReader(identity: Identity, db: Recover
   const owned = await ownedRecovery(db, trusted, now);
   if (!owned) return null;
   return {
-    detail: projectDetail(owned, now),
+    detail: projectDetail(owned, trusted.shopId, now),
     readMessages: async (navigation: SectionNavigation = {}) => {
       const scope = detailCursorScope(["messages", trusted.shopId, trusted.recoveryId]);
       return messagesForOwner(trusted, db, owned, scope, parseDetailNavigation(scope, navigation));

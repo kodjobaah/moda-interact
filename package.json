@@ -88,7 +88,6 @@
     "@shopify/api-codegen-preset": "^1.2.0",
     "@shopify/polaris-types": "^1.0.1",
     "@tailwindcss/vite": "^4.3.3",
-    "@testcontainers/postgresql": "12.1.0",
     "@types/eslint": "^9.6.1",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^22.20.1",

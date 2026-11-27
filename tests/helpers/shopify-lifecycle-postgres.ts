@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { PrismaClient } from "@prisma/client";
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "./disposable-postgres";
 import { Session } from "@shopify/shopify-api";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import { ShopService } from "../../app/services/shop/shop.service";
@@ -30,17 +30,18 @@ export type LifecyclePostgres = {
 };
 
 export async function startLifecyclePostgres(testName: string): Promise<LifecyclePostgres> {
-  let container: StartedPostgreSqlContainer | undefined;
+  let container: DisposablePostgres | undefined;
   try {
-    container = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-      .withDatabase("shopify_lifecycle_test")
-      .withUsername("shopify_lifecycle_test")
-      .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-      .start();
+    container = await startDisposablePostgres({
+      database: "shopify_lifecycle_test",
+      user: "shopify_lifecycle_test",
+      password: `test_${randomUUID().replaceAll("-", "")}`,
+    });
   } catch (error) {
     throw new Error(`Unable to start required disposable PostgreSQL 17 container for ${testName}`, { cause: error });
   }
-  const databaseUrl = container.getConnectionUri();
+  const databaseUrl = container.databaseUrl;
+  const clients: PrismaClient[] = [];
   try {
     await execFileAsync(prismaExecutable, ["migrate", "deploy", "--schema", "database/prisma/schema.prisma"], {
       cwd: repositoryRoot,
@@ -53,6 +54,7 @@ export async function startLifecyclePostgres(testName: string): Promise<Lifecycl
     const primary = new PrismaClient(clientOptions);
     const second = new PrismaClient(clientOptions);
     const observer = new PrismaClient(clientOptions);
+    clients.push(primary, second, observer);
     primary.$on("query", (event) => queryLog.push(event.query));
     second.$on("query", (event) => queryLog.push(event.query));
     observer.$on("query", (event) => queryLog.push(event.query));
@@ -98,11 +100,12 @@ export async function startLifecyclePostgres(testName: string): Promise<Lifecycl
           ))];
           console.info("SHOPIFY_LIFECYCLE_SQL_EVIDENCE", JSON.stringify(statements));
         }
-        await container?.stop();
+        await container?.cleanup();
       },
     };
   } catch (error) {
-    await container.stop();
+    await Promise.allSettled(clients.map(client => client.$disconnect()));
+    await container.cleanup();
     throw error;
   }
 }

@@ -6,11 +6,14 @@ import { Prisma } from "@prisma/client";
 vi.mock("../../app/db.server", () => ({ default: {} }));
 import { readRecoveryDetail, readRecoveryMessages, readRelatedRecoveries, recoveryMessagePageSql, type RecoveryDetailDatabase } from "../../app/services/recoveries/recovery-detail.server";
 import { recoveryMessageDto, type RecoveryMessageRow } from "../../app/services/recoveries/detail-message";
+import { decodeOutreachHistory } from "../../app/services/recoveries/outreach-history-wire";
+import { outreachAttempt, retryHistory, wireHistory } from "../fixtures/retry-aware-outreach";
 import { detailCursor, detailCursorScope, parseDetailNavigation } from "../../app/services/recoveries/detail-cursor.server";
 
 const input = { shopId: "shop-a", recoveryId: "recovery-a" };
+const outreachScope = { ...input, conversationId: "conversation-a", platform: "SHOPIFY" as const };
 const date = new Date("2026-09-01T00:00:00.000Z");
-const owned = { id: input.recoveryId, customerId: "customer-a", conversationId: "conversation-a", firstName: "Ada", lastName: "L", email: "ada@example.invalid", status: "ENGAGED", totalPrice: new Prisma.Decimal("1234567890123456.78"), currency: "GBP", detectedAt: date, messageSentAt: null, engagedAt: date, completedAt: null, expiredAt: null };
+const owned = { outreachHistory: [], id: input.recoveryId, customerId: "customer-a", conversationId: "conversation-a", firstName: "Ada", lastName: "L", email: "ada@example.invalid", status: "ENGAGED", totalPrice: new Prisma.Decimal("1234567890123456.78"), currency: "GBP", detectedAt: date, messageSentAt: null, engagedAt: date, completedAt: null, expiredAt: null };
 const msg = (i: number): RecoveryMessageRow => ({ id: `m-${String(i).padStart(4,"0")}`, createdAt: date, direction: "INBOUND", senderType: "CUSTOMER", status: "DELIVERED", contentType: "TEXT", content: "مرحبا <script>alert(1)</script>", transcriptionStatus: "NOT_REQUIRED", sentAt: date, deliveredAt: date, readAt: date });
 const scope = detailCursorScope(["messages", input.shopId, input.recoveryId]);
 function queued(...results: unknown[]) {
@@ -40,11 +43,11 @@ describe("recovery detail ownership and projection", () => {
     expect(query.mock.calls[0][0].text).toContain('c."shopId" = r."shopId"');
   });
   it("projects initial outreach only from persisted send timestamps and keeps saved basket fields", async () => {
-    const row = { ...owned, initialSentAt: date, lineItems: [{ title: "Saved product", variantTitle: "Large", quantity: 2, price: "12.34" }] };
+    const row = { ...owned, outreachHistory: wireHistory([outreachAttempt(outreachScope, 1, date)]), lineItems: [{ title: "Saved product", variantTitle: "Large", quantity: 2, price: "12.34" }] };
     const dto = await readRecoveryDetail(input, queued([row]).db);
     expect(dto?.initialOutreachSentAt).toBe(date.toISOString());
     expect(dto?.basket.items[0]).toMatchObject({ title: "Saved product", variant: "Large", quantity: 2, unitPrice: "12.34" });
-    const absent = await readRecoveryDetail(input, queued([{ ...row, initialSentAt: null }]).db);
+    const absent = await readRecoveryDetail(input, queued([{ ...row, outreachHistory: [] }]).db);
     expect(absent?.initialOutreachSentAt).toBeNull();
   });
   it("handles unknown money, guests and no conversation without extra reads", async () => {
@@ -273,25 +276,34 @@ describe("ARCH-040-SHOPIFY-005 trusted Recovery Detail advisories", () => {
   const sent = new Date("2026-10-20T10:00:00.000Z");
   const now = new Date("2026-10-20T12:00:00.000Z");
   const due = new Date("2026-10-20T10:15:00.000Z");
-  const base = { ...owned, initialSentAt: sent, followUpDueAt: due, followUpAvailable: true,
+  const base = { ...owned, initialSentAt: sent as Date | null, followUpDueAt: due as Date | null, followUpAvailable: true,
     followUpRecipient: "+447700900001", followUpUsed: false, approvedTemplateCount: 1,
-    humanRestriction: null, lastCustomerInboundAt: null, controlMode: "HUMAN" };
-  function read(row: object = base) { return readRecoveryDetail(input, queued([row]).db); }
+    humanRestriction: null as string | null, lastCustomerInboundAt: null as Date | null, controlMode: "HUMAN" };
+  function persisted(row: typeof base) {
+    const initial = outreachAttempt(outreachScope, 1, row.initialSentAt, {
+      recipient: row.followUpRecipient, followUpDueAt: row.followUpDueAt,
+    });
+    const follow = outreachAttempt(outreachScope, 2, null, row.followUpUsed || !row.followUpAvailable
+      ? { initiatedBy: "HUMAN", initiationKey: "previous-command", claimedAt: sent } : {});
+    return { ...row, outreachHistory: wireHistory([initial, follow]) };
+  }
+  function read(row = base) { return readRecoveryDetail(input, queued([persisted(row)]).db); }
   function clock(value = now) { vi.useFakeTimers(); vi.setSystemTime(value); }
 
-  it("bounds the read query to provider-verified CUSTOMER messages since the initial send and no later than now", async () => {
+  it("bounds the SQL to provider-verified CUSTOMER messages no later than now and retrieves bounded lineage for the exact contact anchor", async () => {
     clock();
-    const { db, query } = queued([base]);
+    const { db, query } = queued([persisted(base)]);
     await readRecoveryDetail(input, db);
     const sql = query.mock.calls[0][0];
     expect(sql.text).toContain("m.\"direction\"='INBOUND'");
     expect(sql.text).toContain("m.\"senderType\"='CUSTOMER'");
     expect(sql.text).toContain('m."providerMessageId" IS NOT NULL');
-    expect(sql.text).toContain('m."createdAt" >= initial."sentAt"');
     expect(sql.text).toContain('m."createdAt" <= $1::timestamp');
     expect(sql.text).toContain('ORDER BY m."createdAt" DESC, m."id" DESC LIMIT 1');
-    expect(sql.text).toContain('initial."followUpDueAt" AS "followUpDueAt"');
-    expect(sql.text).toContain('follow."claimedAt" IS NULL');
+    expect(sql.text).toContain('a."checkoutRecoveryId"=r."id"');
+    expect(sql.text).toContain('ORDER BY a."sequence" ASC LIMIT 101');
+    expect(sql.text).toContain('"RecoveryOutreachRetryIntent"');
+    expect(sql.text).toContain('m."conversationId"=v."id"');
     expect(sql.values).toEqual([now, input.shopId, input.recoveryId]);
   });
 
@@ -371,4 +383,49 @@ describe("ARCH-040-SHOPIFY-005 trusted Recovery Detail advisories", () => {
     const result = await read({ ...base, approvedTemplateCount: 0 });
     expect(result?.conversation?.followUp).toMatchObject({ eligible: true, hasApprovedTemplate: false });
   });
+});
+
+
+describe("retry-aware recovery detail", () => {
+  it("uses a confirmed retry's timestamp and deadline without an extra SELECT", async () => {
+    const sent = new Date("2026-11-26T10:00:00Z");
+    const retry = new Date("2026-11-26T11:00:00Z");
+    const due = new Date("2026-11-26T12:00:00Z");
+    vi.useFakeTimers(); vi.setSystemTime(due);
+    const { failed, delivered, accepted } = retryHistory(outreachScope, sent, retry, due);
+    const read = async (attempts: Parameters<typeof wireHistory>[0]) => {
+      const { db, query } = queued([{ ...owned, outreachHistory: wireHistory(attempts) }]);
+      const dto = await readRecoveryDetail(input, db);
+      expect(query).toHaveBeenCalledTimes(1);
+      return dto;
+    };
+    expect((await read([failed, accepted]))?.conversation?.followUp.eligible).toBe(false);
+    const detail = await read([failed, delivered]);
+    expect(detail?.initialOutreachSentAt).toBe(retry.toISOString());
+    expect(detail?.conversation?.followUp).toMatchObject({ eligible: true, used: false });
+    expect(JSON.stringify(detail)).not.toContain("providerDispatchKey");
+    expect(JSON.stringify(detail)).not.toContain(delivered.recipient);
+    const orphan = await read([delivered]);
+    expect(orphan?.conversation?.followUp.eligible).toBe(false);
+  });
+  it("keeps the follow-up slot consumed while a follow-up retry exists", async () => {
+    const sent = new Date("2026-11-26T10:00:00Z");
+    const retry = new Date("2026-11-26T11:00:00Z");
+    const due = new Date("2026-11-26T12:00:00Z");
+    vi.useFakeTimers(); vi.setSystemTime(due);
+    const initial = outreachAttempt(outreachScope, 1, sent, { followUpDueAt: sent });
+    const { failed, accepted } = retryHistory(outreachScope, sent, retry, due, "FOLLOW_UP");
+    const row = { ...owned, outreachHistory: wireHistory([initial, failed, accepted]) };
+    expect((await readRecoveryDetail(input, queued([row]).db))?.conversation?.followUp)
+      .toMatchObject({ eligible: false, used: true, initiatedBy: "AUTOMATION" });
+  });
+});
+
+
+it("decodes SQL JSON timestamp offsets without relying on server local time", () => {
+  const rows = wireHistory([outreachAttempt(outreachScope, 1, date)]);
+  rows[0].sentAt = "2026-09-01T01:00:00+01:00";
+  expect(decodeOutreachHistory(rows)[0].sentAt?.toISOString()).toBe(date.toISOString());
+  rows[0].sentAt = "2026-09-01T00:00:00";
+  expect(() => decodeOutreachHistory(rows)).toThrow("recovery_outreach_timestamp_invalid");
 });

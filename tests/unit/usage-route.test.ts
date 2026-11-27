@@ -129,10 +129,18 @@ describe("usage route and bounded readers", () => {
         orderBy: [{ periodStart: "desc" }, { id: "desc" }],
       }),
     );
+    const owner = { shopId: "shop-1", provider: "SHOPIFY", metric: "RECOVERY_CONVERSATION" };
+    const original = {
+      correctionOfUsageEventId: null,
+      OR: [
+        { billingPeriodId: "period-1" },
+        { billingPeriodId: null, sourceType: { in: ["PURCHASED_RECOVERY_CREDITS", "PROMOTIONAL_RECOVERY_CREDITS"] },
+          occurredAt: { gte: period().periodStart, lt: period().periodEnd } },
+      ],
+    };
     const where = {
-      shopId: "shop-1",
-      billingPeriodId: "period-1",
-      metric: "RECOVERY_CONVERSATION",
+      ...owner,
+      OR: [original, { correctionOfUsageEvent: { is: { ...owner, ...original } } }],
     };
     expect(mocks.events).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -152,6 +160,20 @@ describe("usage route and bounded readers", () => {
     expect(data.history?.usageEvents[0].quantity).toBe(2);
     expect(mocks.recoveries).not.toHaveBeenCalled();
     expect(mocks.periods.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(mocks.raw).not.toHaveBeenCalled();
+  });
+  it("preserves signed debit and correction rows without deriving totals from physical outreach or page size", async () => {
+    mocks.events.mockResolvedValue([
+      { ...event(null), id: "retry-debit", quantity: 1 },
+      { ...event(null), id: "failure-correction", quantity: -1 },
+    ]);
+    mocks.aggregate.mockResolvedValue({ _count: { _all: 3 }, _sum: { quantity: 1 } });
+    const data = await readUsageHistory("shop-1", new URLSearchParams("bill=past"));
+    expect(data.usageEvents.map(row => [row.id, row.quantity])).toEqual([
+      ["retry-debit", 1], ["failure-correction", -1],
+    ]);
+    expect(data.usagePagination).toMatchObject({ total: 3, totalQuantity: 1 });
+    expect(mocks.events.mock.calls[0][0].where).toEqual(mocks.aggregate.mock.calls[0][0].where);
     expect(mocks.raw).not.toHaveBeenCalled();
   });
   it.each(["missing", "foreign", "deleted", "", "bad/id"])(

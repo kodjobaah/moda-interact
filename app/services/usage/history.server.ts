@@ -1,9 +1,10 @@
 import { createHash } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 import prisma from "../../db.server";
-const db: PrismaClient = prisma;
+import { shopifyPeriodUsageWhere } from "./period-scope";
 
-const metric = "RECOVERY_CONVERSATION" as const;
+type UsageHistoryDatabase = Pick<PrismaClient, "billingPeriod" | "usageEvent" | "$queryRaw">;
+const db: UsageHistoryDatabase = prisma;
 const periodSelect = {
   id: true,
   status: true,
@@ -74,11 +75,12 @@ export type SourceRecovery = {
 export async function readUsageSources(
   shopId: string,
   ids: string[],
+  database: Pick<UsageHistoryDatabase, "$queryRaw"> = db,
 ): Promise<Map<string, SourceRecovery>> {
   if (!ids.length) return new Map();
   if (ids.length > 100) throw new Error("Usage page exceeds source limit");
   const sourceIds = Prisma.join([...new Set(ids)]);
-  const rows = await db.$queryRaw<
+  const rows = await database.$queryRaw<
     Array<{
       sourceId: string;
       recoveryId: string;
@@ -127,6 +129,7 @@ export async function readUsageSources(
 export async function readUsageHistory(
   shopId: string,
   params: URLSearchParams,
+  database: UsageHistoryDatabase = db,
 ) {
   const view =
     params.get("bill") === "past" ? ("past" as const) : ("current" as const);
@@ -149,12 +152,12 @@ export async function readUsageHistory(
   const status = view === "past" ? ("CLOSED" as const) : ("OPEN" as const);
   const selected = ids.length
     ? validId
-      ? await db.billingPeriod.findFirst({
+      ? await database.billingPeriod.findFirst({
           where: { shopId, id: ids[0] },
           select: periodSelect,
         })
       : null
-    : await db.billingPeriod.findFirst({
+    : await database.billingPeriod.findFirst({
         where: { shopId, status },
         orderBy: [{ periodStart: "desc" }, { id: "desc" }],
         select: periodSelect,
@@ -175,7 +178,7 @@ export async function readUsageHistory(
           },
         ],
       };
-  const periods = await db.billingPeriod.findMany({
+  const periods = await database.billingPeriod.findMany({
     where: { shopId, status, ...seek },
     select: periodSelect,
     orderBy: [
@@ -208,10 +211,10 @@ export async function readUsageHistory(
         ? encode(last, "next", shopId, view)
         : null,
   };
-  const where = { shopId, billingPeriodId: selected?.id, metric };
-  const [events, aggregate] = selected
+  const where = selected ? shopifyPeriodUsageWhere(shopId, selected) : null;
+  const [events, aggregate] = where
     ? await Promise.all([
-        db.usageEvent.findMany({
+        database.usageEvent.findMany({
           where,
           select: {
             id: true,
@@ -226,12 +229,13 @@ export async function readUsageHistory(
           skip: (page - 1) * pageSize,
           take: pageSize,
         }),
-        db.usageEvent.aggregate({ where, _count: { _all: true }, _sum: { quantity: true } }),
+        database.usageEvent.aggregate({ where, _count: { _all: true }, _sum: { quantity: true } }),
       ])
     : [[], { _count: { _all: 0 }, _sum: { quantity: null } }];
   const sources = await readUsageSources(
     shopId,
     events.flatMap((event) => (event.sourceId ? [event.sourceId] : [])),
+    database,
   );
   return {
     state:

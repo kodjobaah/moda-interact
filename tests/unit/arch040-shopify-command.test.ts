@@ -9,6 +9,7 @@ vi.mock("../../app/db.server", () => ({ default: {} }));
 vi.mock("../../app/services/recoveries/recovery-follow-up-sender.server", () => ({
   trustedRecoverySenderWaba: async () => "1234567890",
 }));
+import { outreachAttempt, retryHistory, scope as retryScope, type AttemptFixture } from "../fixtures/retry-aware-outreach";
 import { validFollowUpVariant, createdCommandProjection } from "../fixtures/arch047-shopify-follow-up";
 const { changeRecoveryControl, admitRecoveryHumanSend, humanSendPayloadHash } =
   await import("../../app/services/recoveries/recovery-human-commands.server");
@@ -22,6 +23,9 @@ function fixture(input?: { shopId?: string; recoveryId?: string; conversationId?
   const recoveryId = input?.recoveryId ?? "recovery-1";
   const context = { id: input?.conversationId ?? "conversation-1", controlMode: options.mode, controlRevision: options.revision,
     inboundVersion: 7, languageTag: "en" };
+  const owner = { ...retryScope, shopId, recoveryId, conversationId: context.id };
+  const sentAt = options.sentAt === undefined ? new Date("2026-10-17T00:00:00.000Z") : options.sentAt;
+  const dueAt = options.followUpDueAt === undefined ? new Date("2026-10-17T01:00:00.000Z") : options.followUpDueAt;
   const tx = {
     checkoutRecovery: { findFirst: vi.fn(async () => options.owned ? { id: recoveryId, shopId, status: "ENGAGED", customerId: "customer-1" } : null) },
     $queryRaw: vi.fn(async (query: { strings: string[] }) => query.strings.join("").includes('"commerce"."Shop"')
@@ -41,14 +45,15 @@ function fixture(input?: { shopId?: string; recoveryId?: string; conversationId?
         id: string; state: string; kind: string;
       }>>(async ({ data }) => createdCommandProjection(data)),
     },
-    recoveryOutreachAttempt: { findUnique: vi.fn(async (query: { where: { checkoutRecoveryId_sequence?: { sequence: number } } }) =>
-      query.where.checkoutRecoveryId_sequence?.sequence === 2
-        ? { id: "attempt-2", status: "PENDING", initiationKey: options.secondClaimed ? "prior-claim" : null,
-          claimedAt: options.secondClaimedAt ?? null, outboundMessageId: null }
-        : { id: "attempt-1", recipient: "+447700900001",
-          sentAt: options.sentAt === undefined ? new Date("2026-10-17T00:00:00.000Z") : options.sentAt,
-          followUpDueAt: options.followUpDueAt === undefined ? new Date("2026-10-17T01:00:00.000Z") : options.followUpDueAt,
-          configuredOfferMode: "NONE", fixedShopifyDiscountId: null, offerSnapshot: null }),
+    recoveryOutreachAttempt: {
+      findMany: vi.fn(async (): Promise<AttemptFixture[]> => [
+        outreachAttempt(owner, 1, sentAt, { followUpDueAt: dueAt }),
+        outreachAttempt(owner, 2, null, {
+          initiatedBy: options.secondClaimed || options.secondClaimedAt ? "HUMAN" : null,
+          initiationKey: options.secondClaimed || options.secondClaimedAt ? "prior-claim" : null,
+          claimedAt: options.secondClaimedAt ?? (options.secondClaimed ? sentAt : null),
+        }),
+      ]),
       create: vi.fn(async () => ({ id: "attempt-2" })), updateMany: vi.fn(async () => ({ count: 1 })) },
     whatsAppTemplateVariant: { findMany: vi.fn(async () => options.templateApproved
       ? [{ ...validFollowUpVariant, id: input?.variantId ?? validFollowUpVariant.id, shopId }] : []) },
@@ -387,7 +392,7 @@ describe("ARCH-040-SHOPIFY-005 verified service-window admission", () => {
     const { db, tx } = fixture({ existing: true, inbound: false, sentAt: null, followUpDueAt: null });
     await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db))
       .resolves.toMatchObject({ replay: true, commandId: "command-1" });
-    expect(tx.recoveryOutreachAttempt.findUnique).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.findMany).not.toHaveBeenCalled();
     expect(tx.conversationMessage.findFirst).not.toHaveBeenCalled();
   });
 });
@@ -462,7 +467,7 @@ describe("ARCH-055 Shopify internal follow-up claim identity", () => {
       kind: "RECOVERY_FOLLOW_UP_TEMPLATE", controlRevision: 1, replay: true,
     });
     expect(vi.mocked(randomUUID).mock.calls).toHaveLength(uuidCount);
-    expect(tx.recoveryOutreachAttempt.findUnique).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.findMany).not.toHaveBeenCalled();
     expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
     expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
   });
@@ -520,4 +525,53 @@ it.each([sendInput, templateInput])("does not reread Shop during new command adm
   const shopLock = tx.$queryRaw.mock.calls[0][0].strings.join("");
   expect(shopLock).toContain('"defaultLanguageTag"');
   expect(shopLock).toContain('FOR UPDATE');
+});
+
+
+describe("Shopify merchant admission with physical retry lineage", () => {
+  const originalAt = new Date("2026-11-26T10:00:00.000Z");
+  const retryAt = new Date("2026-11-26T11:00:00.000Z");
+  const due = new Date("2026-11-26T11:30:00.000Z");
+  const history = () => retryHistory(retryScope, originalAt, retryAt, due);
+
+  it("uses only the confirmed retry's due time and offer snapshot to claim logical sequence two", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(due);
+    const { db, tx } = fixture({ inbound: false });
+    const { failed, delivered, accepted } = history();
+    tx.recoveryOutreachAttempt.findMany.mockResolvedValue([failed, accepted]);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).rejects.toMatchObject(error("follow_up_unavailable"));
+    tx.recoveryOutreachAttempt.findMany.mockResolvedValue([failed, { ...delivered, followUpDueAt: new Date(due.getTime() + 1) }]);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).rejects.toMatchObject(error("follow_up_unavailable"));
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+    expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+    tx.recoveryOutreachAttempt.findMany.mockResolvedValue([failed, { ...delivered, offerSnapshot: { code: "RETRY25" } }]);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).resolves.toMatchObject({ replay: false });
+    expect(tx.recoveryOutreachAttempt.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      sequence: 2, offerSnapshot: { code: "RETRY25" }, recipient: delivered.recipient,
+    }) }));
+    expect(tx.recoveryOutreachAttempt.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not block a verified human reply solely because the initial retry is unconfirmed", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(due);
+    const { db, tx } = fixture({ inboundAt: new Date(retryAt.getTime() + 1) });
+    const { failed, accepted } = history();
+    tx.recoveryOutreachAttempt.findMany.mockResolvedValue([failed, accepted]);
+    await expect(admitRecoveryHumanSend("shop-1", "recovery-1", sendInput, db)).resolves.toMatchObject({ replay: false });
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("cannot reopen a consumed follow-up while a retry or conflicting successor exists", async () => {
+    vi.useFakeTimers(); vi.setSystemTime(due);
+    const { db, tx } = fixture({ inbound: false });
+    const initial = outreachAttempt(retryScope, 1, originalAt, { followUpDueAt: originalAt });
+    const follow = retryHistory(retryScope, originalAt, retryAt, due, "FOLLOW_UP");
+    for (const rows of [[initial, follow.failed, follow.accepted], [initial, follow.failed, follow.delivered], [initial, follow.accepted]]) {
+      tx.recoveryOutreachAttempt.findMany.mockResolvedValue(rows);
+      await expect(admitRecoveryHumanSend("shop-1", "recovery-1", templateInput, db)).rejects.toMatchObject(error("follow_up_unavailable"));
+    }
+    expect(tx.recoveryOutreachAttempt.create).not.toHaveBeenCalled();
+    expect(tx.recoveryOutreachAttempt.updateMany).not.toHaveBeenCalled();
+    expect(tx.merchantConversationSendCommand.create).not.toHaveBeenCalled();
+  });
 });

@@ -5,10 +5,7 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { PrismaClient } from "@prisma/client";
-import {
-  PostgreSqlContainer,
-  type StartedPostgreSqlContainer,
-} from "@testcontainers/postgresql";
+import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../app/db.server", () => ({ default: {} }));
@@ -29,7 +26,7 @@ const fixturePrefix = `arch023-shopify003-${randomUUID()}`;
 const pinnedPromptText = "Pinned canonical instructions\nSecond line.";
 const activationTime = new Date("2026-09-30T19:00:00.000Z");
 
-let postgres: StartedPostgreSqlContainer | undefined;
+let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let categoryId: string;
 let templateId: string;
@@ -139,12 +136,12 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
   beforeAll(async () => {
     try {
       const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
-      postgres = await new PostgreSqlContainer("pgvector/pgvector:pg17")
-        .withDatabase(`arch023_s003_${suffix}`)
-        .withUsername(`arch023_s003_${suffix}`)
-        .withPassword(`test_${randomUUID().replaceAll("-", "")}`)
-        .start();
-      const databaseUrl = postgres.getConnectionUri();
+      postgres = await startDisposablePostgres({
+        database: `arch023_s003_${suffix}`,
+        user: `arch023_s003_${suffix}`,
+        password: `test_${randomUUID().replaceAll("-", "")}`,
+      });
+      const databaseUrl = postgres.databaseUrl;
       await deployMigrations(databaseUrl);
       database = new PrismaClient({ datasourceUrl: databaseUrl });
       await database.$connect();
@@ -199,7 +196,7 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
       replacementTemplateId = replacementTemplate.id;
     } catch (error) {
       await database?.$disconnect();
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
       throw error;
     }
@@ -209,7 +206,7 @@ describeWithDatabase("initial Store Category activation PostgreSQL transaction",
     try {
       await database?.$disconnect();
     } finally {
-      await postgres?.stop();
+      await postgres?.cleanup();
       postgres = undefined;
     }
   }, 60_000);
