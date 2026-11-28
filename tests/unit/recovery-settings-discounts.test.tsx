@@ -10,14 +10,27 @@ vi.mock("../../app/utils/merchant-i18n", () => ({
     formatDateTime: (value: string | Date) => String(value),
   }),
 }));
-vi.mock("../../app/components/dashboard/Breadcrumbs", () => ({ default: () => null }));
-vi.mock("../../app/components/settings/SettingsForm", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <form>{children}</form>,
+vi.mock("../../app/components/dashboard/Breadcrumbs", () => ({
+  default: () => null,
 }));
-vi.mock("../../app/components/settings/FeaturePreferences", () => ({ default: () => null }));
-vi.mock("../../app/components/settings/StoreProfileSection", () => ({ default: () => null }));
-vi.mock("../../app/components/settings/MerchantKnowledgeSection", () => ({ default: () => null }));
-vi.mock("../../app/routes/app/recovery-settings/WhatsAppCustomerConsent", () => ({ default: () => null }));
+vi.mock("../../app/components/settings/SettingsForm", () => ({
+  default: ({ children }: { children: React.ReactNode }) => (
+    <form>{children}</form>
+  ),
+}));
+vi.mock("../../app/components/settings/FeaturePreferences", () => ({
+  default: () => null,
+}));
+vi.mock("../../app/components/settings/StoreProfileSection", () => ({
+  default: () => null,
+}));
+vi.mock("../../app/components/settings/MerchantKnowledgeSection", () => ({
+  default: () => null,
+}));
+vi.mock(
+  "../../app/routes/app/recovery-settings/WhatsAppCustomerConsent",
+  () => ({ default: () => null }),
+);
 
 import RecoverySettingsView from "../../app/routes/app/recovery-settings/RecoverySettingsView";
 
@@ -94,11 +107,17 @@ const data = {
   features: { revision: "revision-1", features: [] },
   storeCategories: [],
   storeProfile: { pendingCategory: null, activeCategory: null },
-  merchantKnowledge: { configuredCount: 0, maxKnowledgeSources: 0, sources: [] },
+  merchantKnowledge: {
+    configuredCount: 0,
+    maxKnowledgeSources: 0,
+    sources: [],
+  },
 };
 
 it("reflects merchant flags rather than provider availability or the legacy anchor", async () => {
-  await act(async () => root.render(<RecoverySettingsView data={data as never} />));
+  await act(async () =>
+    root.render(<RecoverySettingsView data={data as never} />),
+  );
 
   const dormantCheckbox = host.querySelector<HTMLInputElement>(
     '.moda-recovery-discount-card input[value="selected-but-dormant"]',
@@ -108,17 +127,26 @@ it("reflects merchant flags rather than provider availability or the legacy anch
   );
   expect(dormantCheckbox?.checked).toBe(true);
   expect(newCheckbox?.checked).toBe(false);
-  expect(host.querySelector('input[name="selectedDiscountIds"]')?.getAttribute("value")).toBe(
-    '["selected-but-dormant"]',
+  expect(
+    host
+      .querySelector('input[name="selectedDiscountIds"]')
+      ?.getAttribute("value"),
+  ).toBe('["selected-but-dormant"]');
+  expect(host.textContent).toContain(
+    "recoverySettings.discount.status.EXPIRED",
   );
-  expect(host.textContent).toContain("recoverySettings.discount.status.EXPIRED");
-  expect(host.textContent).toContain("recoverySettings.discount.syncGeneration");
+  expect(host.textContent).toContain(
+    "recoverySettings.discount.syncGeneration",
+  );
   expect(host.textContent).toContain("recoverySettings.adminOverride");
 
   await act(async () => {
     dormantCheckbox!.click();
   });
-  expect(host.querySelector<HTMLInputElement>('input[name="selectedDiscountIds"]')?.value).toBe("[]");
+  expect(
+    host.querySelector<HTMLInputElement>('input[name="selectedDiscountIds"]')
+      ?.value,
+  ).toBe("[]");
 });
 
 it("renders scheduled and expired discounts without requesting unknown catalogue keys", async () => {
@@ -126,23 +154,42 @@ it("renders scheduled and expired discounts without requesting unknown catalogue
     { ...data.discounts[0], id: "scheduled", providerStatus: "SCHEDULED" },
     { ...data.discounts[0], id: "expired", providerStatus: "EXPIRED" },
     { ...data.discounts[1], id: "active", providerStatus: "ACTIVE" },
-    { ...data.discounts[0], id: "future", providerStatus: "NEW_PROVIDER_STATUS" },
+    {
+      ...data.discounts[0],
+      id: "future",
+      providerStatus: "NEW_PROVIDER_STATUS",
+    },
   ];
   await act(async () =>
-    root.render(<RecoverySettingsView data={{ ...data, discounts } as never} />),
+    root.render(
+      <RecoverySettingsView data={{ ...data, discounts } as never} />,
+    ),
   );
 
-  expect(host.textContent).toContain("recoverySettings.discount.status.SCHEDULED");
-  expect(host.textContent).toContain("recoverySettings.discount.status.EXPIRED");
+  expect(host.textContent).toContain(
+    "recoverySettings.discount.status.SCHEDULED",
+  );
+  expect(host.textContent).toContain(
+    "recoverySettings.discount.status.EXPIRED",
+  );
   expect(host.textContent).toContain("recoverySettings.discount.status.ACTIVE");
   expect(host.textContent).toContain('"value":"NEW_PROVIDER_STATUS"');
-  expect(host.textContent).not.toContain("recoverySettings.discount.status.NEW_PROVIDER_STATUS");
+  expect(host.textContent).not.toContain(
+    "recoverySettings.discount.status.NEW_PROVIDER_STATUS",
+  );
 });
 
 it("keeps all 50 selections and disables only further unchecked choices", async () => {
-  const selectedDiscountIds = Array.from({ length: 50 }, (_, index) => `d-${index}`);
+  const selectedDiscountIds = Array.from(
+    { length: 50 },
+    (_, index) => `d-${index}`,
+  );
   const discounts = [
-    ...selectedDiscountIds.map((id) => ({ ...data.discounts[0], id, title: id })),
+    ...selectedDiscountIds.map((id) => ({
+      ...data.discounts[0],
+      id,
+      title: id,
+    })),
     { ...data.discounts[1], id: "d-50", title: "d-50" },
   ];
   await act(async () =>
@@ -163,5 +210,7 @@ it("keeps all 50 selections and disables only further unchecked choices", async 
   expect(host.textContent).toContain('"count":50');
   expect(nextChoice?.checked).toBe(false);
   expect(nextChoice?.disabled).toBe(true);
-  expect(host.querySelectorAll('.moda-recovery-discount-card input:checked')).toHaveLength(50);
+  expect(
+    host.querySelectorAll(".moda-recovery-discount-card input:checked"),
+  ).toHaveLength(50);
 });

@@ -1,13 +1,6 @@
-import type {
-  LoaderFunctionArgs,
-} from "react-router";
-import {
-  SubscriptionProjectionStatus,
-} from "@prisma/client";
-import type {
-  BillingPlan,
-  Subscription,
-} from "@prisma/client";
+import type { LoaderFunctionArgs } from "react-router";
+import { SubscriptionProjectionStatus } from "@prisma/client";
+import type { BillingPlan, Subscription } from "@prisma/client";
 import {
   billingService,
   INITIAL_BILLING_RETRY_DELAY_MS,
@@ -69,15 +62,14 @@ export function isVerifiedBillingCallback(
     subscription.planId !== null &&
     subscription.plan?.kind === expectedPlanKind;
 
-  const pendingSelectionConflicts = subscription.pendingShopifyPlanHandle !== null && (
-    subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
-    subscription.pendingPlanId !== subscription.planId ||
-    subscription.pendingEffectiveAt === null
-  );
+  const pendingSelectionConflicts =
+    subscription.pendingShopifyPlanHandle !== null &&
+    (subscription.pendingShopifyPlanHandle !== requestedPlanHandle ||
+      subscription.pendingPlanId !== subscription.planId ||
+      subscription.pendingEffectiveAt === null);
 
   return currentPlanMatches && !pendingSelectionConflicts;
 }
-
 
 function isVerifiedPaidActivation(
   subscription: BillingCallbackSubscription | null,
@@ -99,14 +91,15 @@ function isVerifiedPaidActivation(
   );
 }
 
-export async function loader({
-  request,
-  context,
-}: LoaderFunctionArgs) {
+export async function loader({ request, context }: LoaderFunctionArgs) {
   const merchantContext = await getMerchantRequestContext({ request, context });
   const { redirect } = merchantContext.authentication;
   const { shop } = merchantContext;
-  assertActiveShop(shop, { route: "/app/billing/callback", capability: "sync-billing", redirectTo: "/app/merchant-support" });
+  assertActiveShop(shop, {
+    route: "/app/billing/callback",
+    capability: "sync-billing",
+    redirectTo: "/app/merchant-support",
+  });
 
   const url = new URL(request.url);
   const requestedPlanHandle = url.searchParams.get("plan_handle");
@@ -117,7 +110,9 @@ export async function loader({
 
   let verificationFence;
   try {
-    verificationFence = await billingService.getHostedPlanVerificationFence(shop.id);
+    verificationFence = await billingService.getHostedPlanVerificationFence(
+      shop.id,
+    );
   } catch (error) {
     logBillingBoundaryFailure({
       event: "billing.hosted_plan_verification_fence.read_failed",
@@ -131,12 +126,18 @@ export async function loader({
   }
   let verification;
   try {
-    verification = await billingService.getMerchantShopifySubscriptionState(shop.id);
+    verification = await billingService.getMerchantShopifySubscriptionState(
+      shop.id,
+    );
   } catch (error) {
     const verificationFailure = classifyBillingVerificationFailure(error);
     let retry;
     try {
-      retry = await billingService.recordHostedPlanVerificationFailure(shop.id, verificationFence, verificationFailure);
+      retry = await billingService.recordHostedPlanVerificationFailure(
+        shop.id,
+        verificationFence,
+        verificationFailure,
+      );
     } catch (retryError) {
       logBillingBoundaryFailure({
         event: "billing.hosted_plan_verification_retry.persist_failed",
@@ -159,10 +160,11 @@ export async function loader({
     return redirect(billingOptionsRedirect("unverified", requestedPlanHandle));
   }
 
-  const providerConfirmsSelection = verification.status === "ACTIVE_SUBSCRIPTION" && (
-    verification.subscription?.planHandle === requestedPlanHandle ||
-    verification.subscription?.pendingUpdate?.planHandle === requestedPlanHandle
-  );
+  const providerConfirmsSelection =
+    verification.status === "ACTIVE_SUBSCRIPTION" &&
+    (verification.subscription?.planHandle === requestedPlanHandle ||
+      verification.subscription?.pendingUpdate?.planHandle ===
+        requestedPlanHandle);
   if (!providerConfirmsSelection) {
     let result;
     try {
@@ -203,7 +205,10 @@ export async function loader({
 
   let activation;
   try {
-    activation = await billingService.prepareFreeActivation(shop.id, requestedPlanHandle);
+    activation = await billingService.prepareFreeActivation(
+      shop.id,
+      requestedPlanHandle,
+    );
   } catch (error) {
     logBillingBoundaryFailure({
       event: "billing.subscription_activation.prepare_failed",
@@ -218,7 +223,10 @@ export async function loader({
   }
   if (!activation) {
     try {
-      activation = await billingService.preparePaidActivation(shop.id, requestedPlanHandle);
+      activation = await billingService.preparePaidActivation(
+        shop.id,
+        requestedPlanHandle,
+      );
     } catch (error) {
       logBillingBoundaryFailure({
         event: "billing.subscription_activation.prepare_failed",
@@ -240,21 +248,36 @@ export async function loader({
 
   if (activation) {
     let partnerVerificationSucceeded = false;
-    let verificationFailure: ReturnType<typeof classifyBillingVerificationFailure> | null = null;
+    let verificationFailure: ReturnType<
+      typeof classifyBillingVerificationFailure
+    > | null = null;
     let syncedSubscription: BillingCallbackSubscription | null = null;
     try {
-      syncedSubscription = await billingService.syncSubscription(shop.id, activation.token ?? undefined) as BillingCallbackSubscription | null;
+      syncedSubscription = (await billingService.syncSubscription(
+        shop.id,
+        activation.token ?? undefined,
+      )) as BillingCallbackSubscription | null;
       partnerVerificationSucceeded = true;
     } catch (error) {
       verificationFailure = classifyBillingVerificationFailure(error);
     }
 
-    const subscription = activation.plan.kind === "PAID_METERED"
-      ? syncedSubscription
-      : await billingService.getSubscriptionProjection(shop.id);
-    const expectedPlanKind = activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
+    const subscription =
+      activation.plan.kind === "PAID_METERED"
+        ? syncedSubscription
+        : await billingService.getSubscriptionProjection(shop.id);
+    const expectedPlanKind =
+      activation.plan.kind === "PAID_METERED" ? "PAID_METERED" : "FREE";
 
-    if (partnerVerificationSucceeded && expectedPlanKind === "PAID_METERED" && isVerifiedPaidActivation(subscription, requestedPlanHandle, activation.plan.id)) {
+    if (
+      partnerVerificationSucceeded &&
+      expectedPlanKind === "PAID_METERED" &&
+      isVerifiedPaidActivation(
+        subscription,
+        requestedPlanHandle,
+        activation.plan.id,
+      )
+    ) {
       await enqueueBillingSubscriptionReconcileBestEffort({
         shopId: shop.id,
         subscriptionId: subscription!.id,
@@ -264,10 +287,22 @@ export async function loader({
       return redirect("/app");
     }
 
-    if (partnerVerificationSucceeded && expectedPlanKind === "FREE" && subscription && isVerifiedBillingCallback(subscription, requestedPlanHandle, expectedPlanKind)) {
+    if (
+      partnerVerificationSucceeded &&
+      expectedPlanKind === "FREE" &&
+      subscription &&
+      isVerifiedBillingCallback(
+        subscription,
+        requestedPlanHandle,
+        expectedPlanKind,
+      )
+    ) {
       let completed;
       try {
-        completed = await billingService.completeFreeActivation(shop.id, requestedPlanHandle);
+        completed = await billingService.completeFreeActivation(
+          shop.id,
+          requestedPlanHandle,
+        );
       } catch (error) {
         logBillingBoundaryFailure({
           event: "billing.subscription_activation.complete_failed",
@@ -275,7 +310,10 @@ export async function loader({
           stage: "activation_finalize",
           origin: "database",
           shopId: shop.id,
-          identities: { requestedPlanHandle, subscriptionId: activation.token?.subscriptionId ?? null },
+          identities: {
+            requestedPlanHandle,
+            subscriptionId: activation.token?.subscriptionId ?? null,
+          },
           error,
         });
         throw error;
@@ -295,19 +333,26 @@ export async function loader({
       return redirect("/app");
     }
 
-    if (expectedPlanKind === "PAID_METERED" && syncedSubscription?.lastSyncErrorCode) {
+    if (
+      expectedPlanKind === "PAID_METERED" &&
+      syncedSubscription?.lastSyncErrorCode
+    ) {
       return redirect("/app");
     }
 
-    const nextReconcileAt = new Date(Date.now() + INITIAL_BILLING_RETRY_DELAY_MS);
+    const nextReconcileAt = new Date(
+      Date.now() + INITIAL_BILLING_RETRY_DELAY_MS,
+    );
     let pending;
     try {
-      pending = await billingService.scheduleInitialFreeReconciliationIfCurrent({
-        shopId: shop.id,
-        expected: activation.token,
-        nextReconcileAt,
-        verificationFailure,
-      });
+      pending = await billingService.scheduleInitialFreeReconciliationIfCurrent(
+        {
+          shopId: shop.id,
+          expected: activation.token,
+          nextReconcileAt,
+          verificationFailure,
+        },
+      );
     } catch (error) {
       logBillingBoundaryFailure({
         event: "billing.initial_activation_retry.persist_failed",
@@ -330,14 +375,12 @@ export async function loader({
     return redirect("/app");
   }
 
-  const freshInitialProjection = (
-    verificationFence === null ||
-    (
-      verificationFence.status === SubscriptionProjectionStatus.NO_CONTRACT &&
-      verificationFence.planId === null &&
-      verificationFence.observedShopifyPlanHandle === null
-    )
-  ) && verification.status === "ACTIVE_SUBSCRIPTION" &&
+  const freshInitialProjection =
+    (verificationFence === null ||
+      (verificationFence.status === SubscriptionProjectionStatus.NO_CONTRACT &&
+        verificationFence.planId === null &&
+        verificationFence.observedShopifyPlanHandle === null)) &&
+    verification.status === "ACTIVE_SUBSCRIPTION" &&
     verification.subscription?.planHandle === requestedPlanHandle;
   if (freshInitialProjection) {
     await billingService.syncSubscription(shop.id);

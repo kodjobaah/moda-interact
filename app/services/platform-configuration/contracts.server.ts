@@ -1,17 +1,35 @@
 /** Shopify-owned, server-only configuration contracts. Never serialize returned secrets. */
-export type ShopifyConfigurationKey = "merchant.knowledge.r2" | "shopify.oauth" | "shopify.partner" | "messaging.sender";
+export type ShopifyConfigurationKey =
+  | "merchant.knowledge.r2"
+  | "shopify.oauth"
+  | "shopify.partner"
+  | "messaging.sender";
 export type ShopifyConfigurationErrorCode =
-  | "INVALID_ENVIRONMENT" | "DATABASE_UNAVAILABLE" | "MISSING" | "DISABLED"
-  | "INVALID_ROW" | "INVALID_ENVELOPE" | "UNSEAL_FAILED" | "INVALID_VALUE";
+  | "INVALID_ENVIRONMENT"
+  | "DATABASE_UNAVAILABLE"
+  | "MISSING"
+  | "DISABLED"
+  | "INVALID_ROW"
+  | "INVALID_ENVELOPE"
+  | "UNSEAL_FAILED"
+  | "INVALID_VALUE";
 
 export class ShopifyPlatformConfigurationError extends Error {
-  constructor(readonly key: ShopifyConfigurationKey, readonly code: ShopifyConfigurationErrorCode, options?: ErrorOptions) {
+  constructor(
+    readonly key: ShopifyConfigurationKey,
+    readonly code: ShopifyConfigurationErrorCode,
+    options?: ErrorOptions,
+  ) {
     super(`Shopify platform configuration ${key}: ${code}`, options);
     this.name = "ShopifyPlatformConfigurationError";
   }
 }
 
-export function configurationFailure(key: ShopifyConfigurationKey, code: ShopifyConfigurationErrorCode, options?: ErrorOptions): never {
+export function configurationFailure(
+  key: ShopifyConfigurationKey,
+  code: ShopifyConfigurationErrorCode,
+  options?: ErrorOptions,
+): never {
   throw new ShopifyPlatformConfigurationError(key, code, options);
 }
 
@@ -25,7 +43,11 @@ export type MerchantKnowledgeR2Configuration = Readonly<{
   maxXlsxUncompressedBytes: number;
 }>;
 
-export type ShopifyOAuthCredentials = Readonly<{ version: number; apiKey: string; apiSecret: string }>;
+export type ShopifyOAuthCredentials = Readonly<{
+  version: number;
+  apiKey: string;
+  apiSecret: string;
+}>;
 export type ShopifyPartnerCredentials = Readonly<{
   version: number;
   accessToken: string;

@@ -3,9 +3,7 @@ import {
   BillingPeriodStatus,
   BillingPlanKind,
 } from "@prisma/client";
-import {
-  APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS,
-} from "@modainteract/moda-interact-shared/billing";
+import { APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS } from "@modainteract/moda-interact-shared/billing";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -63,26 +61,61 @@ function existingPeriod(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function createTransaction(period: Record<string, unknown> | null, counter: Record<string, unknown> | null = null) {
+function createTransaction(
+  period: Record<string, unknown> | null,
+  counter: Record<string, unknown> | null = null,
+) {
   const billingPeriod = {
     findUnique: vi.fn().mockResolvedValue(period),
-    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "period-created", ...data })),
-    update: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...period, ...data })),
+    create: vi
+      .fn()
+      .mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "period-created",
+          ...data,
+        }),
+      ),
+    update: vi
+      .fn()
+      .mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          ...period,
+          ...data,
+        }),
+      ),
   };
   const billingPeriodEntitlementCounter = {
     findUnique: vi.fn().mockResolvedValue(counter),
-    create: vi.fn().mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ id: "counter-created", ...data })),
+    create: vi
+      .fn()
+      .mockImplementation(
+        async ({ data }: { data: Record<string, unknown> }) => ({
+          id: "counter-created",
+          ...data,
+        }),
+      ),
   };
-  return { transaction: { billingPeriod, billingPeriodEntitlementCounter }, billingPeriod, billingPeriodEntitlementCounter };
+  return {
+    transaction: { billingPeriod, billingPeriodEntitlementCounter },
+    billingPeriod,
+    billingPeriodEntitlementCounter,
+  };
 }
 
 describe("billing-period projection", () => {
   it("creates an OPEN paid period and its included counter in the supplied transaction", async () => {
     const fixture = createTransaction(null);
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput(paidPlan));
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(paidPlan),
+    );
 
-    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-created", repaired: false });
+    expect(result).toEqual({
+      kind: "READY",
+      billingPeriodId: "period-created",
+      repaired: false,
+    });
     expect(fixture.billingPeriod.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         shopId: "shop-1",
@@ -93,17 +126,20 @@ describe("billing-period projection", () => {
         status: BillingPeriodStatus.OPEN,
       }),
     });
-    expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        billingPeriodId: "period-created",
-        counter: BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
-        grantedQuantity: 25,
-        currentAllowanceQuantity: null,
-        committedQuantity: 0,
-        reservedQuantity: 0,
-        forfeitedQuantity: 0,
-      }),
-    });
+    expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith(
+      {
+        data: expect.objectContaining({
+          billingPeriodId: "period-created",
+          counter:
+            BillingPeriodEntitlementCounterKind.INCLUDED_RECOVERY_CREDITS,
+          grantedQuantity: 25,
+          currentAllowanceQuantity: null,
+          committedQuantity: 0,
+          reservedQuantity: 0,
+          forfeitedQuantity: 0,
+        }),
+      },
+    );
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
   });
 
@@ -116,12 +152,22 @@ describe("billing-period projection", () => {
     });
     const fixture = createTransaction(period);
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(),
+    );
 
-    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: true });
+    expect(result).toEqual({
+      kind: "READY",
+      billingPeriodId: "period-1",
+      repaired: true,
+    });
     expect(fixture.billingPeriod.update).toHaveBeenCalledWith({
       where: { id: "period-1" },
-      data: expect.objectContaining({ planId: "free-plan", status: BillingPeriodStatus.OPEN }),
+      data: expect.objectContaining({
+        planId: "free-plan",
+        status: BillingPeriodStatus.OPEN,
+      }),
     });
     expect(fixture.billingPeriod.create).not.toHaveBeenCalled();
   });
@@ -129,11 +175,20 @@ describe("billing-period projection", () => {
   it("does not update an already-correct period on exact replay", async () => {
     const fixture = createTransaction(existingPeriod());
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(),
+    );
 
-    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: false });
+    expect(result).toEqual({
+      kind: "READY",
+      billingPeriodId: "period-1",
+      repaired: false,
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
-    expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(
+      fixture.billingPeriodEntitlementCounter.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("creates the missing included counter once for an existing paid period", async () => {
@@ -146,36 +201,68 @@ describe("billing-period projection", () => {
     });
     const fixture = createTransaction(period);
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput(paidPlan));
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(paidPlan),
+    );
 
-    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: true });
-    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
-    expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledTimes(1);
-    expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        billingPeriodId: "period-1",
-        grantedQuantity: 25,
-        currentAllowanceQuantity: null,
-      }),
+    expect(result).toEqual({
+      kind: "READY",
+      billingPeriodId: "period-1",
+      repaired: true,
     });
+    expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
+    expect(
+      fixture.billingPeriodEntitlementCounter.create,
+    ).toHaveBeenCalledTimes(1);
+    expect(fixture.billingPeriodEntitlementCounter.create).toHaveBeenCalledWith(
+      {
+        data: expect.objectContaining({
+          billingPeriodId: "period-1",
+          grantedQuantity: 25,
+          currentAllowanceQuantity: null,
+        }),
+      },
+    );
   });
 
   it("does not overwrite a closed period", async () => {
-    const fixture = createTransaction(existingPeriod({ status: BillingPeriodStatus.CLOSED }));
+    const fixture = createTransaction(
+      existingPeriod({ status: BillingPeriodStatus.CLOSED }),
+    );
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(),
+    );
 
-    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "CLOSED_PERIOD" });
+    expect(result).toEqual({
+      kind: "CONFLICT",
+      billingPeriodId: "period-1",
+      reason: "CLOSED_PERIOD",
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
-    expect(fixture.billingPeriodEntitlementCounter.findUnique).not.toHaveBeenCalled();
+    expect(
+      fixture.billingPeriodEntitlementCounter.findUnique,
+    ).not.toHaveBeenCalled();
   });
 
   it("conflicts when a FREE period has an included counter", async () => {
-    const fixture = createTransaction(existingPeriod(), { shopId: "shop-1", grantedQuantity: 1 });
+    const fixture = createTransaction(existingPeriod(), {
+      shopId: "shop-1",
+      grantedQuantity: 1,
+    });
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput());
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(),
+    );
 
-    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "FREE_INCLUDED_COUNTER_PRESENT" });
+    expect(result).toEqual({
+      kind: "CONFLICT",
+      billingPeriodId: "period-1",
+      reason: "FREE_INCLUDED_COUNTER_PRESENT",
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
   });
 
@@ -201,9 +288,15 @@ describe("billing-period projection", () => {
       projectionInput(paidPlan),
     );
 
-    expect(result).toEqual({ kind: "READY", billingPeriodId: "period-1", repaired: false });
+    expect(result).toEqual({
+      kind: "READY",
+      billingPeriodId: "period-1",
+      repaired: false,
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
-    expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(
+      fixture.billingPeriodEntitlementCounter.create,
+    ).not.toHaveBeenCalled();
   });
 
   it("conflicts when Shopify paid counter contains provider-specific current allowance", async () => {
@@ -228,7 +321,11 @@ describe("billing-period projection", () => {
       projectionInput(paidPlan),
     );
 
-    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "PAID_COUNTER_MISMATCH" });
+    expect(result).toEqual({
+      kind: "CONFLICT",
+      billingPeriodId: "period-1",
+      reason: "PAID_COUNTER_MISMATCH",
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
   });
 
@@ -248,22 +345,44 @@ describe("billing-period projection", () => {
       forfeitedQuantity: 2,
     });
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput(paidPlan));
+    const result = await ensureMappedCurrentBillingPeriodProjection(
+      fixture.transaction as never,
+      projectionInput(paidPlan),
+    );
 
-    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: "period-1", reason: "PAID_COUNTER_MISMATCH" });
+    expect(result).toEqual({
+      kind: "CONFLICT",
+      billingPeriodId: "period-1",
+      reason: "PAID_COUNTER_MISMATCH",
+    });
     expect(fixture.billingPeriod.update).not.toHaveBeenCalled();
-    expect(fixture.billingPeriodEntitlementCounter.create).not.toHaveBeenCalled();
+    expect(
+      fixture.billingPeriodEntitlementCounter.create,
+    ).not.toHaveBeenCalled();
   });
 
-  it.each([null, -1, 1.5])("rejects an invalid paid allowance: %s", async (allowance) => {
-    const fixture = createTransaction(null);
-    const plan = { ...paidPlan, includedRecoveryConversationAllowance: allowance };
+  it.each([null, -1, 1.5])(
+    "rejects an invalid paid allowance: %s",
+    async (allowance) => {
+      const fixture = createTransaction(null);
+      const plan = {
+        ...paidPlan,
+        includedRecoveryConversationAllowance: allowance,
+      };
 
-    const result = await ensureMappedCurrentBillingPeriodProjection(fixture.transaction as never, projectionInput(plan as never));
+      const result = await ensureMappedCurrentBillingPeriodProjection(
+        fixture.transaction as never,
+        projectionInput(plan as never),
+      );
 
-    expect(result).toEqual({ kind: "CONFLICT", billingPeriodId: null, reason: "INVALID_INCLUDED_ALLOWANCE" });
-    expect(fixture.billingPeriod.findUnique).not.toHaveBeenCalled();
-  });
+      expect(result).toEqual({
+        kind: "CONFLICT",
+        billingPeriodId: null,
+        reason: "INVALID_INCLUDED_ALLOWANCE",
+      });
+      expect(fixture.billingPeriod.findUnique).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("billing-period cycle helpers", () => {
@@ -274,18 +393,46 @@ describe("billing-period cycle helpers", () => {
       currentPeriodEnd: periodEnd,
       billingPeriod: { id: "period-1", periodStart, periodEnd },
     };
-    const providerSubscription = { currentPeriodStart: periodStart, currentPeriodEnd: periodEnd };
+    const providerSubscription = {
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+    };
 
     expect(hasDurableBillingPeriod(subscription)).toBe(true);
-    expect(hasMatchingBillingCycle(subscription, providerSubscription, "period-1")).toBe(true);
-    expect(hasMatchingBillingCycle(subscription, providerSubscription, "other-period")).toBe(false);
-    expect(hasDurableBillingPeriod({ ...subscription, billingPeriod: { ...subscription.billingPeriod, periodEnd: new Date("2026-10-02T00:00:00.000Z") } })).toBe(false);
+    expect(
+      hasMatchingBillingCycle(subscription, providerSubscription, "period-1"),
+    ).toBe(true);
+    expect(
+      hasMatchingBillingCycle(
+        subscription,
+        providerSubscription,
+        "other-period",
+      ),
+    ).toBe(false);
+    expect(
+      hasDurableBillingPeriod({
+        ...subscription,
+        billingPeriod: {
+          ...subscription.billingPeriod,
+          periodEnd: new Date("2026-10-02T00:00:00.000Z"),
+        },
+      }),
+    ).toBe(false);
   });
 
   it("derives billing phases and accepts only safe non-negative integers", () => {
     expect(deriveBillingPeriodPhase(null)).toBeNull();
-    expect(deriveBillingPeriodPhase(periodEnd, new Date(periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS - 1))).toBe("ACTIVE");
-    expect(deriveBillingPeriodPhase(periodEnd, new Date(periodEnd.getTime() - 1))).toBe("DRAINING");
+    expect(
+      deriveBillingPeriodPhase(
+        periodEnd,
+        new Date(
+          periodEnd.getTime() - APP_PRICING_BILLING_PERIOD_DRAIN_WINDOW_MS - 1,
+        ),
+      ),
+    ).toBe("ACTIVE");
+    expect(
+      deriveBillingPeriodPhase(periodEnd, new Date(periodEnd.getTime() - 1)),
+    ).toBe("DRAINING");
     expect(deriveBillingPeriodPhase(periodEnd, periodEnd)).toBe("RECONCILING");
     expect(isSafeNonNegativeInteger(0)).toBe(true);
     expect(isSafeNonNegativeInteger(Number.MAX_SAFE_INTEGER)).toBe(true);

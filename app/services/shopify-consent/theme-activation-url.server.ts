@@ -1,4 +1,5 @@
-export type ShopifyConsentPlacement = "non_plus_cart" | "plus_checkout" | "unknown";
+export type ShopifyConsentPlacement =
+  "non_plus_cart" | "plus_checkout" | "unknown";
 
 export const CART_CONSENT_APP_DATA_METAFIELD = {
   namespace: "moda_interact",
@@ -11,11 +12,14 @@ type ThemeActivationUrlInput = Readonly<{
   placement: ShopifyConsentPlacement;
 }>;
 
-
 /** Safe editor link: never inserts an additional block on repeat visits. */
-export function buildCartConsentThemeEditorUrl(input: Pick<ThemeActivationUrlInput, "shopDomain" | "placement">): string | null {
+export function buildCartConsentThemeEditorUrl(
+  input: Pick<ThemeActivationUrlInput, "shopDomain" | "placement">,
+): string | null {
   if (input.placement !== "non_plus_cart") return null;
-  const url = new URL(`https://${input.shopDomain}/admin/themes/current/editor`);
+  const url = new URL(
+    `https://${input.shopDomain}/admin/themes/current/editor`,
+  );
   url.searchParams.set("template", "cart");
   return url.toString();
 }
@@ -37,10 +41,15 @@ export function buildCartConsentThemeActivationUrl(
 export function buildCartDrawerConsentThemeActivationUrl(
   input: ThemeActivationUrlInput,
 ): string | null {
-  if (input.placement !== "non_plus_cart" ||
-      !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(input.shopDomain) ||
-      !/^[A-Za-z0-9_-]{1,128}$/.test(input.apiKey)) return null;
-  const url = new URL(`https://${input.shopDomain}/admin/themes/current/editor`);
+  if (
+    input.placement !== "non_plus_cart" ||
+    !/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(input.shopDomain) ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(input.apiKey)
+  )
+    return null;
+  const url = new URL(
+    `https://${input.shopDomain}/admin/themes/current/editor`,
+  );
   url.searchParams.set("context", "apps");
   url.searchParams.set("template", "cart");
   url.searchParams.set("activateAppId", `${input.apiKey}/cart-drawer-consent`);

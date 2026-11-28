@@ -1,4 +1,7 @@
-import { configurationFailure, type ShopifyConfigurationKey } from "./contracts.server";
+import {
+  configurationFailure,
+  type ShopifyConfigurationKey,
+} from "./contracts.server";
 
 export type PlatformConfigurationRow = Readonly<{
   environment: string;
@@ -17,10 +20,20 @@ export interface PlatformConfigurationDatabase {
   };
 }
 
-const ENVIRONMENTS = new Set(["local", "test", "development", "staging", "production"]);
+const ENVIRONMENTS = new Set([
+  "local",
+  "test",
+  "development",
+  "staging",
+  "production",
+]);
 
-export function assertDeploymentEnvironment(environment: string, key: ShopifyConfigurationKey): void {
-  if (!ENVIRONMENTS.has(environment)) configurationFailure(key, "INVALID_ENVIRONMENT");
+export function assertDeploymentEnvironment(
+  environment: string,
+  key: ShopifyConfigurationKey,
+): void {
+  if (!ENVIRONMENTS.has(environment))
+    configurationFailure(key, "INVALID_ENVIRONMENT");
 }
 
 export async function readPlatformConfiguration(
@@ -39,8 +52,13 @@ export async function readPlatformConfiguration(
     return configurationFailure(key, "DATABASE_UNAVAILABLE", { cause: error });
   }
   if (!row) configurationFailure(key, "MISSING");
-  if (row.key !== key || row.environment !== environment ||
-      !Number.isSafeInteger(row.version) || row.version < 1 || row.version > 2_147_483_647) {
+  if (
+    row.key !== key ||
+    row.environment !== environment ||
+    !Number.isSafeInteger(row.version) ||
+    row.version < 1 ||
+    row.version > 2_147_483_647
+  ) {
     configurationFailure(key, "INVALID_ROW");
   }
   return row;

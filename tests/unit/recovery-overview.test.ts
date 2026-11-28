@@ -144,7 +144,8 @@ it("renders unavailable billing selection without any implicit usage redirect/li
     embed: overviewFixture().performance.embed,
   };
   const markup = await renderStaticRoute(
-    React.createElement(LegacyBillingUnavailable, props), "/app",
+    React.createElement(LegacyBillingUnavailable, props),
+    "/app",
   );
   expect(markup).toContain(
     "The requested billing period is unavailable. No other period has been selected.",

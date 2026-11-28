@@ -61,12 +61,12 @@ Final focused validation: 168 tests across 15 files; both mandatory real Redis s
 
 Same fixtures executed against starting source `407cec23dd8a0f5af6e9ead99015a12b1e86b406` and final source showed:
 
-| Branch | Before | After |
-|---|---|---|
-| Unsupported topic | Shop 1, add 0, getJob 0 | Shop 0, add 0, getJob 0 |
-| Supported checkout | Shop 1, add 1, getJob 2 | Shop 1, add 1, getJob 0 |
-| Discount | Shop 1, add 1, getJob 1, final outcome 0 | Shop 1, add 1, getJob 0, final outcome 1 |
-| All six current-ID vectors | Existing deterministic bytes | Identical bytes |
+| Branch                     | Before                                   | After                                    |
+| -------------------------- | ---------------------------------------- | ---------------------------------------- |
+| Unsupported topic          | Shop 1, add 0, getJob 0                  | Shop 0, add 0, getJob 0                  |
+| Supported checkout         | Shop 1, add 1, getJob 2                  | Shop 1, add 1, getJob 0                  |
+| Discount                   | Shop 1, add 1, getJob 1, final outcome 0 | Shop 1, add 1, getJob 0, final outcome 1 |
+| All six current-ID vectors | Existing deterministic bytes             | Identical bytes                          |
 
 These are mocked repository/Queue invocation counts, excluding SDK storage and Redis protocol activity. Separate real Redis evidence recorded 12 concurrent successful same-ID adds plus a retained-ID replay per publisher, exactly one retained job for that ID and a distinct second-tenant job. Auto-removal permitted another accepted job after completion. An independently paused Redis write caused PUBLICATION_TIMEOUT, then the original add settled after UNPAUSE; retry accepted the same ID and one job remained. Producer/Worker trace continuity passed with instrumentation enabled; the disabled path preserved the same business contract.
 

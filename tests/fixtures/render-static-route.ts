@@ -13,7 +13,9 @@ export async function renderStaticRoute(
   routePath = pathname,
 ): Promise<string> {
   const handler = createStaticHandler([{ path: routePath, element }]);
-  const context = await handler.query(new Request(new URL(pathname, "https://app.test")));
+  const context = await handler.query(
+    new Request(new URL(pathname, "https://app.test")),
+  );
   if (context instanceof Response) {
     throw new Error(`Unexpected static route response: ${context.status}`);
   }

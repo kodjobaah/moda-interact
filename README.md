@@ -53,12 +53,12 @@ flowchart LR
 
 The platform is split into focused services:
 
-| Repository | Responsibility |
-| --- | --- |
-| [`moda-interact`](https://github.com/kodjobaah/moda-interact) | Shopify application, merchant UI, webhook ingress, billing |
+| Repository                                                                          | Responsibility                                                                |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| [`moda-interact`](https://github.com/kodjobaah/moda-interact)                       | Shopify application, merchant UI, webhook ingress, billing                    |
 | [`moda-interact-background`](https://github.com/kodjobaah/moda-interact-background) | BullMQ workers, recovery workflows, AI commerce agent, entitlements and usage |
-| [`moda-interact-database`](https://github.com/kodjobaah/moda-interact-database) | Shared Prisma schema, migrations, seed data and ERD |
-| `moda-messaging` | (https://github.com/kodjobaah/moda-interact-messaging)|Messaging ingress service for WhatsApp/Meta webhooks |
+| [`moda-interact-database`](https://github.com/kodjobaah/moda-interact-database)     | Shared Prisma schema, migrations, seed data and ERD                           |
+| `moda-messaging`                                                                    | (https://github.com/kodjobaah/moda-interact-messaging)                        | Messaging ingress service for WhatsApp/Meta webhooks |
 
 ## Core product flow
 
@@ -307,7 +307,6 @@ SHOPIFY_PARTNER_ACCESS_TOKEN=
 SHOPIFY_APP_ID=
 ```
 
-
 ### Generate Prisma Client
 
 ```bash
@@ -386,12 +385,12 @@ horizontally scaled replica can restart without running migration or seed.
 
 The lifecycle has four distinguishable phases:
 
-| Phase | Command | When it runs |
-| --- | --- | --- |
-| build | `npm run build` | Once, when the deployable artifact is created |
-| migrate | `npm run migrate` | Once per deployment, before replicas start (Render `preDeployCommand`) |
-| seed | `npm run seed` | Explicitly and manually when reference data is needed; never automatic |
-| start | `npm run start` | Every normal replica start, restart, horizontal scale-out and rolling deploy |
+| Phase   | Command           | When it runs                                                                 |
+| ------- | ----------------- | ---------------------------------------------------------------------------- |
+| build   | `npm run build`   | Once, when the deployable artifact is created                                |
+| migrate | `npm run migrate` | Once per deployment, before replicas start (Render `preDeployCommand`)       |
+| seed    | `npm run seed`    | Explicitly and manually when reference data is needed; never automatic       |
+| start   | `npm run start`   | Every normal replica start, restart, horizontal scale-out and rolling deploy |
 
 Normal replica startup runs **only** `npm run start` (the web runtime). It never
 executes migration or seed. The Docker container starts the web runtime only:

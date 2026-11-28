@@ -9,69 +9,221 @@ import "./BillingPurchaseHub.css";
 const { useState } = React;
 
 /** @param {{ merchantUi: any, capacity?: any, billingPeriodPhase?: string|null, lifecycleState: string, verificationState: string, mappingStatus?: string|null, topUpState: any, current?: any, pending?: any, requestedSelection?: any, scheduledCancellation?: boolean, purchaseHistoryAvailable: boolean, managePlansHref: string, managePlansAvailable: boolean, initialView?: "topup"|"plans" }} props */
-export default function BillingPurchaseHub({ merchantUi, capacity, billingPeriodPhase, lifecycleState, verificationState, mappingStatus, topUpState, current, pending, requestedSelection, scheduledCancellation = false, purchaseHistoryAvailable, managePlansHref, managePlansAvailable, initialView="topup" }) {
-  const i18n=createMerchantI18n(merchantUi); const [view,setView]=useState(initialView);
+export default function BillingPurchaseHub({
+  merchantUi,
+  capacity,
+  billingPeriodPhase,
+  lifecycleState,
+  verificationState,
+  mappingStatus,
+  topUpState,
+  current,
+  pending,
+  requestedSelection,
+  scheduledCancellation = false,
+  purchaseHistoryAvailable,
+  managePlansHref,
+  managePlansAvailable,
+  initialView = "topup",
+}) {
+  const i18n = createMerchantI18n(merchantUi);
+  const [view, setView] = useState(initialView);
   const postContract = lifecycleState === "POST_CONTRACT";
   const noActiveSubscription = lifecycleState === "NO_ACTIVE_SUBSCRIPTION";
   const contractRequired = capacity?.availability === "CONTRACT_REQUIRED";
-  const topUpsUnavailableWithoutContract = postContract || noActiveSubscription || contractRequired;
+  const topUpsUnavailableWithoutContract =
+    postContract || noActiveSubscription || contractRequired;
   const planActionLabel = postContract
     ? i18n.t("billing.subscribeAgain")
     : noActiveSubscription || contractRequired
       ? i18n.t("billing.viewPlans")
       : i18n.t("billingCommerce.actions.plan");
-  const currentName = postContract || noActiveSubscription
-    ? i18n.t("billing.noActiveSubscription")
-    : current?.mappedModaPlanName
-    ?? current?.shopifyPlanHandle
-    ?? (verificationState === "VERIFICATION_UNAVAILABLE"
-      ? i18n.t("common.unavailable")
-      : verificationState === "NO_ACTIVE_SUBSCRIPTION"
-        ? i18n.t("billing.viewPlans")
-        : i18n.t("billing.configurationUnavailable"));
-  const stateCopy = lifecycleState === "FROZEN"
-    ? i18n.t("billing.frozenDescription")
-    : capacity?.availability === "POST_CONTRACT_AVAILABLE"
-      ? i18n.t("billing.postContractDescription")
-      : capacity?.availability === "POST_CONTRACT_EXHAUSTED"
-        ? i18n.t("billing.postContractExhaustedDescription")
-    : scheduledCancellation && !pending && current?.currentPeriodEnd
-      ? i18n.t("billing.cancelAtPeriodEndOn", { date: i18n.formatDate(current.currentPeriodEnd) })
-      : capacity?.availability === "CONTRACT_REQUIRED" || noActiveSubscription
-        ? i18n.t("billing.contractRequiredDescription")
-        : billingPeriodPhase === "DRAINING" || billingPeriodPhase === "RECONCILING"
-          ? i18n.t("billing.configurationUnavailableDescription")
-            : verificationState === "VERIFICATION_UNAVAILABLE"
-              ? i18n.t("billing.verificationUnavailableDescription")
-              : verificationState === "ACTIVE_SUBSCRIPTION"
-                && mappingStatus === "UNMAPPED"
-                  ? i18n.t("billing.configurationUnavailableDescription")
-                  : null;
-  return <div className="moda-billing-commerce">
-    <section className="moda-billing-hero"><div className="moda-billing-hero-copy"><div className="moda-eyebrow">{i18n.t("billingCommerce.page.eyebrow")}</div><h1>{i18n.t("billingCommerce.page.heading")}</h1><p>{stateCopy ?? i18n.t("billingCommerce.page.description")}</p><div className="moda-billing-actions">{!topUpsUnavailableWithoutContract ? <button className={`moda-action-button ${view==="topup"?"moda-action-button-primary":"moda-action-button-secondary"}`} onClick={()=>setView("topup")}>{i18n.t("billingCommerce.actions.topup")}</button> : null}<button className={`moda-action-button ${view==="plans"?"moda-action-button-primary":"moda-action-button-secondary"}`} onClick={()=>setView("plans")}>{planActionLabel}</button></div></div>
-    <div className="moda-billing-summary-card"><div className="moda-summary-plan"><span>{i18n.t("billingCommerce.currentPlan")}</span><strong>{currentName}</strong></div><div className="moda-summary-metrics">{capacity ? <>
-      {capacity.paidIncluded ? <div><strong>{capacity.paidIncluded.remaining}</strong><span>{i18n.t("billing.paidIncludedAllowance", { remaining: capacity.paidIncluded.remaining, allowance: capacity.paidIncluded.granted })}</span></div> : null}
-      {capacity.freeLifetime ? <div><strong>{capacity.freeLifetime.remaining}</strong><span>{i18n.t("billing.lifetimeFreeAllowance", { remaining: capacity.freeLifetime.remaining, allowance: capacity.freeLifetime.granted })}</span></div> : null}
-      {capacity.promotional ? <div><strong>{capacity.promotional.remaining}</strong><span>{i18n.t("billingCommerce.promotionalCredits")}</span></div> : null}
-      {capacity.purchased ? <div><strong>{capacity.purchased.available}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div> : null}
-    </> : <div><strong>{i18n.t("common.unavailable")}</strong><span>{i18n.t("billingCommerce.currentPlan")}</span></div>}</div><div className="moda-summary-graphic"><span></span><span></span><span></span><span></span><span></span></div></div></section>
-    {!topUpsUnavailableWithoutContract ? <div className="moda-view-switch"><button className={view==="topup"?"is-active":""} onClick={()=>setView("topup")}>{i18n.t("billingCommerce.actions.topup")}</button><button className={view==="plans"?"is-active":""} onClick={()=>setView("plans")}>{i18n.t("billingCommerce.actions.plan")}</button></div> : null}
-    {purchaseHistoryAvailable ? <section className="moda-purchase-management-card">
-      <div>
-        <div className="moda-eyebrow">{i18n.t("billingPurchases.eyebrow")}</div>
-        <strong>{i18n.t("billingPurchases.title")}</strong>
-        <p>{i18n.t("billingPurchases.description")}</p>
-      </div>
-      <Link className="moda-action-button moda-action-button-secondary" to="/app/billing/recovery-credit-purchases">
-        {i18n.t("billingPurchases.manageLink")}
-      </Link>
-    </section> : null}
-    {view === "topup" && !topUpsUnavailableWithoutContract ? (
-      <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} />
-    ) : (
-      <SubscriptionChangePanel merchantUi={merchantUi} current={current} pending={pending} requestedSelection={requestedSelection} providerVerificationState={verificationState} managePlansHref={managePlansHref} managePlansAvailable={managePlansAvailable} postContract={postContract} />
-    )}
-  </div>;
+  const currentName =
+    postContract || noActiveSubscription
+      ? i18n.t("billing.noActiveSubscription")
+      : (current?.mappedModaPlanName ??
+        current?.shopifyPlanHandle ??
+        (verificationState === "VERIFICATION_UNAVAILABLE"
+          ? i18n.t("common.unavailable")
+          : verificationState === "NO_ACTIVE_SUBSCRIPTION"
+            ? i18n.t("billing.viewPlans")
+            : i18n.t("billing.configurationUnavailable")));
+  const stateCopy =
+    lifecycleState === "FROZEN"
+      ? i18n.t("billing.frozenDescription")
+      : capacity?.availability === "POST_CONTRACT_AVAILABLE"
+        ? i18n.t("billing.postContractDescription")
+        : capacity?.availability === "POST_CONTRACT_EXHAUSTED"
+          ? i18n.t("billing.postContractExhaustedDescription")
+          : scheduledCancellation && !pending && current?.currentPeriodEnd
+            ? i18n.t("billing.cancelAtPeriodEndOn", {
+                date: i18n.formatDate(current.currentPeriodEnd),
+              })
+            : capacity?.availability === "CONTRACT_REQUIRED" ||
+                noActiveSubscription
+              ? i18n.t("billing.contractRequiredDescription")
+              : billingPeriodPhase === "DRAINING" ||
+                  billingPeriodPhase === "RECONCILING"
+                ? i18n.t("billing.configurationUnavailableDescription")
+                : verificationState === "VERIFICATION_UNAVAILABLE"
+                  ? i18n.t("billing.verificationUnavailableDescription")
+                  : verificationState === "ACTIVE_SUBSCRIPTION" &&
+                      mappingStatus === "UNMAPPED"
+                    ? i18n.t("billing.configurationUnavailableDescription")
+                    : null;
+  return (
+    <div className="moda-billing-commerce">
+      <section className="moda-billing-hero">
+        <div className="moda-billing-hero-copy">
+          <div className="moda-eyebrow">
+            {i18n.t("billingCommerce.page.eyebrow")}
+          </div>
+          <h1>{i18n.t("billingCommerce.page.heading")}</h1>
+          <p>{stateCopy ?? i18n.t("billingCommerce.page.description")}</p>
+          <div className="moda-billing-actions">
+            {!topUpsUnavailableWithoutContract ? (
+              <button
+                className={`moda-action-button ${view === "topup" ? "moda-action-button-primary" : "moda-action-button-secondary"}`}
+                onClick={() => setView("topup")}
+              >
+                {i18n.t("billingCommerce.actions.topup")}
+              </button>
+            ) : null}
+            <button
+              className={`moda-action-button ${view === "plans" ? "moda-action-button-primary" : "moda-action-button-secondary"}`}
+              onClick={() => setView("plans")}
+            >
+              {planActionLabel}
+            </button>
+          </div>
+        </div>
+        <div className="moda-billing-summary-card">
+          <div className="moda-summary-plan">
+            <span>{i18n.t("billingCommerce.currentPlan")}</span>
+            <strong>{currentName}</strong>
+          </div>
+          <div className="moda-summary-metrics">
+            {capacity ? (
+              <>
+                {capacity.paidIncluded ? (
+                  <div>
+                    <strong>{capacity.paidIncluded.remaining}</strong>
+                    <span>
+                      {i18n.t("billing.paidIncludedAllowance", {
+                        remaining: capacity.paidIncluded.remaining,
+                        allowance: capacity.paidIncluded.granted,
+                      })}
+                    </span>
+                  </div>
+                ) : null}
+                {capacity.freeLifetime ? (
+                  <div>
+                    <strong>{capacity.freeLifetime.remaining}</strong>
+                    <span>
+                      {i18n.t("billing.lifetimeFreeAllowance", {
+                        remaining: capacity.freeLifetime.remaining,
+                        allowance: capacity.freeLifetime.granted,
+                      })}
+                    </span>
+                  </div>
+                ) : null}
+                {capacity.promotional ? (
+                  <div>
+                    <strong>{capacity.promotional.remaining}</strong>
+                    <span>{i18n.t("billingCommerce.promotionalCredits")}</span>
+                  </div>
+                ) : null}
+                {capacity.purchased ? (
+                  <div>
+                    <strong>{capacity.purchased.available}</strong>
+                    <span>{i18n.t("billingCommerce.purchasedCredits")}</span>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <div>
+                <strong>{i18n.t("common.unavailable")}</strong>
+                <span>{i18n.t("billingCommerce.currentPlan")}</span>
+              </div>
+            )}
+          </div>
+          <div className="moda-summary-graphic">
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </section>
+      {!topUpsUnavailableWithoutContract ? (
+        <div className="moda-view-switch">
+          <button
+            className={view === "topup" ? "is-active" : ""}
+            onClick={() => setView("topup")}
+          >
+            {i18n.t("billingCommerce.actions.topup")}
+          </button>
+          <button
+            className={view === "plans" ? "is-active" : ""}
+            onClick={() => setView("plans")}
+          >
+            {i18n.t("billingCommerce.actions.plan")}
+          </button>
+        </div>
+      ) : null}
+      {purchaseHistoryAvailable ? (
+        <section className="moda-purchase-management-card">
+          <div>
+            <div className="moda-eyebrow">
+              {i18n.t("billingPurchases.eyebrow")}
+            </div>
+            <strong>{i18n.t("billingPurchases.title")}</strong>
+            <p>{i18n.t("billingPurchases.description")}</p>
+          </div>
+          <Link
+            className="moda-action-button moda-action-button-secondary"
+            to="/app/billing/recovery-credit-purchases"
+          >
+            {i18n.t("billingPurchases.manageLink")}
+          </Link>
+        </section>
+      ) : null}
+      {view === "topup" && !topUpsUnavailableWithoutContract ? (
+        <TopUpPurchasePanel merchantUi={merchantUi} topUpState={topUpState} />
+      ) : (
+        <SubscriptionChangePanel
+          merchantUi={merchantUi}
+          current={current}
+          pending={pending}
+          requestedSelection={requestedSelection}
+          providerVerificationState={verificationState}
+          managePlansHref={managePlansHref}
+          managePlansAvailable={managePlansAvailable}
+          postContract={postContract}
+        />
+      )}
+    </div>
+  );
 }
 
-BillingPurchaseHub.propTypes={ merchantUi:PropTypes.shape({locale:PropTypes.string,timeZone:PropTypes.string}).isRequired, capacity:PropTypes.object, billingPeriodPhase:PropTypes.string, lifecycleState:PropTypes.string.isRequired, verificationState:PropTypes.string.isRequired, mappingStatus:PropTypes.string, topUpState:PropTypes.object.isRequired, current:PropTypes.object, pending:PropTypes.object, requestedSelection:PropTypes.object, scheduledCancellation:PropTypes.bool, purchaseHistoryAvailable:PropTypes.bool.isRequired, managePlansHref:PropTypes.string.isRequired, managePlansAvailable:PropTypes.bool.isRequired, initialView:PropTypes.oneOf(["topup","plans"]) };
+BillingPurchaseHub.propTypes = {
+  merchantUi: PropTypes.shape({
+    locale: PropTypes.string,
+    timeZone: PropTypes.string,
+  }).isRequired,
+  capacity: PropTypes.object,
+  billingPeriodPhase: PropTypes.string,
+  lifecycleState: PropTypes.string.isRequired,
+  verificationState: PropTypes.string.isRequired,
+  mappingStatus: PropTypes.string,
+  topUpState: PropTypes.object.isRequired,
+  current: PropTypes.object,
+  pending: PropTypes.object,
+  requestedSelection: PropTypes.object,
+  scheduledCancellation: PropTypes.bool,
+  purchaseHistoryAvailable: PropTypes.bool.isRequired,
+  managePlansHref: PropTypes.string.isRequired,
+  managePlansAvailable: PropTypes.bool.isRequired,
+  initialView: PropTypes.oneOf(["topup", "plans"]),
+};

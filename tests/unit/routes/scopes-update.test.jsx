@@ -24,22 +24,28 @@ vi.mock("../../../app/shopify.server", () => ({
 vi.mock("../../../app/services/shopify-offline-coordination.server", () => ({
   shopifyOfflineCoordination: { withLifecycleLock: mocks.lifecycleLock },
 }));
-vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", () => ({
-  buildDiscountSyncJob: mocks.buildJob,
-  hasReadDiscountsScope: mocks.hasScope,
-  isDiscountSyncEligible: mocks.isEligible,
-  markDiscountCatalogueSyncRequired: mocks.markRequired,
-  markDiscountCatalogueUnavailable: mocks.markUnavailable,
-}));
+vi.mock(
+  "../../../app/services/discounts/shopify-discount-lifecycle.service",
+  () => ({
+    buildDiscountSyncJob: mocks.buildJob,
+    hasReadDiscountsScope: mocks.hasScope,
+    isDiscountSyncEligible: mocks.isEligible,
+    markDiscountCatalogueSyncRequired: mocks.markRequired,
+    markDiscountCatalogueUnavailable: mocks.markUnavailable,
+  }),
+);
 vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => ({
   publishShopifyDiscountSyncJob: mocks.publish,
 }));
-vi.mock("../../../app/services/webhooks/shopify-webhook-observability.server", () => ({
-  recordShopifyWebhookReceived: mocks.webhookReceived,
-  recordShopifyWebhookAuthenticationFailure: mocks.webhookAuthFailure,
-  recordShopifyWebhookRouteFailure: mocks.webhookRouteFailure,
-  recordShopifyWebhookRouteOutcome: mocks.webhookRouteOutcome,
-}));
+vi.mock(
+  "../../../app/services/webhooks/shopify-webhook-observability.server",
+  () => ({
+    recordShopifyWebhookReceived: mocks.webhookReceived,
+    recordShopifyWebhookAuthenticationFailure: mocks.webhookAuthFailure,
+    recordShopifyWebhookRouteFailure: mocks.webhookRouteFailure,
+    recordShopifyWebhookRouteOutcome: mocks.webhookRouteOutcome,
+  }),
+);
 
 import { action } from "../../../app/routes/webhooks/app/scopes-update/route";
 
@@ -65,19 +71,26 @@ beforeEach(() => {
   });
   mocks.sessionUpdateMany.mockResolvedValue({ count: 1 });
   mocks.shopFindUnique.mockResolvedValue(shopRecord);
-  mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts" });
+  mocks.sessionFindFirst.mockResolvedValue({
+    scope: "read_products,read_discounts",
+  });
   mocks.hasScope.mockReturnValue(true);
   mocks.isEligible.mockReturnValue(true);
   mocks.buildJob.mockReturnValue({ reason: "SCOPES_UPDATED" });
   mocks.publish.mockResolvedValue({ outcome: "enqueued" });
-  mocks.lifecycleLock.mockImplementation(async (_domain, callback) => callback({
-    transaction: {
-      shop: { findUnique: mocks.shopFindUnique },
-      session: { updateMany: mocks.sessionUpdateMany, findFirst: mocks.sessionFindFirst },
-    },
-    shop: { ...shopRecord, platform: "SHOPIFY", uninstalledAt: null },
-    sessionId: "session-1",
-  }));
+  mocks.lifecycleLock.mockImplementation(async (_domain, callback) =>
+    callback({
+      transaction: {
+        shop: { findUnique: mocks.shopFindUnique },
+        session: {
+          updateMany: mocks.sessionUpdateMany,
+          findFirst: mocks.sessionFindFirst,
+        },
+      },
+      shop: { ...shopRecord, platform: "SHOPIFY", uninstalledAt: null },
+      sessionId: "session-1",
+    }),
+  );
 });
 
 describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
@@ -93,7 +106,11 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
     expect(mocks.markRequired.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.lifecycleLock.mock.invocationCallOrder[0],
     );
-    expect(mocks.lifecycleLock).toHaveBeenCalledWith(shopRecord.domain, expect.any(Function), { sessionId: "session-1" });
+    expect(mocks.lifecycleLock).toHaveBeenCalledWith(
+      shopRecord.domain,
+      expect.any(Function),
+      { sessionId: "session-1" },
+    );
     expect(mocks.publish).toHaveBeenCalledTimes(1);
     expect(mocks.webhookReceived).toHaveBeenCalledWith({
       request: expect.any(Request),
@@ -118,7 +135,9 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
       topic: "APP_SCOPES_UPDATE",
       shop: shopRecord.domain,
     });
-    mocks.sessionFindFirst.mockResolvedValue({ scope: "read_products,read_discounts,read_brand" });
+    mocks.sessionFindFirst.mockResolvedValue({
+      scope: "read_products,read_discounts,read_brand",
+    });
 
     await action({ request: request() });
 
@@ -184,7 +203,9 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
     mocks.hasScope.mockReturnValue(false);
     mocks.isEligible.mockReturnValue(false);
 
-    await expect(action({ request: request() })).resolves.toBeInstanceOf(Response);
+    await expect(action({ request: request() })).resolves.toBeInstanceOf(
+      Response,
+    );
 
     expect(mocks.sessionUpdateMany).toHaveBeenCalledWith({
       where: { id: "session-1", shop: shopRecord.domain },
@@ -192,23 +213,29 @@ describe("APP_SCOPES_UPDATE lifecycle ordering", () => {
     });
     expect(mocks.markUnavailable).toHaveBeenCalledTimes(1);
     expect(mocks.publish).not.toHaveBeenCalled();
-    expect(mocks.webhookRouteOutcome).toHaveBeenCalledWith(expect.objectContaining({
-      outcome: "PROCESSED_APP_SCOPES_UPDATE_SESSION_MISSING",
-    }));
+    expect(mocks.webhookRouteOutcome).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outcome: "PROCESSED_APP_SCOPES_UPDATE_SESSION_MISSING",
+      }),
+    );
   });
 
   it("reports a queue failure only after scope intent commits and rethrows the original cause", async () => {
-    const error = new Error("scope queue failure marker", { cause: new Error("scope queue cause") });
+    const error = new Error("scope queue failure marker", {
+      cause: new Error("scope queue cause"),
+    });
     mocks.publish.mockRejectedValue(error);
 
     await expect(action({ request: request() })).rejects.toBe(error);
 
     expect(mocks.lifecycleLock).toHaveBeenCalledTimes(1);
-    expect(mocks.webhookRouteFailure).toHaveBeenCalledWith(expect.objectContaining({
-      route: "/webhooks/app/scopes_update",
-      shopDomain: shopRecord.domain,
-      error,
-    }));
+    expect(mocks.webhookRouteFailure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        route: "/webhooks/app/scopes_update",
+        shopDomain: shopRecord.domain,
+        error,
+      }),
+    );
     expect(mocks.webhookRouteOutcome).not.toHaveBeenCalled();
   });
 });

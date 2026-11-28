@@ -1,38 +1,59 @@
 import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
-  encryptCredential, parseCredentialKeyring,
+  encryptCredential,
+  parseCredentialKeyring,
 } from "@modainteract/moda-interact-shared/security/credentials/node";
 import {
   ShopifyPlatformConfigurationError,
   type ShopifyConfigurationKey,
 } from "../../../app/services/platform-configuration/contracts.server";
-import {
-  createShopifyPlatformConfigurationService,
-} from "../../../app/services/platform-configuration/service.server";
-import {
-  platformConfigurationAAD,
-} from "../../../app/services/platform-configuration/seal.server";
+import { createShopifyPlatformConfigurationService } from "../../../app/services/platform-configuration/service.server";
+import { platformConfigurationAAD } from "../../../app/services/platform-configuration/seal.server";
 import { readPlatformConfiguration } from "../../../app/services/platform-configuration/repository.server";
 import type {
-  PlatformConfigurationDatabase, PlatformConfigurationRow,
+  PlatformConfigurationDatabase,
+  PlatformConfigurationRow,
 } from "../../../app/services/platform-configuration/repository.server";
 
-const root = parseCredentialKeyring(JSON.stringify({ "root-v1": randomBytes(32).toString("base64") }));
-const otherRoot = parseCredentialKeyring(JSON.stringify({ "other-v1": randomBytes(32).toString("base64") }));
+const root = parseCredentialKeyring(
+  JSON.stringify({ "root-v1": randomBytes(32).toString("base64") }),
+);
+const otherRoot = parseCredentialKeyring(
+  JSON.stringify({ "other-v1": randomBytes(32).toString("base64") }),
+);
 const r2 = {
-  endpoint: `https://${"a".repeat(32)}.r2.cloudflarestorage.com`, bucket: "knowledge-bucket",
-  accessKeyId: "r2-user", secretAccessKey: "r2-secret", maxUploadBytes: 1024,
+  endpoint: `https://${"a".repeat(32)}.r2.cloudflarestorage.com`,
+  bucket: "knowledge-bucket",
+  accessKeyId: "r2-user",
+  secretAccessKey: "r2-secret",
+  maxUploadBytes: 1024,
   maxXlsxUncompressedBytes: 2048,
 };
 const oauth = { apiKey: "shopify-client", apiSecret: "shopify-secret" };
-const partner = { accessToken: "partner-token", organizationId: "partner_1", appId: "app_2" };
+const partner = {
+  accessToken: "partner-token",
+  organizationId: "partner_1",
+  appId: "app_2",
+};
 
-function sealed(key: ShopifyConfigurationKey, payload: unknown, revision = 1, environment = "test") {
-  const envelope = encryptCredential({ keyring: root, activeKeyId: "root-v1", plaintext: JSON.stringify(payload),
-    aad: platformConfigurationAAD(environment, key, revision) });
+function sealed(
+  key: ShopifyConfigurationKey,
+  payload: unknown,
+  revision = 1,
+  environment = "test",
+) {
+  const envelope = encryptCredential({
+    keyring: root,
+    activeKeyId: "root-v1",
+    plaintext: JSON.stringify(payload),
+    aad: platformConfigurationAAD(environment, key, revision),
+  });
   return {
-    kind: "sealed", schemaVersion: 1, algorithm: "AES-256-GCM", wrappingKeyId: envelope.keyId,
+    kind: "sealed",
+    schemaVersion: 1,
+    algorithm: "AES-256-GCM",
+    wrappingKeyId: envelope.keyId,
     nonce: Buffer.from(envelope.nonce).toString("base64"),
     ciphertext: Buffer.from(envelope.ciphertext).toString("base64"),
     authTag: Buffer.from(envelope.authTag).toString("base64"),
@@ -44,78 +65,155 @@ function fixture(environment = "test") {
   const queries: string[] = [];
   const logs: Array<{ event: string; fields: Record<string, unknown> }> = [];
   let keyring = root;
-  const database: PlatformConfigurationDatabase = { platformConfiguration: {
-    async findUnique({ where, select }) {
-      expect(select).toEqual({ environment: true, key: true, version: true, value: true });
-      const { environment: env, key } = where.environment_key;
-      queries.push(`${env}:${key}`);
-      return rows.get(`${env}:${key}`) ?? null;
+  const database: PlatformConfigurationDatabase = {
+    platformConfiguration: {
+      async findUnique({ where, select }) {
+        expect(select).toEqual({
+          environment: true,
+          key: true,
+          version: true,
+          value: true,
+        });
+        const { environment: env, key } = where.environment_key;
+        queries.push(`${env}:${key}`);
+        return rows.get(`${env}:${key}`) ?? null;
+      },
     },
-  } };
+  };
   const service = createShopifyPlatformConfigurationService({
-    database, environment, loadUnsealKeyring: () => keyring,
+    database,
+    environment,
+    loadUnsealKeyring: () => keyring,
     logger: {
       info: (event, fields) => logs.push({ event, fields }),
       warn: (event, fields) => logs.push({ event, fields }),
     },
   });
-  function set(key: ShopifyConfigurationKey, value: unknown, version = 1, env = environment) {
+  function set(
+    key: ShopifyConfigurationKey,
+    value: unknown,
+    version = 1,
+    env = environment,
+  ) {
     rows.set(`${env}:${key}`, { environment: env, key, version, value });
   }
-  return { service, set, queries, logs, rows, changeKeyring: (next: typeof root) => { keyring = next; } };
+  return {
+    service,
+    set,
+    queries,
+    logs,
+    rows,
+    changeKeyring: (next: typeof root) => {
+      keyring = next;
+    },
+  };
 }
 
-async function fails(task: Promise<unknown>, code: ShopifyPlatformConfigurationError["code"]) {
-  await expect(task).rejects.toMatchObject({ name: "ShopifyPlatformConfigurationError", code });
+async function fails(
+  task: Promise<unknown>,
+  code: ShopifyPlatformConfigurationError["code"],
+) {
+  await expect(task).rejects.toMatchObject({
+    name: "ShopifyPlatformConfigurationError",
+    code,
+  });
 }
 
 describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
   it("uses canonical AAD and Admin writer's sealed envelope format", async () => {
     expect(platformConfigurationAAD("test", "shopify.oauth", 5)).toBe(
-      JSON.stringify(["moda-platform-config-v1", "test", "shopify.oauth", 5, 1]));
+      JSON.stringify([
+        "moda-platform-config-v1",
+        "test",
+        "shopify.oauth",
+        5,
+        1,
+      ]),
+    );
     const { service, set } = fixture();
     set("shopify.oauth", sealed("shopify.oauth", oauth, 5), 5);
-    expect(await service.requireShopifyOAuthCredentials()).toEqual({ version: 5, ...oauth });
-    set("shopify.partner", sealed("shopify.partner", { ...partner, apiVersion: "2026-10" }, 1));
-    expect(await service.requireShopifyPartnerCredentials()).toEqual({ version: 1, ...partner, apiVersion: "2026-10" });
+    expect(await service.requireShopifyOAuthCredentials()).toEqual({
+      version: 5,
+      ...oauth,
+    });
+    set(
+      "shopify.partner",
+      sealed("shopify.partner", { ...partner, apiVersion: "2026-10" }, 1),
+    );
+    expect(await service.requireShopifyPartnerCredentials()).toEqual({
+      version: 1,
+      ...partner,
+      apiVersion: "2026-10",
+    });
     set("merchant.knowledge.r2", sealed("merchant.knowledge.r2", r2));
-    expect(await service.requireMerchantKnowledgeR2Configuration()).toEqual({ version: 1, ...r2 });
+    expect(await service.requireMerchantKnowledgeR2Configuration()).toEqual({
+      version: 1,
+      ...r2,
+    });
   });
 
   it("decrypts a pinned independent AES-GCM writer vector using canonical Admin AAD", async () => {
     // Independently produced with AES-256-GCM: 0x11 * 32 key, 0x22 * 12 IV.
-    const fixedRoot = parseCredentialKeyring(JSON.stringify({
-      "root-v1": "ERERERERERERERERERERERERERERERERERERERERERE=",
-    }));
+    const fixedRoot = parseCredentialKeyring(
+      JSON.stringify({
+        "root-v1": "ERERERERERERERERERERERERERERERERERERERERERE=",
+      }),
+    );
     const fixtureValue = {
-      kind: "sealed", schemaVersion: 1, algorithm: "AES-256-GCM", wrappingKeyId: "root-v1",
+      kind: "sealed",
+      schemaVersion: 1,
+      algorithm: "AES-256-GCM",
+      wrappingKeyId: "root-v1",
       nonce: "IiIiIiIiIiIiIiIi",
-      ciphertext: "bNVmOamE+ibHBfxfJM+Mu2u+q4sS5Mhpfm1rmGCyAGA3Gt8gaYqKuy0qiFnLPiBN1ra8Hw==",
+      ciphertext:
+        "bNVmOamE+ibHBfxfJM+Mu2u+q4sS5Mhpfm1rmGCyAGA3Gt8gaYqKuy0qiFnLPiBN1ra8Hw==",
       authTag: "g3wWCk+hxCiMpWwZgCeObw==",
     };
     const { service, set } = fixture();
     // Fixture service is wired with a random key; a different root must fail.
     set("shopify.oauth", fixtureValue, 7);
     await fails(service.requireShopifyOAuthCredentials(), "UNSEAL_FAILED");
-    const database: PlatformConfigurationDatabase = { platformConfiguration: {
-      findUnique: async () => ({ environment: "test", key: "shopify.oauth", version: 7, value: fixtureValue }),
-    } };
+    const database: PlatformConfigurationDatabase = {
+      platformConfiguration: {
+        findUnique: async () => ({
+          environment: "test",
+          key: "shopify.oauth",
+          version: 7,
+          value: fixtureValue,
+        }),
+      },
+    };
     const reader = createShopifyPlatformConfigurationService({
-      database, environment: "test", loadUnsealKeyring: () => fixedRoot,
+      database,
+      environment: "test",
+      loadUnsealKeyring: () => fixedRoot,
     });
     expect(await reader.requireShopifyOAuthCredentials()).toEqual({
-      version: 7, apiKey: "client-fixed", apiSecret: "secret-fixed",
+      version: 7,
+      apiKey: "client-fixed",
+      apiSecret: "secret-fixed",
     });
   });
 
   it("never caches reads and does not fall back across environments", async () => {
     const { service, set, queries } = fixture();
-    set("shopify.oauth", sealed("shopify.oauth", oauth, 1, "production"), 1, "production");
+    set(
+      "shopify.oauth",
+      sealed("shopify.oauth", oauth, 1, "production"),
+      1,
+      "production",
+    );
     await fails(service.requireShopifyOAuthCredentials(), "MISSING");
     set("shopify.oauth", sealed("shopify.oauth", oauth));
     expect((await service.requireShopifyOAuthCredentials()).version).toBe(1);
-    set("shopify.oauth", sealed("shopify.oauth", { ...oauth, apiKey: "new-key" }, 2), 2);
-    expect((await service.requireShopifyOAuthCredentials()).apiKey).toBe("new-key");
+    set(
+      "shopify.oauth",
+      sealed("shopify.oauth", { ...oauth, apiKey: "new-key" }, 2),
+      2,
+    );
+    expect((await service.requireShopifyOAuthCredentials()).apiKey).toBe(
+      "new-key",
+    );
     set("shopify.oauth", { kind: "disabled", schemaVersion: 1 }, 3);
     await fails(service.requireShopifyOAuthCredentials(), "DISABLED");
     expect(queries).toEqual(Array(4).fill("test:shopify.oauth"));
@@ -141,13 +239,27 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
 
   it("reads Admin-compatible App GIDs intact from the sealed Partner tuple", async () => {
     const { service, set } = fixture();
-    for (const appId of ["123", "app_2", "gid://shopify/App/123", "gid://shopify/App/12345678901234567890"]) {
+    for (const appId of [
+      "123",
+      "app_2",
+      "gid://shopify/App/123",
+      "gid://shopify/App/12345678901234567890",
+    ]) {
       const credentials = { ...partner, appId, apiVersion: "2026-10" };
       set("shopify.partner", sealed("shopify.partner", credentials, 3), 3);
-      expect(await service.requireShopifyPartnerCredentials()).toEqual({ version: 3, ...credentials });
+      expect(await service.requireShopifyPartnerCredentials()).toEqual({
+        version: 3,
+        ...credentials,
+      });
     }
-    for (const appId of ["gid://shopify/Shop/123", "gid://shopify/App/0", "gid://shopify/App/01",
-      "gid://shopify/App/123456789012345678901", "gid://shopify/App/123?x=1", " gid://shopify/App/123"]) {
+    for (const appId of [
+      "gid://shopify/Shop/123",
+      "gid://shopify/App/0",
+      "gid://shopify/App/01",
+      "gid://shopify/App/123456789012345678901",
+      "gid://shopify/App/123?x=1",
+      " gid://shopify/App/123",
+    ]) {
       set("shopify.partner", sealed("shopify.partner", { ...partner, appId }));
       await fails(service.requireShopifyPartnerCredentials(), "INVALID_VALUE");
     }
@@ -167,7 +279,10 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
       await fails(service.requireShopifyPartnerCredentials(), "INVALID_VALUE");
     }
     set("shopify.partner", sealed("shopify.partner", partner));
-    expect(await service.requireShopifyPartnerCredentials()).toEqual({ version: 1, ...partner });
+    expect(await service.requireShopifyPartnerCredentials()).toEqual({
+      version: 1,
+      ...partner,
+    });
   });
 
   it("rejects R2 SSRF, invalid sizes, missing credentials and plaintext rows", async () => {
@@ -185,17 +300,27 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
       { ...r2, unexpectedField: "secret" },
     ]) {
       set("merchant.knowledge.r2", sealed("merchant.knowledge.r2", invalid));
-      await fails(service.requireMerchantKnowledgeR2Configuration(), "INVALID_VALUE");
+      await fails(
+        service.requireMerchantKnowledgeR2Configuration(),
+        "INVALID_VALUE",
+      );
     }
     set("merchant.knowledge.r2", r2);
-    await fails(service.requireMerchantKnowledgeR2Configuration(), "INVALID_ENVELOPE");
+    await fails(
+      service.requireMerchantKnowledgeR2Configuration(),
+      "INVALID_ENVELOPE",
+    );
   });
 
   it("fails closed on database/unseal outages without logging secrets", async () => {
     const { service, set, rows, logs } = fixture();
     set("shopify.oauth", sealed("shopify.oauth", oauth));
     await service.requireShopifyOAuthCredentials();
-    expect(logs.at(-1)?.fields).toMatchObject({ key: "shopify.oauth", outcome: "success", version: 1 });
+    expect(logs.at(-1)?.fields).toMatchObject({
+      key: "shopify.oauth",
+      outcome: "success",
+      version: 1,
+    });
     rows.delete("test:shopify.oauth");
     await fails(service.requireShopifyOAuthCredentials(), "MISSING");
     const all = JSON.stringify(logs);
@@ -203,28 +328,69 @@ describe("ARCH-043-SHOPIFY-001 three isolated server-only readers", () => {
     expect(all).not.toContain(r2.secretAccessKey);
     expect(all).not.toContain("ciphertext");
     const unavailable = createShopifyPlatformConfigurationService({
-      database: { platformConfiguration: { findUnique: async () => { throw Error("SECRET_DB_PASSWORD"); } } },
-      environment: "production", loadUnsealKeyring: () => root,
+      database: {
+        platformConfiguration: {
+          findUnique: async () => {
+            throw Error("SECRET_DB_PASSWORD");
+          },
+        },
+      },
+      environment: "production",
+      loadUnsealKeyring: () => root,
     });
-    await fails(unavailable.requireShopifyPartnerCredentials(), "DATABASE_UNAVAILABLE");
+    await fails(
+      unavailable.requireShopifyPartnerCredentials(),
+      "DATABASE_UNAVAILABLE",
+    );
     const invalidEnv = createShopifyPlatformConfigurationService({
-      database: { platformConfiguration: { findUnique: async () => { throw Error("should not query"); } } },
-      environment: "unknown", loadUnsealKeyring: () => root,
+      database: {
+        platformConfiguration: {
+          findUnique: async () => {
+            throw Error("should not query");
+          },
+        },
+      },
+      environment: "unknown",
+      loadUnsealKeyring: () => root,
     });
-    await fails(invalidEnv.requireShopifyPartnerCredentials(), "INVALID_ENVIRONMENT");
+    await fails(
+      invalidEnv.requireShopifyPartnerCredentials(),
+      "INVALID_ENVIRONMENT",
+    );
   });
 });
 
-
 it("preserves the original database cause without changing the configuration error contract", async () => {
-  const source = Object.assign(new Error("original configuration database marker", {cause: new Error("original database cause")}), {code: "P2010"});
-  const database: PlatformConfigurationDatabase = {platformConfiguration: {findUnique: async () => { throw source; }}};
+  const source = Object.assign(
+    new Error("original configuration database marker", {
+      cause: new Error("original database cause"),
+    }),
+    { code: "P2010" },
+  );
+  const database: PlatformConfigurationDatabase = {
+    platformConfiguration: {
+      findUnique: async () => {
+        throw source;
+      },
+    },
+  };
   let caught: unknown;
-  try { await readPlatformConfiguration(database, "test", "messaging.sender"); } catch (error) { caught = error; }
+  try {
+    await readPlatformConfiguration(database, "test", "messaging.sender");
+  } catch (error) {
+    caught = error;
+  }
   expect(caught).toBeInstanceOf(ShopifyPlatformConfigurationError);
-  expect(caught).toMatchObject({name: "ShopifyPlatformConfigurationError", key: "messaging.sender", code: "DATABASE_UNAVAILABLE",
-    message: "Shopify platform configuration messaging.sender: DATABASE_UNAVAILABLE"});
+  expect(caught).toMatchObject({
+    name: "ShopifyPlatformConfigurationError",
+    key: "messaging.sender",
+    code: "DATABASE_UNAVAILABLE",
+    message:
+      "Shopify platform configuration messaging.sender: DATABASE_UNAVAILABLE",
+  });
   expect((caught as Error).cause).toBe(source);
   expect(source.cause).toBeInstanceOf(Error);
-  expect(JSON.stringify(caught)).not.toContain("original configuration database marker");
+  expect(JSON.stringify(caught)).not.toContain(
+    "original configuration database marker",
+  );
 });

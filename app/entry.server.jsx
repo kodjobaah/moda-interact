@@ -1,4 +1,7 @@
-import { recordServerRenderFailure, recordUnhandledRequestFailure } from "./services/observability/shopify-runtime-observability.server";
+import {
+  recordServerRenderFailure,
+  recordUnhandledRequestFailure,
+} from "./services/observability/shopify-runtime-observability.server";
 import { PassThrough } from "stream";
 import { renderToPipeableStream } from "react-dom/server";
 import { ServerRouter } from "react-router";
@@ -42,12 +45,12 @@ export default async function handleRequest(
           pipe(body);
         },
         onShellError(error) {
-          recordServerRenderFailure({error, stage: "shell"});
+          recordServerRenderFailure({ error, stage: "shell" });
           reject(error);
         },
         onError(error) {
           responseStatusCode = 500;
-          recordServerRenderFailure({error, stage: "render"});
+          recordServerRenderFailure({ error, stage: "render" });
         },
       },
     );
@@ -60,5 +63,5 @@ export default async function handleRequest(
 
 /** @param {unknown} error @param {{request: Request}} context */
 export function handleError(error, { request }) {
-  recordUnhandledRequestFailure({error, method: request.method});
+  recordUnhandledRequestFailure({ error, method: request.method });
 }

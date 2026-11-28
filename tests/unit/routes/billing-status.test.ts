@@ -8,11 +8,14 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await mocks.authenticateAdmin(request);
-    const shop = await mocks.resolveShop({domain: authentication.session.shop});
+    const shop = await mocks.resolveShop({
+      domain: authentication.session.shop,
+    });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => mocks.getSubscriptionProjection(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -31,7 +34,9 @@ vi.mock("../../../app/services/shop/shop-access-policy", () => ({
   assertActiveShop: mocks.assertActiveShop,
 }));
 vi.mock("../../../app/services/billing/billing.service", () => ({
-  billingService: { getSubscriptionProjection: mocks.getSubscriptionProjection },
+  billingService: {
+    getSubscriptionProjection: mocks.getSubscriptionProjection,
+  },
 }));
 
 import { loader } from "../../../app/routes/app/billing/status/route";

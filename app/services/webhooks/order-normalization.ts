@@ -4,7 +4,6 @@ import { normalizeTimestamp } from "./webhook-normalization-utils";
 export function normalizeOrderCompletedPayload(
   payload: Record<string, unknown>,
 ): OrderCompletedPayloadV2 | null {
-
   const orderId =
     typeof payload.admin_graphql_api_id === "string" &&
     payload.admin_graphql_api_id.length > 0
@@ -30,9 +29,7 @@ export function normalizeOrderCompletedPayload(
         ? payload.checkout_token
         : null,
     cartToken:
-      typeof payload.cart_token === "string"
-        ? payload.cart_token
-        : null,
+      typeof payload.cart_token === "string" ? payload.cart_token : null,
     completedAt,
   };
 }

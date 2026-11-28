@@ -10,7 +10,8 @@ const { Client, types } = pg;
 // British Summer Time (and similarly offset in other local zones).
 types.setTypeParser(1114, (value) => new Date(`${value}Z`));
 
-const PARTNER_API_VERSION = process.env.SHOPIFY_PARTNER_API_VERSION || "2026-07";
+const PARTNER_API_VERSION =
+  process.env.SHOPIFY_PARTNER_API_VERSION || "2026-07";
 const LIFECYCLE_EVENT_TYPES = [
   "SUBSCRIPTION_CREATED",
   "SUBSCRIPTION_UPDATED",
@@ -48,7 +49,9 @@ Notes:
 }
 
 function normalizeShopDomain(value) {
-  let domain = String(value ?? "").trim().toLowerCase();
+  let domain = String(value ?? "")
+    .trim()
+    .toLowerCase();
   domain = domain.replace(/^https?:\/\//, "").split("/")[0];
 
   if (!domain) return "";
@@ -98,17 +101,28 @@ function printRows(title, rows) {
 }
 
 function addCheck(checks, level, message, details = undefined) {
-  checks.push({ level, message, ...(details === undefined ? {} : { details }) });
+  checks.push({
+    level,
+    message,
+    ...(details === undefined ? {} : { details }),
+  });
 }
 
 function sortStrings(values) {
-  return [...new Set(values.filter((value) => typeof value === "string" && value.length > 0))].sort();
+  return [
+    ...new Set(
+      values.filter((value) => typeof value === "string" && value.length > 0),
+    ),
+  ].sort();
 }
 
 function sameStringSet(a, b) {
   const left = sortStrings(a);
   const right = sortStrings(b);
-  return left.length === right.length && left.every((value, index) => value === right[index]);
+  return (
+    left.length === right.length &&
+    left.every((value, index) => value === right[index])
+  );
 }
 
 function iso(value) {
@@ -133,14 +147,10 @@ function decimalAmountToMinorUnits(amount) {
   return Math.round(numeric * 100);
 }
 
-function comparison(checks, {
-  name,
-  local,
-  shopify,
-  matches,
-  severity = "ERROR",
-  note,
-}) {
+function comparison(
+  checks,
+  { name, local, shopify, matches, severity = "ERROR", note },
+) {
   const row = {
     name,
     result: matches ? "MATCH" : "MISMATCH",
@@ -174,7 +184,8 @@ async function fetchPartnerBillingSnapshot(shopifyShopId) {
   if (!orgId || !accessToken || !appId) {
     return {
       status: "SKIPPED",
-      reason: "Missing SHOPIFY_PARTNER_ORG_ID, SHOPIFY_PARTNER_ACCESS_TOKEN, or SHOPIFY_APP_ID",
+      reason:
+        "Missing SHOPIFY_PARTNER_ORG_ID, SHOPIFY_PARTNER_ACCESS_TOKEN, or SHOPIFY_APP_ID",
       apiVersion: PARTNER_API_VERSION,
       activeSubscription: null,
       latestLifecycleEvent: null,
@@ -192,7 +203,9 @@ async function fetchPartnerBillingSnapshot(shopifyShopId) {
   }
 
   const occurredAtMax = new Date();
-  const occurredAtMin = new Date(occurredAtMax.getTime() - 365 * 24 * 60 * 60 * 1000);
+  const occurredAtMin = new Date(
+    occurredAtMax.getTime() - 365 * 24 * 60 * 60 * 1000,
+  );
 
   const graphql = `
     query ModaBillingInspection(
@@ -314,19 +327,30 @@ async function fetchPartnerBillingSnapshot(shopifyShopId) {
   try {
     result = JSON.parse(responseText);
   } catch {
-    throw new Error(`Shopify Partner API returned non-JSON HTTP ${response.status}: ${responseText.slice(0, 500)}`);
+    throw new Error(
+      `Shopify Partner API returned non-JSON HTTP ${response.status}: ${responseText.slice(0, 500)}`,
+    );
   }
 
   if (!response.ok) {
-    throw new Error(`Shopify Partner API HTTP ${response.status}: ${json(result)}`);
+    throw new Error(
+      `Shopify Partner API HTTP ${response.status}: ${json(result)}`,
+    );
   }
 
   if (Array.isArray(result.errors) && result.errors.length > 0) {
-    throw new Error(`Shopify Partner API GraphQL error: ${result.errors.map((error) => error.message).join("; ")}`);
+    throw new Error(
+      `Shopify Partner API GraphQL error: ${result.errors.map((error) => error.message).join("; ")}`,
+    );
   }
 
-  if (!result.data || !Object.prototype.hasOwnProperty.call(result.data, "activeSubscription")) {
-    throw new Error("Shopify Partner API response did not include activeSubscription");
+  if (
+    !result.data ||
+    !Object.prototype.hasOwnProperty.call(result.data, "activeSubscription")
+  ) {
+    throw new Error(
+      "Shopify Partner API response did not include activeSubscription",
+    );
   }
 
   return {
@@ -352,19 +376,29 @@ function buildShopifyComparison(dump) {
   const plans = dump.catalog.billingPlans ?? [];
   const economics = dump.catalog.economicsSnapshots ?? [];
   const localPlan = localSubscription?.planId
-    ? plans.find((plan) => plan.id === localSubscription.planId) ?? null
+    ? (plans.find((plan) => plan.id === localSubscription.planId) ?? null)
     : null;
 
-  const activeItems = active?.items?.filter((item) => item?.price?.active !== false) ?? [];
-  const activeFlatItems = activeItems.filter((item) => item?.price?.__typename === "FlatRatePrice");
-  const activeUsageItems = activeItems.filter((item) => item?.price?.__typename === "TieredPrice");
-  const pendingItems = active?.pendingUpdate?.items?.filter((item) => item?.price?.active !== false) ?? [];
-  const pendingFlatItems = pendingItems.filter((item) => item?.price?.__typename === "FlatRatePrice");
+  const activeItems =
+    active?.items?.filter((item) => item?.price?.active !== false) ?? [];
+  const activeFlatItems = activeItems.filter(
+    (item) => item?.price?.__typename === "FlatRatePrice",
+  );
+  const activeUsageItems = activeItems.filter(
+    (item) => item?.price?.__typename === "TieredPrice",
+  );
+  const pendingItems =
+    active?.pendingUpdate?.items?.filter(
+      (item) => item?.price?.active !== false,
+    ) ?? [];
+  const pendingFlatItems = pendingItems.filter(
+    (item) => item?.price?.__typename === "FlatRatePrice",
+  );
 
   const providerPlanHandle =
     activeFlatItems.length === 1
-      ? activeFlatItems[0].handle ?? null
-      : latestEvent?.plan?.handle ?? null;
+      ? (activeFlatItems[0].handle ?? null)
+      : (latestEvent?.plan?.handle ?? null);
 
   const providerPlanHandleSource =
     activeFlatItems.length === 1
@@ -373,190 +407,267 @@ function buildShopifyComparison(dump) {
         ? "latest subscription lifecycle event fallback"
         : "unavailable";
 
-  rows.push(comparison(dump.checks, {
-    name: "active contract presence",
-    local: localSubscription ? localSubscription.status : null,
-    shopify: active ? "ACTIVE_SUBSCRIPTION_PRESENT" : null,
-    matches: active ? Boolean(localSubscription) && localSubscription.status !== "NO_CONTRACT" : !localSubscription || localSubscription.status === "NO_CONTRACT",
-    severity: "ERROR",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "active contract presence",
+      local: localSubscription ? localSubscription.status : null,
+      shopify: active ? "ACTIVE_SUBSCRIPTION_PRESENT" : null,
+      matches: active
+        ? Boolean(localSubscription) &&
+          localSubscription.status !== "NO_CONTRACT"
+        : !localSubscription || localSubscription.status === "NO_CONTRACT",
+      severity: "ERROR",
+    }),
+  );
 
   if (!active) return rows;
 
-  rows.push(comparison(dump.checks, {
-    name: "Shopify shop ID",
-    local: dump.anchor.shop?.shopifyShopId ?? null,
-    shopify: active.shop?.id ?? null,
-    matches: Boolean(dump.anchor.shop?.shopifyShopId) && dump.anchor.shop.shopifyShopId === active.shop?.id,
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "Shopify shop ID",
+      local: dump.anchor.shop?.shopifyShopId ?? null,
+      shopify: active.shop?.id ?? null,
+      matches:
+        Boolean(dump.anchor.shop?.shopifyShopId) &&
+        dump.anchor.shop.shopifyShopId === active.shop?.id,
+    }),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "myshopify domain",
-    local: dump.shopDomain,
-    shopify: active.shop?.myshopifyDomain ?? null,
-    matches: String(active.shop?.myshopifyDomain ?? "").toLowerCase() === dump.shopDomain.toLowerCase(),
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "myshopify domain",
+      local: dump.shopDomain,
+      shopify: active.shop?.myshopifyDomain ?? null,
+      matches:
+        String(active.shop?.myshopifyDomain ?? "").toLowerCase() ===
+        dump.shopDomain.toLowerCase(),
+    }),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "current plan handle",
-    local: localPlan?.shopifyPlanHandle ?? localSubscription?.observedShopifyPlanHandle ?? null,
-    shopify: providerPlanHandle,
-    matches:
-      providerPlanHandle != null &&
-      [localPlan?.shopifyPlanHandle, localSubscription?.observedShopifyPlanHandle]
-        .filter(Boolean)
-        .includes(providerPlanHandle),
-    note: `Shopify plan handle source: ${providerPlanHandleSource}`,
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "current plan handle",
+      local:
+        localPlan?.shopifyPlanHandle ??
+        localSubscription?.observedShopifyPlanHandle ??
+        null,
+      shopify: providerPlanHandle,
+      matches:
+        providerPlanHandle != null &&
+        [
+          localPlan?.shopifyPlanHandle,
+          localSubscription?.observedShopifyPlanHandle,
+        ]
+          .filter(Boolean)
+          .includes(providerPlanHandle),
+      note: `Shopify plan handle source: ${providerPlanHandleSource}`,
+    }),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "observed Shopify plan handle",
-    local: localSubscription?.observedShopifyPlanHandle ?? null,
-    shopify: providerPlanHandle,
-    matches: localSubscription?.observedShopifyPlanHandle === providerPlanHandle,
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "observed Shopify plan handle",
+      local: localSubscription?.observedShopifyPlanHandle ?? null,
+      shopify: providerPlanHandle,
+      matches:
+        localSubscription?.observedShopifyPlanHandle === providerPlanHandle,
+    }),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "cancel at end of cycle",
-    local: localSubscription?.cancelAtPeriodEnd ?? null,
-    shopify: active.cancelAtEndOfCycle,
-    matches: Boolean(localSubscription) && localSubscription.cancelAtPeriodEnd === active.cancelAtEndOfCycle,
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "cancel at end of cycle",
+      local: localSubscription?.cancelAtPeriodEnd ?? null,
+      shopify: active.cancelAtEndOfCycle,
+      matches:
+        Boolean(localSubscription) &&
+        localSubscription.cancelAtPeriodEnd === active.cancelAtEndOfCycle,
+    }),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "trial end",
-    local: iso(localSubscription?.trialEndsAt),
-    shopify: iso(active.trialEndsAt),
-    matches: sameInstant(localSubscription?.trialEndsAt, active.trialEndsAt),
-    severity: "WARN",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "trial end",
+      local: iso(localSubscription?.trialEndsAt),
+      shopify: iso(active.trialEndsAt),
+      matches: sameInstant(localSubscription?.trialEndsAt, active.trialEndsAt),
+      severity: "WARN",
+    }),
+  );
 
   if (active.currentBillingCycle) {
-    rows.push(comparison(dump.checks, {
-      name: "current billing cycle start",
-      local: iso(localSubscription?.currentPeriodStart),
-      shopify: iso(active.currentBillingCycle.startTime),
-      matches: sameInstant(localSubscription?.currentPeriodStart, active.currentBillingCycle.startTime),
-    }));
+    rows.push(
+      comparison(dump.checks, {
+        name: "current billing cycle start",
+        local: iso(localSubscription?.currentPeriodStart),
+        shopify: iso(active.currentBillingCycle.startTime),
+        matches: sameInstant(
+          localSubscription?.currentPeriodStart,
+          active.currentBillingCycle.startTime,
+        ),
+      }),
+    );
 
-    rows.push(comparison(dump.checks, {
-      name: "current billing cycle end",
-      local: iso(localSubscription?.currentPeriodEnd),
-      shopify: iso(active.currentBillingCycle.endTime),
-      matches: sameInstant(localSubscription?.currentPeriodEnd, active.currentBillingCycle.endTime),
-    }));
+    rows.push(
+      comparison(dump.checks, {
+        name: "current billing cycle end",
+        local: iso(localSubscription?.currentPeriodEnd),
+        shopify: iso(active.currentBillingCycle.endTime),
+        matches: sameInstant(
+          localSubscription?.currentPeriodEnd,
+          active.currentBillingCycle.endTime,
+        ),
+      }),
+    );
   }
 
-  rows.push(comparison(dump.checks, {
-    name: "provider subscription ID",
-    local: localSubscription?.providerSubscriptionId ?? null,
-    shopify: active.legacySubscriptionId ?? null,
-    matches:
-      localSubscription?.providerSubscriptionId == null ||
-      active.legacySubscriptionId == null ||
-      localSubscription.providerSubscriptionId === active.legacySubscriptionId,
-    severity: "WARN",
-    note: "MATCH is also accepted when one side is null because Shopify App Pricing does not require the legacy ID as authority.",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "provider subscription ID",
+      local: localSubscription?.providerSubscriptionId ?? null,
+      shopify: active.legacySubscriptionId ?? null,
+      matches:
+        localSubscription?.providerSubscriptionId == null ||
+        active.legacySubscriptionId == null ||
+        localSubscription.providerSubscriptionId ===
+          active.legacySubscriptionId,
+      severity: "WARN",
+      note: "MATCH is also accepted when one side is null because Shopify App Pricing does not require the legacy ID as authority.",
+    }),
+  );
 
   const expectedUsageHandles = sortStrings([
     localPlan?.shopifyUsageEventHandle,
-    localPlan?.recoveryCreditPackEnabled ? localPlan?.shopifyRecoveryCreditPackEventHandle : null,
+    localPlan?.recoveryCreditPackEnabled
+      ? localPlan?.shopifyRecoveryCreditPackEventHandle
+      : null,
   ]);
-  const providerUsageHandles = sortStrings(activeUsageItems.map((item) => item.handle));
+  const providerUsageHandles = sortStrings(
+    activeUsageItems.map((item) => item.handle),
+  );
 
-  rows.push(comparison(dump.checks, {
-    name: "active usage meter handles",
-    local: expectedUsageHandles,
-    shopify: providerUsageHandles,
-    matches: sameStringSet(expectedUsageHandles, providerUsageHandles),
-    severity: "WARN",
-    note: "This compares active TieredPrice item handles with BillingPlan event handles.",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "active usage meter handles",
+      local: expectedUsageHandles,
+      shopify: providerUsageHandles,
+      matches: sameStringSet(expectedUsageHandles, providerUsageHandles),
+      severity: "WARN",
+      note: "This compares active TieredPrice item handles with BillingPlan event handles.",
+    }),
+  );
 
   const latestEconomics = localPlan
-    ? economics
+    ? (economics
         .filter((snapshotRow) => snapshotRow.billingPlanId === localPlan.id)
-        .sort((a, b) => new Date(b.verifiedAt).getTime() - new Date(a.verifiedAt).getTime())[0] ?? null
+        .sort(
+          (a, b) =>
+            new Date(b.verifiedAt).getTime() - new Date(a.verifiedAt).getTime(),
+        )[0] ?? null)
     : null;
 
   if (latestEconomics) {
     if (activeFlatItems.length === 1) {
-      rows.push(comparison(dump.checks, {
-        name: "monthly recurring amount",
-        local: {
-          minorUnits: latestEconomics.monthlyRecurringAmountMinor,
-          currency: latestEconomics.currency,
-        },
-        shopify: {
-          amount: activeFlatItems[0].price.amount,
-          currency: activeFlatItems[0].price.currency,
-        },
-        matches:
-          decimalAmountToMinorUnits(activeFlatItems[0].price.amount) === Number(latestEconomics.monthlyRecurringAmountMinor) &&
-          String(activeFlatItems[0].price.currency ?? "").toUpperCase() === String(latestEconomics.currency ?? "").toUpperCase(),
-        severity: "ERROR",
-        note: "Amount comparison interprets BillingEconomicsSnapshot.monthlyRecurringAmountMinor as 1/100 currency units.",
-      }));
+      rows.push(
+        comparison(dump.checks, {
+          name: "monthly recurring amount",
+          local: {
+            minorUnits: latestEconomics.monthlyRecurringAmountMinor,
+            currency: latestEconomics.currency,
+          },
+          shopify: {
+            amount: activeFlatItems[0].price.amount,
+            currency: activeFlatItems[0].price.currency,
+          },
+          matches:
+            decimalAmountToMinorUnits(activeFlatItems[0].price.amount) ===
+              Number(latestEconomics.monthlyRecurringAmountMinor) &&
+            String(activeFlatItems[0].price.currency ?? "").toUpperCase() ===
+              String(latestEconomics.currency ?? "").toUpperCase(),
+          severity: "ERROR",
+          note: "Amount comparison interprets BillingEconomicsSnapshot.monthlyRecurringAmountMinor as 1/100 currency units.",
+        }),
+      );
     } else if (Number(latestEconomics.monthlyRecurringAmountMinor) !== 0) {
-      rows.push(comparison(dump.checks, {
-        name: "monthly recurring amount",
-        local: {
-          minorUnits: latestEconomics.monthlyRecurringAmountMinor,
-          currency: latestEconomics.currency,
-        },
-        shopify: activeFlatItems.map((item) => ({ handle: item.handle, price: item.price })),
-        matches: false,
-        note: "Expected a paid recurring price but Shopify did not return exactly one active FlatRatePrice item.",
-      }));
+      rows.push(
+        comparison(dump.checks, {
+          name: "monthly recurring amount",
+          local: {
+            minorUnits: latestEconomics.monthlyRecurringAmountMinor,
+            currency: latestEconomics.currency,
+          },
+          shopify: activeFlatItems.map((item) => ({
+            handle: item.handle,
+            price: item.price,
+          })),
+          matches: false,
+          note: "Expected a paid recurring price but Shopify did not return exactly one active FlatRatePrice item.",
+        }),
+      );
     }
   }
 
-  const pendingProviderPlanHandle = pendingFlatItems.length === 1
-    ? pendingFlatItems[0].handle ?? null
-    : null;
+  const pendingProviderPlanHandle =
+    pendingFlatItems.length === 1 ? (pendingFlatItems[0].handle ?? null) : null;
 
-  rows.push(comparison(dump.checks, {
-    name: "pending plan handle",
-    local: localSubscription?.pendingShopifyPlanHandle ?? null,
-    shopify: pendingProviderPlanHandle,
-    matches: (localSubscription?.pendingShopifyPlanHandle ?? null) === pendingProviderPlanHandle,
-    severity: "WARN",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "pending plan handle",
+      local: localSubscription?.pendingShopifyPlanHandle ?? null,
+      shopify: pendingProviderPlanHandle,
+      matches:
+        (localSubscription?.pendingShopifyPlanHandle ?? null) ===
+        pendingProviderPlanHandle,
+      severity: "WARN",
+    }),
+  );
 
-  const providerPendingEffectiveAt = pendingProviderPlanHandle && active.currentBillingCycle
-    ? active.currentBillingCycle.endTime
-    : null;
+  const providerPendingEffectiveAt =
+    pendingProviderPlanHandle && active.currentBillingCycle
+      ? active.currentBillingCycle.endTime
+      : null;
 
-  rows.push(comparison(dump.checks, {
-    name: "pending plan effective time",
-    local: iso(localSubscription?.pendingEffectiveAt),
-    shopify: iso(providerPendingEffectiveAt),
-    matches: sameInstant(localSubscription?.pendingEffectiveAt, providerPendingEffectiveAt),
-    severity: "WARN",
-  }));
+  rows.push(
+    comparison(dump.checks, {
+      name: "pending plan effective time",
+      local: iso(localSubscription?.pendingEffectiveAt),
+      shopify: iso(providerPendingEffectiveAt),
+      matches: sameInstant(
+        localSubscription?.pendingEffectiveAt,
+        providerPendingEffectiveAt,
+      ),
+      severity: "WARN",
+    }),
+  );
 
   if (latestEvent) {
-    rows.push(comparison(dump.checks, {
-      name: "latest lifecycle event ID",
-      local: localSubscription?.lastProviderLifecycleEventId ?? null,
-      shopify: latestEvent.id ?? null,
-      matches:
-        localSubscription?.lastProviderLifecycleEventId == null ||
-        localSubscription.lastProviderLifecycleEventId === latestEvent.id,
-      severity: "WARN",
-      note: "A mismatch can mean local reconciliation has not processed Shopify's latest lifecycle event yet.",
-    }));
+    rows.push(
+      comparison(dump.checks, {
+        name: "latest lifecycle event ID",
+        local: localSubscription?.lastProviderLifecycleEventId ?? null,
+        shopify: latestEvent.id ?? null,
+        matches:
+          localSubscription?.lastProviderLifecycleEventId == null ||
+          localSubscription.lastProviderLifecycleEventId === latestEvent.id,
+        severity: "WARN",
+        note: "A mismatch can mean local reconciliation has not processed Shopify's latest lifecycle event yet.",
+      }),
+    );
 
-    rows.push(comparison(dump.checks, {
-      name: "latest lifecycle event time",
-      local: iso(localSubscription?.lastProviderLifecycleEventAt),
-      shopify: iso(latestEvent.occurredAt),
-      matches:
-        localSubscription?.lastProviderLifecycleEventAt == null ||
-        sameInstant(localSubscription.lastProviderLifecycleEventAt, latestEvent.occurredAt),
-      severity: "WARN",
-    }));
+    rows.push(
+      comparison(dump.checks, {
+        name: "latest lifecycle event time",
+        local: iso(localSubscription?.lastProviderLifecycleEventAt),
+        shopify: iso(latestEvent.occurredAt),
+        matches:
+          localSubscription?.lastProviderLifecycleEventAt == null ||
+          sameInstant(
+            localSubscription.lastProviderLifecycleEventAt,
+            latestEvent.occurredAt,
+          ),
+        severity: "WARN",
+      }),
+    );
   }
 
   return rows;
@@ -647,13 +758,14 @@ try {
     const shopId = shop.id;
     dump.anchor.shop = shop;
 
-    dump.anchor.shopSettings = (
-      await safeQuery(
-        "shopify.ShopSettings",
-        `SELECT * FROM shopify."ShopSettings" WHERE "shopId" = $1`,
-        [shopId],
-      )
-    )[0] ?? null;
+    dump.anchor.shopSettings =
+      (
+        await safeQuery(
+          "shopify.ShopSettings",
+          `SELECT * FROM shopify."ShopSettings" WHERE "shopId" = $1`,
+          [shopId],
+        )
+      )[0] ?? null;
 
     // Deliberately omit OAuth accessToken / refreshToken.
     dump.anchor.sessions = await safeQuery(
@@ -685,13 +797,18 @@ try {
       const columns = meta.columns ?? [];
       const orderParts = [];
 
-      if (columns.includes("createdAt")) orderParts.push(quoteIdent("createdAt"));
-      if (columns.includes("periodStart")) orderParts.push(quoteIdent("periodStart"));
+      if (columns.includes("createdAt"))
+        orderParts.push(quoteIdent("createdAt"));
+      if (columns.includes("periodStart"))
+        orderParts.push(quoteIdent("periodStart"));
       if (columns.includes("id")) orderParts.push(quoteIdent("id"));
 
-      const orderBy = orderParts.length > 0 ? ` ORDER BY ${orderParts.join(", ")}` : "";
+      const orderBy =
+        orderParts.length > 0 ? ` ORDER BY ${orderParts.join(", ")}` : "";
       const sql = `SELECT * FROM billing.${quoteIdent(tableName)} WHERE ${quoteIdent("shopId")} = $1${orderBy}`;
-      dump.billing[tableName] = await safeQuery(`billing.${tableName}`, sql, [shopId]);
+      dump.billing[tableName] = await safeQuery(`billing.${tableName}`, sql, [
+        shopId,
+      ]);
     }
 
     dump.catalog.billingPlans = await safeQuery(
@@ -749,16 +866,17 @@ try {
     );
 
     const campaignIds = dump.promotions.campaigns.map((row) => row.id);
-    dump.promotions.campaignEvents = campaignIds.length > 0
-      ? await safeQuery(
-          "billing.PromotionCampaignEvent",
-          `SELECT *
+    dump.promotions.campaignEvents =
+      campaignIds.length > 0
+        ? await safeQuery(
+            "billing.PromotionCampaignEvent",
+            `SELECT *
              FROM billing."PromotionCampaignEvent"
             WHERE "campaignId" = ANY($1::text[])
             ORDER BY "createdAt", id`,
-          [campaignIds],
-        )
-      : [];
+            [campaignIds],
+          )
+        : [];
 
     const subscriptions = dump.billing.Subscription ?? [];
     const periods = dump.billing.BillingPeriod ?? [];
@@ -768,19 +886,35 @@ try {
     const usageEvents = dump.billing.UsageEvent ?? [];
 
     if (subscriptions.length === 0) {
-      addCheck(dump.checks, "WARN", "No billing.Subscription row exists for this shop.");
+      addCheck(
+        dump.checks,
+        "WARN",
+        "No billing.Subscription row exists for this shop.",
+      );
     } else if (subscriptions.length > 1) {
-      addCheck(dump.checks, "ERROR", "More than one billing.Subscription row exists for a shopId that should be unique.", {
-        count: subscriptions.length,
-      });
+      addCheck(
+        dump.checks,
+        "ERROR",
+        "More than one billing.Subscription row exists for a shopId that should be unique.",
+        {
+          count: subscriptions.length,
+        },
+      );
     } else {
       const subscription = subscriptions[0];
-      const currentPlan = dump.catalog.billingPlans.find((p) => p.id === subscription.planId);
+      const currentPlan = dump.catalog.billingPlans.find(
+        (p) => p.id === subscription.planId,
+      );
 
       if (subscription.planId && !currentPlan) {
-        addCheck(dump.checks, "ERROR", "Subscription.planId does not resolve to BillingPlan.", {
-          planId: subscription.planId,
-        });
+        addCheck(
+          dump.checks,
+          "ERROR",
+          "Subscription.planId does not resolve to BillingPlan.",
+          {
+            planId: subscription.planId,
+          },
+        );
       }
 
       if (
@@ -788,28 +922,45 @@ try {
         currentPlan?.shopifyPlanHandle &&
         subscription.observedShopifyPlanHandle !== currentPlan.shopifyPlanHandle
       ) {
-        addCheck(dump.checks, "WARN", "Observed Shopify plan handle differs from the mapped current BillingPlan handle.", {
-          observedShopifyPlanHandle: subscription.observedShopifyPlanHandle,
-          mappedShopifyPlanHandle: currentPlan.shopifyPlanHandle,
-          pendingShopifyPlanHandle: subscription.pendingShopifyPlanHandle,
-        });
+        addCheck(
+          dump.checks,
+          "WARN",
+          "Observed Shopify plan handle differs from the mapped current BillingPlan handle.",
+          {
+            observedShopifyPlanHandle: subscription.observedShopifyPlanHandle,
+            mappedShopifyPlanHandle: currentPlan.shopifyPlanHandle,
+            pendingShopifyPlanHandle: subscription.pendingShopifyPlanHandle,
+          },
+        );
       }
 
       if (subscription.billingPeriodId) {
-        const currentPeriod = periods.find((p) => p.id === subscription.billingPeriodId);
+        const currentPeriod = periods.find(
+          (p) => p.id === subscription.billingPeriodId,
+        );
         if (!currentPeriod) {
-          addCheck(dump.checks, "ERROR", "Subscription.billingPeriodId does not resolve to a BillingPeriod.", {
-            billingPeriodId: subscription.billingPeriodId,
-          });
+          addCheck(
+            dump.checks,
+            "ERROR",
+            "Subscription.billingPeriodId does not resolve to a BillingPeriod.",
+            {
+              billingPeriodId: subscription.billingPeriodId,
+            },
+          );
         }
       }
     }
 
     const openPeriods = periods.filter((p) => p.status === "OPEN");
     if (openPeriods.length > 1) {
-      addCheck(dump.checks, "ERROR", "More than one OPEN BillingPeriod exists for this shop.", {
-        billingPeriodIds: openPeriods.map((p) => p.id),
-      });
+      addCheck(
+        dump.checks,
+        "ERROR",
+        "More than one OPEN BillingPeriod exists for this shop.",
+        {
+          billingPeriodIds: openPeriods.map((p) => p.id),
+        },
+      );
     }
 
     for (const counter of shopCounters) {
@@ -821,10 +972,15 @@ try {
 
       counter.__derivedAvailableQuantity = available;
       if (available < 0) {
-        addCheck(dump.checks, "ERROR", "ShopEntitlementCounter derived available quantity is negative.", {
-          counter: counter.counter,
-          available,
-        });
+        addCheck(
+          dump.checks,
+          "ERROR",
+          "ShopEntitlementCounter derived available quantity is negative.",
+          {
+            counter: counter.counter,
+            available,
+          },
+        );
       }
     }
 
@@ -837,41 +993,70 @@ try {
 
       counter.__derivedAvailableQuantity = available;
       if (available < 0) {
-        addCheck(dump.checks, "ERROR", "BillingPeriodEntitlementCounter derived available quantity is negative.", {
-          billingPeriodId: counter.billingPeriodId,
-          counter: counter.counter,
-          available,
-        });
+        addCheck(
+          dump.checks,
+          "ERROR",
+          "BillingPeriodEntitlementCounter derived available quantity is negative.",
+          {
+            billingPeriodId: counter.billingPeriodId,
+            counter: counter.counter,
+            available,
+          },
+        );
       }
     }
 
     for (const purchase of purchases) {
-      const available = Number(purchase.currentAmount ?? 0) - Number(purchase.reservedAmount ?? 0);
+      const available =
+        Number(purchase.currentAmount ?? 0) -
+        Number(purchase.reservedAmount ?? 0);
       purchase.__derivedAvailableAmount = available;
 
       if (available < 0) {
-        addCheck(dump.checks, "ERROR", "RecoveryCreditPurchase availableAmount is negative.", {
-          purchaseId: purchase.id,
-          currentAmount: purchase.currentAmount,
-          reservedAmount: purchase.reservedAmount,
-        });
+        addCheck(
+          dump.checks,
+          "ERROR",
+          "RecoveryCreditPurchase availableAmount is negative.",
+          {
+            purchaseId: purchase.id,
+            currentAmount: purchase.currentAmount,
+            reservedAmount: purchase.reservedAmount,
+          },
+        );
       }
 
       if (purchase.status === "ACTIVE") {
-        if (!purchase.providerValuationConfirmedAt || purchase.providerPurchaseAmount == null || !purchase.providerPurchaseCurrency) {
-          addCheck(dump.checks, "ERROR", "ACTIVE RecoveryCreditPurchase is missing provider valuation evidence.", {
-            purchaseId: purchase.id,
-          });
+        if (
+          !purchase.providerValuationConfirmedAt ||
+          purchase.providerPurchaseAmount == null ||
+          !purchase.providerPurchaseCurrency
+        ) {
+          addCheck(
+            dump.checks,
+            "ERROR",
+            "ACTIVE RecoveryCreditPurchase is missing provider valuation evidence.",
+            {
+              purchaseId: purchase.id,
+            },
+          );
         }
       }
 
       if (["COMPLETED", "REFUNDED"].includes(purchase.status)) {
-        if (Number(purchase.currentAmount ?? 0) !== 0 || Number(purchase.reservedAmount ?? 0) !== 0) {
-          addCheck(dump.checks, "ERROR", `${purchase.status} RecoveryCreditPurchase has a non-zero balance.`, {
-            purchaseId: purchase.id,
-            currentAmount: purchase.currentAmount,
-            reservedAmount: purchase.reservedAmount,
-          });
+        if (
+          Number(purchase.currentAmount ?? 0) !== 0 ||
+          Number(purchase.reservedAmount ?? 0) !== 0
+        ) {
+          addCheck(
+            dump.checks,
+            "ERROR",
+            `${purchase.status} RecoveryCreditPurchase has a non-zero balance.`,
+            {
+              purchaseId: purchase.id,
+              currentAmount: purchase.currentAmount,
+              reservedAmount: purchase.reservedAmount,
+            },
+          );
         }
       }
     }
@@ -880,10 +1065,15 @@ try {
       ["RETRYABLE", "NEEDS_ATTENTION"].includes(event.shopifyReportState),
     );
     if (attentionEvents.length > 0) {
-      addCheck(dump.checks, "WARN", "UsageEvents require Shopify reporting/reconciliation attention.", {
-        count: attentionEvents.length,
-        usageEventIds: attentionEvents.map((event) => event.id),
-      });
+      addCheck(
+        dump.checks,
+        "WARN",
+        "UsageEvents require Shopify reporting/reconciliation attention.",
+        {
+          count: attentionEvents.length,
+          usageEventIds: attentionEvents.map((event) => event.id),
+        },
+      );
     }
 
     // End the DB transaction before making the network call. Everything above is read-only.
@@ -899,9 +1089,15 @@ try {
       };
     } else {
       try {
-        dump.shopifyPartner = await fetchPartnerBillingSnapshot(shop.shopifyShopId);
+        dump.shopifyPartner = await fetchPartnerBillingSnapshot(
+          shop.shopifyShopId,
+        );
         if (dump.shopifyPartner.status === "SKIPPED") {
-          addCheck(dump.checks, "WARN", `Shopify Partner API comparison skipped: ${dump.shopifyPartner.reason}`);
+          addCheck(
+            dump.checks,
+            "WARN",
+            `Shopify Partner API comparison skipped: ${dump.shopifyPartner.reason}`,
+          );
         }
       } catch (error) {
         dump.shopifyPartner = {
@@ -911,9 +1107,14 @@ try {
           activeSubscription: null,
           latestLifecycleEvent: null,
         };
-        addCheck(dump.checks, "ERROR", "Shopify Partner API inspection failed.", {
-          message: error?.message ?? String(error),
-        });
+        addCheck(
+          dump.checks,
+          "ERROR",
+          "Shopify Partner API inspection failed.",
+          {
+            message: error?.message ?? String(error),
+          },
+        );
       }
     }
 
@@ -923,43 +1124,81 @@ try {
       console.log(json(dump));
     } else {
       heading("MODA INTERACT BILLING INSPECTOR");
-      console.log(json({
-        inspectedAt: dump.inspectedAt,
-        shopDomain,
-        shopId,
-        shopifyShopId: shop.shopifyShopId ?? null,
-        database: dump.database,
-        partnerApiVersion: PARTNER_API_VERSION,
-        partnerApiStatus: dump.shopifyPartner?.status ?? "NOT_RUN",
-      }));
+      console.log(
+        json({
+          inspectedAt: dump.inspectedAt,
+          shopDomain,
+          shopId,
+          shopifyShopId: shop.shopifyShopId ?? null,
+          database: dump.database,
+          partnerApiVersion: PARTNER_API_VERSION,
+          partnerApiStatus: dump.shopifyPartner?.status ?? "NOT_RUN",
+        }),
+      );
 
       printRows("commerce.Shop", [dump.anchor.shop]);
-      printRows("shopify.ShopSettings", dump.anchor.shopSettings ? [dump.anchor.shopSettings] : []);
-      printRows("shopify.Session (OAuth secrets omitted)", dump.anchor.sessions);
+      printRows(
+        "shopify.ShopSettings",
+        dump.anchor.shopSettings ? [dump.anchor.shopSettings] : [],
+      );
+      printRows(
+        "shopify.Session (OAuth secrets omitted)",
+        dump.anchor.sessions,
+      );
 
-      for (const [tableName, rows] of Object.entries(dump.billing).sort(([a], [b]) => a.localeCompare(b))) {
+      for (const [tableName, rows] of Object.entries(dump.billing).sort(
+        ([a], [b]) => a.localeCompare(b),
+      )) {
         printRows(`billing.${tableName}`, rows);
       }
 
       printRows("billing.BillingPlan (catalog)", dump.catalog.billingPlans);
-      printRows("billing.BillingPlanFeature (catalog)", dump.catalog.billingPlanFeatures);
-      printRows("billing.BillingUpgradeEconomicsEdge (catalog)", dump.catalog.upgradeEconomicsEdges);
-      printRows("billing.BillingEconomicsSnapshot (catalog)", dump.catalog.economicsSnapshots);
-      printRows("billing.PlatformBillingPolicy", dump.catalog.platformBillingPolicy);
-      printRows("billing.PromotionCampaign (associated)", dump.promotions.campaigns);
-      printRows("billing.PromotionCampaignEvent (associated)", dump.promotions.campaignEvents);
+      printRows(
+        "billing.BillingPlanFeature (catalog)",
+        dump.catalog.billingPlanFeatures,
+      );
+      printRows(
+        "billing.BillingUpgradeEconomicsEdge (catalog)",
+        dump.catalog.upgradeEconomicsEdges,
+      );
+      printRows(
+        "billing.BillingEconomicsSnapshot (catalog)",
+        dump.catalog.economicsSnapshots,
+      );
+      printRows(
+        "billing.PlatformBillingPolicy",
+        dump.catalog.platformBillingPolicy,
+      );
+      printRows(
+        "billing.PromotionCampaign (associated)",
+        dump.promotions.campaigns,
+      );
+      printRows(
+        "billing.PromotionCampaignEvent (associated)",
+        dump.promotions.campaignEvents,
+      );
 
-      heading(`SHOPIFY PARTNER API — ${dump.shopifyPartner?.status ?? "NOT_RUN"}`);
+      heading(
+        `SHOPIFY PARTNER API — ${dump.shopifyPartner?.status ?? "NOT_RUN"}`,
+      );
       console.log(json(dump.shopifyPartner));
 
       heading(`LOCAL ↔ SHOPIFY COMPARISON (${dump.comparison.length})`);
       console.log(dump.comparison.length === 0 ? "[]" : json(dump.comparison));
 
-      const errorCount = dump.checks.filter((check) => check.level === "ERROR").length;
-      const warnCount = dump.checks.filter((check) => check.level === "WARN").length;
-      heading(`CONSISTENCY CHECKS (${dump.checks.length}: ${errorCount} ERROR, ${warnCount} WARN)`);
+      const errorCount = dump.checks.filter(
+        (check) => check.level === "ERROR",
+      ).length;
+      const warnCount = dump.checks.filter(
+        (check) => check.level === "WARN",
+      ).length;
+      heading(
+        `CONSISTENCY CHECKS (${dump.checks.length}: ${errorCount} ERROR, ${warnCount} WARN)`,
+      );
       if (dump.checks.length === 0) {
-        console.log("No obvious consistency problems detected by this read-only inspector.");
+        console.log(
+          "No obvious consistency problems detected by this read-only inspector.",
+        );
       } else {
         console.log(json(dump.checks));
       }

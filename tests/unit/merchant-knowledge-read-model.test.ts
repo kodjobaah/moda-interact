@@ -2,9 +2,12 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ entitlement: vi.fn(), requireR2: vi.fn() }));
 
-vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-entitlement.server", () => ({
-  loadCurrentMerchantKnowledgeEntitlement: mocks.entitlement,
-}));
+vi.mock(
+  "../../app/services/merchant-knowledge/merchant-knowledge-entitlement.server",
+  () => ({
+    loadCurrentMerchantKnowledgeEntitlement: mocks.entitlement,
+  }),
+);
 vi.mock("../../app/db.server", () => ({ default: {} }));
 vi.mock("../../app/services/platform-configuration/composition.server", () => ({
   createDefaultShopifyPlatformConfigurationService: () => ({
@@ -31,30 +34,41 @@ const pairs = [
   },
 ];
 
-function source(id: string, purposeKey: string, dataFormatKey: string, position: number) {
+function source(
+  id: string,
+  purposeKey: string,
+  dataFormatKey: string,
+  position: number,
+) {
   return {
     id,
     name: id,
     purpose: { key: purposeKey, displayName: purposeKey, active: true },
-    dataFormat: { key: dataFormatKey, displayName: dataFormatKey, active: true },
+    dataFormat: {
+      key: dataFormatKey,
+      displayName: dataFormatKey,
+      active: true,
+    },
     languageTag: "en",
     position,
     currentGeneration: 1,
-    revisions: [{
-      id: `${id}-revision`,
-      generation: 1,
-      reason: "CREATE",
-      status: "PENDING",
-      requestedUrl: "https://example.test/",
-      resolvedUrl: null,
-      contentUnits: null,
-      truncated: false,
-      fetchedAt: null,
-      completedAt: null,
-      failureCode: null,
-      normalizedContent: "must not be returned",
-      chunks: [{ embedding: [1, 2, 3] }],
-    }],
+    revisions: [
+      {
+        id: `${id}-revision`,
+        generation: 1,
+        reason: "CREATE",
+        status: "PENDING",
+        requestedUrl: "https://example.test/",
+        resolvedUrl: null,
+        contentUnits: null,
+        truncated: false,
+        fetchedAt: null,
+        completedAt: null,
+        failureCode: null,
+        normalizedContent: "must not be returned",
+        chunks: [{ embedding: [1, 2, 3] }],
+      },
+    ],
   };
 }
 
@@ -63,12 +77,26 @@ function database(
   preference: { enabled: boolean } | null = { enabled: false },
 ) {
   return {
-    shop: { findUnique: vi.fn().mockResolvedValue({ defaultLanguageTag: "en" }) },
-    merchantKnowledgePurposeDataFormat: { findMany: vi.fn().mockResolvedValue(pairs) },
+    shop: {
+      findUnique: vi.fn().mockResolvedValue({ defaultLanguageTag: "en" }),
+    },
+    merchantKnowledgePurposeDataFormat: {
+      findMany: vi.fn().mockResolvedValue(pairs),
+    },
     merchantKnowledgeSource: { findMany: vi.fn().mockResolvedValue(sources) },
-    merchantKnowledgeSourceRevision: { findMany: vi.fn().mockResolvedValue([]) },
-    feature: { findUnique: vi.fn().mockResolvedValue({ id: "feature-mk", active: true, activationMode: "MERCHANT_OPT_IN" }) },
-    shopFeaturePreference: { findUnique: vi.fn().mockResolvedValue(preference) },
+    merchantKnowledgeSourceRevision: {
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    feature: {
+      findUnique: vi.fn().mockResolvedValue({
+        id: "feature-mk",
+        active: true,
+        activationMode: "MERCHANT_OPT_IN",
+      }),
+    },
+    shopFeaturePreference: {
+      findUnique: vi.fn().mockResolvedValue(preference),
+    },
   };
 }
 
@@ -86,18 +114,27 @@ it("limits the catalogue to supported WEB_PAGE pairs and filters source types be
 
   const result = await loadMerchantKnowledge(
     "shop-1",
-    client as unknown as NonNullable<Parameters<typeof loadMerchantKnowledge>[1]>,
+    client as unknown as NonNullable<
+      Parameters<typeof loadMerchantKnowledge>[1]
+    >,
   );
 
-  expect(client.merchantKnowledgePurposeDataFormat.findMany).toHaveBeenCalledWith(
+  expect(
+    client.merchantKnowledgePurposeDataFormat.findMany,
+  ).toHaveBeenCalledWith(
     expect.objectContaining({
       where: {
         purpose: { active: true },
-        dataFormat: { active: true, inputKind: { in: ["REMOTE_URL", "UPLOAD"] } },
+        dataFormat: {
+          active: true,
+          inputKind: { in: ["REMOTE_URL", "UPLOAD"] },
+        },
       },
     }),
   );
-  expect(result.catalogue.map(({ dataFormat }) => dataFormat.key)).toEqual(["WEB_PAGE"]);
+  expect(result.catalogue.map(({ dataFormat }) => dataFormat.key)).toEqual([
+    "WEB_PAGE",
+  ]);
   expect(result).toMatchObject({
     planEntitled: true,
     maxUploadBytes: 987,
@@ -106,8 +143,18 @@ it("limits the catalogue to supported WEB_PAGE pairs and filters source types be
     configuredCount: 2,
     planEligibleSourceCount: 1,
     sources: [
-      { id: "csv-source", currentlyPlanEntitled: false, processingEligible: false, dormantReason: "SOURCE_TYPE" },
-      { id: "web-source", currentlyPlanEntitled: true, processingEligible: false, dormantReason: "MERCHANT_DISABLED" },
+      {
+        id: "csv-source",
+        currentlyPlanEntitled: false,
+        processingEligible: false,
+        dormantReason: "SOURCE_TYPE",
+      },
+      {
+        id: "web-source",
+        currentlyPlanEntitled: true,
+        processingEligible: false,
+        dormantReason: "MERCHANT_DISABLED",
+      },
     ],
   });
   expect(JSON.stringify(result)).not.toContain("must not be returned");
@@ -121,7 +168,9 @@ it.each([null, { enabled: false }])(
 
     const result = await loadMerchantKnowledge(
       "shop-1",
-      client as unknown as NonNullable<Parameters<typeof loadMerchantKnowledge>[1]>,
+      client as unknown as NonNullable<
+        Parameters<typeof loadMerchantKnowledge>[1]
+      >,
     );
 
     expect(result).toMatchObject({
@@ -137,7 +186,9 @@ it("enables processing only when the current opt-in preference is true", async (
 
   const result = await loadMerchantKnowledge(
     "shop-1",
-    client as unknown as NonNullable<Parameters<typeof loadMerchantKnowledge>[1]>,
+    client as unknown as NonNullable<
+      Parameters<typeof loadMerchantKnowledge>[1]
+    >,
   );
 
   expect(result).toMatchObject({
@@ -152,7 +203,9 @@ it("uses the shared Shop language tag as the default", async () => {
 
   const result = await loadMerchantKnowledge(
     "shop-1",
-    client as unknown as NonNullable<Parameters<typeof loadMerchantKnowledge>[1]>,
+    client as unknown as NonNullable<
+      Parameters<typeof loadMerchantKnowledge>[1]
+    >,
   );
 
   expect(client.shop.findUnique).toHaveBeenCalledWith({

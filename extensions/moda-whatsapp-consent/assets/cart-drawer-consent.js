@@ -7,14 +7,19 @@
   const LOG_PREFIX = "[moda.cart.drawer]";
 
   function isVisibleDrawer(drawer) {
-    return drawer instanceof HTMLElement && drawer.classList.contains("active") &&
-      drawer.querySelector("#CartDrawer") !== null;
+    return (
+      drawer instanceof HTMLElement &&
+      drawer.classList.contains("active") &&
+      drawer.querySelector("#CartDrawer") !== null
+    );
   }
 
   function mount() {
     scheduled = false;
     const drawer = document.querySelector("cart-drawer");
-    const existing = document.querySelectorAll("[data-moda-whatsapp-drawer-consent]");
+    const existing = document.querySelectorAll(
+      "[data-moda-whatsapp-drawer-consent]",
+    );
     const active = isVisibleDrawer(drawer);
     for (const root of existing) {
       if (!active || !drawer.contains(root)) root.remove();
@@ -25,7 +30,9 @@
     const ctas = checkout?.closest(".cart__ctas");
     if (!footer || !ctas || !footer.contains(ctas)) {
       if (lastUnsupported !== drawer) {
-        console.warn(LOG_PREFIX, "drawer.unsupported_structure", { stage: "mount" });
+        console.warn(LOG_PREFIX, "drawer.unsupported_structure", {
+          stage: "mount",
+        });
         lastUnsupported = drawer;
       }
       return;
@@ -33,16 +40,24 @@
     lastUnsupported = null;
     if (drawer.querySelector("[data-moda-whatsapp-drawer-consent]")) return;
     if (typeof window.modaWhatsappConsent?.initialize !== "function") return;
-    const template = document.querySelector("template[data-moda-whatsapp-drawer-template]");
+    const template = document.querySelector(
+      "template[data-moda-whatsapp-drawer-template]",
+    );
     if (!(template instanceof HTMLTemplateElement)) return;
-    const source = template.content.querySelector("[data-moda-whatsapp-consent]");
+    const source = template.content.querySelector(
+      "[data-moda-whatsapp-consent]",
+    );
     if (!(source instanceof HTMLElement)) return;
     const root = source.cloneNode(true);
     if (!(root instanceof HTMLElement)) return;
     counter += 1;
     const checkbox = root.querySelector("[data-consent-checkbox]");
     const label = root.querySelector("label");
-    if (!(checkbox instanceof HTMLInputElement) || !(label instanceof HTMLLabelElement)) return;
+    if (
+      !(checkbox instanceof HTMLInputElement) ||
+      !(label instanceof HTMLLabelElement)
+    )
+      return;
     const id = `ModaCartDrawerConsentCheckbox-${counter}`;
     checkbox.id = id;
     label.htmlFor = id;
@@ -73,6 +88,9 @@
     document.removeEventListener("shopify:section:load", schedule);
     document.removeEventListener("DOMContentLoaded", schedule);
   }
-  window.modaWhatsappDrawerConsent = Object.freeze({ refresh: schedule, destroy });
+  window.modaWhatsappDrawerConsent = Object.freeze({
+    refresh: schedule,
+    destroy,
+  });
   schedule();
 })();

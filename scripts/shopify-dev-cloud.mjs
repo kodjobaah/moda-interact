@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { configureShopifyCheckoutReceiptOrigin, loadShopifyPlatformEnvironment } from "./shopify-dev-settings.mjs";
+import {
+  configureShopifyCheckoutReceiptOrigin,
+  loadShopifyPlatformEnvironment,
+} from "./shopify-dev-settings.mjs";
 
 loadShopifyPlatformEnvironment();
 
@@ -45,7 +48,16 @@ Starting Shopify with:
 
   shopify = spawn(
     "npx",
-    ["shopify", "app", "dev", "--config", "moda-interact", "--tunnel-url", tunnelUrl, ...process.argv.slice(2)],
+    [
+      "shopify",
+      "app",
+      "dev",
+      "--config",
+      "moda-interact",
+      "--tunnel-url",
+      tunnelUrl,
+      ...process.argv.slice(2),
+    ],
     { stdio: "inherit" },
   );
 
@@ -98,7 +110,9 @@ cloudflared.on("error", (error) => {
   console.error(error.message);
 
   if (error.code === "ENOENT") {
-    console.error("\nMake sure cloudflared is installed and available on your PATH.");
+    console.error(
+      "\nMake sure cloudflared is installed and available on your PATH.",
+    );
   }
 
   shutdown(1);

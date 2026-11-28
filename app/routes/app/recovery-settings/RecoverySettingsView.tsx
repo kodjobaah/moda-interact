@@ -52,9 +52,8 @@ export default function RecoverySettingsView({
   const [followUpEnabled, setFollowUpEnabled] = useState(
     data.merchant.followUpEnabled,
   );
-  const [notifyOnInitialRecoveryOutreach, setNotifyOnInitialRecoveryOutreach] = useState(
-    data.notifyOnInitialRecoveryOutreach,
-  );
+  const [notifyOnInitialRecoveryOutreach, setNotifyOnInitialRecoveryOutreach] =
+    useState(data.notifyOnInitialRecoveryOutreach);
 
   return (
     <s-page heading={i18n.t("recoverySettings.title")}>
@@ -179,14 +178,17 @@ export default function RecoverySettingsView({
               {selectedOfferMode === "FIXED" ? (
                 <div className="moda-recovery-fixed-discounts">
                   <div className="moda-recovery-subsection-heading">
-                    <h3>{i18n.t("recoverySettings.offer.availableDiscounts")}</h3>
+                    <h3>
+                      {i18n.t("recoverySettings.offer.availableDiscounts")}
+                    </h3>
                     <p aria-live="polite">
                       {i18n.t("recoverySettings.offer.selectedCount", {
                         count: selectedDiscountIds.length,
                       })}
                     </p>
                   </div>
-                  {data.catalogueStatus !== "CURRENT" && data.discounts.length > 0 ? (
+                  {data.catalogueStatus !== "CURRENT" &&
+                  data.discounts.length > 0 ? (
                     <div className="moda-recovery-inline-message" role="status">
                       <span aria-hidden="true">i</span>
                       <p>
@@ -217,8 +219,13 @@ export default function RecoverySettingsView({
                               const checked = event.currentTarget.checked;
                               setSelectedDiscountIds((current) =>
                                 checked
-                                  ? [...current, discount.id].sort((left, right) =>
-                                      left < right ? -1 : left > right ? 1 : 0,
+                                  ? [...current, discount.id].sort(
+                                      (left, right) =>
+                                        left < right
+                                          ? -1
+                                          : left > right
+                                            ? 1
+                                            : 0,
                                     )
                                   : current.filter((id) => id !== discount.id),
                               );
@@ -254,9 +261,14 @@ export default function RecoverySettingsView({
                               ) : null}
                               {discount.startsAt ? (
                                 <span>
-                                  {i18n.t("recoverySettings.discount.startsAt", {
-                                    value: i18n.formatDateTime(discount.startsAt),
-                                  })}
+                                  {i18n.t(
+                                    "recoverySettings.discount.startsAt",
+                                    {
+                                      value: i18n.formatDateTime(
+                                        discount.startsAt,
+                                      ),
+                                    },
+                                  )}
                                 </span>
                               ) : null}
                               {discount.endsAt ? (
@@ -268,26 +280,45 @@ export default function RecoverySettingsView({
                               ) : null}
                               <span>
                                 {i18n.t("recoverySettings.discount.status", {
-                                  value: DISCOUNT_STATUS_KEYS[discount.providerStatus]
-                                    ? i18n.t(DISCOUNT_STATUS_KEYS[discount.providerStatus])
+                                  value: DISCOUNT_STATUS_KEYS[
+                                    discount.providerStatus
+                                  ]
+                                    ? i18n.t(
+                                        DISCOUNT_STATUS_KEYS[
+                                          discount.providerStatus
+                                        ],
+                                      )
                                     : discount.providerStatus,
                                 })}
                               </span>
                               <span>
-                                {i18n.t("recoverySettings.discount.syncGeneration", {
-                                  generation: discount.lastSeenSyncGeneration,
-                                })}
+                                {i18n.t(
+                                  "recoverySettings.discount.syncGeneration",
+                                  {
+                                    generation: discount.lastSeenSyncGeneration,
+                                  },
+                                )}
                               </span>
                               <span>
-                                {i18n.t("recoverySettings.discount.lastSyncedAt", {
-                                  value: i18n.formatDateTime(discount.lastSyncedAt),
-                                })}
+                                {i18n.t(
+                                  "recoverySettings.discount.lastSyncedAt",
+                                  {
+                                    value: i18n.formatDateTime(
+                                      discount.lastSyncedAt,
+                                    ),
+                                  },
+                                )}
                               </span>
                               {discount.unavailableAt ? (
                                 <span>
-                                  {i18n.t("recoverySettings.discount.unavailableAt", {
-                                    value: i18n.formatDateTime(discount.unavailableAt),
-                                  })}
+                                  {i18n.t(
+                                    "recoverySettings.discount.unavailableAt",
+                                    {
+                                      value: i18n.formatDateTime(
+                                        discount.unavailableAt,
+                                      ),
+                                    },
+                                  )}
                                 </span>
                               ) : null}
                             </span>
@@ -421,17 +452,27 @@ export default function RecoverySettingsView({
                 <div className="moda-recovery-panel-heading">
                   <div>
                     <h2 id="initial-outreach-notification-heading">
-                      {i18n.t("recoverySettings.initialOutreachNotification.title")}
+                      {i18n.t(
+                        "recoverySettings.initialOutreachNotification.title",
+                      )}
                     </h2>
-                    <p id="initial-outreach-notification-description">{i18n.t("recoverySettings.initialOutreachNotification.description")}</p>
+                    <p id="initial-outreach-notification-description">
+                      {i18n.t(
+                        "recoverySettings.initialOutreachNotification.description",
+                      )}
+                    </p>
                   </div>
                 </div>
-                <label className={`moda-recovery-toggle-card${notifyOnInitialRecoveryOutreach ? " is-selected" : ""}`}>
+                <label
+                  className={`moda-recovery-toggle-card${notifyOnInitialRecoveryOutreach ? " is-selected" : ""}`}
+                >
                   <input
                     type="checkbox"
                     checked={notifyOnInitialRecoveryOutreach}
                     onChange={(event) =>
-                      setNotifyOnInitialRecoveryOutreach(event.currentTarget.checked)
+                      setNotifyOnInitialRecoveryOutreach(
+                        event.currentTarget.checked,
+                      )
                     }
                     aria-labelledby="initial-outreach-notification-heading"
                     aria-describedby="initial-outreach-notification-description"
@@ -439,7 +480,11 @@ export default function RecoverySettingsView({
                   <span className="moda-recovery-toggle" aria-hidden="true">
                     <span />
                   </span>
-                  <span>{i18n.t("recoverySettings.initialOutreachNotification.title")}</span>
+                  <span>
+                    {i18n.t(
+                      "recoverySettings.initialOutreachNotification.title",
+                    )}
+                  </span>
                 </label>
                 <input
                   type="hidden"
@@ -458,7 +503,10 @@ export default function RecoverySettingsView({
             t={i18n.t}
           />
         </div>
-        <WhatsAppConsentActivationController t={i18n.t} activation={data.whatsappActivation} />
+        <WhatsAppConsentActivationController
+          t={i18n.t}
+          activation={data.whatsappActivation}
+        />
         <FeaturePreferences snapshot={data.features} t={i18n.t} />
 
         <section
@@ -479,9 +527,9 @@ export default function RecoverySettingsView({
               <summary>
                 <span>{i18n.t("storeProfile.title")}</span>
                 <small>
-                  {data.storeProfile.pendingCategory?.localizedDisplayName
-                    ?? data.storeProfile.activeCategory?.localizedDisplayName
-                    ?? i18n.t("storeProfile.none")}
+                  {data.storeProfile.pendingCategory?.localizedDisplayName ??
+                    data.storeProfile.activeCategory?.localizedDisplayName ??
+                    i18n.t("storeProfile.none")}
                 </small>
               </summary>
               <div className="moda-settings-disclosure-body moda-recovery-context-body">

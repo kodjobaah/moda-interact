@@ -22,15 +22,21 @@ export async function action({ request, context }: ActionFunctionArgs) {
 
   if (shop.onboardingCompleted === true) {
     await ensureOnboardingRecoveryTemplatesBestEffort(shop.id);
-    return Response.json({ ok: true, onboardingCompleted: true }, {
-      headers: { "Cache-Control": "no-store" },
-    });
+    return Response.json(
+      { ok: true, onboardingCompleted: true },
+      {
+        headers: { "Cache-Control": "no-store" },
+      },
+    );
   }
 
   // No initial store category or selection generation is required for billing.
   const form = await request.formData();
   if ([...form.keys()].length !== 0) {
-    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "INVALID_INPUT" },
+      { status: 400 },
+    );
   }
 
   const projection = await billingService.getSubscriptionProjection(shop.id);
@@ -77,7 +83,10 @@ export async function action({ request, context }: ActionFunctionArgs) {
   await persistShopifyOnboardingMilestone(shop.id);
   await ensureOnboardingRecoveryTemplatesBestEffort(shop.id);
 
-  return Response.json({ ok: true, onboardingCompleted: true }, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  return Response.json(
+    { ok: true, onboardingCompleted: true },
+    {
+      headers: { "Cache-Control": "no-store" },
+    },
+  );
 }

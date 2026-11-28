@@ -35,8 +35,16 @@
   border: 1px solid var(--recovery-line);
   border-radius: 22px;
   background:
-    radial-gradient(circle at 8% 10%, rgba(214, 230, 220, 0.72), transparent 34%),
-    radial-gradient(circle at 94% 18%, rgba(185, 210, 194, 0.52), transparent 30%),
+    radial-gradient(
+      circle at 8% 10%,
+      rgba(214, 230, 220, 0.72),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 94% 18%,
+      rgba(185, 210, 194, 0.52),
+      transparent 30%
+    ),
     linear-gradient(135deg, #ffffff 0%, #f4f9f6 100%);
   box-shadow: var(--recovery-shadow);
 }
@@ -190,7 +198,11 @@
   height: 32px;
   flex: 0 0 auto;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--recovery-green-800), var(--recovery-green-600));
+  background: linear-gradient(
+    135deg,
+    var(--recovery-green-800),
+    var(--recovery-green-600)
+  );
   color: #fff;
   font-weight: 900;
   box-shadow: 0 10px 22px rgba(20, 61, 44, 0.16);
@@ -245,7 +257,9 @@
   font: inherit;
   font-size: 16px;
   outline: none;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .moda-recovery-number-control input[type="number"]:focus {
@@ -305,7 +319,11 @@
   border-radius: 18px;
   background: linear-gradient(180deg, #fff, #fbfdfc);
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease, background 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    transform 0.16s ease,
+    background 0.16s ease;
 }
 
 .moda-recovery-choice:hover,
@@ -489,7 +507,10 @@
   font-size: 14px;
   font-weight: 800;
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .moda-recovery-toggle-card.is-selected {
@@ -541,7 +562,6 @@
   color: #fff;
   font-family: Georgia, serif;
 }
-
 
 .moda-recovery-section-heading {
   margin-bottom: 14px;
@@ -674,13 +694,19 @@
   border: 0;
   border-radius: 999px;
   padding: 13px 22px;
-  background: linear-gradient(135deg, var(--recovery-green-800), var(--recovery-green-600));
+  background: linear-gradient(
+    135deg,
+    var(--recovery-green-800),
+    var(--recovery-green-600)
+  );
   color: #fff;
   font: inherit;
   font-weight: 850;
   cursor: pointer;
   box-shadow: 0 12px 26px rgba(20, 61, 44, 0.18);
-  transition: transform 0.16s ease, box-shadow 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease;
 }
 
 .moda-recovery-save-button:hover {
@@ -856,7 +882,10 @@
   font-size: 14px;
   font-weight: 500;
   outline: none;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease;
 }
 
 .moda-store-profile-form select:focus,
@@ -882,7 +911,11 @@
   padding: 10px 17px;
   border: 0;
   border-radius: 999px;
-  background: linear-gradient(135deg, var(--recovery-green-800), var(--recovery-green-600));
+  background: linear-gradient(
+    135deg,
+    var(--recovery-green-800),
+    var(--recovery-green-600)
+  );
   color: #fff;
   font: inherit;
   font-size: 13px;
@@ -890,7 +923,10 @@
   white-space: nowrap;
   cursor: pointer;
   box-shadow: 0 9px 20px rgba(20, 61, 44, 0.15);
-  transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    opacity 0.16s ease;
 }
 
 .moda-store-profile-form button:hover:not(:disabled),
@@ -966,7 +1002,10 @@
   border: 1px dashed #9fb7a8;
   border-radius: 12px;
   background: #fff;
-  transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
 }
 
 .moda-merchant-knowledge-dropzone.is-drag-active {
@@ -1009,7 +1048,8 @@
   cursor: pointer;
 }
 
-.moda-merchant-knowledge-dropzone input[type="file"]:disabled::file-selector-button {
+.moda-merchant-knowledge-dropzone
+  input[type="file"]:disabled::file-selector-button {
   cursor: not-allowed;
   opacity: 0.65;
 }
@@ -1025,7 +1065,8 @@
   white-space: nowrap;
 }
 
-.moda-merchant-knowledge-dropzone.has-file .moda-merchant-knowledge-selected-file {
+.moda-merchant-knowledge-dropzone.has-file
+  .moda-merchant-knowledge-selected-file {
   color: var(--recovery-green-900);
 }
 
@@ -1038,7 +1079,8 @@
   line-height: 1.45;
 }
 
-.moda-merchant-knowledge-panel > [role="status"]:not(.moda-recovery-inline-message),
+.moda-merchant-knowledge-panel
+  > [role="status"]:not(.moda-recovery-inline-message),
 .moda-merchant-knowledge-source-list + [role="status"] {
   margin: 14px 0 0;
   color: var(--recovery-muted);
@@ -1086,30 +1128,37 @@
   background: var(--recovery-soft);
 }
 
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status strong {
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status
+  strong {
   color: inherit;
 }
 
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-processing {
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status.is-processing {
   border-color: var(--recovery-green-200);
   background: var(--recovery-green-100);
   color: var(--recovery-green-800);
 }
 
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-ready {
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status.is-ready {
   border-color: var(--recovery-green-300);
   background: #eef7f1;
   color: var(--recovery-green-900);
 }
 
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-failed {
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status.is-failed {
   border-color: #e9caca;
   background: #fff7f7;
   color: #7a2c2c;
 }
 
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-paused,
-.moda-merchant-knowledge-source-copy .moda-merchant-knowledge-source-status.is-inactive {
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status.is-paused,
+.moda-merchant-knowledge-source-copy
+  .moda-merchant-knowledge-source-status.is-inactive {
   color: var(--recovery-muted);
 }
 
@@ -1228,7 +1277,6 @@
   background: #fff7f7;
   color: #7a2c2c;
 }
-
 
 /* Progressive disclosure keeps this multi-purpose settings page scannable while
  * preserving the architecture-required section order and all existing actions. */
@@ -1466,7 +1514,9 @@
 }
 
 /* Minimal, single-path consent activation. Shopify owns the final Save. */
-.moda-recovery-consent-grid { grid-template-columns: minmax(0, 1fr); }
+.moda-recovery-consent-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
 .moda-recovery-consent-action,
 .moda-recovery-consent-card button {
   min-height: 42px;
@@ -1507,11 +1557,19 @@
   outline: 3px solid var(--recovery-green-600);
   outline-offset: 3px;
 }
-.moda-recovery-consent-card button:disabled { opacity: .6; cursor: wait; }
+.moda-recovery-consent-card button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
 .moda-recovery-consent-card button:focus-visible,
 .moda-recovery-consent-guidance summary:focus-visible {
   outline: 3px solid var(--recovery-green-600);
   outline-offset: 3px;
 }
-.moda-recovery-consent-guidance { margin-top: 12px; font-size: 13px; }
-.moda-recovery-consent-guidance p { line-height: 1.6; }
+.moda-recovery-consent-guidance {
+  margin-top: 12px;
+  font-size: 13px;
+}
+.moda-recovery-consent-guidance p {
+  line-height: 1.6;
+}

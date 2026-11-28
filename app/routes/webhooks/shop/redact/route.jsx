@@ -30,17 +30,20 @@ export const action = async ({ request }) => {
   const { shop, topic, eventId } = authenticated;
 
   try {
-    await shopifyOfflineCoordination.withLifecycleLock(shop, async ({ transaction, shop: currentShop }) => {
-      const storedDomain = currentShop?.domain ?? shop;
-      // Session is keyed by shop domain rather than shopId, so it is not covered
-      // by the Shop row's cascading deletes and must be cleaned up separately.
-      await transaction.session.deleteMany({ where: { shop: storedDomain } });
+    await shopifyOfflineCoordination.withLifecycleLock(
+      shop,
+      async ({ transaction, shop: currentShop }) => {
+        const storedDomain = currentShop?.domain ?? shop;
+        // Session is keyed by shop domain rather than shopId, so it is not covered
+        // by the Shop row's cascading deletes and must be cleaned up separately.
+        await transaction.session.deleteMany({ where: { shop: storedDomain } });
 
-      // Deleting Shop cascades to its related merchant data.
-      await transaction.shop.deleteMany({
-        where: currentShop ? { id: currentShop.id } : { domain: shop },
-      });
-    });
+        // Deleting Shop cascades to its related merchant data.
+        await transaction.shop.deleteMany({
+          where: currentShop ? { id: currentShop.id } : { domain: shop },
+        });
+      },
+    );
 
     recordShopifyWebhookRouteOutcome({
       request,

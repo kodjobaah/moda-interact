@@ -10,7 +10,9 @@ import {
 // Published Shopify App Block UUID, distinct from the extension config UID.
 const SHOPIFY_PUBLISHED_CART_BLOCK_ID = "01a1f174-b1a4-78bf-b843-c2cd7385513c";
 
-function adminWith(handlers: Record<string, unknown | Error>): AdminGraphqlClient {
+function adminWith(
+  handlers: Record<string, unknown | Error>,
+): AdminGraphqlClient {
   return {
     async graphql(query: string) {
       const key = Object.keys(handlers).find((name) => query.includes(name));
@@ -27,8 +29,18 @@ function adminWith(handlers: Record<string, unknown | Error>): AdminGraphqlClien
 
 const PLUS_PLAN = { shop: { plan: { shopifyPlus: true } } };
 const NON_PLUS_PLAN = { shop: { plan: { shopifyPlus: false } } };
-const GATE_ON = { currentAppInstallation: { id: "gid://shopify/AppInstallation/123", metafield: { value: "true", type: "boolean" } } };
-const GATE_OFF = { currentAppInstallation: { id: "gid://shopify/AppInstallation/123", metafield: { value: "false", type: "boolean" } } };
+const GATE_ON = {
+  currentAppInstallation: {
+    id: "gid://shopify/AppInstallation/123",
+    metafield: { value: "true", type: "boolean" },
+  },
+};
+const GATE_OFF = {
+  currentAppInstallation: {
+    id: "gid://shopify/AppInstallation/123",
+    metafield: { value: "false", type: "boolean" },
+  },
+};
 
 function cartTemplateData(content: string | null) {
   return {
@@ -37,7 +49,10 @@ function cartTemplateData(content: string | null) {
         {
           id: "gid://shopify/OnlineStoreTheme/1",
           files: {
-            nodes: content === null ? [] : [{ filename: "templates/cart.json", body: { content } }],
+            nodes:
+              content === null
+                ? []
+                : [{ filename: "templates/cart.json", body: { content } }],
             userErrors: [] as Array<{ code: string; filename: string }>,
           },
         },
@@ -51,7 +66,9 @@ const ENABLED_CART_TEMPLATE = JSON.stringify({
     apps: {
       type: "apps",
       blocks: {
-        consent: { type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}` },
+        consent: {
+          type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+        },
       },
     },
   },
@@ -60,10 +77,14 @@ const ENABLED_CART_TEMPLATE = JSON.stringify({
 describe("consent placement resolution", () => {
   it("maps the shop plan to exactly one placement", async () => {
     expect(
-      await resolveConsentPlacement(adminWith({ ModaConsentShopPlan: PLUS_PLAN })),
+      await resolveConsentPlacement(
+        adminWith({ ModaConsentShopPlan: PLUS_PLAN }),
+      ),
     ).toBe("plus_checkout");
     expect(
-      await resolveConsentPlacement(adminWith({ ModaConsentShopPlan: NON_PLUS_PLAN })),
+      await resolveConsentPlacement(
+        adminWith({ ModaConsentShopPlan: NON_PLUS_PLAN }),
+      ),
     ).toBe("non_plus_cart");
   });
 
@@ -74,7 +95,9 @@ describe("consent placement resolution", () => {
       ),
     ).toBe("unknown");
     expect(
-      await resolveConsentPlacement(adminWith({ ModaConsentShopPlan: { shop: {} } })),
+      await resolveConsentPlacement(
+        adminWith({ ModaConsentShopPlan: { shop: {} } }),
+      ),
     ).toBe("unknown");
   });
 });
@@ -82,7 +105,9 @@ describe("consent placement resolution", () => {
 describe("Shopify Plus checkout editor navigation", () => {
   it("links directly to the checkout Apps panel without auto-adding a block", () => {
     const url = buildCheckoutEditorUrl("merchant.myshopify.com");
-    expect(url).toBe("https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps");
+    expect(url).toBe(
+      "https://merchant.myshopify.com/admin/settings/checkout/editor?page=checkout&context=apps",
+    );
     expect(url).not.toContain("addAppBlockId");
     expect(url).not.toContain("activateAppId");
   });
@@ -106,7 +131,9 @@ describe("consent activation snapshot", () => {
       ...base,
       admin: adminWith({
         ModaConsentShopPlan: NON_PLUS_PLAN,
-        ModaConsentPublishedCartTemplate: cartTemplateData(ENABLED_CART_TEMPLATE),
+        ModaConsentPublishedCartTemplate: cartTemplateData(
+          ENABLED_CART_TEMPLATE,
+        ),
         ModaConsentCartGate: GATE_ON,
       }),
     });
@@ -115,24 +142,33 @@ describe("consent activation snapshot", () => {
     expect(activation.cartBlockPresence).toBe("enabled");
     expect(activation.gateState).toBe("enabled");
     expect(activation.plusStatus).toBe("unsupported");
-    expect(activation.cartThemeEditorUrl).toContain("/admin/themes/current/editor");
+    expect(activation.cartThemeEditorUrl).toContain(
+      "/admin/themes/current/editor",
+    );
     expect(activation.cartThemeEditorUrl).not.toContain("addAppBlockId");
     expect(activation.appProxyDefaultRoot).toBe("/apps/moda-consent");
   });
 
   it("reports active for Shopify's published cart-consent block identity", async () => {
     const published = JSON.stringify({
-      sections: { apps: { type: "apps", blocks: {
-        moda_interact_cart_consent_BYfR7p: {
-          type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+      sections: {
+        apps: {
+          type: "apps",
+          blocks: {
+            moda_interact_cart_consent_BYfR7p: {
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+            },
+          },
         },
-      } } },
+      },
     });
     const activation = await loadConsentActivation({
       ...base,
       admin: adminWith({
         ModaConsentShopPlan: NON_PLUS_PLAN,
-        ModaConsentPublishedCartTemplate: cartTemplateData(`/* generated */\n${published}`),
+        ModaConsentPublishedCartTemplate: cartTemplateData(
+          `/* generated */\n${published}`,
+        ),
         ModaConsentCartGate: GATE_ON,
       }),
     });
@@ -156,10 +192,19 @@ describe("consent activation snapshot", () => {
 
   it("flags multiple published cart blocks instead of falsely reporting clean activation", async () => {
     const repeated = JSON.stringify({
-      sections: { apps: { type: "apps", blocks: {
-        first: { type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}` },
-        second: { type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}` },
-      } } },
+      sections: {
+        apps: {
+          type: "apps",
+          blocks: {
+            first: {
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+            },
+            second: {
+              type: `shopify://apps/moda-interact/blocks/cart-consent/${SHOPIFY_PUBLISHED_CART_BLOCK_ID}`,
+            },
+          },
+        },
+      },
     });
     const activation = await loadConsentActivation({
       ...base,
@@ -189,7 +234,11 @@ describe("consent activation snapshot", () => {
   });
 
   it("does not call a missing or unreadable published cart template unsupported", async () => {
-    for (const content of [null, "{invalid", JSON.stringify({ error: "not a cart template" })]) {
+    for (const content of [
+      null,
+      "{invalid",
+      JSON.stringify({ error: "not a cart template" }),
+    ]) {
       const activation = await loadConsentActivation({
         ...base,
         admin: adminWith({
@@ -198,14 +247,18 @@ describe("consent activation snapshot", () => {
           ModaConsentCartGate: GATE_ON,
         }),
       });
-      expect(activation.cartStatus).toBe(content === null ? "unavailable" : "unverified");
+      expect(activation.cartStatus).toBe(
+        content === null ? "unavailable" : "unverified",
+      );
       expect(activation.cartBlockPresence).toBe("unknown");
     }
   });
 
   it("treats Shopify theme-file userErrors as verification failures, never unsupported", async () => {
     const themes = cartTemplateData(ENABLED_CART_TEMPLATE);
-    themes.themes.nodes[0].files.userErrors = [{ code: "ACCESS_DENIED", filename: "templates/cart.json" }];
+    themes.themes.nodes[0].files.userErrors = [
+      { code: "ACCESS_DENIED", filename: "templates/cart.json" },
+    ];
     const activation = await loadConsentActivation({
       ...base,
       admin: adminWith({
@@ -221,13 +274,18 @@ describe("consent activation snapshot", () => {
   it("offers only the checkout placement on Plus and keeps the cart unsupported", async () => {
     const activation = await loadConsentActivation({
       ...base,
-      admin: adminWith({ ModaConsentShopPlan: PLUS_PLAN, ModaConsentCartGate: GATE_OFF }),
+      admin: adminWith({
+        ModaConsentShopPlan: PLUS_PLAN,
+        ModaConsentCartGate: GATE_OFF,
+      }),
     });
     expect(activation.placement).toBe("plus_checkout");
     expect(activation.plusStatus).toBe("unverified");
     expect(activation.cartStatus).toBe("unsupported");
     expect(activation.cartThemeEditorUrl).toBeNull();
-    expect(activation.checkoutEditorUrl).toBe(buildCheckoutEditorUrl(base.shopDomain));
+    expect(activation.checkoutEditorUrl).toBe(
+      buildCheckoutEditorUrl(base.shopDomain),
+    );
   });
 
   it("degrades to truthful unavailable statuses when evidence reads fail", async () => {
@@ -253,50 +311,79 @@ describe("consent activation snapshot", () => {
   });
 });
 
-
 describe("merchant-only Shopify cart availability gate", () => {
   it("never reports a published block active when the gate is disabled", async () => {
     const activation = await loadConsentActivation({
-      admin: adminWith({ ModaConsentShopPlan: NON_PLUS_PLAN,
-        ModaConsentPublishedCartTemplate: cartTemplateData(ENABLED_CART_TEMPLATE),
-        ModaConsentCartGate: GATE_OFF }),
-      shopDomain: "merchant.myshopify.com", apiKey: "client-id",
+      admin: adminWith({
+        ModaConsentShopPlan: NON_PLUS_PLAN,
+        ModaConsentPublishedCartTemplate: cartTemplateData(
+          ENABLED_CART_TEMPLATE,
+        ),
+        ModaConsentCartGate: GATE_OFF,
+      }),
+      shopDomain: "merchant.myshopify.com",
+      apiKey: "client-id",
     });
     expect(activation.cartStatus).toBe("inactive");
     expect(activation.gateState).toBe("disabled");
   });
 
   it("sets the app-data gate from a verified app-installation id and verifies Shopify's result", async () => {
-    const requests: Array<{ query: string; options?: { variables?: Record<string, unknown> } }> = [];
+    const requests: Array<{
+      query: string;
+      options?: { variables?: Record<string, unknown> };
+    }> = [];
     const admin: AdminGraphqlClient = {
       async graphql(query, options) {
         requests.push({ query, options });
         const data = query.includes("ModaConsentCartGateSet")
-          ? { metafieldsSet: { metafields: [{ value: "true" }], userErrors: [] } }
+          ? {
+              metafieldsSet: {
+                metafields: [{ value: "true" }],
+                userErrors: [],
+              },
+            }
           : GATE_OFF;
         return { ok: true, status: 200, json: async () => ({ data }) };
       },
     };
     expect(await loadCartConsentGateState(admin)).toBe("disabled");
-    expect(await reconcileCartConsentGate(admin, "non_plus_cart")).toBe("enabled");
+    expect(await reconcileCartConsentGate(admin, "non_plus_cart")).toBe(
+      "enabled",
+    );
     expect(requests.at(-1)?.options?.variables).toEqual({
-      ownerId: "gid://shopify/AppInstallation/123", value: "true",
+      ownerId: "gid://shopify/AppInstallation/123",
+      value: "true",
     });
   });
 
   it("disables an old cart gate when a Plus merchant activates checkout", async () => {
     const admin: AdminGraphqlClient = {
       async graphql(query, options) {
-        return { ok: true, status: 200, json: async () => ({ data: query.includes("ModaConsentCartGateSet")
-          ? { metafieldsSet: { metafields: [{ value: options?.variables?.value }], userErrors: [] } }
-          : GATE_ON }) };
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            data: query.includes("ModaConsentCartGateSet")
+              ? {
+                  metafieldsSet: {
+                    metafields: [{ value: options?.variables?.value }],
+                    userErrors: [],
+                  },
+                }
+              : GATE_ON,
+          }),
+        };
       },
     };
-    expect(await reconcileCartConsentGate(admin, "plus_checkout")).toBe("disabled");
+    expect(await reconcileCartConsentGate(admin, "plus_checkout")).toBe(
+      "disabled",
+    );
   });
 
   it("refuses to reconcile without a verifiable plan", async () => {
-    await expect(reconcileCartConsentGate(adminWith({}), "unknown"))
-      .rejects.toMatchObject({ code: "SETUP_UNAVAILABLE" });
+    await expect(
+      reconcileCartConsentGate(adminWith({}), "unknown"),
+    ).rejects.toMatchObject({ code: "SETUP_UNAVAILABLE" });
   });
 });

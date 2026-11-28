@@ -21,11 +21,12 @@ const mocks = vi.hoisted(() => ({
   exists: vi.fn(),
 }));
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await mocks.authenticate(request);
-    const shop = await mocks.shop({domain: authentication.session.shop});
+    const shop = await mocks.shop({ domain: authentication.session.shop });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => mocks.subscription(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -228,7 +229,9 @@ describe("recovery list presentation and navigation", () => {
   it("renders one safe localized row and no premature detail or mutation controls", async () => {
     const data = await loadRecoveryList(request());
     const html = await renderStaticRoute(
-      createElement(RecoveryList, { data, onRefresh: () => {} }), "/", "*",
+      createElement(RecoveryList, { data, onRefresh: () => {} }),
+      "/",
+      "*",
     );
     expect(html).toContain("Ada Lovelace");
     expect(html).toContain("£100.25");
@@ -254,7 +257,9 @@ describe("recovery list presentation and navigation", () => {
         createElement(RecoveryList, {
           data: { ...data, state, error: "date" },
           onRefresh: () => {},
-        }), "/", "*",
+        }),
+        "/",
+        "*",
       );
       expect(html).toContain(
         state === "error" || state === "invalid"
@@ -264,7 +269,8 @@ describe("recovery list presentation and navigation", () => {
     }
     const html = await renderStaticRoute(
       createElement(RecoveryList, { data, busy: true, onRefresh: () => {} }),
-      "/", "*",
+      "/",
+      "*",
     );
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain("Loading recoveries");

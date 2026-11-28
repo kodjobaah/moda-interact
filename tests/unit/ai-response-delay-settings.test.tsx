@@ -4,7 +4,9 @@ import React from "react";
 import AiResponseDelaySettings from "@/routes/app/recovery-settings/AiResponseDelaySettings";
 
 vi.mock("@/components/settings/SettingsForm", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <form>{children}</form>,
+  default: ({ children }: { children: React.ReactNode }) => (
+    <form>{children}</form>
+  ),
 }));
 
 describe("AI response delay settings control", () => {

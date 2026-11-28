@@ -19,9 +19,12 @@ export function loadShopifyPlatformEnvironment({
   environment = process.env,
 } = {}) {
   const explicitPath = environment.MODA_PLATFORM_ENV_FILE;
-  const filePath = explicitPath ? resolve(explicitPath) : resolve(appRoot, "platform.env");
+  const filePath = explicitPath
+    ? resolve(explicitPath)
+    : resolve(appRoot, "platform.env");
   if (!existsSync(filePath)) {
-    if (explicitPath) throw new Error(`MODA_PLATFORM_ENV_FILE not found: ${filePath}`);
+    if (explicitPath)
+      throw new Error(`MODA_PLATFORM_ENV_FILE not found: ${filePath}`);
     return false;
   }
 
@@ -43,21 +46,26 @@ export function loadShopifyPlatformEnvironment({
  * ignored .env.moda-interact file for build-time process.env substitution.
  * Preserve all other entries in the file, including Shopify-managed IDs.
  */
-export function configureShopifyCheckoutReceiptOrigin(publicUrl, {
-  appRoot = APP_ROOT,
-  environment = process.env,
-} = {}) {
+export function configureShopifyCheckoutReceiptOrigin(
+  publicUrl,
+  { appRoot = APP_ROOT, environment = process.env } = {},
+) {
   let url;
   try {
     url = new URL(publicUrl);
   } catch {
-    throw new Error("Shopify development tunnel must provide a valid HTTPS URL.");
+    throw new Error(
+      "Shopify development tunnel must provide a valid HTTPS URL.",
+    );
   }
   if (
     url.protocol !== "https:" ||
     !url.hostname ||
-    url.username || url.password ||
-    url.pathname !== "/" || url.search || url.hash
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
   ) {
     throw new Error("Shopify development tunnel must be a bare HTTPS origin.");
   }
@@ -68,14 +76,18 @@ export function configureShopifyCheckoutReceiptOrigin(publicUrl, {
   const envFile = resolve(appRoot, ".env.moda-interact");
   const previous = existsSync(envFile) ? readFileSync(envFile, "utf8") : "";
   const line = `${RECEIPT_ORIGIN_KEY}=${origin}`;
-  const pattern = /^[ \t]*(?:export[ \t]+)?MODA_CHECKOUT_RECEIPT_ORIGIN[ \t]*=.*$/gm;
+  const pattern =
+    /^[ \t]*(?:export[ \t]+)?MODA_CHECKOUT_RECEIPT_ORIGIN[ \t]*=.*$/gm;
   const matches = previous.match(pattern) ?? [];
   if (matches.length > 1) {
-    throw new Error(`Duplicate ${RECEIPT_ORIGIN_KEY} entries in .env.moda-interact.`);
+    throw new Error(
+      `Duplicate ${RECEIPT_ORIGIN_KEY} entries in .env.moda-interact.`,
+    );
   }
-  const next = matches.length === 1
-    ? previous.replace(pattern, line)
-    : `${previous}${previous && !previous.endsWith("\n") ? "\n" : ""}${line}\n`;
+  const next =
+    matches.length === 1
+      ? previous.replace(pattern, line)
+      : `${previous}${previous && !previous.endsWith("\n") ? "\n" : ""}${line}\n`;
   if (next !== previous) writeFileSync(envFile, next, { mode: 0o600 });
   return { origin, envFile };
 }

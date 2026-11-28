@@ -9,7 +9,9 @@ const flush = async () => {
 beforeEach(() => {
   vi.resetModules();
   delete window.modaWhatsappDrawerConsent;
-  window.modaWhatsappConsent = { initialize: vi.fn().mockResolvedValue(undefined) };
+  window.modaWhatsappConsent = {
+    initialize: vi.fn().mockResolvedValue(undefined),
+  };
   vi.stubGlobal("requestAnimationFrame", (fn) => setTimeout(fn, 0));
   document.body.innerHTML = `
     <template data-moda-whatsapp-drawer-template>
@@ -38,18 +40,27 @@ describe("Dawn-style cart drawer adapter", () => {
     document.body.append(drawer);
     await import("../../../extensions/moda-whatsapp-consent/assets/cart-drawer-consent.js");
     await flush();
-    expect(drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]")).toHaveLength(0);
+    expect(
+      drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]"),
+    ).toHaveLength(0);
     drawer.classList.add("active");
     await flush();
-    expect(drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]")).toHaveLength(1);
-    expect(drawer.querySelector("[data-moda-whatsapp-drawer-consent]")?.nextElementSibling?.className).toBe("cart__ctas");
+    expect(
+      drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]"),
+    ).toHaveLength(1);
+    expect(
+      drawer.querySelector("[data-moda-whatsapp-drawer-consent]")
+        ?.nextElementSibling?.className,
+    ).toBe("cart__ctas");
     expect(window.modaWhatsappConsent.initialize).toHaveBeenCalledTimes(1);
     window.modaWhatsappDrawerConsent.refresh();
     await flush();
     expect(window.modaWhatsappConsent.initialize).toHaveBeenCalledTimes(1);
     drawer.classList.remove("active");
     await flush();
-    expect(drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]")).toHaveLength(0);
+    expect(
+      drawer.querySelectorAll("[data-moda-whatsapp-drawer-consent]"),
+    ).toHaveLength(0);
     drawer.classList.add("active");
     await flush();
     expect(window.modaWhatsappConsent.initialize).toHaveBeenCalledTimes(2);
@@ -58,14 +69,21 @@ describe("Dawn-style cart drawer adapter", () => {
   it("does not inject into unsupported drawer markup", async () => {
     const drawer = document.createElement("cart-drawer");
     drawer.classList.add("active");
-    drawer.innerHTML = '<div id="CartDrawer"><button id="CartDrawer-Checkout">Checkout</button></div>';
+    drawer.innerHTML =
+      '<div id="CartDrawer"><button id="CartDrawer-Checkout">Checkout</button></div>';
     document.body.append(drawer);
     const log = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     await import("../../../extensions/moda-whatsapp-consent/assets/cart-drawer-consent.js");
     await flush();
-    expect(drawer.querySelector("[data-moda-whatsapp-drawer-consent]")).toBeNull();
+    expect(
+      drawer.querySelector("[data-moda-whatsapp-drawer-consent]"),
+    ).toBeNull();
     expect(window.modaWhatsappConsent.initialize).not.toHaveBeenCalled();
-    expect(log).toHaveBeenCalledWith("[moda.cart.drawer]", "drawer.unsupported_structure", { stage: "mount" });
+    expect(log).toHaveBeenCalledWith(
+      "[moda.cart.drawer]",
+      "drawer.unsupported_structure",
+      { stage: "mount" },
+    );
     log.mockRestore();
   });
 });

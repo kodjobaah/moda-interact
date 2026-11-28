@@ -3,10 +3,17 @@ import type { PrismaClient } from "@prisma/client";
 
 import { projectCapacityFixture } from "../../../fixtures/commercial-read-context";
 class MerchantRecoveryCapacityReadService {
-  constructor(private database: PrismaClient, private pricing: {
-    readRecoveryCreditTopUpConfiguration: (handle: string | null | undefined) => Promise<unknown>;
-  }) {}
-  getMerchantRecoveryCapacityState(shopId: string) { return projectCapacityFixture(this.database, this.pricing, shopId); }
+  constructor(
+    private database: PrismaClient,
+    private pricing: {
+      readRecoveryCreditTopUpConfiguration: (
+        handle: string | null | undefined,
+      ) => Promise<unknown>;
+    },
+  ) {}
+  getMerchantRecoveryCapacityState(shopId: string) {
+    return projectCapacityFixture(this.database, this.pricing, shopId);
+  }
 }
 
 const shopId = "shop-1";
@@ -17,9 +24,26 @@ type FixtureOptions = {
   planKind?: "FREE" | "PAID_METERED";
   status?: string;
   missingPeriod?: boolean;
-  lifetime?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number } | null;
-  purchased?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number; refundingQuantity: number } | null;
-  periodCounter?: { grantedQuantity: number; committedQuantity: number; reservedQuantity: number; forfeitedQuantity: number; currentAllowanceQuantity?: number | null; shopId?: string; billingPeriodId?: string } | null;
+  lifetime?: {
+    grantedQuantity: number;
+    committedQuantity: number;
+    reservedQuantity: number;
+  } | null;
+  purchased?: {
+    grantedQuantity: number;
+    committedQuantity: number;
+    reservedQuantity: number;
+    refundingQuantity: number;
+  } | null;
+  periodCounter?: {
+    grantedQuantity: number;
+    committedQuantity: number;
+    reservedQuantity: number;
+    forfeitedQuantity: number;
+    currentAllowanceQuantity?: number | null;
+    shopId?: string;
+    billingPeriodId?: string;
+  } | null;
   periodOverrides?: Record<string, unknown>;
   selection?: Record<string, unknown> | null;
   subscriptionOverrides?: Record<string, unknown>;
@@ -34,33 +58,37 @@ function createService(options: FixtureOptions = {}) {
     kind: planKind,
     active: true,
   };
-  const paidPeriod = planKind === "PAID_METERED" && !options.missingPeriod
-    ? {
-        id: "period-1",
-        shopId,
-        subscriptionId: "subscription-1",
-        planId: plan.id,
-        shopifyPlanHandleSnapshot: plan.shopifyPlanHandle,
-        planKindSnapshot: "PAID_METERED",
-        periodStart,
-        periodEnd,
-        status: "OPEN",
-        entitlementCounters: options.periodCounter === null
-          ? []
-          : [{
-              shopId,
-              billingPeriodId: "period-1",
-              counter: "INCLUDED_RECOVERY_CREDITS",
-              grantedQuantity: 30,
-              currentAllowanceQuantity: null,
-              committedQuantity: 4,
-              reservedQuantity: 3,
-              forfeitedQuantity: 2,
-              ...options.periodCounter,
-            }],
-        ...options.periodOverrides,
-      }
-    : null;
+  const paidPeriod =
+    planKind === "PAID_METERED" && !options.missingPeriod
+      ? {
+          id: "period-1",
+          shopId,
+          subscriptionId: "subscription-1",
+          planId: plan.id,
+          shopifyPlanHandleSnapshot: plan.shopifyPlanHandle,
+          planKindSnapshot: "PAID_METERED",
+          periodStart,
+          periodEnd,
+          status: "OPEN",
+          entitlementCounters:
+            options.periodCounter === null
+              ? []
+              : [
+                  {
+                    shopId,
+                    billingPeriodId: "period-1",
+                    counter: "INCLUDED_RECOVERY_CREDITS",
+                    grantedQuantity: 30,
+                    currentAllowanceQuantity: null,
+                    committedQuantity: 4,
+                    reservedQuantity: 3,
+                    forfeitedQuantity: 2,
+                    ...options.periodCounter,
+                  },
+                ],
+          ...options.periodOverrides,
+        }
+      : null;
   const subscription = {
     id: "subscription-1",
     planId: plan.id,
@@ -76,17 +104,27 @@ function createService(options: FixtureOptions = {}) {
     ...options.subscriptionOverrides,
   };
   const findSubscription = vi.fn().mockResolvedValue(subscription);
-  const findCounter = vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
-    where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
-      ? options.purchased === undefined
-        ? { grantedQuantity: 20, committedQuantity: 5, reservedQuantity: 2, refundingQuantity: 3 }
-        : options.purchased
-      : options.lifetime === undefined
-        ? { grantedQuantity: 10, committedQuantity: 2, reservedQuantity: 1 }
-        : options.lifetime,
-  );
+  const findCounter = vi
+    .fn()
+    .mockImplementation(
+      async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
+        where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
+          ? options.purchased === undefined
+            ? {
+                grantedQuantity: 20,
+                committedQuantity: 5,
+                reservedQuantity: 2,
+                refundingQuantity: 3,
+              }
+            : options.purchased
+          : options.lifetime === undefined
+            ? { grantedQuantity: 10, committedQuantity: 2, reservedQuantity: 1 }
+            : options.lifetime,
+    );
   const findSelection = vi.fn().mockResolvedValue(options.selection ?? null);
-  const findTopUpConfiguration = vi.fn().mockResolvedValue({ enabled: true, creditsPerPack: 50 });
+  const findTopUpConfiguration = vi
+    .fn()
+    .mockResolvedValue({ enabled: true, creditsPerPack: 50 });
   const database = {
     subscription: {
       findUnique: findSubscription,
@@ -143,18 +181,70 @@ describe("MerchantRecoveryCapacityReadService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
     const cases = [
-      { name: "PROMOTIONAL", options: { selection: activePromotion() }, expected: "PROMOTIONAL" },
-      { name: "PAID_INCLUDED", options: { planKind: "PAID_METERED" as const, purchased: null, lifetime: null }, expected: "PAID_INCLUDED" },
-      { name: "PURCHASED", options: { purchased: { grantedQuantity: 20, committedQuantity: 5, reservedQuantity: 2, refundingQuantity: 3 } }, expected: "PURCHASED" },
-      { name: "FREE_LIFETIME", options: { purchased: { grantedQuantity: 10, committedQuantity: 5, reservedQuantity: 5, refundingQuantity: 0 } }, expected: "FREE_LIFETIME" },
-      { name: "EXHAUSTED", options: { lifetime: { grantedQuantity: 0, committedQuantity: 0, reservedQuantity: 0 }, purchased: { grantedQuantity: 0, committedQuantity: 0, reservedQuantity: 0, refundingQuantity: 0 } }, expected: "EXHAUSTED" },
+      {
+        name: "PROMOTIONAL",
+        options: { selection: activePromotion() },
+        expected: "PROMOTIONAL",
+      },
+      {
+        name: "PAID_INCLUDED",
+        options: {
+          planKind: "PAID_METERED" as const,
+          purchased: null,
+          lifetime: null,
+        },
+        expected: "PAID_INCLUDED",
+      },
+      {
+        name: "PURCHASED",
+        options: {
+          purchased: {
+            grantedQuantity: 20,
+            committedQuantity: 5,
+            reservedQuantity: 2,
+            refundingQuantity: 3,
+          },
+        },
+        expected: "PURCHASED",
+      },
+      {
+        name: "FREE_LIFETIME",
+        options: {
+          purchased: {
+            grantedQuantity: 10,
+            committedQuantity: 5,
+            reservedQuantity: 5,
+            refundingQuantity: 0,
+          },
+        },
+        expected: "FREE_LIFETIME",
+      },
+      {
+        name: "EXHAUSTED",
+        options: {
+          lifetime: {
+            grantedQuantity: 0,
+            committedQuantity: 0,
+            reservedQuantity: 0,
+          },
+          purchased: {
+            grantedQuantity: 0,
+            committedQuantity: 0,
+            reservedQuantity: 0,
+            refundingQuantity: 0,
+          },
+        },
+        expected: "EXHAUSTED",
+      },
     ];
 
     for (const testCase of cases) {
       const { service } = createService(testCase.options);
       const result = await service.getMerchantRecoveryCapacityState(shopId);
       expect(result.capacitySource, testCase.name).toBe(testCase.expected);
-      expect(result.canStartRecovery, testCase.name).toBe(testCase.expected !== "EXHAUSTED");
+      expect(result.canStartRecovery, testCase.name).toBe(
+        testCase.expected !== "EXHAUSTED",
+      );
     }
   });
 
@@ -176,9 +266,15 @@ describe("MerchantRecoveryCapacityReadService", () => {
         },
       }),
     });
-    const mapped = await eligible.service.getMerchantRecoveryCapacityState(shopId);
+    const mapped =
+      await eligible.service.getMerchantRecoveryCapacityState(shopId);
     expect(mapped.capacitySource).toBe("PROMOTIONAL");
-    expect(mapped.promotional).toEqual({ granted: 12, committed: 2, reserved: 4, remaining: 6 });
+    expect(mapped.promotional).toEqual({
+      granted: 12,
+      committed: 2,
+      reserved: 4,
+      remaining: 6,
+    });
 
     const invalid = createService({
       selection: activePromotion({
@@ -187,29 +283,59 @@ describe("MerchantRecoveryCapacityReadService", () => {
         reservedQuantity: 5,
       }),
     });
-    const rejectedPromotion = await invalid.service.getMerchantRecoveryCapacityState(shopId);
-    expect(rejectedPromotion.promotional).toEqual({ granted: 0, committed: 0, reserved: 0, remaining: 0 });
+    const rejectedPromotion =
+      await invalid.service.getMerchantRecoveryCapacityState(shopId);
+    expect(rejectedPromotion.promotional).toEqual({
+      granted: 0,
+      committed: 0,
+      reserved: 0,
+      remaining: 0,
+    });
     expect(rejectedPromotion.capacitySource).toBe("PURCHASED");
 
     const invalidCampaigns = [
-      { name: "target mismatch", campaign: { scope: "PLAN", targetPlanId: "other-plan" } },
+      {
+        name: "target mismatch",
+        campaign: { scope: "PLAN", targetPlanId: "other-plan" },
+      },
       { name: "inactive", campaign: { scope: "GLOBAL", status: "PAUSED" } },
-      { name: "not started", campaign: { scope: "GLOBAL", startsAt: new Date("2026-09-15T00:00:00.000Z") } },
-      { name: "expired", campaign: { scope: "GLOBAL", expiresAt: new Date("2026-09-13T00:00:00.000Z") } },
+      {
+        name: "not started",
+        campaign: {
+          scope: "GLOBAL",
+          startsAt: new Date("2026-09-15T00:00:00.000Z"),
+        },
+      },
+      {
+        name: "expired",
+        campaign: {
+          scope: "GLOBAL",
+          expiresAt: new Date("2026-09-13T00:00:00.000Z"),
+        },
+      },
     ];
     for (const invalidCampaign of invalidCampaigns) {
       const serviceWithInvalidCampaign = createService({
-        selection: activePromotion({ campaign: {
-          status: "ACTIVE",
-          startsAt: new Date("2026-09-01T00:00:00.000Z"),
-          expiresAt: new Date("2026-10-01T00:00:00.000Z"),
-          ...invalidCampaign.campaign,
-        } }),
+        selection: activePromotion({
+          campaign: {
+            status: "ACTIVE",
+            startsAt: new Date("2026-09-01T00:00:00.000Z"),
+            expiresAt: new Date("2026-10-01T00:00:00.000Z"),
+            ...invalidCampaign.campaign,
+          },
+        }),
       });
-      const invalidCampaignResult = await serviceWithInvalidCampaign.service
-        .getMerchantRecoveryCapacityState(shopId);
-      expect(invalidCampaignResult.promotional.remaining, invalidCampaign.name).toBe(0);
-      expect(invalidCampaignResult.capacitySource, invalidCampaign.name).toBe("PURCHASED");
+      const invalidCampaignResult =
+        await serviceWithInvalidCampaign.service.getMerchantRecoveryCapacityState(
+          shopId,
+        );
+      expect(
+        invalidCampaignResult.promotional.remaining,
+        invalidCampaign.name,
+      ).toBe(0);
+      expect(invalidCampaignResult.capacitySource, invalidCampaign.name).toBe(
+        "PURCHASED",
+      );
     }
   });
 
@@ -306,7 +432,11 @@ describe("MerchantRecoveryCapacityReadService", () => {
   it("reports post-contract exhaustion when no durable purchased/lifetime capacity remains", async () => {
     const { service } = createService({
       status: "NO_CONTRACT",
-      lifetime: { grantedQuantity: 0, committedQuantity: 0, reservedQuantity: 0 },
+      lifetime: {
+        grantedQuantity: 0,
+        committedQuantity: 0,
+        reservedQuantity: 0,
+      },
       purchased: {
         grantedQuantity: 0,
         committedQuantity: 0,
@@ -349,24 +479,69 @@ describe("MerchantRecoveryCapacityReadService", () => {
   it.each([
     ["missing period", { missingPeriod: true }],
     ["missing counter", { periodCounter: null }],
-    ["identity mismatch", { periodCounter: { grantedQuantity: 30, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2, billingPeriodId: "other-period" } }],
-    ["invalid balances", { periodCounter: { grantedQuantity: 5, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2 } }],
-    ["unexpected current allowance", { periodCounter: { grantedQuantity: 30, committedQuantity: 4, reservedQuantity: 3, forfeitedQuantity: 2, currentAllowanceQuantity: 30 } }],
-  ] as const)("fails closed for a paid projection with %s", async (_name, overrides) => {
-    const { service } = createService({
-      planKind: "PAID_METERED",
-      purchased: null,
-      lifetime: null,
-      ...overrides,
-    });
+    [
+      "identity mismatch",
+      {
+        periodCounter: {
+          grantedQuantity: 30,
+          committedQuantity: 4,
+          reservedQuantity: 3,
+          forfeitedQuantity: 2,
+          billingPeriodId: "other-period",
+        },
+      },
+    ],
+    [
+      "invalid balances",
+      {
+        periodCounter: {
+          grantedQuantity: 5,
+          committedQuantity: 4,
+          reservedQuantity: 3,
+          forfeitedQuantity: 2,
+        },
+      },
+    ],
+    [
+      "unexpected current allowance",
+      {
+        periodCounter: {
+          grantedQuantity: 30,
+          committedQuantity: 4,
+          reservedQuantity: 3,
+          forfeitedQuantity: 2,
+          currentAllowanceQuantity: 30,
+        },
+      },
+    ],
+  ] as const)(
+    "fails closed for a paid projection with %s",
+    async (_name, overrides) => {
+      const { service } = createService({
+        planKind: "PAID_METERED",
+        purchased: null,
+        lifetime: null,
+        ...overrides,
+      });
 
-    const result = await service.getMerchantRecoveryCapacityState(shopId);
-    expect(result).toMatchObject({ availability: "CONFIGURATION_UNAVAILABLE", capacitySource: null, canStartRecovery: false });
-    expect(result.paidIncluded).toBeNull();
-  });
+      const result = await service.getMerchantRecoveryCapacityState(shopId);
+      expect(result).toMatchObject({
+        availability: "CONFIGURATION_UNAVAILABLE",
+        capacitySource: null,
+        canStartRecovery: false,
+      });
+      expect(result.paidIncluded).toBeNull();
+    },
+  );
 
   it("preserves read shapes, reuses the catalogue reader once, and performs no writes or provider calls", async () => {
-    const { service, database, findCounter, findSelection, findTopUpConfiguration } = createService();
+    const {
+      service,
+      database,
+      findCounter,
+      findSelection,
+      findTopUpConfiguration,
+    } = createService();
 
     await service.getMerchantRecoveryCapacityState(shopId);
 

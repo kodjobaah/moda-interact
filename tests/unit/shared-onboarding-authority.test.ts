@@ -12,7 +12,8 @@ function sourceFiles(directory: string): string[] {
 
 describe("Shop onboarding authority", () => {
   it("does not read the compatibility milestone from ShopSettings in production app code", () => {
-    const legacyRead = /settings\s*(?:\?\.)?\.\s*onboardingCompleted|settings\s*:\s*\{\s*select\s*:\s*\{\s*onboardingCompleted/s;
+    const legacyRead =
+      /settings\s*(?:\?\.)?\.\s*onboardingCompleted|settings\s*:\s*\{\s*select\s*:\s*\{\s*onboardingCompleted/s;
 
     for (const file of sourceFiles(join(process.cwd(), "app"))) {
       expect(readFileSync(file, "utf8"), file).not.toMatch(legacyRead);

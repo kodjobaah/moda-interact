@@ -17,9 +17,17 @@ async function captureSharedErrorRecords(
   const sink = vi.spyOn(console, "error").mockImplementation((line) => {
     if (options.throwFromSink) throw new Error("test Shared sink failure");
     if (typeof line !== "string") return;
-    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+    try {
+      records.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      return;
+    }
   });
-  try { await run(); } finally { sink.mockRestore(); }
+  try {
+    await run();
+  } finally {
+    sink.mockRestore();
+  }
   return records;
 }
 
@@ -55,7 +63,11 @@ function activeProviderSubscription(overrides: Record<string, unknown> = {}) {
 type SyncServiceOptions = {
   providerSubscription?: Record<string, unknown> | null;
   currentSubscription?: Record<string, unknown> | null;
-  resolution?: { kind: string; plan?: Record<string, unknown>; materialized?: boolean };
+  resolution?: {
+    kind: string;
+    plan?: Record<string, unknown>;
+    materialized?: boolean;
+  };
   topUpConfiguration?: { enabled: boolean; creditsPerPack: number | null };
 };
 
@@ -71,10 +83,18 @@ function createSyncService({
     merchantPricingPlan: { findUnique: vi.fn().mockResolvedValue(null) },
     subscription: {
       findUnique: vi.fn().mockResolvedValue(currentSubscription),
-      upsert: vi.fn(async ({ update, create }: { update: Record<string, unknown>; create: Record<string, unknown> }) => ({
-        id: "subscription-1",
-        ...(currentSubscription ? update : create),
-      })),
+      upsert: vi.fn(
+        async ({
+          update,
+          create,
+        }: {
+          update: Record<string, unknown>;
+          create: Record<string, unknown>;
+        }) => ({
+          id: "subscription-1",
+          ...(currentSubscription ? update : create),
+        }),
+      ),
     },
     billingPlan: {
       findUnique: vi.fn().mockResolvedValue(null),
@@ -98,18 +118,22 @@ function createSyncService({
         shopifyShopId: "gid://shop/1",
       }),
     },
-    $transaction: vi.fn(async (callback: (tx: typeof transaction) => Promise<unknown>) => {
-      const result = await callback(transaction);
-      transactionCommitted = true;
-      return result;
-    }),
+    $transaction: vi.fn(
+      async (callback: (tx: typeof transaction) => Promise<unknown>) => {
+        const result = await callback(transaction);
+        transactionCommitted = true;
+        return result;
+      },
+    ),
   };
   const provider = {
     getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription),
   };
   const planResolutionService = {
     resolveOrMaterializeBillingPlan: vi.fn().mockResolvedValue(resolution),
-    readRecoveryCreditTopUpConfiguration: vi.fn().mockResolvedValue(topUpConfiguration),
+    readRecoveryCreditTopUpConfiguration: vi
+      .fn()
+      .mockResolvedValue(topUpConfiguration),
   };
   const subscriptionActivationService = {
     finalizeInitialPaidActivation: vi.fn().mockResolvedValue({
@@ -170,7 +194,9 @@ describe("SubscriptionSyncService", () => {
     });
     harness.provider.getActiveSubscription.mockRejectedValue(malformed);
 
-    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(malformed);
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(
+      malformed,
+    );
 
     expect(harness.database.$transaction).not.toHaveBeenCalled();
     expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
@@ -179,13 +205,17 @@ describe("SubscriptionSyncService", () => {
 
   it("emits the local SYNC_ERROR reason and identities without fabricating provider evidence", async () => {
     const harness = createSyncService({
-      providerSubscription: activeProviderSubscription({ usageEventHandles: [] }),
+      providerSubscription: activeProviderSubscription({
+        usageEventHandles: [],
+      }),
       resolution: { kind: "INVALID_CATALOGUE_PLAN" },
     });
     const records = await captureSharedErrorRecords(async () => {
       await harness.service.syncSubscription("shop-1");
     });
-    const record = records.find((item) => item.event === "billing.subscription_sync.projection_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_sync.projection_failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -200,17 +230,25 @@ describe("SubscriptionSyncService", () => {
     expect(data).not.toHaveProperty("providerError");
     expect(data).not.toHaveProperty("providerErrors");
 
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(harness.service.syncSubscription("shop-1")).resolves.toMatchObject({
-        status: SubscriptionProjectionStatus.SYNC_ERROR,
-      });
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(
+          harness.service.syncSubscription("shop-1"),
+        ).resolves.toMatchObject({
+          status: SubscriptionProjectionStatus.SYNC_ERROR,
+        });
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
   it("emits original period persistence failure and leaves projection uncommitted", async () => {
     const cause = new Error("database driver marker");
-    const databaseError = Object.assign(new Error("period write marker", { cause }), { code: "P2034" });
+    const databaseError = Object.assign(
+      new Error("period write marker", { cause }),
+      { code: "P2034" },
+    );
     const plan = {
       id: "plan-1",
       name: "Growth",
@@ -226,9 +264,13 @@ describe("SubscriptionSyncService", () => {
     harness.transaction.billingPeriod.create.mockRejectedValue(databaseError);
 
     const records = await captureSharedErrorRecords(async () => {
-      await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(databaseError);
+      await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(
+        databaseError,
+      );
     });
-    const record = records.find((item) => item.event === "billing.subscription_sync.failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_sync.failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -242,9 +284,14 @@ describe("SubscriptionSyncService", () => {
     });
     expect(harness.hasCommitted()).toBe(false);
     expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(databaseError);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(
+          databaseError,
+        );
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
     expect(harness.hasCommitted()).toBe(false);
   });
@@ -257,7 +304,9 @@ describe("SubscriptionSyncService", () => {
       shopifyShopId: null,
     });
 
-    await expect(harness.service.syncSubscription("shop-1")).rejects.toThrow("not a Shopify shop");
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toThrow(
+      "not a Shopify shop",
+    );
     expect(harness.provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(harness.database.$transaction).not.toHaveBeenCalled();
   });
@@ -273,7 +322,12 @@ describe("SubscriptionSyncService", () => {
       pendingEffectiveAt: periodStart,
       nextReconcileAt: periodStart,
     };
-    const { service, transaction, provider, subscriptionEndedNotificationService } = createSyncService({
+    const {
+      service,
+      transaction,
+      provider,
+      subscriptionEndedNotificationService,
+    } = createSyncService({
       currentSubscription,
     });
 
@@ -288,7 +342,9 @@ describe("SubscriptionSyncService", () => {
     expect(result).toBeNull();
     expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
     expect(transaction.subscription.upsert).not.toHaveBeenCalled();
-    expect(subscriptionEndedNotificationService.notifySubscriptionEnded).not.toHaveBeenCalled();
+    expect(
+      subscriptionEndedNotificationService.notifySubscriptionEnded,
+    ).not.toHaveBeenCalled();
   });
 
   it("commits no-contract projection before notifying an ended subscription", async () => {
@@ -316,49 +372,60 @@ describe("SubscriptionSyncService", () => {
 
     await service.syncSubscription("shop-1");
 
-    expect(transaction.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        status: SubscriptionProjectionStatus.NO_CONTRACT,
-        planId: null,
-        cancelAtPeriodEnd: false,
-        providerSubscriptionId: null,
-        unmappedShopifyUsageEventHandles: [],
+    expect(transaction.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: SubscriptionProjectionStatus.NO_CONTRACT,
+          planId: null,
+          cancelAtPeriodEnd: false,
+          providerSubscriptionId: null,
+          unmappedShopifyUsageEventHandles: [],
+        }),
       }),
-    }));
-    expect(subscriptionEndedNotificationService.notifySubscriptionEnded).toHaveBeenCalledWith(
+    );
+    expect(
+      subscriptionEndedNotificationService.notifySubscriptionEnded,
+    ).toHaveBeenCalledWith(
       "shop-1",
       expect.objectContaining({ lifecycleIdentity: "provider:provider-1" }),
     );
-    expect(billingOperationService.reconcileNoActiveSubscription).toHaveBeenCalledWith(
-      transaction,
-      { shopId: "shop-1" },
-    );
+    expect(
+      billingOperationService.reconcileNoActiveSubscription,
+    ).toHaveBeenCalledWith(transaction, { shopId: "shop-1" });
   });
 
   it("uses raw BillingPeriod upsert for an unmapped provider plan", async () => {
-    const { service, transaction, billingOperationService } = createSyncService({
-      providerSubscription: activeProviderSubscription(),
-    });
+    const { service, transaction, billingOperationService } = createSyncService(
+      {
+        providerSubscription: activeProviderSubscription(),
+      },
+    );
 
     await service.syncSubscription("shop-1");
 
-    expect(transaction.billingPeriod.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: { status: BillingPeriodStatus.OPEN },
-      create: expect.objectContaining({
-        planId: null,
-        shopifyPlanHandleSnapshot: "growth",
+    expect(transaction.billingPeriod.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { status: BillingPeriodStatus.OPEN },
+        create: expect.objectContaining({
+          planId: null,
+          shopifyPlanHandleSnapshot: "growth",
+        }),
       }),
-    }));
+    );
     expect(transaction.billingPeriod.create).not.toHaveBeenCalled();
-    expect(transaction.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        status: SubscriptionProjectionStatus.UNMAPPED,
-        lastSyncErrorCode: null,
-        lastSyncErrorAt: null,
-        unmappedShopifyUsageEventHandles: [],
+    expect(transaction.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          status: SubscriptionProjectionStatus.UNMAPPED,
+          lastSyncErrorCode: null,
+          lastSyncErrorAt: null,
+          unmappedShopifyUsageEventHandles: [],
+        }),
       }),
-    }));
-    expect(billingOperationService.reconcileActiveSubscription).not.toHaveBeenCalled();
+    );
+    expect(
+      billingOperationService.reconcileActiveSubscription,
+    ).not.toHaveBeenCalled();
   });
 
   it("uses mapped projection helper path for a valid operational plan", async () => {
@@ -370,29 +437,32 @@ describe("SubscriptionSyncService", () => {
       shopifyPlanHandle: "growth",
       includedRecoveryConversationAllowance: null,
     };
-    const { service, transaction, billingOperationService } = createSyncService({
-      providerSubscription: activeProviderSubscription(),
-      resolution: { kind: "READY", plan, materialized: false },
-    });
+    const { service, transaction, billingOperationService } = createSyncService(
+      {
+        providerSubscription: activeProviderSubscription(),
+        resolution: { kind: "READY", plan, materialized: false },
+      },
+    );
 
     await service.syncSubscription("shop-1");
 
-    expect(transaction.billingPeriod.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        planId: "plan-1",
-        shopifyPlanHandleSnapshot: "growth",
+    expect(transaction.billingPeriod.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          planId: "plan-1",
+          shopifyPlanHandleSnapshot: "growth",
+        }),
       }),
-    }));
-    expect(transaction.billingPeriod.upsert).not.toHaveBeenCalled();
-    expect(billingOperationService.reconcileActiveSubscription).toHaveBeenCalledWith(
-      transaction,
-      {
-        shopId: "shop-1",
-        providerPlanHandle: "growth",
-        providerReference: "provider-1",
-        cancelAtEndOfCycle: false,
-      },
     );
+    expect(transaction.billingPeriod.upsert).not.toHaveBeenCalled();
+    expect(
+      billingOperationService.reconcileActiveSubscription,
+    ).toHaveBeenCalledWith(transaction, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: "provider-1",
+      cancelAtEndOfCycle: false,
+    });
   });
 
   it("suppresses ordinary period projection while preserving initial Paid intent", async () => {
@@ -408,7 +478,9 @@ describe("SubscriptionSyncService", () => {
     const pendingEffectiveAt = new Date("2026-09-15T00:00:00.000Z");
     const nextReconcileAt = new Date("2026-09-15T00:05:00.000Z");
     const { service, transaction } = createSyncService({
-      providerSubscription: activeProviderSubscription({ usageEventHandles: ["usage-meter"] }),
+      providerSubscription: activeProviderSubscription({
+        usageEventHandles: ["usage-meter"],
+      }),
       currentSubscription: {
         id: "subscription-1",
         status: SubscriptionProjectionStatus.NO_CONTRACT,
@@ -426,14 +498,16 @@ describe("SubscriptionSyncService", () => {
 
     expect(transaction.billingPeriod.findUnique).not.toHaveBeenCalled();
     expect(transaction.billingPeriod.upsert).not.toHaveBeenCalled();
-    expect(transaction.subscription.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      update: expect.objectContaining({
-        pendingShopifyPlanHandle: "starter",
-        pendingPlanId: "pending-plan",
-        pendingEffectiveAt,
-        nextReconcileAt,
+    expect(transaction.subscription.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: expect.objectContaining({
+          pendingShopifyPlanHandle: "starter",
+          pendingPlanId: "pending-plan",
+          pendingEffectiveAt,
+          nextReconcileAt,
+        }),
       }),
-    }));
+    );
   });
 
   it("passes the active transaction to initial Paid finalisation without nesting", async () => {
@@ -473,63 +547,122 @@ describe("SubscriptionSyncService", () => {
     await service.syncSubscription("shop-1", paidToken);
 
     expect(database.$transaction).toHaveBeenCalledTimes(1);
-    expect(subscriptionActivationService.finalizeInitialPaidActivation).toHaveBeenCalledWith(expect.objectContaining({
-      transaction,
-      expected: paidToken,
-      existingSubscription: expect.objectContaining({ id: "subscription-1" }),
-    }));
-    expect(transaction.subscription.upsert).not.toHaveBeenCalled();
-    expect(billingOperationService.reconcileActiveSubscription).toHaveBeenCalledWith(
-      transaction,
-      {
-        shopId: "shop-1",
-        providerPlanHandle: "growth",
-        providerReference: "provider-1",
-        cancelAtEndOfCycle: false,
-      },
+    expect(
+      subscriptionActivationService.finalizeInitialPaidActivation,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transaction,
+        expected: paidToken,
+        existingSubscription: expect.objectContaining({ id: "subscription-1" }),
+      }),
     );
-  });
-  it.each(["ACTIVE", "TRIALING"])("projects %s despite missing catalogue events and repairs on next sync", async (status) => {
-    const plan = { id: "plan-1", name: "Starter", kind: BillingPlanKind.FREE, active: true, shopifyPlanHandle: "growth" };
-    const harness = createSyncService({
-      providerSubscription: activeProviderSubscription({ status, usageEventHandles: ["gold", "bronze", "silver", "gold"] }),
-      currentSubscription: { id: "subscription-1", status: SubscriptionProjectionStatus.ACTIVE, planId: "plan-1" },
-      resolution: { kind: "READY", plan, materialized: false },
+    expect(transaction.subscription.upsert).not.toHaveBeenCalled();
+    expect(
+      billingOperationService.reconcileActiveSubscription,
+    ).toHaveBeenCalledWith(transaction, {
+      shopId: "shop-1",
+      providerPlanHandle: "growth",
+      providerReference: "provider-1",
+      cancelAtEndOfCycle: false,
     });
-    harness.transaction.merchantPricingPlan.findUnique.mockResolvedValue({ usageEvents: [
-      { eventHandle: "bronze" }, { eventHandle: "silver" }, { eventHandle: "catalogue-only" },
-    ] });
-    const first = await harness.service.syncSubscription("shop-1");
-    expect(first).toMatchObject({ status, lastSyncErrorCode: null, unmappedShopifyUsageEventHandles: ["gold"] });
-    expect(harness.transaction.subscription.upsert).toHaveBeenLastCalledWith(expect.objectContaining({
-      update: expect.objectContaining({ unmappedShopifyUsageEventHandles: ["gold"], lastSyncErrorAt: null }),
-      create: expect.objectContaining({ unmappedShopifyUsageEventHandles: ["gold"] }),
-    }));
-    harness.transaction.merchantPricingPlan.findUnique.mockResolvedValue({ usageEvents: [
-      { eventHandle: "bronze" }, { eventHandle: "silver" }, { eventHandle: "gold" },
-    ] });
-    const repaired = await harness.service.syncSubscription("shop-1");
-    expect(repaired).toMatchObject({ status, unmappedShopifyUsageEventHandles: [] });
-    expect(harness.billingOperationService.reconcileActiveSubscription).toHaveBeenCalledTimes(2);
   });
+  it.each(["ACTIVE", "TRIALING"])(
+    "projects %s despite missing catalogue events and repairs on next sync",
+    async (status) => {
+      const plan = {
+        id: "plan-1",
+        name: "Starter",
+        kind: BillingPlanKind.FREE,
+        active: true,
+        shopifyPlanHandle: "growth",
+      };
+      const harness = createSyncService({
+        providerSubscription: activeProviderSubscription({
+          status,
+          usageEventHandles: ["gold", "bronze", "silver", "gold"],
+        }),
+        currentSubscription: {
+          id: "subscription-1",
+          status: SubscriptionProjectionStatus.ACTIVE,
+          planId: "plan-1",
+        },
+        resolution: { kind: "READY", plan, materialized: false },
+      });
+      harness.transaction.merchantPricingPlan.findUnique.mockResolvedValue({
+        usageEvents: [
+          { eventHandle: "bronze" },
+          { eventHandle: "silver" },
+          { eventHandle: "catalogue-only" },
+        ],
+      });
+      const first = await harness.service.syncSubscription("shop-1");
+      expect(first).toMatchObject({
+        status,
+        lastSyncErrorCode: null,
+        unmappedShopifyUsageEventHandles: ["gold"],
+      });
+      expect(harness.transaction.subscription.upsert).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          update: expect.objectContaining({
+            unmappedShopifyUsageEventHandles: ["gold"],
+            lastSyncErrorAt: null,
+          }),
+          create: expect.objectContaining({
+            unmappedShopifyUsageEventHandles: ["gold"],
+          }),
+        }),
+      );
+      harness.transaction.merchantPricingPlan.findUnique.mockResolvedValue({
+        usageEvents: [
+          { eventHandle: "bronze" },
+          { eventHandle: "silver" },
+          { eventHandle: "gold" },
+        ],
+      });
+      const repaired = await harness.service.syncSubscription("shop-1");
+      expect(repaired).toMatchObject({
+        status,
+        unmappedShopifyUsageEventHandles: [],
+      });
+      expect(
+        harness.billingOperationService.reconcileActiveSubscription,
+      ).toHaveBeenCalledTimes(2);
+    },
+  );
 
   it("preserves an operational subscription when its catalogue plan is missing", async () => {
-    const plan = { id: "plan-1", name: "Starter", kind: BillingPlanKind.FREE, active: true, shopifyPlanHandle: "growth" };
+    const plan = {
+      id: "plan-1",
+      name: "Starter",
+      kind: BillingPlanKind.FREE,
+      active: true,
+      shopifyPlanHandle: "growth",
+    };
     const harness = createSyncService({
-      providerSubscription: activeProviderSubscription({ usageEventHandles: ["gold", "bronze"] }),
+      providerSubscription: activeProviderSubscription({
+        usageEventHandles: ["gold", "bronze"],
+      }),
       resolution: { kind: "READY", plan, materialized: false },
     });
-    await expect(harness.service.syncSubscription("shop-1")).resolves.toMatchObject({
-      status: SubscriptionProjectionStatus.ACTIVE, unmappedShopifyUsageEventHandles: ["bronze", "gold"],
+    await expect(
+      harness.service.syncSubscription("shop-1"),
+    ).resolves.toMatchObject({
+      status: SubscriptionProjectionStatus.ACTIVE,
+      unmappedShopifyUsageEventHandles: ["bronze", "gold"],
       lastSyncErrorCode: null,
     });
   });
 
   it("keeps an unknown plan UNMAPPED without sync errors while recording returned event handles", async () => {
     const harness = createSyncService({
-      providerSubscription: activeProviderSubscription({ planHandle: "unknown", usageEventHandles: ["bronze"] }),
+      providerSubscription: activeProviderSubscription({
+        planHandle: "unknown",
+        usageEventHandles: ["bronze"],
+      }),
     });
-    await expect(harness.service.syncSubscription("shop-1")).resolves.toMatchObject({
+    await expect(
+      harness.service.syncSubscription("shop-1"),
+    ).resolves.toMatchObject({
       status: SubscriptionProjectionStatus.UNMAPPED,
       observedShopifyPlanHandle: "unknown",
       lastSyncErrorCode: null,
@@ -539,12 +672,20 @@ describe("SubscriptionSyncService", () => {
   });
 
   it("does not commit when the catalogue lookup fails, preserving original Prisma errors", async () => {
-    const failure = Object.assign(new Error("database unavailable"), { code: "P2028" });
-    const harness = createSyncService({
-      providerSubscription: activeProviderSubscription({ usageEventHandles: ["gold"] }),
+    const failure = Object.assign(new Error("database unavailable"), {
+      code: "P2028",
     });
-    harness.transaction.merchantPricingPlan.findUnique.mockRejectedValue(failure);
-    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(failure);
+    const harness = createSyncService({
+      providerSubscription: activeProviderSubscription({
+        usageEventHandles: ["gold"],
+      }),
+    });
+    harness.transaction.merchantPricingPlan.findUnique.mockRejectedValue(
+      failure,
+    );
+    await expect(harness.service.syncSubscription("shop-1")).rejects.toBe(
+      failure,
+    );
     expect(harness.transaction.subscription.upsert).not.toHaveBeenCalled();
     expect(harness.hasCommitted()).toBe(false);
   });

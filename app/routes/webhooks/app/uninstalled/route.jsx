@@ -35,11 +35,12 @@ export const action = async ({ request }) => {
       shop,
       Number.isNaN(eventTime.getTime()) ? new Date() : eventTime,
     );
-    const outcome = result.kind === "UNINSTALLED"
-      ? "PROCESSED_APP_UNINSTALLED"
-      : result.kind === "ALREADY_UNINSTALLED"
-        ? "DUPLICATE_APP_UNINSTALLED"
-        : "APP_UNINSTALLED_SHOP_NOT_FOUND";
+    const outcome =
+      result.kind === "UNINSTALLED"
+        ? "PROCESSED_APP_UNINSTALLED"
+        : result.kind === "ALREADY_UNINSTALLED"
+          ? "DUPLICATE_APP_UNINSTALLED"
+          : "APP_UNINSTALLED_SHOP_NOT_FOUND";
 
     recordShopifyWebhookRouteOutcome({
       request,

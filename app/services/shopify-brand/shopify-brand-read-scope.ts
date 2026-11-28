@@ -9,11 +9,14 @@ export type ShopifyBrandReadGrant = "GRANTED" | "MISSING";
 export function shopifyBrandReadGrant(
   grantedScopes: string | readonly string[] | null | undefined,
 ): ShopifyBrandReadGrant {
-  const scopes = typeof grantedScopes === "string"
-    ? grantedScopes.split(",")
-    : grantedScopes ?? [];
+  const scopes =
+    typeof grantedScopes === "string"
+      ? grantedScopes.split(",")
+      : (grantedScopes ?? []);
 
-  return scopes.some((scope) => typeof scope === "string" && scope.trim() === "read_brand")
+  return scopes.some(
+    (scope) => typeof scope === "string" && scope.trim() === "read_brand",
+  )
     ? "GRANTED"
     : "MISSING";
 }

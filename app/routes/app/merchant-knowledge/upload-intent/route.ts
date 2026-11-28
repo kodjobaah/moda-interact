@@ -3,7 +3,13 @@ import type { ActionFunctionArgs } from "react-router";
 import { settingsMutationAccess } from "@/services/feature-preferences/access.server";
 import { createMerchantKnowledgeUploadIntent } from "@/services/merchant-knowledge/upload.server";
 
-const FIELDS = ["purposeKey", "dataFormatKey", "originalFileName", "contentType", "sizeBytes"];
+const FIELDS = [
+  "purposeKey",
+  "dataFormatKey",
+  "originalFileName",
+  "contentType",
+  "sizeBytes",
+];
 type IntentBody = Record<string, unknown> & {
   purposeKey: unknown;
   dataFormatKey: unknown;
@@ -13,9 +19,13 @@ type IntentBody = Record<string, unknown> & {
 };
 
 function validBody(value: unknown): value is IntentBody {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    && Object.keys(value).length === FIELDS.length
-    && Object.keys(value).every((key) => FIELDS.includes(key));
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).length === FIELDS.length &&
+    Object.keys(value).every((key) => FIELDS.includes(key))
+  );
 }
 
 export async function action({ request, context }: ActionFunctionArgs) {
@@ -24,10 +34,16 @@ export async function action({ request, context }: ActionFunctionArgs) {
   try {
     body = await request.json();
   } catch {
-    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "INVALID_INPUT" },
+      { status: 400 },
+    );
   }
   if (!validBody(body)) {
-    return Response.json({ ok: false, error: "INVALID_INPUT" }, { status: 400 });
+    return Response.json(
+      { ok: false, error: "INVALID_INPUT" },
+      { status: 400 },
+    );
   }
 
   try {
@@ -37,6 +53,9 @@ export async function action({ request, context }: ActionFunctionArgs) {
     });
     return Response.json(intent, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return merchantKnowledgeActionFailure(error, {shopId: shop.id, operation: "upload-intent"});
+    return merchantKnowledgeActionFailure(error, {
+      shopId: shop.id,
+      operation: "upload-intent",
+    });
   }
 }

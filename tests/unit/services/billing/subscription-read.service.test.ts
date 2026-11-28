@@ -7,7 +7,9 @@ import type {
 } from "../../../../app/services/billing/billing.types";
 import { SubscriptionReadService } from "../../../../app/services/billing/subscription-read.service";
 
-function providerSubscription(overrides: Partial<ProviderSubscription> = {}): ProviderSubscription {
+function providerSubscription(
+  overrides: Partial<ProviderSubscription> = {},
+): ProviderSubscription {
   return {
     provider: "SHOPIFY",
     planHandle: "growth",
@@ -33,19 +35,27 @@ function providerSubscription(overrides: Partial<ProviderSubscription> = {}): Pr
   };
 }
 
-function createService(options: {
-  subscription?: Record<string, unknown> | null;
-  shop?: Record<string, unknown> | null;
-  planRows?: Array<Record<string, unknown> | null>;
-  provider?: BillingProvider;
-} = {}) {
-  const findSubscription = vi.fn().mockResolvedValue(options.subscription ?? null);
-  const findShop = vi.fn().mockResolvedValue(options.shop ?? {
-    id: "shop-1",
-    shopifyShopId: "gid://shopify/Shop/1",
-  });
+function createService(
+  options: {
+    subscription?: Record<string, unknown> | null;
+    shop?: Record<string, unknown> | null;
+    planRows?: Array<Record<string, unknown> | null>;
+    provider?: BillingProvider;
+  } = {},
+) {
+  const findSubscription = vi
+    .fn()
+    .mockResolvedValue(options.subscription ?? null);
+  const findShop = vi.fn().mockResolvedValue(
+    options.shop ?? {
+      id: "shop-1",
+      shopifyShopId: "gid://shopify/Shop/1",
+    },
+  );
   const planRows = [...(options.planRows ?? [])];
-  const findPlan = vi.fn().mockImplementation(async () => planRows.shift() ?? null);
+  const findPlan = vi
+    .fn()
+    .mockImplementation(async () => planRows.shift() ?? null);
   const database = {
     subscription: { findUnique: findSubscription },
     shop: { findUnique: findShop },
@@ -59,7 +69,10 @@ function createService(options: {
     }),
   };
   return {
-    service: new SubscriptionReadService(provider, database as unknown as PrismaClient),
+    service: new SubscriptionReadService(
+      provider,
+      database as unknown as PrismaClient,
+    ),
     database,
     provider,
   };
@@ -76,8 +89,12 @@ describe("SubscriptionReadService", () => {
       include: { plan: true },
     });
 
-    const noContract = createService({ subscription: { id: "none", status: "NO_CONTRACT" } });
-    await expect(noContract.service.getSubscription("shop-1")).resolves.toBeNull();
+    const noContract = createService({
+      subscription: { id: "none", status: "NO_CONTRACT" },
+    });
+    await expect(
+      noContract.service.getSubscription("shop-1"),
+    ).resolves.toBeNull();
 
     await service.getSubscriptionProjection("shop-1");
     expect(database.subscription.findUnique).toHaveBeenLastCalledWith({
@@ -88,13 +105,15 @@ describe("SubscriptionReadService", () => {
 
   it("maps current and pending Shopify plans independently", async () => {
     const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
-        pendingFlatRatePlan: {
-          handle: "starter",
-          price: { amount: "0.00", currency: "USD" },
-          effectiveAt: new Date("2026-10-01T00:00:00.000Z"),
-        },
-      })),
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({
+          pendingFlatRatePlan: {
+            handle: "starter",
+            price: { amount: "0.00", currency: "USD" },
+            effectiveAt: new Date("2026-10-01T00:00:00.000Z"),
+          },
+        }),
+      ),
     };
     const { service, database } = createService({
       provider,
@@ -104,12 +123,17 @@ describe("SubscriptionReadService", () => {
       ],
     });
 
-    await expect(service.getMerchantShopifySubscriptionState("shop-1")).resolves.toMatchObject({
+    await expect(
+      service.getMerchantShopifySubscriptionState("shop-1"),
+    ).resolves.toMatchObject({
       status: "ACTIVE_SUBSCRIPTION",
       subscription: {
         planHandle: "growth",
         currentPeriodStart: "2026-09-01T00:00:00.000Z",
-        pendingUpdate: { planHandle: "starter", effectiveAt: "2026-10-01T00:00:00.000Z" },
+        pendingUpdate: {
+          planHandle: "starter",
+          effectiveAt: "2026-10-01T00:00:00.000Z",
+        },
       },
       modaMapping: { id: "growth-id", kind: "PAID_METERED" },
       pendingModaMapping: { id: "starter-id", kind: "FREE" },
@@ -144,7 +168,9 @@ describe("SubscriptionReadService", () => {
       ],
     });
 
-    await expect(service.getMerchantShopifyLifecycleState("shop-1")).resolves.toMatchObject({
+    await expect(
+      service.getMerchantShopifyLifecycleState("shop-1"),
+    ).resolves.toMatchObject({
       state: "FROZEN",
       subscription: { status: "ACTIVE_SUBSCRIPTION" },
       latestEvent: event,
@@ -158,15 +184,18 @@ describe("SubscriptionReadService", () => {
   it("propagates provider failures without falling back to local subscription state", async () => {
     const provider = {
       getActiveSubscription: vi.fn(),
-      getSubscriptionLifecycleSnapshot: vi.fn().mockRejectedValue(new Error("Partner unavailable")),
+      getSubscriptionLifecycleSnapshot: vi
+        .fn()
+        .mockRejectedValue(new Error("Partner unavailable")),
     };
     const { service, database } = createService({
       provider,
       subscription: { id: "local-active", status: "ACTIVE" },
     });
 
-    await expect(service.getMerchantShopifyLifecycleState("shop-1"))
-      .rejects.toThrow("Partner unavailable");
+    await expect(
+      service.getMerchantShopifyLifecycleState("shop-1"),
+    ).rejects.toThrow("Partner unavailable");
     expect(provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(database.subscription.findUnique).not.toHaveBeenCalled();
   });

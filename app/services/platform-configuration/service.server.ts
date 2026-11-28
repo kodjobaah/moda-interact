@@ -2,12 +2,20 @@ import { createLogger } from "@modainteract/moda-interact-shared/logging";
 import { logBillingBoundaryFailure } from "../billing/providers/shopify-billing-diagnostics.server";
 import type { CredentialKeyring } from "@modainteract/moda-interact-shared/security/credentials/node";
 import {
-  ShopifyPlatformConfigurationError, configurationFailure,
-  type ShopifyConfigurationKey, type ShopifyConfigurationErrorCode,
+  ShopifyPlatformConfigurationError,
+  configurationFailure,
+  type ShopifyConfigurationKey,
+  type ShopifyConfigurationErrorCode,
   type ShopifyPlatformConfigurationService,
 } from "./contracts.server";
-import { readPlatformConfiguration, type PlatformConfigurationDatabase } from "./repository.server";
-import { isDisabledConfiguration, unsealPlatformConfiguration } from "./seal.server";
+import {
+  readPlatformConfiguration,
+  type PlatformConfigurationDatabase,
+} from "./repository.server";
+import {
+  isDisabledConfiguration,
+  unsealPlatformConfiguration,
+} from "./seal.server";
 import { decodeMerchantKnowledgeR2Configuration } from "./merchant-knowledge-r2.server";
 import { decodeShopifyOAuthCredentials } from "./shopify-oauth-credentials.server";
 import { decodeShopifyPartnerCredentials } from "./shopify-partner-credentials.server";
@@ -29,22 +37,43 @@ export interface ShopifyConfigurationServiceDependencies {
 export function createShopifyPlatformConfigurationService(
   dependencies: ShopifyConfigurationServiceDependencies,
 ): ShopifyPlatformConfigurationService {
-  const sharedLogger = createLogger({serviceName: "moda-interact", environment: dependencies.environment});
+  const sharedLogger = createLogger({
+    serviceName: "moda-interact",
+    environment: dependencies.environment,
+  });
   const output = dependencies.logger ?? sharedLogger;
-  function safeLog(level: "info" | "warn", data: Record<string, unknown>): void {
-    try { output[level]("shopify.platform_configuration.read", data); }
-    catch { /* Shared logging must not become a correctness dependency. */ }
+  function safeLog(
+    level: "info" | "warn",
+    data: Record<string, unknown>,
+  ): void {
+    try {
+      output[level]("shopify.platform_configuration.read", data);
+    } catch {
+      /* Shared logging must not become a correctness dependency. */
+    }
   }
 
-  async function read<T>(key: ShopifyConfigurationKey, operation: string, decode: (version: number, value: unknown) => T): Promise<T> {
+  async function read<T>(
+    key: ShopifyConfigurationKey,
+    operation: string,
+    decode: (version: number, value: unknown) => T,
+  ): Promise<T> {
     let stage = "read";
     try {
-      const row = await readPlatformConfiguration(dependencies.database, dependencies.environment, key);
-      if (isDisabledConfiguration(row.value)) configurationFailure(key, "DISABLED");
+      const row = await readPlatformConfiguration(
+        dependencies.database,
+        dependencies.environment,
+        key,
+      );
+      if (isDisabledConfiguration(row.value))
+        configurationFailure(key, "DISABLED");
       let keyring: CredentialKeyring;
       stage = "keyring";
-      try { keyring = dependencies.loadUnsealKeyring(); }
-      catch (error) { return configurationFailure(key, "UNSEAL_FAILED", {cause: error}); }
+      try {
+        keyring = dependencies.loadUnsealKeyring();
+      } catch (error) {
+        return configurationFailure(key, "UNSEAL_FAILED", { cause: error });
+      }
       stage = "unseal";
       const payload = unsealPlatformConfiguration({
         environment: dependencies.environment,
@@ -55,35 +84,72 @@ export function createShopifyPlatformConfigurationService(
       });
       stage = "decode";
       const result = decode(row.version, payload);
-      safeLog("info", { key, operation, version: row.version, outcome: "success" });
+      safeLog("info", {
+        key,
+        operation,
+        version: row.version,
+        outcome: "success",
+      });
       return result;
     } catch (error) {
-      const wrapped = error instanceof ShopifyPlatformConfigurationError ? error : new ShopifyPlatformConfigurationError(key, "INVALID_VALUE", {cause: error});
+      const wrapped =
+        error instanceof ShopifyPlatformConfigurationError
+          ? error
+          : new ShopifyPlatformConfigurationError(key, "INVALID_VALUE", {
+              cause: error,
+            });
       const reasonCode: ShopifyConfigurationErrorCode = wrapped.code;
       const source = wrapped.cause ?? wrapped;
       const parser = source instanceof SyntaxError;
       let diagnostic = source;
       if (source === wrapped) {
-        const internal = new Error(wrapped.message); internal.name = wrapped.name; diagnostic = internal;
+        const internal = new Error(wrapped.message);
+        internal.name = wrapped.name;
+        diagnostic = internal;
       }
       if (parser) {
         const quote = source.message.search(/["'{}\r\n]/);
-        if (quote >= 0) diagnostic = new SyntaxError(`${source.message.slice(0, quote).trimEnd()} [REDACTED]`);
+        if (quote >= 0)
+          diagnostic = new SyntaxError(
+            `${source.message.slice(0, quote).trimEnd()} [REDACTED]`,
+          );
       }
-      logBillingBoundaryFailure({event: "shopify.platform_configuration.read", operation,
-        stage, origin: reasonCode === "DATABASE_UNAVAILABLE" ? "database" : "internal",
-        error: wrapped, diagnosticError: diagnostic, reasonCode, redactionApplied: parser && diagnostic !== source,
-      }, {...sharedLogger, error: (_event, fields = {}) => safeLog("warn", {key, operation, outcome: "failed", ...fields})});
+      logBillingBoundaryFailure(
+        {
+          event: "shopify.platform_configuration.read",
+          operation,
+          stage,
+          origin:
+            reasonCode === "DATABASE_UNAVAILABLE" ? "database" : "internal",
+          error: wrapped,
+          diagnosticError: diagnostic,
+          reasonCode,
+          redactionApplied: parser && diagnostic !== source,
+        },
+        {
+          ...sharedLogger,
+          error: (_event, fields = {}) =>
+            safeLog("warn", { key, operation, outcome: "failed", ...fields }),
+        },
+      );
       throw wrapped;
     }
   }
 
   return Object.freeze({
-    requireMerchantKnowledgeR2Configuration: () => read(
-      "merchant.knowledge.r2", "require_r2", decodeMerchantKnowledgeR2Configuration),
-    requireShopifyOAuthCredentials: () => read(
-      "shopify.oauth", "require_oauth", decodeShopifyOAuthCredentials),
-    requireShopifyPartnerCredentials: () => read(
-      "shopify.partner", "require_partner", decodeShopifyPartnerCredentials),
+    requireMerchantKnowledgeR2Configuration: () =>
+      read(
+        "merchant.knowledge.r2",
+        "require_r2",
+        decodeMerchantKnowledgeR2Configuration,
+      ),
+    requireShopifyOAuthCredentials: () =>
+      read("shopify.oauth", "require_oauth", decodeShopifyOAuthCredentials),
+    requireShopifyPartnerCredentials: () =>
+      read(
+        "shopify.partner",
+        "require_partner",
+        decodeShopifyPartnerCredentials,
+      ),
   });
 }

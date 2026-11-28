@@ -14,7 +14,12 @@ function render(pricingCatalogue) {
     [
       {
         path: "*",
-        element: <Onboarding merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} />,
+        element: (
+          <Onboarding
+            merchantUi={merchantUi}
+            pricingCatalogue={pricingCatalogue}
+          />
+        ),
       },
     ],
     { initialEntries: ["/app"] },
@@ -24,7 +29,13 @@ function render(pricingCatalogue) {
 }
 
 function renderCatalogue(pricingCatalogue, showChoosePlanAction = false) {
-  return renderToStaticMarkup(<MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={pricingCatalogue} showChoosePlanAction={showChoosePlanAction} />);
+  return renderToStaticMarkup(
+    <MerchantPricingCatalogue
+      merchantUi={merchantUi}
+      pricingCatalogue={pricingCatalogue}
+      showChoosePlanAction={showChoosePlanAction}
+    />,
+  );
 }
 
 const plan = {
@@ -58,7 +69,12 @@ const plan = {
       fixedUnitAmountMinor: null,
       tiers: [
         { position: 0, upTo: 10, amountPerUnitMinor: 50, flatAmountMinor: 0 },
-        { position: 1, upTo: null, amountPerUnitMinor: 25, flatAmountMinor: 100 },
+        {
+          position: 1,
+          upTo: null,
+          amountPerUnitMinor: 25,
+          flatAmountMinor: 100,
+        },
       ],
     },
     {
@@ -68,11 +84,18 @@ const plan = {
       pricingMode: "VOLUME",
       currency: "GBP",
       fixedUnitAmountMinor: null,
-      tiers: [{ position: 0, upTo: null, amountPerUnitMinor: 20, flatAmountMinor: 0 }],
+      tiers: [
+        { position: 0, upTo: null, amountPerUnitMinor: 20, flatAmountMinor: 0 },
+      ],
     },
   ],
   highlights: [
-    { contentKey: "highlight-1", position: 0, title: "Localized highlight", description: "Admin-authored detail." },
+    {
+      contentKey: "highlight-1",
+      position: 0,
+      title: "Localized highlight",
+      description: "Admin-authored detail.",
+    },
   ],
 };
 
@@ -104,12 +127,22 @@ describe("Onboarding merchant pricing renderer", () => {
   });
 
   it("keeps the reusable renderer in received order and gates its action on non-empty data", () => {
-    const secondPlan = { ...plan, shopifyPlanHandle: "second", displayName: "Second plan", cataloguePosition: 1, featured: false };
+    const secondPlan = {
+      ...plan,
+      shopifyPlanHandle: "second",
+      displayName: "Second plan",
+      cataloguePosition: 1,
+      featured: false,
+    };
     const markup = renderCatalogue([secondPlan, plan], true);
 
-    expect(markup.indexOf("Second plan")).toBeLessThan(markup.indexOf("Database Plan"));
+    expect(markup.indexOf("Second plan")).toBeLessThan(
+      markup.indexOf("Database Plan"),
+    );
     expect(markup).toContain('href="/app/billing/select"');
-    expect(renderCatalogue([], true)).not.toContain('href="/app/billing/select"');
+    expect(renderCatalogue([], true)).not.toContain(
+      'href="/app/billing/select"',
+    );
   });
 
   it("omits the Free proof item when the active catalogue has no Free plan", () => {

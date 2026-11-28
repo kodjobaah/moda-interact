@@ -64,7 +64,8 @@ const data = {
               id: "products",
               key: "product_search",
               name: "Product Search",
-              description: "Search merchant products during customer conversations.",
+              description:
+                "Search merchant products during customer conversations.",
               editable: true,
               enabled: scenario === "paid",
               effective: scenario === "paid",

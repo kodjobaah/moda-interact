@@ -1,6 +1,6 @@
-import '@shopify/ui-extensions/preact';
-import {render} from "preact";
-import {useEffect, useState} from "preact/hooks";
+import "@shopify/ui-extensions/preact";
+import { render } from "preact";
+import { useEffect, useState } from "preact/hooks";
 import {
   canRenderConsent,
   CHECKOUT_RECEIPT_ENDPOINT,
@@ -21,17 +21,20 @@ function safeErrorMessage(error) {
   if (!(error instanceof Error)) return "Unknown error";
   return error.message
     .replace(/Bearer\s+\S+/gi, "Bearer [redacted]")
-    .replace(/eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[redacted-jwt]")
+    .replace(
+      /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
+      "[redacted-jwt]",
+    )
     .replace(/https?:\/\/\S+/gi, "[redacted-url]")
     .slice(0, 240);
 }
 
 function reportFetchFailure(operation, status) {
-  diagnostic("warn", "consent.request.http_failure", {operation, status});
+  diagnostic("warn", "consent.request.http_failure", { operation, status });
 }
 
 export default async () => {
-  render(<Extension />, document.body)
+  render(<Extension />, document.body);
 };
 
 function Extension() {
@@ -45,7 +48,7 @@ function Extension() {
 
   useEffect(() => {
     let active = true;
-    if (!canRenderConsent({target, checkoutToken, canUpdateAttributes})) {
+    if (!canRenderConsent({ target, checkoutToken, canUpdateAttributes })) {
       diagnostic("info", "consent.render.gated", {
         targetSupported: target === "purchase.checkout.contact.render-after",
         checkoutTokenAvailable:
@@ -65,21 +68,18 @@ function Extension() {
     async function loadStatus() {
       try {
         const sessionToken = await shopify.sessionToken.get();
-        const response = await fetch(
-          CHECKOUT_RECEIPT_ENDPOINT,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${sessionToken}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              mode: "status",
-              checkoutToken,
-              receipt: currentReceipt,
-            }),
+        const response = await fetch(CHECKOUT_RECEIPT_ENDPOINT, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${sessionToken}`,
+            "Content-Type": "application/json",
           },
-        );
+          body: JSON.stringify({
+            mode: "status",
+            checkoutToken,
+            receipt: currentReceipt,
+          }),
+        });
         if (!response.ok) {
           reportFetchFailure("status", response.status);
           return;
@@ -92,7 +92,7 @@ function Extension() {
         if (!active) return;
         setChecked(result.checked);
         setReady(true);
-        diagnostic("info", "consent.render.ready", {source: result.source});
+        diagnostic("info", "consent.render.ready", { source: result.source });
       } catch (error) {
         diagnostic("error", "consent.status.exception", {
           message: safeErrorMessage(error),
@@ -108,7 +108,7 @@ function Extension() {
 
   if (
     !ready ||
-    !canRenderConsent({target, checkoutToken, canUpdateAttributes})
+    !canRenderConsent({ target, checkoutToken, canUpdateAttributes })
   ) {
     return null;
   }
@@ -119,21 +119,18 @@ function Extension() {
     setSaving(true);
     try {
       const sessionToken = await shopify.sessionToken.get();
-      const response = await fetch(
-        CHECKOUT_RECEIPT_ENDPOINT,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${sessionToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            checkoutToken,
-            decision: nextChecked ? "GRANT" : "REVOKE",
-            locale: shopify.localization.language.value.isoCode,
-          }),
+      const response = await fetch(CHECKOUT_RECEIPT_ENDPOINT, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${sessionToken}`,
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({
+          checkoutToken,
+          decision: nextChecked ? "GRANT" : "REVOKE",
+          locale: shopify.localization.language.value.isoCode,
+        }),
+      });
       if (!response.ok) {
         reportFetchFailure("decision", response.status);
         return;
@@ -150,7 +147,9 @@ function Extension() {
         value: body.receipt,
       });
       if (result.type !== "success") {
-        diagnostic("warn", "consent.attribute.update_failed", {type: result.type});
+        diagnostic("warn", "consent.attribute.update_failed", {
+          type: result.type,
+        });
         return;
       }
 

@@ -32,7 +32,11 @@ function reportMissingTranslation({
   locale: string;
 }) {
   const reportKey = `${entity}:${entityId}:${locale}`.slice(0, 192);
-  if (reportedMissingTranslations.size >= 64 || reportedMissingTranslations.has(reportKey)) return;
+  if (
+    reportedMissingTranslations.size >= 64 ||
+    reportedMissingTranslations.has(reportKey)
+  )
+    return;
   reportedMissingTranslations.add(reportKey);
   logger.warn("store_profile.translation_missing", {
     entity,
@@ -41,17 +45,26 @@ function reportMissingTranslation({
   });
 }
 
-export function resolveStoreCategoryLocale(locale: string | null | undefined): ModaSupportedLanguageTag {
+export function resolveStoreCategoryLocale(
+  locale: string | null | undefined,
+): ModaSupportedLanguageTag {
   return resolveModaConfigurationLocale(locale);
 }
 
-export function storeCategoryTranslationLocales(locale: string | null | undefined) {
+export function storeCategoryTranslationLocales(
+  locale: string | null | undefined,
+) {
   const resolved = resolveStoreCategoryLocale(locale);
   return resolved === "en" ? ["en"] : [resolved, "en"];
 }
 
-function findTranslation<T extends { locale: string }>(translations: T[] | null | undefined, locale: string) {
-  return translations?.find((translation) => translation.locale === locale) ?? null;
+function findTranslation<T extends { locale: string }>(
+  translations: T[] | null | undefined,
+  locale: string,
+) {
+  return (
+    translations?.find((translation) => translation.locale === locale) ?? null
+  );
 }
 
 export function localizeStoreCategory(
@@ -68,12 +81,18 @@ export function localizeStoreCategory(
   const english = findTranslation(category.translations, "en");
 
   if (!localized) {
-    reportMissingTranslation({ entity: "category", entityId: category.id, locale: resolvedLocale });
+    reportMissingTranslation({
+      entity: "category",
+      entityId: category.id,
+      locale: resolvedLocale,
+    });
   }
 
   return {
-    localizedDisplayName: localized?.displayName ?? english?.displayName ?? category.displayName,
-    localizedDescription: localized?.description ?? english?.description ?? category.description,
+    localizedDisplayName:
+      localized?.displayName ?? english?.displayName ?? category.displayName,
+    localizedDescription:
+      localized?.description ?? english?.description ?? category.description,
   };
 }
 
@@ -92,16 +111,20 @@ export function localizeStoreCategoryMapping(
   const english = findTranslation(mapping.translations, "en");
 
   if (!localized) {
-    reportMissingTranslation({ entity: "mapping", entityId: mapping.id, locale: resolvedLocale });
+    reportMissingTranslation({
+      entity: "mapping",
+      entityId: mapping.id,
+      locale: resolvedLocale,
+    });
   }
 
   return {
     localizedDisplayName:
-      localized?.displayName
-      ?? english?.displayName
-      ?? mapping.displayName
-      ?? mapping.taxonomyCategoryName
-      ?? mapping.conditionKey
-      ?? "",
+      localized?.displayName ??
+      english?.displayName ??
+      mapping.displayName ??
+      mapping.taxonomyCategoryName ??
+      mapping.conditionKey ??
+      "",
   };
 }

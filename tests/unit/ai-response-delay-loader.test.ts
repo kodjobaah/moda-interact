@@ -36,7 +36,9 @@ vi.mock("@/utils/merchant-i18n", () => ({
   merchantUiContext: mocks.merchantUiContext,
 }));
 
-vi.mock("@/services/feature-preferences/settings-read-context.server", () => ({ loadSettingsReadContext: mocks.loadSettingsReadContext }));
+vi.mock("@/services/feature-preferences/settings-read-context.server", () => ({
+  loadSettingsReadContext: mocks.loadSettingsReadContext,
+}));
 
 import { loader } from "@/routes/app/recovery-settings/route";
 
@@ -48,13 +50,20 @@ describe("AI response delay settings loader", () => {
       session: { id: "session" },
       settings: { aiResponseDelayMinutes: 7 },
     });
-    mocks.loadSettingsReadContext.mockResolvedValue({ settings: { aiResponseDelayMinutes: 7 } });
+    mocks.loadSettingsReadContext.mockResolvedValue({
+      settings: { aiResponseDelayMinutes: 7 },
+    });
     mocks.merchantUiContext.mockReturnValue({ locale: "en" });
     mocks.listSelectableStoreCategories.mockResolvedValue([]);
     mocks.loadStoreProfile.mockResolvedValue(null);
     mocks.loadMerchantKnowledge.mockResolvedValue(null);
-    mocks.projectFeaturePreferences.mockReturnValue({ revision: "revision", features: [] });
-    mocks.loadRecoveryPolicySnapshot.mockResolvedValue({ revision: "revision" });
+    mocks.projectFeaturePreferences.mockReturnValue({
+      revision: "revision",
+      features: [],
+    });
+    mocks.loadRecoveryPolicySnapshot.mockResolvedValue({
+      revision: "revision",
+    });
   });
 
   it("returns the delay from authenticated shop settings", async () => {
@@ -63,7 +72,12 @@ describe("AI response delay settings loader", () => {
     } as never);
 
     expect(mocks.settingsAccess).toHaveBeenCalledOnce();
-    expect(mocks.loadRecoveryPolicySnapshot).toHaveBeenCalledWith("authenticated-shop", undefined, undefined, { settings: { aiResponseDelayMinutes: 7 } });
+    expect(mocks.loadRecoveryPolicySnapshot).toHaveBeenCalledWith(
+      "authenticated-shop",
+      undefined,
+      undefined,
+      { settings: { aiResponseDelayMinutes: 7 } },
+    );
     expect(result.aiResponseDelayMinutes).toBe(7);
   });
 

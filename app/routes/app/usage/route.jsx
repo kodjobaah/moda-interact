@@ -24,9 +24,15 @@ import {
 import { overviewEmbed } from "../home/overview.server";
 
 /** @param {{ request: Request, context?: Readonly<import("react-router").RouterContextProvider> }} args */
-export const loader = async ({ request, context = new RouterContextProvider() }) => {
+export const loader = async ({
+  request,
+  context = new RouterContextProvider(),
+}) => {
   const merchant = await getMerchantRequestContext({ request, context });
-  const { shop, authentication: { session } } = merchant;
+  const {
+    shop,
+    authentication: { session },
+  } = merchant;
   const url = new URL(request.url);
   const embed = overviewEmbed(url, session.shop);
   assertActiveShop(shop, {
@@ -34,7 +40,8 @@ export const loader = async ({ request, context = new RouterContextProvider() })
     redirectTo: "/app/merchant-support",
   });
   const scalar = await merchant.readSubscription();
-  const subscription = scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
+  const subscription =
+    scalar && ["ACTIVE", "TRIALING"].includes(scalar.status) ? scalar : null;
   const state = resolveMerchantExperienceState({
     shop,
     subscription,
@@ -46,7 +53,11 @@ export const loader = async ({ request, context = new RouterContextProvider() })
   const merchantUi = merchantUiContext(shop, session);
   try {
     const filters = new URLSearchParams(url.searchParams);
-    if (!filters.has("bill") && !filters.has("billId") && !filters.has("periodCursor"))
+    if (
+      !filters.has("bill") &&
+      !filters.has("billId") &&
+      !filters.has("periodCursor")
+    )
       filters.set("bill", "all");
     if (!filters.has("chargeSource")) filters.set("chargeSource", "ALL");
     return {
@@ -55,7 +66,14 @@ export const loader = async ({ request, context = new RouterContextProvider() })
       history: await readUsageHistory(shop.id, filters),
     };
   } catch (error) {
-    if (!(error instanceof UsageCursorError)) logBillingBoundaryFailure({ event: "shopify.usage.read_failed", operation: "read_usage_history", stage: "read_history", shopId: shop.id, error });
+    if (!(error instanceof UsageCursorError))
+      logBillingBoundaryFailure({
+        event: "shopify.usage.read_failed",
+        operation: "read_usage_history",
+        stage: "read_history",
+        shopId: shop.id,
+        error,
+      });
     return {
       merchantUi,
       embed,

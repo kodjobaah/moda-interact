@@ -7,18 +7,10 @@ import { resolveDeploymentEnvironmentName } from "../../otel/otel.runtime";
 import type { BillingVerificationFailure } from "../billing.types";
 
 export type ShopifyBillingFailureKind =
-  | "HTTP"
-  | "GRAPHQL"
-  | "TRANSPORT"
-  | "MALFORMED_RESPONSE"
-  | "CONFIGURATION";
+  "HTTP" | "GRAPHQL" | "TRANSPORT" | "MALFORMED_RESPONSE" | "CONFIGURATION";
 
 export type ShopifyBillingFailureOrigin =
-  | "provider_response"
-  | "transport"
-  | "sdk_exception"
-  | "database"
-  | "internal";
+  "provider_response" | "transport" | "sdk_exception" | "database" | "internal";
 
 export type ShopifyBillingProviderErrorInput = {
   operation: string;
@@ -53,7 +45,10 @@ export class ShopifyBillingProviderError extends Error {
   sourceDiagnosticEmitted = false;
 
   constructor(input: ShopifyBillingProviderErrorInput) {
-    super(input.message, input.cause === undefined ? undefined : { cause: input.cause });
+    super(
+      input.message,
+      input.cause === undefined ? undefined : { cause: input.cause },
+    );
     this.name = "ShopifyBillingProviderError";
     this.failureKind = input.failureKind;
     this.origin = input.origin;
@@ -64,8 +59,11 @@ export function classifyBillingVerificationFailure(
   error: unknown,
   occurredAt = new Date(),
 ): Exclude<BillingVerificationFailure, null> {
-  const providerFailure = error instanceof ShopifyBillingProviderError &&
-    ["HTTP", "GRAPHQL", "TRANSPORT", "MALFORMED_RESPONSE"].includes(error.failureKind) &&
+  const providerFailure =
+    error instanceof ShopifyBillingProviderError &&
+    ["HTTP", "GRAPHQL", "TRANSPORT", "MALFORMED_RESPONSE"].includes(
+      error.failureKind,
+    ) &&
     ["provider_response", "transport"].includes(error.origin);
   return {
     code: providerFailure ? "PARTNER_API_ERROR" : "SUBSCRIPTION_SYNC_FAILED",
@@ -73,7 +71,11 @@ export function classifyBillingVerificationFailure(
   };
 }
 
-export function safeText(value: unknown, sensitiveValues: string[], maxLength = 2048): SafeText | null {
+export function safeText(
+  value: unknown,
+  sensitiveValues: string[],
+  maxLength = 2048,
+): SafeText | null {
   if (typeof value !== "string") return null;
   let text = value;
   let redacted = false;
@@ -85,8 +87,14 @@ export function safeText(value: unknown, sensitiveValues: string[], maxLength = 
   }
   const beforePatterns = text;
   text = text
-    .replace(/(?:https?|postgres(?:ql)?|rediss?):\/\/[^\s"'<>]+/gi, "[REDACTED]")
-    .replace(/(?:Bearer\s+|(?:access[_-]?token|authorization|cookie|password|email|phone|address|customer|card|payment)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[REDACTED]")
+    .replace(
+      /(?:https?|postgres(?:ql)?|rediss?):\/\/[^\s"'<>]+/gi,
+      "[REDACTED]",
+    )
+    .replace(
+      /(?:Bearer\s+|(?:access[_-]?token|authorization|cookie|password|email|phone|address|customer|card|payment)\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+      "[REDACTED]",
+    )
     .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED]");
   const timestamps = Array.from(
     text.matchAll(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,})?Z\b/g),
@@ -94,7 +102,9 @@ export function safeText(value: unknown, sensitiveValues: string[], maxLength = 
   );
   text = text.replace(/\+?\d[\d ()-]{8,}\d/g, (match, offset: number) => {
     const matchEnd = offset + match.length;
-    const overlappingTimestamps = timestamps.filter((timestamp) => offset < timestamp.end && matchEnd > timestamp.start);
+    const overlappingTimestamps = timestamps.filter(
+      (timestamp) => offset < timestamp.end && matchEnd > timestamp.start,
+    );
     if (overlappingTimestamps.length === 0) return "[REDACTED]";
 
     const redactSpan = (span: string) => {
@@ -112,7 +122,8 @@ export function safeText(value: unknown, sensitiveValues: string[], maxLength = 
       safeMatch += text.slice(start, end);
       cursor = end;
     }
-    if (cursor < matchEnd) safeMatch += redactSpan(text.slice(cursor, matchEnd));
+    if (cursor < matchEnd)
+      safeMatch += redactSpan(text.slice(cursor, matchEnd));
     return safeMatch;
   });
   redacted ||= text !== beforePatterns;
@@ -149,8 +160,12 @@ function safeProviderErrors(input: ShopifyBillingProviderErrorInput) {
     const code = safeText(entry.code, input.sensitiveValues ?? [], 128);
     const message = safeText(entry.message, input.sensitiveValues ?? []);
     const details = safeText(entry.details, input.sensitiveValues ?? []);
-    redacted ||= Boolean(code?.redacted || message?.redacted || details?.redacted);
-    truncated ||= Boolean(code?.truncated || message?.truncated || details?.truncated);
+    redacted ||= Boolean(
+      code?.redacted || message?.redacted || details?.redacted,
+    );
+    truncated ||= Boolean(
+      code?.truncated || message?.truncated || details?.truncated,
+    );
     return {
       ...(code ? { code: code.value } : {}),
       ...(message ? { message: message.value } : {}),
@@ -178,8 +193,13 @@ function causeChain(error: unknown, sensitiveValues: string[]) {
 function databaseCode(error: unknown): string | undefined {
   let current = error;
   for (let index = 0; index < 5 && current !== undefined; index++) {
-    if (typeof current === "object" && current !== null && "code" in current &&
-      typeof current.code === "string") return current.code;
+    if (
+      typeof current === "object" &&
+      current !== null &&
+      "code" in current &&
+      typeof current.code === "string"
+    )
+      return current.code;
     current = current instanceof Error ? current.cause : undefined;
   }
   return undefined;
@@ -196,19 +216,34 @@ export function createShopifyBillingProviderError(
   };
   const error = new ShopifyBillingProviderError(normalizedInput);
   const safeError = safeErrorValue(error, input.sensitiveValues ?? []);
-  const diagnosticError = input.diagnosticCause === undefined
-    ? error
-    : new Error("Sanitized diagnostic cause", { cause: input.diagnosticCause });
-  const causes = causeChain(
-    diagnosticError,
+  const diagnosticError =
+    input.diagnosticCause === undefined
+      ? error
+      : new Error("Sanitized diagnostic cause", {
+          cause: input.diagnosticCause,
+        });
+  const causes = causeChain(diagnosticError, input.sensitiveValues ?? []);
+  const providerErrors = safeProviderErrors(input);
+  const excerpt = safeText(
+    input.providerErrorExcerpt,
     input.sensitiveValues ?? [],
   );
-  const providerErrors = safeProviderErrors(input);
-  const excerpt = safeText(input.providerErrorExcerpt, input.sensitiveValues ?? []);
-  const requestId = safeText(input.providerRequestId, input.sensitiveValues ?? [], 128);
-  const redactionApplied = Boolean(safeMessage?.redacted) || safeError.redacted || causes.redacted || providerErrors.redacted ||
+  const requestId = safeText(
+    input.providerRequestId,
+    input.sensitiveValues ?? [],
+    128,
+  );
+  const redactionApplied =
+    Boolean(safeMessage?.redacted) ||
+    safeError.redacted ||
+    causes.redacted ||
+    providerErrors.redacted ||
     Boolean(excerpt?.redacted || requestId?.redacted);
-  const truncated = Boolean(safeMessage?.truncated) || safeError.truncated || causes.truncated || providerErrors.truncated ||
+  const truncated =
+    Boolean(safeMessage?.truncated) ||
+    safeError.truncated ||
+    causes.truncated ||
+    providerErrors.truncated ||
     Boolean(excerpt?.truncated || requestId?.truncated);
 
   diagnosticLogger.error("shopify.billing.provider_failed", {
@@ -218,11 +253,15 @@ export function createShopifyBillingProviderError(
     provider: "shopify",
     error: safeError.value,
     causeChain: causes.causes,
-    ...(databaseCode(input.cause) ? { databaseCode: databaseCode(input.cause) } : {}),
+    ...(databaseCode(input.cause)
+      ? { databaseCode: databaseCode(input.cause) }
+      : {}),
     ...(input.reasonCode ? { reasonCode: input.reasonCode } : {}),
     ...(input.httpStatus !== undefined ? { httpStatus: input.httpStatus } : {}),
     ...(requestId ? { providerRequestId: requestId.value } : {}),
-    ...(providerErrors.errors.length ? { providerErrors: providerErrors.errors } : {}),
+    ...(providerErrors.errors.length
+      ? { providerErrors: providerErrors.errors }
+      : {}),
     ...(excerpt ? { providerErrorExcerpt: excerpt.value } : {}),
     redactionApplied,
     truncated,
@@ -231,21 +270,28 @@ export function createShopifyBillingProviderError(
   return error;
 }
 
-export function logBillingBoundaryFailure(input: {
-  event: string;
-  operation: string;
-  stage: string;
-  shopId?: string;
-  identities?: Record<string, string | null>;
-  error?: unknown;
-  origin?: ShopifyBillingFailureOrigin;
-  reasonCode?: string;
-  diagnosticError?: unknown;
-  sensitiveValues?: string[];
-  redactionApplied?: boolean;
-  truncated?: boolean;
-}, diagnosticLogger: StructuredLogger = logger): void {
-  if (input.error instanceof ShopifyBillingProviderError && input.error.sourceDiagnosticEmitted) return;
+export function logBillingBoundaryFailure(
+  input: {
+    event: string;
+    operation: string;
+    stage: string;
+    shopId?: string;
+    identities?: Record<string, string | null>;
+    error?: unknown;
+    origin?: ShopifyBillingFailureOrigin;
+    reasonCode?: string;
+    diagnosticError?: unknown;
+    sensitiveValues?: string[];
+    redactionApplied?: boolean;
+    truncated?: boolean;
+  },
+  diagnosticLogger: StructuredLogger = logger,
+): void {
+  if (
+    input.error instanceof ShopifyBillingProviderError &&
+    input.error.sourceDiagnosticEmitted
+  )
+    return;
   if (typeof input.error === "object" && input.error !== null) {
     const state = input.error as Record<PropertyKey, unknown>;
     if (state[diagnosedFailure] === true) return;
@@ -256,14 +302,19 @@ export function logBillingBoundaryFailure(input: {
     }
   }
 
-  const diagnostic = input.diagnosticError === undefined ? input.error : input.diagnosticError;
+  const diagnostic =
+    input.diagnosticError === undefined ? input.error : input.diagnosticError;
   const sensitive = input.sensitiveValues ?? [];
-  const safeError = diagnostic === undefined ? null : safeErrorValue(diagnostic, sensitive);
-  const causes = diagnostic === undefined ? null : causeChain(diagnostic, sensitive);
-  const identities = Object.fromEntries(Object.entries(input.identities ?? {}).map(([key, value]) => {
-    const safe = safeText(value, sensitive, 256);
-    return [key, safe?.value ?? null];
-  }));
+  const safeError =
+    diagnostic === undefined ? null : safeErrorValue(diagnostic, sensitive);
+  const causes =
+    diagnostic === undefined ? null : causeChain(diagnostic, sensitive);
+  const identities = Object.fromEntries(
+    Object.entries(input.identities ?? {}).map(([key, value]) => {
+      const safe = safeText(value, sensitive, 256);
+      return [key, safe?.value ?? null];
+    }),
+  );
   const code = diagnostic === undefined ? undefined : databaseCode(diagnostic);
   try {
     diagnosticLogger.error(input.event, {
@@ -276,8 +327,12 @@ export function logBillingBoundaryFailure(input: {
       ...(safeError ? { error: safeError.value } : {}),
       ...(causes ? { causeChain: causes.causes } : {}),
       ...(code ? { databaseCode: code } : {}),
-      redactionApplied: Boolean(input.redactionApplied || safeError?.redacted || causes?.redacted),
-      truncated: Boolean(input.truncated || safeError?.truncated || causes?.truncated),
+      redactionApplied: Boolean(
+        input.redactionApplied || safeError?.redacted || causes?.redacted,
+      ),
+      truncated: Boolean(
+        input.truncated || safeError?.truncated || causes?.truncated,
+      ),
     });
   } catch {
     // Diagnostics must not change the failure or best-effort policy of the caller.

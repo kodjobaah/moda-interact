@@ -1,15 +1,26 @@
 const MAX_BODY_BYTES = 8_192;
 
-export function isObjectRecord(value: unknown): value is Record<string, unknown> {
+export function isObjectRecord(
+  value: unknown,
+): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function hasOnlyKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
-  return Object.keys(value).every(key => allowed.includes(key));
+export function hasOnlyKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+): boolean {
+  return Object.keys(value).every((key) => allowed.includes(key));
 }
 
-export async function readBoundedJsonObject(request: Request): Promise<Record<string, unknown> | null> {
-  const mediaType = request.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase();
+export async function readBoundedJsonObject(
+  request: Request,
+): Promise<Record<string, unknown> | null> {
+  const mediaType = request.headers
+    .get("Content-Type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
   if (mediaType !== "application/json") return null;
   const reader = request.body?.getReader();
   if (!reader) return null;

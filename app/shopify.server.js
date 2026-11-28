@@ -1,4 +1,7 @@
-import { recordShopifyBootstrapFailure, recordShopifySdkDiagnostic } from "./services/observability/shopify-runtime-observability.server";
+import {
+  recordShopifyBootstrapFailure,
+  recordShopifySdkDiagnostic,
+} from "./services/observability/shopify-runtime-observability.server";
 import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
@@ -22,38 +25,44 @@ let shopify;
 /** @type {"oauth_configuration" | "sdk_construction"} */
 let bootstrapStage = "oauth_configuration";
 try {
-  oauth = await createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials();
+  oauth =
+    await createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials();
   bootstrapStage = "sdk_construction";
   const credentials = oauth;
   setAbstractFetchFunc(shopifyOfflineCoordination.fetch);
   shopify = shopifyApp({
-  apiKey: oauth.apiKey,
-  apiSecretKey: oauth.apiSecret,
-  apiVersion: ApiVersion.July26,
-  scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL || "",
-  authPathPrefix: "/auth",
-  sessionStorage: shopifyOfflineCoordination.sessionStorage,
-  distribution: AppDistribution.AppStore,
-  logger: {
-    level: LogSeverity.Debug,
-    httpRequests: false,
-    log: (severity, message) => recordShopifySdkDiagnostic({
-      severity,
-      message,
-      sensitiveValues: [credentials.apiKey, credentials.apiSecret],
-      redactEntireMessage: Boolean(getShopifySessionBinding()),
-    }),
-  },
-  future: {
-    expiringOfflineAccessTokens: true,
-  },
-  ...(process.env.SHOP_CUSTOM_DOMAIN
-    ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
-    : {}),
+    apiKey: oauth.apiKey,
+    apiSecretKey: oauth.apiSecret,
+    apiVersion: ApiVersion.July26,
+    scopes: process.env.SCOPES?.split(","),
+    appUrl: process.env.SHOPIFY_APP_URL || "",
+    authPathPrefix: "/auth",
+    sessionStorage: shopifyOfflineCoordination.sessionStorage,
+    distribution: AppDistribution.AppStore,
+    logger: {
+      level: LogSeverity.Debug,
+      httpRequests: false,
+      log: (severity, message) =>
+        recordShopifySdkDiagnostic({
+          severity,
+          message,
+          sensitiveValues: [credentials.apiKey, credentials.apiSecret],
+          redactEntireMessage: Boolean(getShopifySessionBinding()),
+        }),
+    },
+    future: {
+      expiringOfflineAccessTokens: true,
+    },
+    ...(process.env.SHOP_CUSTOM_DOMAIN
+      ? { customShopDomains: [process.env.SHOP_CUSTOM_DOMAIN] }
+      : {}),
   });
 } catch (error) {
-  recordShopifyBootstrapFailure({error, stage: bootstrapStage, sensitiveValues: oauth ? [oauth.apiKey, oauth.apiSecret] : []});
+  recordShopifyBootstrapFailure({
+    error,
+    stage: bootstrapStage,
+    sensitiveValues: oauth ? [oauth.apiKey, oauth.apiSecret] : [],
+  });
   throw error;
 }
 
@@ -79,23 +88,20 @@ const shopifyFacade = Object.freeze({
 
 /** @param {Request} request */
 function authenticateAdmin(request) {
-  return shopifyOfflineCoordination.withAdminAuthentication(
-    request,
-    () => shopify.authenticate.admin(request),
+  return shopifyOfflineCoordination.withAdminAuthentication(request, () =>
+    shopify.authenticate.admin(request),
   );
 }
 /** @param {Request} request */
 function authenticateWebhook(request) {
-  return shopifyOfflineCoordination.withWebhookAuthentication(
-    request,
-    () => shopify.authenticate.webhook(request),
+  return shopifyOfflineCoordination.withWebhookAuthentication(request, () =>
+    shopify.authenticate.webhook(request),
   );
 }
 /** @param {Request} request */
 function authenticateAppProxy(request) {
-  return shopifyOfflineCoordination.withAppProxyAuthentication(
-    request,
-    () => shopify.authenticate.public.appProxy(request),
+  return shopifyOfflineCoordination.withAppProxyAuthentication(request, () =>
+    shopify.authenticate.public.appProxy(request),
   );
 }
 
@@ -111,7 +117,8 @@ export default shopifyFacade;
 export const apiVersion = ApiVersion.July26;
 // Stable, non-secret Shopify application identity for tenant-scoped dedupe keys.
 export const apiKey = oauth.apiKey;
-export const addDocumentResponseHeaders = shopifyFacade.addDocumentResponseHeaders;
+export const addDocumentResponseHeaders =
+  shopifyFacade.addDocumentResponseHeaders;
 export const authenticate = shopifyFacade.authenticate;
 export const unauthenticated = shopifyFacade.unauthenticated;
 export const login = shopifyFacade.login;

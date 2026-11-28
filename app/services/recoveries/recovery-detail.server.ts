@@ -1,42 +1,94 @@
 import { CheckoutRecoveryStatus, Prisma } from "@prisma/client";
 import prisma from "../../db.server";
-import { detailCursor, detailCursorScope, InvalidRecoveryDetailQuery, parseDetailNavigation, validDetailId, type DetailBoundary } from "./detail-cursor.server";
+import {
+  detailCursor,
+  detailCursorScope,
+  InvalidRecoveryDetailQuery,
+  parseDetailNavigation,
+  validDetailId,
+  type DetailBoundary,
+} from "./detail-cursor.server";
 import { recoveryMessageDto, type RecoveryMessageRow } from "./detail-message";
 import { projectRecoveryBasket } from "./recovery-basket";
-import { configuredFollowUpIsDue, customerServiceWindow } from "./recovery-service-window";
+import {
+  configuredFollowUpIsDue,
+  customerServiceWindow,
+} from "./recovery-service-window";
 import { resolveMerchantOutreach } from "./merchant-outreach.server";
 import { outreachHistorySql } from "./outreach-history-query.server";
-import { decodeOutreachHistory, type OutreachHistoryRow } from "./outreach-history-wire";
+import {
+  decodeOutreachHistory,
+  type OutreachHistoryRow,
+} from "./outreach-history-wire";
 
-export type RecoveryDetailDatabase = { $queryRaw<T>(query: Prisma.Sql): Promise<T> };
+export type RecoveryDetailDatabase = {
+  $queryRaw<T>(query: Prisma.Sql): Promise<T>;
+};
 type Identity = { shopId: string; recoveryId: string };
 type PageInput = Identity & { cursor?: unknown; window?: unknown };
 type OwnedRecovery = {
-  id: string; customerId: string | null; conversationId: string | null;
-  firstName: string | null; lastName: string | null; email: string | null;
-  status: string; totalPrice: Prisma.Decimal | null; currency: string | null; lineItems?: unknown;
-  controlMode?: string | null; controlRevision?: number | null; lastCustomerInboundAt?: Date | null;
+  id: string;
+  customerId: string | null;
+  conversationId: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  status: string;
+  totalPrice: Prisma.Decimal | null;
+  currency: string | null;
+  lineItems?: unknown;
+  controlMode?: string | null;
+  controlRevision?: number | null;
+  lastCustomerInboundAt?: Date | null;
   humanRestriction?: string | null;
   outreachHistory: OutreachHistoryRow[];
   conversationLanguageTag?: string | null;
-  latestCommandId?: string | null; latestCommandState?: string | null;
-  latestCommandKind?: string | null; latestCommandModeration?: string | null;
-  detectedAt: Date; messageSentAt: Date | null; engagedAt: Date | null;
-  completedAt: Date | null; expiredAt: Date | null;
+  latestCommandId?: string | null;
+  latestCommandState?: string | null;
+  latestCommandKind?: string | null;
+  latestCommandModeration?: string | null;
+  detectedAt: Date;
+  messageSentAt: Date | null;
+  engagedAt: Date | null;
+  completedAt: Date | null;
+  expiredAt: Date | null;
 };
-type RelatedRow = Pick<OwnedRecovery, "id" | "status" | "totalPrice" | "currency" | "detectedAt">;
+type RelatedRow = Pick<
+  OwnedRecovery,
+  "id" | "status" | "totalPrice" | "currency" | "detectedAt"
+>;
 
-const emptyPage = <T>() => ({ items: [] as T[], previousCursor: null as string | null, nextCursor: null as string | null });
-function terminalRecovery(status: string) { return ["COMPLETED", "CANCELLED", "EXPIRED"].includes(status); }
+const emptyPage = <T>() => ({
+  items: [] as T[],
+  previousCursor: null as string | null,
+  nextCursor: null as string | null,
+});
+function terminalRecovery(status: string) {
+  return ["COMPLETED", "CANCELLED", "EXPIRED"].includes(status);
+}
 function statusDto(value: string) {
-  return Object.values(CheckoutRecoveryStatus).includes(value as CheckoutRecoveryStatus) ? value as CheckoutRecoveryStatus : null;
+  return Object.values(CheckoutRecoveryStatus).includes(
+    value as CheckoutRecoveryStatus,
+  )
+    ? (value as CheckoutRecoveryStatus)
+    : null;
 }
 function valueDto(row: RelatedRow) {
-  return { amount: row.totalPrice?.toString() ?? null, currency: row.currency, incomplete: row.totalPrice === null || row.currency === null };
+  return {
+    amount: row.totalPrice?.toString() ?? null,
+    currency: row.currency,
+    incomplete: row.totalPrice === null || row.currency === null,
+  };
 }
-function boundary(id: string, date: Date): DetailBoundary { return { id, at: date.toISOString() }; }
+function boundary(id: string, date: Date): DetailBoundary {
+  return { id, at: date.toISOString() };
+}
 
-async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }: Identity, now = new Date()): Promise<OwnedRecovery | null> {
+async function ownedRecovery(
+  db: RecoveryDetailDatabase,
+  { shopId, recoveryId }: Identity,
+  now = new Date(),
+): Promise<OwnedRecovery | null> {
   if (!validDetailId(shopId) || !validDetailId(recoveryId)) return null;
   const rows = await db.$queryRaw<OwnedRecovery[]>(Prisma.sql`
     SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId",
@@ -68,7 +120,10 @@ async function ownedRecovery(db: RecoveryDetailDatabase, { shopId, recoveryId }:
 /** Internal server readers: callers MUST authenticate/resolve shopId and enforce RECOVERY_HISTORY.
  * Never pass a browser-provided shopId. Public entry points independently resolve ownership.
  */
-export async function readRecoveryDetail(input: Identity, db: RecoveryDetailDatabase = prisma) {
+export async function readRecoveryDetail(
+  input: Identity,
+  db: RecoveryDetailDatabase = prisma,
+) {
   const now = new Date();
   const row = await ownedRecovery(db, input, now);
   return row ? projectDetail(row, input.shopId, now) : null;
@@ -76,51 +131,103 @@ export async function readRecoveryDetail(input: Identity, db: RecoveryDetailData
 
 function projectDetail(row: OwnedRecovery, shopId: string, now: Date) {
   const attempts = decodeOutreachHistory(row.outreachHistory);
-  const evidence = row.conversationId ? resolveMerchantOutreach({ shopId, recoveryId: row.id,
-    conversationId: row.conversationId, platform: "SHOPIFY" }, attempts, now) : null;
+  const evidence = row.conversationId
+    ? resolveMerchantOutreach(
+        {
+          shopId,
+          recoveryId: row.id,
+          conversationId: row.conversationId,
+          platform: "SHOPIFY",
+        },
+        attempts,
+        now,
+      )
+    : null;
   const contact = evidence?.replyAnchor;
   const initial = evidence?.initial;
   // The SQL reads the latest provider-verified inbound no later than now;
   // apply the exact historical contact anchor after resolving retry lineage.
-  const window = customerServiceWindow(contact?.sentAt, row.lastCustomerInboundAt, now);
-  const followUpEligible = !!initial && !evidence?.followUpUsed && !window.open &&
+  const window = customerServiceWindow(
+    contact?.sentAt,
+    row.lastCustomerInboundAt,
+    now,
+  );
+  const followUpEligible =
+    !!initial &&
+    !evidence?.followUpUsed &&
+    !window.open &&
     contact?.recipient === initial.recipient &&
     configuredFollowUpIsDue(initial.sentAt, initial.followUpDueAt, now) &&
-    !terminalRecovery(row.status) && row.humanRestriction !== "SUSPENDED" &&
+    !terminalRecovery(row.status) &&
+    row.humanRestriction !== "SUSPENDED" &&
     /^\+?[0-9]{7,20}$/.test(initial.recipient);
   // Preserve historical send timestamps when no successful retry exists;
   // display the effective confirmed retry timestamp when one does.
-  const historical = attempts.find(attempt => attempt.sequence === 1 && attempt.trigger === "INITIAL");
+  const historical = attempts.find(
+    (attempt) => attempt.sequence === 1 && attempt.trigger === "INITIAL",
+  );
   const initialSentAt = initial?.sentAt ?? historical?.sentAt ?? null;
   return {
-    id: row.id, status: statusDto(row.status), value: valueDto(row),
-    customer: row.customerId ? { firstName: row.firstName, lastName: row.lastName, email: row.email } : null,
+    id: row.id,
+    status: statusDto(row.status),
+    value: valueDto(row),
+    customer: row.customerId
+      ? { firstName: row.firstName, lastName: row.lastName, email: row.email }
+      : null,
     hasConversation: row.conversationId !== null,
     // Both timestamps are persisted; neither is inferred from current Shopify cart data.
     initialOutreachSentAt: initialSentAt?.toISOString() ?? null,
-    basket: projectRecoveryBasket(row.lineItems, row.currency, row.totalPrice?.toString() ?? null),
-    conversation: row.conversationId ? {
-      id: row.conversationId, controlMode: row.controlMode === "HUMAN" ? "HUMAN" as const : "AI" as const,
-      controlRevision: row.controlRevision ?? 0, languageTag: row.conversationLanguageTag ?? null,
-      lastInboundAt: window.lastInboundAt?.toISOString() ?? null,
-      windowExpiresAt: window.expiresAt?.toISOString() ?? null,
-      followUp: { used: evidence?.followUpUsed ?? false, initiatedBy: evidence?.initiatedBy ?? null,
-        eligible: followUpEligible, hasApprovedTemplate: false },
-      humanMessagingStatus: row.humanRestriction === "SUSPENDED" ? "SUSPENDED" as const : "ACTIVE" as const,
-      latestCommand: row.latestCommandId ? { commandId: row.latestCommandId,
-        state: row.latestCommandState ?? "UNKNOWN", kind: row.latestCommandKind ?? "HUMAN_TEXT",
-        moderation: row.latestCommandModeration ?? "PENDING" } : null,
-    } : null,
-    milestones: { detectedAt: row.detectedAt.toISOString(), messageSentAt: row.messageSentAt?.toISOString() ?? null,
-      engagedAt: row.engagedAt?.toISOString() ?? null, completedAt: row.completedAt?.toISOString() ?? null,
-      expiredAt: row.expiredAt?.toISOString() ?? null },
+    basket: projectRecoveryBasket(
+      row.lineItems,
+      row.currency,
+      row.totalPrice?.toString() ?? null,
+    ),
+    conversation: row.conversationId
+      ? {
+          id: row.conversationId,
+          controlMode:
+            row.controlMode === "HUMAN" ? ("HUMAN" as const) : ("AI" as const),
+          controlRevision: row.controlRevision ?? 0,
+          languageTag: row.conversationLanguageTag ?? null,
+          lastInboundAt: window.lastInboundAt?.toISOString() ?? null,
+          windowExpiresAt: window.expiresAt?.toISOString() ?? null,
+          followUp: {
+            used: evidence?.followUpUsed ?? false,
+            initiatedBy: evidence?.initiatedBy ?? null,
+            eligible: followUpEligible,
+            hasApprovedTemplate: false,
+          },
+          humanMessagingStatus:
+            row.humanRestriction === "SUSPENDED"
+              ? ("SUSPENDED" as const)
+              : ("ACTIVE" as const),
+          latestCommand: row.latestCommandId
+            ? {
+                commandId: row.latestCommandId,
+                state: row.latestCommandState ?? "UNKNOWN",
+                kind: row.latestCommandKind ?? "HUMAN_TEXT",
+                moderation: row.latestCommandModeration ?? "PENDING",
+              }
+            : null,
+        }
+      : null,
+    milestones: {
+      detectedAt: row.detectedAt.toISOString(),
+      messageSentAt: row.messageSentAt?.toISOString() ?? null,
+      engagedAt: row.engagedAt?.toISOString() ?? null,
+      completedAt: row.completedAt?.toISOString() ?? null,
+      expiredAt: row.expiredAt?.toISOString() ?? null,
+    },
   };
 }
 
 type OwnedSection = Pick<OwnedRecovery, "id" | "customerId" | "conversationId">;
 type SectionNavigation = { cursor?: unknown; window?: unknown };
 
-async function sectionOwner(db: RecoveryDetailDatabase, { shopId, recoveryId }: Identity): Promise<OwnedSection | null> {
+async function sectionOwner(
+  db: RecoveryDetailDatabase,
+  { shopId, recoveryId }: Identity,
+): Promise<OwnedSection | null> {
   if (!validDetailId(shopId) || !validDetailId(recoveryId)) return null;
   const rows = await db.$queryRaw<OwnedSection[]>(Prisma.sql`
     SELECT r."id", c."id" AS "customerId", v."id" AS "conversationId"
@@ -133,7 +240,10 @@ async function sectionOwner(db: RecoveryDetailDatabase, { shopId, recoveryId }: 
 }
 
 /** Bound methods retain server-resolved ownership and accept navigation only. */
-export async function createRecoveryDetailReader(identity: Identity, db: RecoveryDetailDatabase = prisma) {
+export async function createRecoveryDetailReader(
+  identity: Identity,
+  db: RecoveryDetailDatabase = prisma,
+) {
   const trusted = { shopId: identity.shopId, recoveryId: identity.recoveryId };
   const now = new Date();
   const owned = await ownedRecovery(db, trusted, now);
@@ -141,13 +251,34 @@ export async function createRecoveryDetailReader(identity: Identity, db: Recover
   return {
     detail: projectDetail(owned, trusted.shopId, now),
     readMessages: async (navigation: SectionNavigation = {}) => {
-      const scope = detailCursorScope(["messages", trusted.shopId, trusted.recoveryId]);
-      return messagesForOwner(trusted, db, owned, scope, parseDetailNavigation(scope, navigation));
+      const scope = detailCursorScope([
+        "messages",
+        trusted.shopId,
+        trusted.recoveryId,
+      ]);
+      return messagesForOwner(
+        trusted,
+        db,
+        owned,
+        scope,
+        parseDetailNavigation(scope, navigation),
+      );
     },
     readRelated: async (navigation: SectionNavigation = {}) => {
-      if (navigation.window !== undefined) throw new InvalidRecoveryDetailQuery();
-      const scope = detailCursorScope(["related", trusted.shopId, trusted.recoveryId]);
-      return relatedForOwner(trusted, db, owned, scope, parseDetailNavigation(scope, navigation));
+      if (navigation.window !== undefined)
+        throw new InvalidRecoveryDetailQuery();
+      const scope = detailCursorScope([
+        "related",
+        trusted.shopId,
+        trusted.recoveryId,
+      ]);
+      return relatedForOwner(
+        trusted,
+        db,
+        owned,
+        scope,
+        parseDetailNavigation(scope, navigation),
+      );
     },
   };
 }
@@ -156,8 +287,13 @@ export async function createRecoveryDetailReader(identity: Identity, db: Recover
 // Read both provider-visible messages and merchant attempts which failed (or are
 // waiting) before any provider message existed. Each arm is bounded to 51 rows;
 // linked commands are excluded so no merchant reply can appear twice.
-export function recoveryMessagePageSql(shopId: string, conversationId: string, navigation: ReturnType<typeof parseDetailNavigation>) {
-  const descending = navigation.direction === "latest" || navigation.direction === "previous";
+export function recoveryMessagePageSql(
+  shopId: string,
+  conversationId: string,
+  navigation: ReturnType<typeof parseDetailNavigation>,
+) {
+  const descending =
+    navigation.direction === "latest" || navigation.direction === "previous";
   const key = navigation.boundary;
   const comparison = descending ? Prisma.sql`<` : Prisma.sql`>`;
   const order = descending ? Prisma.sql`DESC` : Prisma.sql`ASC`;
@@ -192,7 +328,10 @@ export function recoveryMessagePageSql(shopId: string, conversationId: string, n
     ORDER BY "createdAt" ${order}, "id" ${order} LIMIT 51`;
 }
 
-export async function readRecoveryMessages(input: PageInput, db: RecoveryDetailDatabase = prisma) {
+export async function readRecoveryMessages(
+  input: PageInput,
+  db: RecoveryDetailDatabase = prisma,
+) {
   const scope = detailCursorScope(["messages", input.shopId, input.recoveryId]);
   // Validate syntax independently of resource existence, so missing/foreign IDs behave identically.
   const nav = parseDetailNavigation(scope, input);
@@ -201,16 +340,29 @@ export async function readRecoveryMessages(input: PageInput, db: RecoveryDetailD
   return messagesForOwner(input, db, owned, scope, nav);
 }
 
-async function messagesForOwner(input: Identity, db: RecoveryDetailDatabase, owned: OwnedSection, scope: string, nav: ReturnType<typeof parseDetailNavigation>) {
-  if (!owned.conversationId) return emptyPage<ReturnType<typeof recoveryMessageDto>>();
-  const fetched = await db.$queryRaw<RecoveryMessageRow[]>(recoveryMessagePageSql(input.shopId, owned.conversationId, nav));
+async function messagesForOwner(
+  input: Identity,
+  db: RecoveryDetailDatabase,
+  owned: OwnedSection,
+  scope: string,
+  nav: ReturnType<typeof parseDetailNavigation>,
+) {
+  if (!owned.conversationId)
+    return emptyPage<ReturnType<typeof recoveryMessageDto>>();
+  const fetched = await db.$queryRaw<RecoveryMessageRow[]>(
+    recoveryMessagePageSql(input.shopId, owned.conversationId, nav),
+  );
   const rows = fetched.slice(0, 50);
-  if (nav.direction === "latest" || nav.direction === "previous") rows.reverse();
+  if (nav.direction === "latest" || nav.direction === "previous")
+    rows.reverse();
   if (!rows.length) return emptyPage<ReturnType<typeof recoveryMessageDto>>();
-  const first = boundary(rows[0].id, rows[0].createdAt), last = boundary(rows[rows.length - 1].id, rows[rows.length - 1].createdAt);
+  const first = boundary(rows[0].id, rows[0].createdAt),
+    last = boundary(rows[rows.length - 1].id, rows[rows.length - 1].createdAt);
   // Both event types participate in the same cursor; a failed preflight remains
   // navigable even after subsequent messages arrive.
-  const [edges] = await db.$queryRaw<{ before: boolean; after: boolean }[]>(Prisma.sql`
+  const [edges] = await db.$queryRaw<
+    { before: boolean; after: boolean }[]
+  >(Prisma.sql`
     SELECT (
       EXISTS (SELECT 1 FROM "whatsapp"."ConversationMessage" WHERE "conversationId" = ${owned.conversationId}
         AND ("createdAt", "id") < (${new Date(first.at)}::timestamp, ${first.id})) OR
@@ -224,11 +376,19 @@ async function messagesForOwner(input: Identity, db: RecoveryDetailDatabase, own
         AND "outboundMessageId" IS NULL
         AND ("createdAt", "id") > (${new Date(last.at)}::timestamptz, ${last.id}))
     ) AS "after"`);
-  return { items: rows.map(recoveryMessageDto), previousCursor: edges.before ? detailCursor(scope, "previous", first) : null,
-    nextCursor: edges.after ? detailCursor(scope, "next", last) : null };
+  return {
+    items: rows.map(recoveryMessageDto),
+    previousCursor: edges.before
+      ? detailCursor(scope, "previous", first)
+      : null,
+    nextCursor: edges.after ? detailCursor(scope, "next", last) : null,
+  };
 }
 
-export async function readRelatedRecoveries(input: PageInput, db: RecoveryDetailDatabase = prisma) {
+export async function readRelatedRecoveries(
+  input: PageInput,
+  db: RecoveryDetailDatabase = prisma,
+) {
   if (input.window !== undefined) throw new InvalidRecoveryDetailQuery();
   const scope = detailCursorScope(["related", input.shopId, input.recoveryId]);
   const nav = parseDetailNavigation(scope, input);
@@ -237,9 +397,22 @@ export async function readRelatedRecoveries(input: PageInput, db: RecoveryDetail
   return relatedForOwner(input, db, owned, scope, nav);
 }
 
-async function relatedForOwner(input: Identity, db: RecoveryDetailDatabase, owned: OwnedSection, scope: string, nav: ReturnType<typeof parseDetailNavigation>) {
-  if (!owned.customerId) return emptyPage<{ id: string; status: CheckoutRecoveryStatus | null; value: ReturnType<typeof valueDto>; detectedAt: string }>();
-  const ascending = nav.direction === "previous", key = nav.boundary;
+async function relatedForOwner(
+  input: Identity,
+  db: RecoveryDetailDatabase,
+  owned: OwnedSection,
+  scope: string,
+  nav: ReturnType<typeof parseDetailNavigation>,
+) {
+  if (!owned.customerId)
+    return emptyPage<{
+      id: string;
+      status: CheckoutRecoveryStatus | null;
+      value: ReturnType<typeof valueDto>;
+      detectedAt: string;
+    }>();
+  const ascending = nav.direction === "previous",
+    key = nav.boundary;
   const predicate = Prisma.sql`"shopId" = ${input.shopId} AND "customerId" = ${owned.customerId} AND "id" <> ${owned.id}`;
   const fetched = await db.$queryRaw<RelatedRow[]>(Prisma.sql`
     SELECT "id", "status", "totalPrice", "currency", "detectedAt" FROM "commerce"."CheckoutRecovery"
@@ -248,13 +421,32 @@ async function relatedForOwner(input: Identity, db: RecoveryDetailDatabase, owne
     ORDER BY "detectedAt" ${ascending ? Prisma.sql`ASC` : Prisma.sql`DESC`}, "id" ${ascending ? Prisma.sql`ASC` : Prisma.sql`DESC`} LIMIT 6`);
   const rows = fetched.slice(0, 5);
   if (ascending) rows.reverse();
-  if (!rows.length) return emptyPage<{ id: string; status: CheckoutRecoveryStatus | null; value: ReturnType<typeof valueDto>; detectedAt: string }>();
-  const first = boundary(rows[0].id, rows[0].detectedAt), last = boundary(rows[rows.length - 1].id, rows[rows.length - 1].detectedAt);
-  const [edges] = await db.$queryRaw<{ before: boolean; after: boolean }[]>(Prisma.sql`
+  if (!rows.length)
+    return emptyPage<{
+      id: string;
+      status: CheckoutRecoveryStatus | null;
+      value: ReturnType<typeof valueDto>;
+      detectedAt: string;
+    }>();
+  const first = boundary(rows[0].id, rows[0].detectedAt),
+    last = boundary(rows[rows.length - 1].id, rows[rows.length - 1].detectedAt);
+  const [edges] = await db.$queryRaw<
+    { before: boolean; after: boolean }[]
+  >(Prisma.sql`
     SELECT EXISTS (SELECT 1 FROM "commerce"."CheckoutRecovery" WHERE ${predicate}
       AND ("detectedAt", "id") > (${new Date(first.at)}::timestamp, ${first.id})) AS "before",
     EXISTS (SELECT 1 FROM "commerce"."CheckoutRecovery" WHERE ${predicate}
       AND ("detectedAt", "id") < (${new Date(last.at)}::timestamp, ${last.id})) AS "after"`);
-  return { items: rows.map(row => ({ id: row.id, status: statusDto(row.status), value: valueDto(row), detectedAt: row.detectedAt.toISOString() })),
-    previousCursor: edges.before ? detailCursor(scope, "previous", first) : null, nextCursor: edges.after ? detailCursor(scope, "next", last) : null };
+  return {
+    items: rows.map((row) => ({
+      id: row.id,
+      status: statusDto(row.status),
+      value: valueDto(row),
+      detectedAt: row.detectedAt.toISOString(),
+    })),
+    previousCursor: edges.before
+      ? detailCursor(scope, "previous", first)
+      : null,
+    nextCursor: edges.after ? detailCursor(scope, "next", last) : null,
+  };
 }

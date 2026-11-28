@@ -128,9 +128,9 @@ afterEach(() => {
 
 describe("checkRedisReadiness", () => {
   it("returns true when Redis answers a bounded PING", async () => {
-    await expect(
-      checkRedisReadiness("redis://localhost:6379"),
-    ).resolves.toBe(true);
+    await expect(checkRedisReadiness("redis://localhost:6379")).resolves.toBe(
+      true,
+    );
 
     expect(mockRedisClients).toHaveLength(1);
     expect(lastRedisClient().ping).toHaveBeenCalledTimes(1);
@@ -150,18 +150,18 @@ describe("checkRedisReadiness", () => {
   it("returns false when Redis cannot be reached", async () => {
     mockRedisBehaviour.connectError = new Error("ECONNREFUSED 127.0.0.1:6379");
 
-    await expect(
-      checkRedisReadiness("redis://localhost:6379"),
-    ).resolves.toBe(false);
+    await expect(checkRedisReadiness("redis://localhost:6379")).resolves.toBe(
+      false,
+    );
   });
 
   it("is bounded when Redis never responds", async () => {
     mockRedisBehaviour.connectHangs = true;
 
     const startedAt = Date.now();
-    await expect(
-      checkRedisReadiness("redis://localhost:6379"),
-    ).resolves.toBe(false);
+    await expect(checkRedisReadiness("redis://localhost:6379")).resolves.toBe(
+      false,
+    );
     const elapsed = Date.now() - startedAt;
 
     expect(elapsed).toBeGreaterThanOrEqual(HEALTH_CHECK_TIMEOUT_MS);
@@ -255,9 +255,9 @@ describe("checkPostgresReadiness probe lifecycle (factory contract)", () => {
   it("calls end() on the probe after a successful check", async () => {
     const probe = createProbeSpy();
 
-    await expect(
-      checkPostgresReadiness(probeUrl, () => probe),
-    ).resolves.toBe(true);
+    await expect(checkPostgresReadiness(probeUrl, () => probe)).resolves.toBe(
+      true,
+    );
 
     expect(probe.connect).toHaveBeenCalledTimes(1);
     expect(probe.query).toHaveBeenCalledWith("SELECT 1");
@@ -268,9 +268,9 @@ describe("checkPostgresReadiness probe lifecycle (factory contract)", () => {
     const probe = createProbeSpy();
     probe.connect.mockRejectedValue(new Error("ECONNREFUSED 127.0.0.1:5432"));
 
-    await expect(
-      checkPostgresReadiness(probeUrl, () => probe),
-    ).resolves.toBe(false);
+    await expect(checkPostgresReadiness(probeUrl, () => probe)).resolves.toBe(
+      false,
+    );
 
     expect(probe.end).toHaveBeenCalledTimes(1);
   });
@@ -281,9 +281,9 @@ describe("checkPostgresReadiness probe lifecycle (factory contract)", () => {
       new Error("canceling statement due to user request"),
     );
 
-    await expect(
-      checkPostgresReadiness(probeUrl, () => probe),
-    ).resolves.toBe(false);
+    await expect(checkPostgresReadiness(probeUrl, () => probe)).resolves.toBe(
+      false,
+    );
 
     expect(probe.end).toHaveBeenCalledTimes(1);
   });
@@ -294,9 +294,9 @@ describe("checkPostgresReadiness probe lifecycle (factory contract)", () => {
       new Error("timeout exceeded when waiting for query result"),
     );
 
-    await expect(
-      checkPostgresReadiness(probeUrl, () => probe),
-    ).resolves.toBe(false);
+    await expect(checkPostgresReadiness(probeUrl, () => probe)).resolves.toBe(
+      false,
+    );
 
     expect(probe.end).toHaveBeenCalledTimes(1);
   });
@@ -306,9 +306,9 @@ describe("checkPostgresReadiness probe lifecycle (factory contract)", () => {
     probe.connect.mockRejectedValue(new Error("ECONNREFUSED 127.0.0.1:5432"));
     probe.end.mockRejectedValue(new Error("connection already closed"));
 
-    await expect(
-      checkPostgresReadiness(probeUrl, () => probe),
-    ).resolves.toBe(false);
+    await expect(checkPostgresReadiness(probeUrl, () => probe)).resolves.toBe(
+      false,
+    );
 
     expect(probe.end).toHaveBeenCalledTimes(1);
   });

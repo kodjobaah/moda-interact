@@ -1,11 +1,17 @@
 import type { MerchantKnowledgeR2Configuration } from "../platform-configuration/contracts.server";
 
 /** The six fields in a single immutable, operation-scoped sealed configuration snapshot. */
-export type MerchantKnowledgeR2Config = Readonly<Pick<
-  MerchantKnowledgeR2Configuration,
-  "endpoint" | "bucket" | "accessKeyId" | "secretAccessKey" |
-  "maxUploadBytes" | "maxXlsxUncompressedBytes"
-> & { region: "auto" }>;
+export type MerchantKnowledgeR2Config = Readonly<
+  Pick<
+    MerchantKnowledgeR2Configuration,
+    | "endpoint"
+    | "bucket"
+    | "accessKeyId"
+    | "secretAccessKey"
+    | "maxUploadBytes"
+    | "maxXlsxUncompressedBytes"
+  > & { region: "auto" }
+>;
 
 /** The operation-scoped configuration reader has enforced the complete, sealed R2 contract. */
 export function r2ClientConfigFromSnapshot(

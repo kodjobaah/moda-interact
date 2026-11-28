@@ -5,7 +5,10 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { Prisma, PrismaClient } from "@prisma/client";
-import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
+import {
+  startDisposablePostgres,
+  type DisposablePostgres,
+} from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -27,8 +30,7 @@ let postgres: DisposablePostgres | undefined;
 let database: PrismaClient | undefined;
 let firstClient: PrismaClient | undefined;
 let secondClient: PrismaClient | undefined;
-let changeRecoveryControl:
-  typeof import("../../app/services/recoveries/recovery-human-commands.server")["changeRecoveryControl"];
+let changeRecoveryControl: (typeof import("../../app/services/recoveries/recovery-human-commands.server"))["changeRecoveryControl"];
 
 async function deployMigrations(databaseUrl: string) {
   await execFileAsync(
@@ -88,171 +90,251 @@ async function createRecovery(input: {
 function clientWithControlEventFailure(client: PrismaClient): PrismaClient {
   return new Proxy(client, {
     get(target, property, receiver) {
-      if (property !== "$transaction") return Reflect.get(target, property, receiver);
+      if (property !== "$transaction")
+        return Reflect.get(target, property, receiver);
       return (
         callback: (transaction: Prisma.TransactionClient) => Promise<unknown>,
         options?: Parameters<PrismaClient["$transaction"]>[1],
-      ) => target.$transaction((transaction) => {
-        const failingEvents = new Proxy(transaction.conversationControlEvent, {
-          get(delegate, method) {
-            if (method === "create") return async () => { throw new Error("injected control event failure"); };
-            const value = Reflect.get(delegate, method, delegate);
-            return typeof value === "function" ? value.bind(delegate) : value;
-          },
-        });
-        const transactionProxy = new Proxy(transaction, {
-          get(current, key) {
-            if (key === "conversationControlEvent") return failingEvents;
-            const value = Reflect.get(current, key, current);
-            return typeof value === "function" ? value.bind(current) : value;
-          },
-        });
-        return callback(transactionProxy);
-      }, options);
+      ) =>
+        target.$transaction((transaction) => {
+          const failingEvents = new Proxy(
+            transaction.conversationControlEvent,
+            {
+              get(delegate, method) {
+                if (method === "create")
+                  return async () => {
+                    throw new Error("injected control event failure");
+                  };
+                const value = Reflect.get(delegate, method, delegate);
+                return typeof value === "function"
+                  ? value.bind(delegate)
+                  : value;
+              },
+            },
+          );
+          const transactionProxy = new Proxy(transaction, {
+            get(current, key) {
+              if (key === "conversationControlEvent") return failingEvents;
+              const value = Reflect.get(current, key, current);
+              return typeof value === "function" ? value.bind(current) : value;
+            },
+          });
+          return callback(transactionProxy);
+        }, options);
     },
   });
 }
 
-describeWithDatabase("Shopify recovery-control PostgreSQL transaction fencing", () => {
-  beforeAll(async () => {
-    postgres = await startDisposablePostgres({
-      database: "shopify_control_test",
-      user: "shopify_control_test",
-      password: `test_${randomUUID().replaceAll("-", "")}`,
-    });
-    const databaseUrl = postgres.databaseUrl;
-    await deployMigrations(databaseUrl);
-    database = new PrismaClient({ datasourceUrl: databaseUrl });
-    firstClient = new PrismaClient({ datasourceUrl: databaseUrl });
-    secondClient = new PrismaClient({ datasourceUrl: databaseUrl });
-    await Promise.all([database.$connect(), firstClient.$connect(), secondClient.$connect()]);
-    ({ changeRecoveryControl } = await import(
-      "../../app/services/recoveries/recovery-human-commands.server"
-    ));
-    const checkoutRecoveryFeature = await database.feature.findUniqueOrThrow({
-      where: { key: "checkout_recovery" },
-      select: { id: true },
-    });
-    await database.billingPlan.create({
-      data: {
-        id: planId,
-        shopifyPlanHandle: planHandle,
-        name: "ARCH-054 control test plan",
-        kind: "PAID_METERED",
-        features: { create: { featureId: checkoutRecoveryFeature.id, enabled: true } },
-      },
-    });
-    await database.shop.create({
-      data: { id: shopId, domain: `${shopId}.myshopify.com`, status: "ACTIVE" },
-    });
-    await database.subscription.create({
-      data: { shopId, planId, status: "ACTIVE", observedShopifyPlanHandle: planHandle },
-    });
-  }, 240_000);
+describeWithDatabase(
+  "Shopify recovery-control PostgreSQL transaction fencing",
+  () => {
+    beforeAll(async () => {
+      postgres = await startDisposablePostgres({
+        database: "shopify_control_test",
+        user: "shopify_control_test",
+        password: `test_${randomUUID().replaceAll("-", "")}`,
+      });
+      const databaseUrl = postgres.databaseUrl;
+      await deployMigrations(databaseUrl);
+      database = new PrismaClient({ datasourceUrl: databaseUrl });
+      firstClient = new PrismaClient({ datasourceUrl: databaseUrl });
+      secondClient = new PrismaClient({ datasourceUrl: databaseUrl });
+      await Promise.all([
+        database.$connect(),
+        firstClient.$connect(),
+        secondClient.$connect(),
+      ]);
+      ({ changeRecoveryControl } =
+        await import("../../app/services/recoveries/recovery-human-commands.server"));
+      const checkoutRecoveryFeature = await database.feature.findUniqueOrThrow({
+        where: { key: "checkout_recovery" },
+        select: { id: true },
+      });
+      await database.billingPlan.create({
+        data: {
+          id: planId,
+          shopifyPlanHandle: planHandle,
+          name: "ARCH-054 control test plan",
+          kind: "PAID_METERED",
+          features: {
+            create: { featureId: checkoutRecoveryFeature.id, enabled: true },
+          },
+        },
+      });
+      await database.shop.create({
+        data: {
+          id: shopId,
+          domain: `${shopId}.myshopify.com`,
+          status: "ACTIVE",
+        },
+      });
+      await database.subscription.create({
+        data: {
+          shopId,
+          planId,
+          status: "ACTIVE",
+          observedShopifyPlanHandle: planHandle,
+        },
+      });
+    }, 240_000);
 
-  afterAll(async () => {
-    await Promise.allSettled([
-      firstClient?.$disconnect() ?? Promise.resolve(),
-      secondClient?.$disconnect() ?? Promise.resolve(),
-      database?.$disconnect() ?? Promise.resolve(),
-    ]);
-    await postgres?.cleanup();
-  }, 60_000);
+    afterAll(async () => {
+      await Promise.allSettled([
+        firstClient?.$disconnect() ?? Promise.resolve(),
+        secondClient?.$disconnect() ?? Promise.resolve(),
+        database?.$disconnect() ?? Promise.resolve(),
+      ]);
+      await postgres?.cleanup();
+    }, 60_000);
 
-  it("allows one concurrent takeover and atomically invalidates the pending turn", async () => {
-    if (!firstClient || !secondClient) throw new Error("Disposable PostgreSQL clients are unavailable");
-    const { recoveryId, conversationId } = await createRecovery({
-      label: "race", inboundVersion: 12,
-    });
-    const outcomes = await Promise.allSettled([
-      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, firstClient),
-      changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, secondClient),
-    ]);
+    it("allows one concurrent takeover and atomically invalidates the pending turn", async () => {
+      if (!firstClient || !secondClient)
+        throw new Error("Disposable PostgreSQL clients are unavailable");
+      const { recoveryId, conversationId } = await createRecovery({
+        label: "race",
+        inboundVersion: 12,
+      });
+      const outcomes = await Promise.allSettled([
+        changeRecoveryControl(
+          shopId,
+          recoveryId,
+          { targetMode: "HUMAN", expectedControlRevision: 0 },
+          firstClient,
+        ),
+        changeRecoveryControl(
+          shopId,
+          recoveryId,
+          { targetMode: "HUMAN", expectedControlRevision: 0 },
+          secondClient,
+        ),
+      ]);
 
-    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1);
-    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
-    const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
-    expect(conversation).toMatchObject({
-      controlMode: "HUMAN",
-      controlRevision: 1,
-      inboundVersion: 12,
-      lastProcessedVersion: 12,
-      pendingTurnStartedAt: null,
-      pendingAiNotBeforeAt: null,
-      pendingAiControlRevision: null,
-      pendingAiDelayMinutes: null,
-      processingInboundVersion: null,
-      processingStartedAt: null,
-    });
-    expect(await requireDatabase().conversationControlEvent.count({ where: { conversationId } })).toBe(1);
-  }, 30_000);
+      expect(
+        outcomes.filter((outcome) => outcome.status === "fulfilled"),
+      ).toHaveLength(1);
+      expect(
+        outcomes.filter((outcome) => outcome.status === "rejected"),
+      ).toHaveLength(1);
+      const conversation =
+        await requireDatabase().conversation.findUniqueOrThrow({
+          where: { id: conversationId },
+        });
+      expect(conversation).toMatchObject({
+        controlMode: "HUMAN",
+        controlRevision: 1,
+        inboundVersion: 12,
+        lastProcessedVersion: 12,
+        pendingTurnStartedAt: null,
+        pendingAiNotBeforeAt: null,
+        pendingAiControlRevision: null,
+        pendingAiDelayMinutes: null,
+        processingInboundVersion: null,
+        processingStartedAt: null,
+      });
+      expect(
+        await requireDatabase().conversationControlEvent.count({
+          where: { conversationId },
+        }),
+      ).toBe(1);
+    }, 30_000);
 
-  it("rolls back invalidation when the control event cannot be persisted", async () => {
-    if (!firstClient) throw new Error("Disposable PostgreSQL client is unavailable");
-    const { recoveryId, conversationId } = await createRecovery({
-      label: "rollback", inboundVersion: 21,
-    });
+    it("rolls back invalidation when the control event cannot be persisted", async () => {
+      if (!firstClient)
+        throw new Error("Disposable PostgreSQL client is unavailable");
+      const { recoveryId, conversationId } = await createRecovery({
+        label: "rollback",
+        inboundVersion: 21,
+      });
 
-    await expect(changeRecoveryControl(
-      shopId,
-      recoveryId,
-      { targetMode: "HUMAN", expectedControlRevision: 0 },
-      clientWithControlEventFailure(firstClient),
-    )).rejects.toThrow("injected control event failure");
+      await expect(
+        changeRecoveryControl(
+          shopId,
+          recoveryId,
+          { targetMode: "HUMAN", expectedControlRevision: 0 },
+          clientWithControlEventFailure(firstClient),
+        ),
+      ).rejects.toThrow("injected control event failure");
 
-    const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
-    expect(conversation).toMatchObject({
-      controlMode: "AI",
-      controlRevision: 0,
-      lastProcessedVersion: 19,
-      pendingAiControlRevision: 0,
-      pendingAiDelayMinutes: 7,
-      processingInboundVersion: 21,
-    });
-    expect(conversation.pendingAiNotBeforeAt).not.toBeNull();
-    expect(conversation.pendingTurnStartedAt).not.toBeNull();
-    expect(await requireDatabase().conversationControlEvent.count({ where: { conversationId } })).toBe(0);
-  }, 30_000);
+      const conversation =
+        await requireDatabase().conversation.findUniqueOrThrow({
+          where: { id: conversationId },
+        });
+      expect(conversation).toMatchObject({
+        controlMode: "AI",
+        controlRevision: 0,
+        lastProcessedVersion: 19,
+        pendingAiControlRevision: 0,
+        pendingAiDelayMinutes: 7,
+        processingInboundVersion: 21,
+      });
+      expect(conversation.pendingAiNotBeforeAt).not.toBeNull();
+      expect(conversation.pendingTurnStartedAt).not.toBeNull();
+      expect(
+        await requireDatabase().conversationControlEvent.count({
+          where: { conversationId },
+        }),
+      ).toBe(0);
+    }, 30_000);
 
-  it("preserves a fresh turn when a request carries the prior control revision", async () => {
-    if (!firstClient) throw new Error("Disposable PostgreSQL client is unavailable");
-    const { recoveryId, conversationId } = await createRecovery({
-      label: "stale", inboundVersion: 30,
-    });
-    await changeRecoveryControl(shopId, recoveryId, { targetMode: "HUMAN", expectedControlRevision: 0 }, firstClient);
-    await changeRecoveryControl(shopId, recoveryId, { targetMode: "AI", expectedControlRevision: 1 }, firstClient);
-    const nextTurnAt = new Date("2026-10-31T13:00:00.000Z");
-    await requireDatabase().conversation.update({
-      where: { id: conversationId },
-      data: {
+    it("preserves a fresh turn when a request carries the prior control revision", async () => {
+      if (!firstClient)
+        throw new Error("Disposable PostgreSQL client is unavailable");
+      const { recoveryId, conversationId } = await createRecovery({
+        label: "stale",
+        inboundVersion: 30,
+      });
+      await changeRecoveryControl(
+        shopId,
+        recoveryId,
+        { targetMode: "HUMAN", expectedControlRevision: 0 },
+        firstClient,
+      );
+      await changeRecoveryControl(
+        shopId,
+        recoveryId,
+        { targetMode: "AI", expectedControlRevision: 1 },
+        firstClient,
+      );
+      const nextTurnAt = new Date("2026-10-31T13:00:00.000Z");
+      await requireDatabase().conversation.update({
+        where: { id: conversationId },
+        data: {
+          inboundVersion: 31,
+          pendingTurnStartedAt: nextTurnAt,
+          pendingAiNotBeforeAt: new Date(nextTurnAt.getTime() + 7 * 60_000),
+          pendingAiControlRevision: 2,
+          pendingAiDelayMinutes: 7,
+          processingInboundVersion: 31,
+          processingStartedAt: nextTurnAt,
+        },
+      });
+
+      await expect(
+        changeRecoveryControl(
+          shopId,
+          recoveryId,
+          { targetMode: "HUMAN", expectedControlRevision: 1 },
+          firstClient,
+        ),
+      ).rejects.toMatchObject({ code: "stale_control_revision" });
+
+      const conversation =
+        await requireDatabase().conversation.findUniqueOrThrow({
+          where: { id: conversationId },
+        });
+      expect(conversation).toMatchObject({
+        controlMode: "AI",
+        controlRevision: 2,
         inboundVersion: 31,
-        pendingTurnStartedAt: nextTurnAt,
-        pendingAiNotBeforeAt: new Date(nextTurnAt.getTime() + 7 * 60_000),
+        lastProcessedVersion: 30,
         pendingAiControlRevision: 2,
         pendingAiDelayMinutes: 7,
         processingInboundVersion: 31,
-        processingStartedAt: nextTurnAt,
-      },
-    });
-
-    await expect(changeRecoveryControl(
-      shopId,
-      recoveryId,
-      { targetMode: "HUMAN", expectedControlRevision: 1 },
-      firstClient,
-    )).rejects.toMatchObject({ code: "stale_control_revision" });
-
-    const conversation = await requireDatabase().conversation.findUniqueOrThrow({ where: { id: conversationId } });
-    expect(conversation).toMatchObject({
-      controlMode: "AI",
-      controlRevision: 2,
-      inboundVersion: 31,
-      lastProcessedVersion: 30,
-      pendingAiControlRevision: 2,
-      pendingAiDelayMinutes: 7,
-      processingInboundVersion: 31,
-    });
-    expect(conversation.pendingAiNotBeforeAt).toEqual(new Date(nextTurnAt.getTime() + 7 * 60_000));
-    expect(conversation.pendingTurnStartedAt).toEqual(nextTurnAt);
-  }, 30_000);
-});
+      });
+      expect(conversation.pendingAiNotBeforeAt).toEqual(
+        new Date(nextTurnAt.getTime() + 7 * 60_000),
+      );
+      expect(conversation.pendingTurnStartedAt).toEqual(nextTurnAt);
+    }, 30_000);
+  },
+);

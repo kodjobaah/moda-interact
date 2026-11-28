@@ -1,7 +1,6 @@
 import { redirect } from "react-router";
 
-export const FEATURES_REDIRECT =
-  "/app/recovery-settings#conversation-features";
+export const FEATURES_REDIRECT = "/app/recovery-settings#conversation-features";
 
 export function loader() {
   return redirect(FEATURES_REDIRECT);

@@ -20,7 +20,10 @@ export type MerchantRequestContext = {
 const authenticationKey = createContext<Promise<Authentication> | null>(null);
 const merchantKey = createContext<Promise<MerchantRequestContext> | null>(null);
 
-function authenticateRequest(request: Request, context: Readonly<RouterContextProvider>) {
+function authenticateRequest(
+  request: Request,
+  context: Readonly<RouterContextProvider>,
+) {
   let promise = context.get(authenticationKey);
   if (!promise) {
     promise = authenticate.admin(request);
@@ -36,12 +39,18 @@ async function resolveContext(
 ): Promise<MerchantRequestContext> {
   const authentication = await authenticateRequest(request, context);
   const { admin, session } = authentication;
-  let snapshot: ReturnType<typeof shopService.resolveShopifyMerchantSnapshot> | undefined;
-  const repair = () => snapshot ??= shopService.resolveShopifyMerchantSnapshot({
-    admin, sessionShop: session.shop,
-  });
+  let snapshot:
+    ReturnType<typeof shopService.resolveShopifyMerchantSnapshot> | undefined;
+  const repair = () =>
+    (snapshot ??= shopService.resolveShopifyMerchantSnapshot({
+      admin,
+      sessionShop: session.shop,
+    }));
   const seed = refresh ? await repair() : undefined;
-  const shop = seed?.shop ?? await shopService.getByDomain(session.shop) ?? (await repair()).shop;
+  const shop =
+    seed?.shop ??
+    (await shopService.getByDomain(session.shop)) ??
+    (await repair()).shop;
   let subscription = seed ? Promise.resolve(seed.subscription) : undefined;
   let settings = seed ? Promise.resolve(seed.settings) : undefined;
   // A repair triggered by a missing Shop also seeds subsequent lazy reads.
@@ -55,18 +64,36 @@ async function resolveContext(
     authentication,
     shop,
     readSubscription() {
-      return subscription ??= snapshot ? snapshot.then(row => row.subscription) : prisma.subscription.findUnique({ where: { shopId: shop.id } })
-        .catch(error => {
-          recordMerchantResolutionFailure("read_subscription", "database", error, {shopId: shop.id});
-          throw error;
-        }).then(async row => row ?? (await repair()).subscription);
+      return (subscription ??= snapshot
+        ? snapshot.then((row) => row.subscription)
+        : prisma.subscription
+            .findUnique({ where: { shopId: shop.id } })
+            .catch((error) => {
+              recordMerchantResolutionFailure(
+                "read_subscription",
+                "database",
+                error,
+                { shopId: shop.id },
+              );
+              throw error;
+            })
+            .then(async (row) => row ?? (await repair()).subscription));
     },
     readSettings() {
-      return settings ??= snapshot ? snapshot.then(row => row.settings) : prisma.shopSettings.findUnique({ where: { shopId: shop.id } })
-        .catch(error => {
-          recordMerchantResolutionFailure("read_settings", "database", error, {shopId: shop.id});
-          throw error;
-        }).then(async row => row ?? (await repair()).settings);
+      return (settings ??= snapshot
+        ? snapshot.then((row) => row.settings)
+        : prisma.shopSettings
+            .findUnique({ where: { shopId: shop.id } })
+            .catch((error) => {
+              recordMerchantResolutionFailure(
+                "read_settings",
+                "database",
+                error,
+                { shopId: shop.id },
+              );
+              throw error;
+            })
+            .then(async (row) => row ?? (await repair()).settings));
     },
   };
 }
@@ -74,7 +101,10 @@ async function resolveContext(
 export function getMerchantRequestContext({
   request,
   context,
-}: { request: Request; context: Readonly<RouterContextProvider> }): Promise<MerchantRequestContext> {
+}: {
+  request: Request;
+  context: Readonly<RouterContextProvider>;
+}): Promise<MerchantRequestContext> {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return resolveContext(request, context, false);
   }
@@ -87,7 +117,8 @@ export function getMerchantRequestContext({
 }
 
 export const merchantPageContextMiddleware: MiddlewareFunction = async (
-  { request, context }, next,
+  { request, context },
+  next,
 ) => {
   if (request.method === "GET" || request.method === "HEAD") {
     // Install before awaiting: matched loaders share both success and rejection.

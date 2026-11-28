@@ -51,7 +51,8 @@ function recoveryForm(
   form.set("selectedDiscountIds", selectedDiscountIds);
   form.set("followUpEnabled", "false");
   form.set("followUpDelayMinutes", "");
-  if (preference !== null) form.set("notifyOnInitialRecoveryOutreach", preference);
+  if (preference !== null)
+    form.set("notifyOnInitialRecoveryOutreach", preference);
   return form;
 }
 
@@ -88,7 +89,9 @@ function aiResponseDelayForm(value = "7") {
 describe("recovery settings save route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.settingsMutationAccess.mockResolvedValue({ shop: { id: "shop-123" } });
+    mocks.settingsMutationAccess.mockResolvedValue({
+      shop: { id: "shop-123" },
+    });
     mocks.saveMerchantRecoveryPolicy.mockResolvedValue({
       updatedAt: new Date("2026-10-27T12:00:00.000Z"),
     });
@@ -120,10 +123,15 @@ describe("recovery settings save route", () => {
   });
 
   it("returns 409 for an optimistic revision conflict", async () => {
-    mocks.saveAiResponseDelay.mockRejectedValue(new mocks.MockPreferenceError("CONFLICT"));
+    mocks.saveAiResponseDelay.mockRejectedValue(
+      new mocks.MockPreferenceError("CONFLICT"),
+    );
     const response = await submit(aiResponseDelayForm());
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ ok: false, error: "CONFLICT" });
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: "CONFLICT",
+    });
   });
 
   it("returns 400 for invalid delay input", async () => {
@@ -132,7 +140,10 @@ describe("recovery settings save route", () => {
     );
     const response = await submit(aiResponseDelayForm("1e1"));
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ ok: false, error: "INVALID_INPUT" });
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: "INVALID_INPUT",
+    });
   });
 
   it("logs unexpected delay persistence failures through Shared and rethrows", async () => {
@@ -149,26 +160,35 @@ describe("recovery settings save route", () => {
     );
   });
 
-  it.each(["true", "false"] as const)("passes explicit %s as a Boolean to persistence", async (value) => {
-    const response = await submit(recoveryForm(value));
+  it.each(["true", "false"] as const)(
+    "passes explicit %s as a Boolean to persistence",
+    async (value) => {
+      const response = await submit(recoveryForm(value));
 
-    expect(response.status).toBe(200);
-    expect(mocks.saveMerchantRecoveryPolicy).toHaveBeenCalledWith(
-      "shop-123",
-      expect.objectContaining({
-        notifyOnInitialRecoveryOutreach: value === "true",
-        selectedDiscountIds: [],
-      }),
-      "revision-1",
-    );
-  });
+      expect(response.status).toBe(200);
+      expect(mocks.saveMerchantRecoveryPolicy).toHaveBeenCalledWith(
+        "shop-123",
+        expect.objectContaining({
+          notifyOnInitialRecoveryOutreach: value === "true",
+          selectedDiscountIds: [],
+        }),
+        "revision-1",
+      );
+    },
+  );
 
-  it.each([null, "on", "yes"]) ("rejects missing or non-Boolean preference values (%s)", async (value) => {
-    const response = await submit(recoveryForm(value));
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ ok: false, error: "INVALID_INPUT" });
-    expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
-  });
+  it.each([null, "on", "yes"])(
+    "rejects missing or non-Boolean preference values (%s)",
+    async (value) => {
+      const response = await submit(recoveryForm(value));
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({
+        ok: false,
+        error: "INVALID_INPUT",
+      });
+      expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects duplicated preference fields", async () => {
     const form = recoveryForm();
@@ -179,7 +199,9 @@ describe("recovery settings save route", () => {
   });
 
   it("sorts the selected ID set before saving and never accepts the legacy anchor", async () => {
-    const response = await submit(recoveryForm("true", '["zeta","alpha"]', "FIXED"));
+    const response = await submit(
+      recoveryForm("true", '["zeta","alpha"]', "FIXED"),
+    );
     expect(response.status).toBe(200);
     expect(mocks.saveMerchantRecoveryPolicy).toHaveBeenCalledWith(
       "shop-123",
@@ -192,19 +214,30 @@ describe("recovery settings save route", () => {
     expect((await submit(legacy)).status).toBe(400);
   });
 
-  it.each([
-    "not-json",
-    "{}",
-    '["same","same"]',
-    '[""]',
-  ])("rejects malformed or duplicate selected IDs (%s)", async (raw) => {
-    expect((await submit(recoveryForm("true", raw))).status).toBe(400);
-    expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
-  });
+  it.each(["not-json", "{}", '["same","same"]', '[""]'])(
+    "rejects malformed or duplicate selected IDs (%s)",
+    async (raw) => {
+      expect((await submit(recoveryForm("true", raw))).status).toBe(400);
+      expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
+    },
+  );
 
   it("rejects selected payloads over 8192 bytes and more than 50 entries", async () => {
-    expect((await submitEncoded(`selectedDiscountIds=${"x".repeat(8193)}`)).status).toBe(400);
-    expect((await submit(recoveryForm("true", JSON.stringify(Array.from({ length: 51 }, (_, index) => `d${index}`))))).status).toBe(422);
+    expect(
+      (await submitEncoded(`selectedDiscountIds=${"x".repeat(8193)}`)).status,
+    ).toBe(400);
+    expect(
+      (
+        await submit(
+          recoveryForm(
+            "true",
+            JSON.stringify(
+              Array.from({ length: 51 }, (_, index) => `d${index}`),
+            ),
+          ),
+        )
+      ).status,
+    ).toBe(422);
   });
 
   it.each([undefined, "1"] as const)(
@@ -224,7 +257,10 @@ describe("recovery settings save route", () => {
 
       const response = await submitEncoded(body, contentLength);
       expect(response.status).toBe(400);
-      expect(await response.json()).toMatchObject({ ok: false, error: "INVALID_INPUT" });
+      expect(await response.json()).toMatchObject({
+        ok: false,
+        error: "INVALID_INPUT",
+      });
       expect(mocks.saveMerchantRecoveryPolicy).not.toHaveBeenCalled();
     },
   );
@@ -264,7 +300,10 @@ describe("recovery settings save route", () => {
 
     const response = await submit(recoveryForm());
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ ok: false, error: "CONFLICT" });
+    expect(await response.json()).toMatchObject({
+      ok: false,
+      error: "CONFLICT",
+    });
     expect(mocks.logger.error).not.toHaveBeenCalled();
   });
 });

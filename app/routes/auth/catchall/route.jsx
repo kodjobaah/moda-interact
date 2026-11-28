@@ -4,12 +4,17 @@ import { authenticate } from "@/shopify.server";
 import { shopService } from "@/services/shop/shop.service";
 import { enqueueBillingSubscriptionReconcileBestEffort } from "@/services/billing/billing-reconciliation.service";
 
-export const loader = async (/** @type {import("react-router").LoaderFunctionArgs} */ { request }) => {
+export const loader = async (
+  /** @type {import("react-router").LoaderFunctionArgs} */ { request },
+) => {
   const { admin, session } = await authenticate.admin(request);
 
   if (admin && session) {
     // Authentication entry explicitly refreshes provider profile and provisioning.
-    const shop = await shopService.resolveShopifyShop({ admin, sessionShop: session.shop });
+    const shop = await shopService.resolveShopifyShop({
+      admin,
+      sessionShop: session.shop,
+    });
     if (shop.status === "UNINSTALLED") {
       const admission = await shopService.beginReinstallReconciliation(shop.id);
       if (admission.kind === "SCHEDULED") {
@@ -25,6 +30,8 @@ export const loader = async (/** @type {import("react-router").LoaderFunctionArg
   return null;
 };
 
-export const headers = (/** @type {import("react-router").HeadersArgs} */ headersArgs) => {
+export const headers = (
+  /** @type {import("react-router").HeadersArgs} */ headersArgs,
+) => {
   return boundary.headers(headersArgs);
 };

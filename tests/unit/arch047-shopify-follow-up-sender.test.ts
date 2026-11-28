@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Prisma } from "@prisma/client";
-const { trustedRecoverySenderWaba } = await import(
-  "../../app/services/recoveries/recovery-follow-up-sender.server"
-);
+const { trustedRecoverySenderWaba } =
+  await import("../../app/services/recoveries/recovery-follow-up-sender.server");
 
 afterEach(() => vi.unstubAllEnvs());
-const db = (row: unknown) => ({
-  platformConfiguration: { findUnique: vi.fn(async () => row) },
-}) as unknown as Pick<Prisma.TransactionClient, "platformConfiguration">;
+const db = (row: unknown) =>
+  ({
+    platformConfiguration: { findUnique: vi.fn(async () => row) },
+  }) as unknown as Pick<Prisma.TransactionClient, "platformConfiguration">;
 
 describe("ARCH-047 Shopify authoritative sender WABA", () => {
   it("uses a strictly valid environment fallback only when the ARCH-043 row is absent", async () => {
@@ -15,9 +15,13 @@ describe("ARCH-047 Shopify authoritative sender WABA", () => {
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1234567890");
     const missing = db(null);
     expect(await trustedRecoverySenderWaba(missing)).toBe("1234567890");
-    expect(missing.platformConfiguration.findUnique).toHaveBeenCalledWith(expect.objectContaining({
-      where: { environment_key: { environment: "test", key: "messaging.sender" } },
-    }));
+    expect(missing.platformConfiguration.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          environment_key: { environment: "test", key: "messaging.sender" },
+        },
+      }),
+    );
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "other-account");
     await expect(trustedRecoverySenderWaba(db(null))).rejects.toThrow();
   });
@@ -25,15 +29,34 @@ describe("ARCH-047 Shopify authoritative sender WABA", () => {
     vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test");
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1234567890");
     vi.stubEnv("MODA_ENCRYPTION_KEYS_JSON", "");
-    await expect(trustedRecoverySenderWaba(db({ environment: "test", key: "messaging.sender",
-      version: 1, value: { kind: "disabled", schemaVersion: 1 } }))).rejects.toThrow();
+    await expect(
+      trustedRecoverySenderWaba(
+        db({
+          environment: "test",
+          key: "messaging.sender",
+          version: 1,
+          value: { kind: "disabled", schemaVersion: 1 },
+        }),
+      ),
+    ).rejects.toThrow();
   });
   it("never treats a database error as a missing record eligible for environment fallback", async () => {
     vi.stubEnv("DEPLOYMENT_ENVIRONMENT_NAME", "test");
     vi.stubEnv("WHATSAPP_BUSINESS_ACCOUNT_ID", "1234567890");
-    const source = Object.assign(new Error("original sender database failure"), {code: "P2010"});
-    const broken = { platformConfiguration: { findUnique: vi.fn(async () => { throw source; }) } };
-    const caught = await trustedRecoverySenderWaba(broken as never).catch(error => error);
+    const source = Object.assign(
+      new Error("original sender database failure"),
+      { code: "P2010" },
+    );
+    const broken = {
+      platformConfiguration: {
+        findUnique: vi.fn(async () => {
+          throw source;
+        }),
+      },
+    };
+    const caught = await trustedRecoverySenderWaba(broken as never).catch(
+      (error) => error,
+    );
     expect(caught).toMatchObject({ code: "DATABASE_UNAVAILABLE" });
     expect(caught.cause).toBe(source);
   });

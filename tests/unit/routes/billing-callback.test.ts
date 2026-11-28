@@ -27,9 +27,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../app/shopify.server", () => ({
   authenticate: { admin: mocks.authenticateAdmin },
 }));
-vi.mock("../../../app/services/recoveries/onboarding-template-assignments.server", () => ({
-  ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
-}));
+vi.mock(
+  "../../../app/services/recoveries/onboarding-template-assignments.server",
+  () => ({
+    ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
+  }),
+);
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
     getHostedPlanVerificationFence: mocks.getFence,
@@ -41,19 +44,28 @@ vi.mock("../../../app/services/billing/billing.service", () => ({
     syncSubscription: mocks.syncSubscription,
     getSubscriptionProjection: mocks.getSubscriptionProjection,
     completeFreeActivation: mocks.completeFreeActivation,
-    scheduleInitialFreeReconciliationIfCurrent: mocks.scheduleInitialFreeReconciliationIfCurrent,
+    scheduleInitialFreeReconciliationIfCurrent:
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
   },
   INITIAL_BILLING_RETRY_DELAY_MS: 60_000,
 }));
 vi.mock("../../../app/services/billing/billing-reconciliation.service", () => ({
   enqueueBillingSubscriptionReconcileBestEffort: mocks.enqueueReconcile,
 }));
-vi.mock("../../../app/services/discounts/shopify-discount-lifecycle.service", () => ({
-  enqueueSubscriptionActivatedDiscountSyncBestEffort: mocks.enqueueDiscountSync,
-}));
-vi.mock("../../../app/services/store-profile/store-category-activation.server", () => ({
-  activateInitialPendingStoreCategoryIfEligible: mocks.activateInitialCategory,
-}));
+vi.mock(
+  "../../../app/services/discounts/shopify-discount-lifecycle.service",
+  () => ({
+    enqueueSubscriptionActivatedDiscountSyncBestEffort:
+      mocks.enqueueDiscountSync,
+  }),
+);
+vi.mock(
+  "../../../app/services/store-profile/store-category-activation.server",
+  () => ({
+    activateInitialPendingStoreCategoryIfEligible:
+      mocks.activateInitialCategory,
+  }),
+);
 vi.mock("../../../app/services/shop/shop.service", () => ({
   shopService: { resolveShopifyShop: mocks.resolveShop },
 }));
@@ -76,15 +88,27 @@ async function captureSharedErrorRecords(
   const sink = vi.spyOn(console, "error").mockImplementation((line) => {
     if (options.throwFromSink) throw new Error("test Shared sink failure");
     if (typeof line !== "string") return;
-    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+    try {
+      records.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      return;
+    }
   });
-  try { await run(); } finally { sink.mockRestore(); }
+  try {
+    await run();
+  } finally {
+    sink.mockRestore();
+  }
   return records;
 }
 
 const shop = { id: "shop-1", status: "ACTIVE" };
 const freePlan = { id: "free-1", kind: "FREE", shopifyPlanHandle: "free" };
-const paidPlan = { id: "paid-1", kind: "PAID_METERED", shopifyPlanHandle: "growth" };
+const paidPlan = {
+  id: "paid-1",
+  kind: "PAID_METERED",
+  shopifyPlanHandle: "growth",
+};
 const initialToken = Object.freeze({
   subscriptionId: "subscription-1",
   pendingPlanId: "free-1",
@@ -148,10 +172,12 @@ beforeEach(() => {
     shop,
     authentication: { redirect: mocks.redirect },
   });
-  mocks.transaction.mockImplementation(async (callback) => callback({
-    shop: { updateMany: mocks.updateShopOnboarding },
-    shopSettings: { updateMany: mocks.updateOnboarding },
-  }));
+  mocks.transaction.mockImplementation(async (callback) =>
+    callback({
+      shop: { updateMany: mocks.updateShopOnboarding },
+      shopSettings: { updateMany: mocks.updateOnboarding },
+    }),
+  );
   mocks.updateOnboarding.mockResolvedValue({ count: 1 });
   mocks.updateShopOnboarding.mockResolvedValue({ count: 1 });
   mocks.getFence.mockResolvedValue(verificationFence);
@@ -165,14 +191,22 @@ beforeEach(() => {
       currentPeriodEnd: "2026-10-01T00:00:00.000Z",
       trialEndsAt: null,
       cancelAtEndOfCycle: false,
-      pendingUpdate: { planHandle: "free", price: { amount: "0.00", currency: "GBP" }, effectiveAt: "2026-10-01T00:00:00.000Z" },
+      pendingUpdate: {
+        planHandle: "free",
+        price: { amount: "0.00", currency: "GBP" },
+        effectiveAt: "2026-10-01T00:00:00.000Z",
+      },
       usageItems: [],
     },
     modaMapping: { id: "growth-id", name: "Growth", kind: "PAID_METERED" },
     mappingStatus: "MAPPED",
     pendingModaMapping: { id: "free-id", name: "Free", kind: "FREE" },
   });
-  mocks.prepareFreeActivation.mockResolvedValue({ plan: freePlan, mode: "INITIAL", token: initialToken });
+  mocks.prepareFreeActivation.mockResolvedValue({
+    plan: freePlan,
+    mode: "INITIAL",
+    token: initialToken,
+  });
   mocks.preparePaidActivation.mockResolvedValue(null);
   mocks.syncSubscription.mockResolvedValue(subscription());
   mocks.getSubscriptionProjection.mockResolvedValue(subscription());
@@ -184,8 +218,15 @@ beforeEach(() => {
     subscriptionId: "subscription-1",
     nextReconcileAt: new Date("2026-09-12T00:01:00.000Z"),
   });
-  mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
-  mocks.recordFailure.mockResolvedValue({ subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-09-12T00:01:00.000Z") });
+  mocks.recordReturn.mockResolvedValue({
+    result: "pending",
+    subscriptionId: "subscription-1",
+    nextReconcileAt: new Date("2026-10-01T00:00:00.000Z"),
+  });
+  mocks.recordFailure.mockResolvedValue({
+    subscriptionId: "subscription-1",
+    nextReconcileAt: new Date("2026-09-12T00:01:00.000Z"),
+  });
   mocks.enqueueDiscountSync.mockResolvedValue(undefined);
 });
 
@@ -209,28 +250,39 @@ describe("billing callback activation", () => {
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", initialToken);
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
   });
 
   it("preserves the prior Free projection when replay verification is malformed", async () => {
-    mocks.syncSubscription.mockRejectedValue(new ShopifyBillingProviderError({
-      operation: "get_active_subscription",
-      failureKind: "MALFORMED_RESPONSE",
-      origin: "provider_response",
-      message: "Partner response missing data.activeSubscription",
-    }));
+    mocks.syncSubscription.mockRejectedValue(
+      new ShopifyBillingProviderError({
+        operation: "get_active_subscription",
+        failureKind: "MALFORMED_RESPONSE",
+        origin: "provider_response",
+        message: "Partner response missing data.activeSubscription",
+      }),
+    );
 
     await runLoader("free");
 
     expect(mocks.getState).toHaveBeenCalledOnce();
     expect(mocks.getSubscriptionProjection).toHaveBeenCalledWith("shop-1");
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      expected: initialToken,
-      verificationFailure: { code: "PARTNER_API_ERROR", occurredAt: expect.any(Date) },
-    }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expected: initialToken,
+        verificationFailure: {
+          code: "PARTNER_API_ERROR",
+          occurredAt: expect.any(Date),
+        },
+      }),
+    );
   });
 
   it("rolls back shared completion when the required legacy settings row is missing", async () => {
@@ -249,21 +301,31 @@ describe("billing callback activation", () => {
       data: { onboardingCompleted: true },
     });
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("free")).rejects.toThrow("ShopSettings invariant missing for Shop shop-1");
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("free")).rejects.toThrow(
+          "ShopSettings invariant missing for Shop shop-1",
+        );
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
   });
 
   it("emits the original milestone persistence failure and does not continue activation", async () => {
     const cause = new Error("milestone driver marker");
-    const failure = Object.assign(new Error("milestone write marker", { cause }), { code: "P2025" });
+    const failure = Object.assign(
+      new Error("milestone write marker", { cause }),
+      { code: "P2025" },
+    );
     mocks.updateOnboarding.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("free")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.onboarding_milestone.persist_failed");
+    const record = records.find(
+      (item) => item.event === "billing.onboarding_milestone.persist_failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -279,20 +341,27 @@ describe("billing callback activation", () => {
   });
 
   it("does not invoke optional Store Category activation during Free onboarding", async () => {
-    mocks.activateInitialCategory.mockRejectedValue(new Error("stale optional category"));
+    mocks.activateInitialCategory.mockRejectedValue(
+      new Error("stale optional category"),
+    );
     await runLoader("free");
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).toHaveBeenCalledWith("shop-1", "free");
   });
 
   it("emits retry persistence failure separately and preserves the original throw", async () => {
-    const failure = Object.assign(new Error("fenced retry write marker"), { code: "P2034" });
+    const failure = Object.assign(new Error("fenced retry write marker"), {
+      code: "P2034",
+    });
     mocks.getState.mockRejectedValue(new Error("provider timeout marker"));
     mocks.recordFailure.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.hosted_plan_verification_retry.persist_failed");
+    const record = records.find(
+      (item) =>
+        item.event === "billing.hosted_plan_verification_retry.persist_failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -305,26 +374,39 @@ describe("billing callback activation", () => {
       error: { name: "Error", message: "fenced retry write marker" },
     });
     expect(JSON.stringify(record)).not.toContain("provider timeout marker");
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("growth")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("growth")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
   it("logs initial activation retry persistence failure distinctly and keeps the bounded outcome", async () => {
     const cause = new Error("initial retry driver marker");
-    const failure = Object.assign(new Error("initial retry persistence marker password=retry-secret", { cause }), { code: "P2034" });
-    mocks.syncSubscription.mockRejectedValue(new ShopifyBillingProviderError({
-      operation: "get_active_subscription",
-      failureKind: "TRANSPORT",
-      origin: "transport",
-      message: "provider transport marker",
-    }));
+    const failure = Object.assign(
+      new Error("initial retry persistence marker password=retry-secret", {
+        cause,
+      }),
+      { code: "P2034" },
+    );
+    mocks.syncSubscription.mockRejectedValue(
+      new ShopifyBillingProviderError({
+        operation: "get_active_subscription",
+        failureKind: "TRANSPORT",
+        origin: "transport",
+        message: "provider transport marker",
+      }),
+    );
     mocks.scheduleInitialFreeReconciliationIfCurrent.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("free")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.initial_activation_retry.persist_failed");
+    const record = records.find(
+      (item) =>
+        item.event === "billing.initial_activation_retry.persist_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "schedule_initial_free_reconciliation",
@@ -333,27 +415,38 @@ describe("billing callback activation", () => {
       shopId: "shop-1",
       identities: { subscriptionId: "subscription-1" },
       databaseCode: "P2034",
-      error: { name: "Error", message: "initial retry persistence marker [REDACTED]" },
+      error: {
+        name: "Error",
+        message: "initial retry persistence marker [REDACTED]",
+      },
       causeChain: [{ name: "Error", message: "initial retry driver marker" }],
     });
     expect(JSON.stringify(record)).not.toContain("provider transport marker");
     expect(JSON.stringify(record)).not.toContain("retry-secret");
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("free")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("free")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
   });
 
   it("logs a verification-fence read failure with its database owner and preserves the throw", async () => {
     const cause = new Error("fence driver marker");
-    const failure = Object.assign(new Error("fence read marker", { cause }), { code: "P2034" });
+    const failure = Object.assign(new Error("fence read marker", { cause }), {
+      code: "P2034",
+    });
     mocks.getFence.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.hosted_plan_verification_fence.read_failed");
+    const record = records.find(
+      (item) =>
+        item.event === "billing.hosted_plan_verification_fence.read_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "read_hosted_plan_verification_fence",
@@ -364,20 +457,31 @@ describe("billing callback activation", () => {
       error: { name: "Error", message: "fence read marker" },
       causeChain: [{ name: "Error", message: "fence driver marker" }],
     });
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("growth")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("growth")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
   it("logs hosted-return persistence failure at its fenced database boundary", async () => {
-    const failure = Object.assign(new Error("hosted return marker"), { code: "P2034" });
-    mocks.getState.mockResolvedValue({ status: "ACTIVE_SUBSCRIPTION", subscription: { planHandle: "starter" } });
+    const failure = Object.assign(new Error("hosted return marker"), {
+      code: "P2034",
+    });
+    mocks.getState.mockResolvedValue({
+      status: "ACTIVE_SUBSCRIPTION",
+      subscription: { planHandle: "starter" },
+    });
     mocks.recordReturn.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.hosted_plan_change_return.persist_failed");
+    const record = records.find(
+      (item) =>
+        item.event === "billing.hosted_plan_change_return.persist_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "record_hosted_plan_change_return",
@@ -388,19 +492,26 @@ describe("billing callback activation", () => {
       databaseCode: "P2034",
       error: { name: "Error", message: "hosted return marker" },
     });
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("growth")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("growth")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
   it("logs activation prepare persistence failure with the requested plan identity", async () => {
-    const failure = Object.assign(new Error("activation prepare marker"), { code: "P2034" });
+    const failure = Object.assign(new Error("activation prepare marker"), {
+      code: "P2034",
+    });
     mocks.prepareFreeActivation.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_activation.prepare_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "prepare_free_subscription_activation",
@@ -411,9 +522,12 @@ describe("billing callback activation", () => {
       databaseCode: "P2034",
       error: { name: "Error", message: "activation prepare marker" },
     });
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("growth")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("growth")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
@@ -424,20 +538,24 @@ describe("billing callback activation", () => {
     mocks.getFence.mockResolvedValue(null);
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockRejectedValue(failure);
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      status: "ACTIVE",
-      planId: paidPlan.id,
-      plan: paidPlan,
-      observedShopifyPlanHandle: "growth",
-      billingPeriodId: "period-paid",
-      currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
-      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
-    }));
+    mocks.syncSubscription.mockResolvedValue(
+      subscription({
+        status: "ACTIVE",
+        planId: paidPlan.id,
+        plan: paidPlan,
+        observedShopifyPlanHandle: "growth",
+        billingPeriodId: "period-paid",
+        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+      }),
+    );
 
     const records = await captureSharedErrorRecords(async () => {
       await runLoader("growth");
     });
-    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_activation.prepare_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "prepare_paid_subscription_activation",
@@ -455,7 +573,10 @@ describe("billing callback activation", () => {
   });
 
   it("continues to propagate unexpected paid activation preparation failures", async () => {
-    const failure = Object.assign(new Error("paid activation transaction marker"), { code: "P2034" });
+    const failure = Object.assign(
+      new Error("paid activation transaction marker"),
+      { code: "P2034" },
+    );
     mocks.getFence.mockResolvedValue(null);
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockRejectedValue(failure);
@@ -463,7 +584,9 @@ describe("billing callback activation", () => {
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("growth")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.subscription_activation.prepare_failed");
+    const record = records.find(
+      (item) => item.event === "billing.subscription_activation.prepare_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "prepare_paid_subscription_activation",
@@ -479,70 +602,103 @@ describe("billing callback activation", () => {
 
   it("logs activation finalization persistence failure without advancing category activation", async () => {
     const cause = new Error("activation transaction marker");
-    const failure = Object.assign(new Error("activation finalize marker", { cause }), { code: "P2034" });
+    const failure = Object.assign(
+      new Error("activation finalize marker", { cause }),
+      { code: "P2034" },
+    );
     mocks.completeFreeActivation.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       await expect(runLoader("free")).rejects.toBe(failure);
     });
-    const record = records.find((item) => item.event === "billing.subscription_activation.complete_failed");
+    const record = records.find(
+      (item) =>
+        item.event === "billing.subscription_activation.complete_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "complete_free_subscription_activation",
       stage: "activation_finalize",
       origin: "database",
       shopId: "shop-1",
-      identities: { requestedPlanHandle: "free", subscriptionId: "subscription-1" },
+      identities: {
+        requestedPlanHandle: "free",
+        subscriptionId: "subscription-1",
+      },
       databaseCode: "P2034",
       error: { name: "Error", message: "activation finalize marker" },
       causeChain: [{ name: "Error", message: "activation transaction marker" }],
     });
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(runLoader("free")).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(runLoader("free")).rejects.toBe(failure);
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
   });
 
   it("records and completes a first paid activation only after matching verification", async () => {
-    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    const paidToken = {
+      ...initialToken,
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+    };
     mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      observedShopifyPlanHandle: "growth",
-      planId: "paid-1",
+    mocks.preparePaidActivation.mockResolvedValue({
       plan: paidPlan,
-      billingPeriodId: "period-1",
-      currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
-      currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
-      pendingShopifyPlanHandle: null,
-      pendingPlanId: null,
-      pendingEffectiveAt: null,
-      nextReconcileAt: new Date("2026-09-30T00:00:00.000Z"),
-    }));
+      mode: "INITIAL",
+      token: paidToken,
+    });
+    mocks.syncSubscription.mockResolvedValue(
+      subscription({
+        observedShopifyPlanHandle: "growth",
+        planId: "paid-1",
+        plan: paidPlan,
+        billingPeriodId: "period-1",
+        currentPeriodStart: new Date("2026-09-01T00:00:00.000Z"),
+        currentPeriodEnd: new Date("2026-10-01T00:00:00.000Z"),
+        pendingShopifyPlanHandle: null,
+        pendingPlanId: null,
+        pendingEffectiveAt: null,
+        nextReconcileAt: new Date("2026-09-30T00:00:00.000Z"),
+      }),
+    );
 
     await runLoader("growth");
 
-    expect(mocks.preparePaidActivation).toHaveBeenCalledWith("shop-1", "growth");
+    expect(mocks.preparePaidActivation).toHaveBeenCalledWith(
+      "shop-1",
+      "growth",
+    );
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
     expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ subscriptionId: "subscription-1" }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(
+      expect.objectContaining({ subscriptionId: "subscription-1" }),
+    );
     expect(mocks.enqueueDiscountSync).toHaveBeenCalledWith("shop-1");
   });
 
   it("does not activate a pending paid handle when Shopify still reports another plan", async () => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: initialToken });
-    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
-      observedShopifyPlanHandle: "starter",
-      planId: "starter-1",
-      plan: { kind: "PAID_METERED", shopifyPlanHandle: "starter" },
-      pendingShopifyPlanHandle: "growth",
-      pendingPlanId: "paid-1",
-      pendingEffectiveAt: new Date(),
-    }));
+    mocks.preparePaidActivation.mockResolvedValue({
+      plan: paidPlan,
+      mode: "INITIAL",
+      token: initialToken,
+    });
+    mocks.getSubscriptionProjection.mockResolvedValue(
+      subscription({
+        observedShopifyPlanHandle: "starter",
+        planId: "starter-1",
+        plan: { kind: "PAID_METERED", shopifyPlanHandle: "starter" },
+        pendingShopifyPlanHandle: "growth",
+        pendingPlanId: "paid-1",
+        pendingEffectiveAt: new Date(),
+      }),
+    );
 
     await runLoader("growth");
 
@@ -551,84 +707,135 @@ describe("billing callback activation", () => {
   });
 
   it("keeps a Paid provider-null result on the existing bounded retry path", async () => {
-    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    const paidToken = {
+      ...initialToken,
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+    };
     mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
+    mocks.preparePaidActivation.mockResolvedValue({
+      plan: paidPlan,
+      mode: "INITIAL",
+      token: paidToken,
+    });
     mocks.syncSubscription.mockResolvedValue(null);
 
     await runLoader("growth");
 
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1", paidToken);
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({ expected: paidToken }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(expect.objectContaining({ expected: paidToken }));
     expect(mocks.enqueueReconcile).toHaveBeenCalled();
   });
 
   it("keeps a Paid Partner failure on the existing bounded retry path", async () => {
-    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
+    const paidToken = {
+      ...initialToken,
+      pendingPlanId: "paid-1",
+      pendingShopifyPlanHandle: "growth",
+    };
     mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
-    mocks.syncSubscription.mockRejectedValue(new ShopifyBillingProviderError({
-      operation: "get_active_subscription",
-      failureKind: "TRANSPORT",
-      origin: "transport",
-      message: "Partner unavailable",
-    }));
+    mocks.preparePaidActivation.mockResolvedValue({
+      plan: paidPlan,
+      mode: "INITIAL",
+      token: paidToken,
+    });
+    mocks.syncSubscription.mockRejectedValue(
+      new ShopifyBillingProviderError({
+        operation: "get_active_subscription",
+        failureKind: "TRANSPORT",
+        origin: "transport",
+        message: "Partner unavailable",
+      }),
+    );
 
     await runLoader("growth");
 
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      expected: paidToken,
-      verificationFailure: { code: "PARTNER_API_ERROR", occurredAt: expect.any(Date) },
-    }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expected: paidToken,
+        verificationFailure: {
+          code: "PARTNER_API_ERROR",
+          occurredAt: expect.any(Date),
+        },
+      }),
+    );
     expect(mocks.enqueueReconcile).toHaveBeenCalled();
   });
 
   it("does not enqueue the initial retry for an unsupported Paid trial", async () => {
-    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
-    mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      status: "SYNC_ERROR",
-      planId: null,
-      observedShopifyPlanHandle: "growth",
-      billingPeriodId: null,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      pendingShopifyPlanHandle: "growth",
+    const paidToken = {
+      ...initialToken,
       pendingPlanId: "paid-1",
-      pendingEffectiveAt: paidToken.pendingEffectiveAt,
-      nextReconcileAt: null,
-      lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL",
-    }));
+      pendingShopifyPlanHandle: "growth",
+    };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({
+      plan: paidPlan,
+      mode: "INITIAL",
+      token: paidToken,
+    });
+    mocks.syncSubscription.mockResolvedValue(
+      subscription({
+        status: "SYNC_ERROR",
+        planId: null,
+        observedShopifyPlanHandle: "growth",
+        billingPeriodId: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        pendingShopifyPlanHandle: "growth",
+        pendingPlanId: "paid-1",
+        pendingEffectiveAt: paidToken.pendingEffectiveAt,
+        nextReconcileAt: null,
+        lastSyncErrorCode: "UNSUPPORTED_PAID_TRIAL",
+      }),
+    );
 
     await runLoader("growth");
 
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it("does not classify a durable Paid configuration error as a Partner failure", async () => {
-    const paidToken = { ...initialToken, pendingPlanId: "paid-1", pendingShopifyPlanHandle: "growth" };
-    mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue({ plan: paidPlan, mode: "INITIAL", token: paidToken });
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      status: "SYNC_ERROR",
-      planId: null,
-      observedShopifyPlanHandle: "growth",
-      billingPeriodId: null,
-      currentPeriodStart: null,
-      currentPeriodEnd: null,
-      pendingShopifyPlanHandle: "growth",
+    const paidToken = {
+      ...initialToken,
       pendingPlanId: "paid-1",
-      pendingEffectiveAt: paidToken.pendingEffectiveAt,
-      nextReconcileAt: null,
-      lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
-    }));
+      pendingShopifyPlanHandle: "growth",
+    };
+    mocks.prepareFreeActivation.mockResolvedValue(null);
+    mocks.preparePaidActivation.mockResolvedValue({
+      plan: paidPlan,
+      mode: "INITIAL",
+      token: paidToken,
+    });
+    mocks.syncSubscription.mockResolvedValue(
+      subscription({
+        status: "SYNC_ERROR",
+        planId: null,
+        observedShopifyPlanHandle: "growth",
+        billingPeriodId: null,
+        currentPeriodStart: null,
+        currentPeriodEnd: null,
+        pendingShopifyPlanHandle: "growth",
+        pendingPlanId: "paid-1",
+        pendingEffectiveAt: paidToken.pendingEffectiveAt,
+        nextReconcileAt: null,
+        lastSyncErrorCode: "INVALID_PAID_PLAN_CONFIGURATION",
+      }),
+    );
 
     await runLoader("growth");
 
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).not.toHaveBeenCalled();
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).not.toHaveBeenCalled();
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
@@ -638,79 +845,111 @@ describe("billing callback activation", () => {
   it("does not onboard an arbitrary handle without provider confirmation", async () => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
-    mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: null });
+    mocks.recordReturn.mockResolvedValue({
+      result: "mismatch",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: null,
+    });
 
     await runLoader("unknown");
 
     expect(mocks.updateOnboarding).not.toHaveBeenCalled();
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=mismatch&requested_plan_handle=unknown");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=mismatch&requested_plan_handle=unknown",
+    );
   });
 
-  it.each(["unknown", "paid"])("rejects %s handles before the Free activation path", async (planHandle) => {
-    mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: null });
-    mocks.getState.mockResolvedValue({
-      status: "ACTIVE_SUBSCRIPTION",
-      subscription: {
-        planHandle: "growth",
-        currentPeriodStart: null,
-        currentPeriodEnd: null,
-        trialEndsAt: null,
-        cancelAtEndOfCycle: false,
-        pendingUpdate: null,
-      },
-    });
+  it.each(["unknown", "paid"])(
+    "rejects %s handles before the Free activation path",
+    async (planHandle) => {
+      mocks.prepareFreeActivation.mockResolvedValue(null);
+      mocks.recordReturn.mockResolvedValue({
+        result: "mismatch",
+        subscriptionId: "subscription-1",
+        nextReconcileAt: null,
+      });
+      mocks.getState.mockResolvedValue({
+        status: "ACTIVE_SUBSCRIPTION",
+        subscription: {
+          planHandle: "growth",
+          currentPeriodStart: null,
+          currentPeriodEnd: null,
+          trialEndsAt: null,
+          cancelAtEndOfCycle: false,
+          pendingUpdate: null,
+        },
+      });
 
-    await runLoader(planHandle);
+      await runLoader(planHandle);
 
-    expect(mocks.syncSubscription).not.toHaveBeenCalled();
-    expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith(`/app/billing/options?plan_change=mismatch&requested_plan_handle=${planHandle}`);
-  });
+      expect(mocks.syncSubscription).not.toHaveBeenCalled();
+      expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
+      expect(mocks.redirect).toHaveBeenCalledWith(
+        `/app/billing/options?plan_change=mismatch&requested_plan_handle=${planHandle}`,
+      );
+    },
+  );
 
   it("keeps a pending callback unresolved until it becomes current", async () => {
-    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
-      status: "NO_CONTRACT",
-      planId: null,
-      plan: null,
-      observedShopifyPlanHandle: null,
-      pendingShopifyPlanHandle: "free",
-      pendingPlanId: "free-1",
-      pendingEffectiveAt: new Date(),
-    }));
+    mocks.getSubscriptionProjection.mockResolvedValue(
+      subscription({
+        status: "NO_CONTRACT",
+        planId: null,
+        plan: null,
+        observedShopifyPlanHandle: null,
+        pendingShopifyPlanHandle: "free",
+        pendingPlanId: "free-1",
+        pendingEffectiveAt: new Date(),
+      }),
+    );
 
     await runLoader("free");
 
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      shopId: "shop-1",
-      expected: initialToken,
-    }));
-    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({
-      shopId: "shop-1",
-      subscriptionId: "subscription-1",
-    }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-1",
+        expected: initialToken,
+      }),
+    );
+    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-1",
+        subscriptionId: "subscription-1",
+      }),
+    );
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
 
   it("preserves durable intent when Partner verification throws", async () => {
     mocks.syncSubscription.mockRejectedValue(new Error("Partner unavailable"));
-    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
-      status: "NO_CONTRACT",
-      planId: null,
-      plan: null,
-      observedShopifyPlanHandle: null,
-      pendingShopifyPlanHandle: "free",
-      pendingPlanId: "free-1",
-      pendingEffectiveAt: new Date(),
-    }));
+    mocks.getSubscriptionProjection.mockResolvedValue(
+      subscription({
+        status: "NO_CONTRACT",
+        planId: null,
+        plan: null,
+        observedShopifyPlanHandle: null,
+        pendingShopifyPlanHandle: "free",
+        pendingPlanId: "free-1",
+        pendingEffectiveAt: new Date(),
+      }),
+    );
 
     await runLoader("free");
 
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      verificationFailure: { code: "SUBSCRIPTION_SYNC_FAILED", occurredAt: expect.any(Date) },
-    }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verificationFailure: {
+          code: "SUBSCRIPTION_SYNC_FAILED",
+          occurredAt: expect.any(Date),
+        },
+      }),
+    );
     expect(mocks.enqueueReconcile).toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
@@ -721,9 +960,16 @@ describe("billing callback activation", () => {
 
     await runLoader("free");
 
-    expect(mocks.scheduleInitialFreeReconciliationIfCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      verificationFailure: { code: "SUBSCRIPTION_SYNC_FAILED", occurredAt: expect.any(Date) },
-    }));
+    expect(
+      mocks.scheduleInitialFreeReconciliationIfCurrent,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        verificationFailure: {
+          code: "SUBSCRIPTION_SYNC_FAILED",
+          occurredAt: expect.any(Date),
+        },
+      }),
+    );
     expect(mocks.completeFreeActivation).not.toHaveBeenCalled();
     expect(mocks.redirect).toHaveBeenCalledWith("/app");
   });
@@ -741,14 +987,16 @@ describe("billing callback activation", () => {
   });
 
   it("does not complete an older callback when a newer Free selection is pending", async () => {
-    mocks.getSubscriptionProjection.mockResolvedValue(subscription({
-      plan: { id: "free-a-id", kind: "FREE", shopifyPlanHandle: "free-a" },
-      observedShopifyPlanHandle: "free-a",
-      planId: "free-a-id",
-      pendingShopifyPlanHandle: "free-b",
-      pendingPlanId: "free-b-id",
-      pendingEffectiveAt: new Date(),
-    }));
+    mocks.getSubscriptionProjection.mockResolvedValue(
+      subscription({
+        plan: { id: "free-a-id", kind: "FREE", shopifyPlanHandle: "free-a" },
+        observedShopifyPlanHandle: "free-a",
+        planId: "free-a-id",
+        pendingShopifyPlanHandle: "free-b",
+        pendingPlanId: "free-b-id",
+        pendingEffectiveAt: new Date(),
+      }),
+    );
 
     mocks.getState.mockResolvedValue({
       status: "ACTIVE_SUBSCRIPTION",
@@ -798,10 +1046,14 @@ describe("billing callback activation", () => {
     expect(mocks.updateOnboarding).not.toHaveBeenCalled();
     expect(mocks.prepareFreeActivation).not.toHaveBeenCalled();
     expect(mocks.preparePaidActivation).not.toHaveBeenCalled();
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence, {
-      code: "SUBSCRIPTION_SYNC_FAILED",
-      occurredAt: expect.any(Date),
-    });
+    expect(mocks.recordFailure).toHaveBeenCalledWith(
+      "shop-1",
+      verificationFence,
+      {
+        code: "SUBSCRIPTION_SYNC_FAILED",
+        occurredAt: expect.any(Date),
+      },
+    );
   });
 
   it("projects a confirmed fresh unknown current selection as UNMAPPED", async () => {
@@ -812,7 +1064,10 @@ describe("billing callback activation", () => {
     });
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
-    mocks.syncSubscription.mockResolvedValue({ status: "UNMAPPED", lastSyncErrorCode: null });
+    mocks.syncSubscription.mockResolvedValue({
+      status: "UNMAPPED",
+      lastSyncErrorCode: null,
+    });
 
     await runLoader("unknown");
 
@@ -831,12 +1086,14 @@ describe("billing callback activation", () => {
     });
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
-    mocks.syncSubscription.mockResolvedValue(subscription({
-      status: "NO_CONTRACT",
-      planId: null,
-      plan: null,
-      observedShopifyPlanHandle: null,
-    }));
+    mocks.syncSubscription.mockResolvedValue(
+      subscription({
+        status: "NO_CONTRACT",
+        planId: null,
+        plan: null,
+        observedShopifyPlanHandle: null,
+      }),
+    );
 
     await runLoader("free");
 
@@ -848,44 +1105,59 @@ describe("billing callback activation", () => {
   it.each([
     ["inactive", "BILLING_PLAN_INACTIVE"],
     ["invalid", "INVALID_MERCHANT_PRICING_PLAN"],
-  ])("projects a confirmed fresh %s current selection as SYNC_ERROR", async (planHandle, errorCode) => {
-    mocks.getFence.mockResolvedValue({
-      ...verificationFence,
-      status: "NO_CONTRACT",
-      planId: null,
-      observedShopifyPlanHandle: null,
-    });
-    mocks.getState.mockResolvedValue({
-      status: "ACTIVE_SUBSCRIPTION",
-      subscription: { planHandle, pendingUpdate: null },
-    });
-    mocks.prepareFreeActivation.mockResolvedValue(null);
-    mocks.preparePaidActivation.mockResolvedValue(null);
-    mocks.syncSubscription.mockResolvedValue({ status: "SYNC_ERROR", lastSyncErrorCode: errorCode });
+  ])(
+    "projects a confirmed fresh %s current selection as SYNC_ERROR",
+    async (planHandle, errorCode) => {
+      mocks.getFence.mockResolvedValue({
+        ...verificationFence,
+        status: "NO_CONTRACT",
+        planId: null,
+        observedShopifyPlanHandle: null,
+      });
+      mocks.getState.mockResolvedValue({
+        status: "ACTIVE_SUBSCRIPTION",
+        subscription: { planHandle, pendingUpdate: null },
+      });
+      mocks.prepareFreeActivation.mockResolvedValue(null);
+      mocks.preparePaidActivation.mockResolvedValue(null);
+      mocks.syncSubscription.mockResolvedValue({
+        status: "SYNC_ERROR",
+        lastSyncErrorCode: errorCode,
+      });
 
-    await runLoader(planHandle);
+      await runLoader(planHandle);
 
-    expect(mocks.updateOnboarding).toHaveBeenCalled();
-    expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
-    expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
-    expect(mocks.recordReturn).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app");
-  });
+      expect(mocks.updateOnboarding).toHaveBeenCalled();
+      expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
+      expect(mocks.activateInitialCategory).not.toHaveBeenCalled();
+      expect(mocks.recordReturn).not.toHaveBeenCalled();
+      expect(mocks.redirect).toHaveBeenCalledWith("/app");
+    },
+  );
 
   it("keeps provider pending selections on the hosted return path", async () => {
     mocks.prepareFreeActivation.mockResolvedValue(null);
     mocks.preparePaidActivation.mockResolvedValue(null);
     mocks.getState.mockResolvedValue({
       status: "ACTIVE_SUBSCRIPTION",
-      subscription: { planHandle: "starter", pendingUpdate: { planHandle: "growth" } },
+      subscription: {
+        planHandle: "starter",
+        pendingUpdate: { planHandle: "growth" },
+      },
     });
-    mocks.recordReturn.mockResolvedValue({ result: "pending", subscriptionId: "subscription-1", nextReconcileAt: new Date() });
+    mocks.recordReturn.mockResolvedValue({
+      result: "pending",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: new Date(),
+    });
 
     await runLoader("growth");
 
     expect(mocks.updateOnboarding).toHaveBeenCalled();
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ verificationFence }),
+    );
   });
 
   it("keeps missing plan_handle as a client error", async () => {
@@ -906,52 +1178,95 @@ describe("hosted billing callback", () => {
     expect(mocks.getState).not.toHaveBeenCalled();
   });
 
-  it.each([["growth", "current"], ["free", "pending"], ["other", "mismatch"]])("classifies provider state: %s", async (handle, result) => {
-    mocks.recordReturn.mockResolvedValue({ result, subscriptionId: "subscription-1", nextReconcileAt: new Date("2026-10-01T00:00:00.000Z") });
+  it.each([
+    ["growth", "current"],
+    ["free", "pending"],
+    ["other", "mismatch"],
+  ])("classifies provider state: %s", async (handle, result) => {
+    mocks.recordReturn.mockResolvedValue({
+      result,
+      subscriptionId: "subscription-1",
+      nextReconcileAt: new Date("2026-10-01T00:00:00.000Z"),
+    });
     await runLoader(handle);
     expect(mocks.getState).toHaveBeenCalledWith("shop-1");
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({
-      shopId: "shop-1",
-      requestedPlanHandle: handle,
-      verificationFence,
-    }));
-    const expectedRedirect = result === "mismatch"
-      ? `/app/billing/options?plan_change=mismatch&requested_plan_handle=${handle}`
-      : `/app/billing/options?plan_change=${result}`;
+    expect(mocks.recordReturn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-1",
+        requestedPlanHandle: handle,
+        verificationFence,
+      }),
+    );
+    const expectedRedirect =
+      result === "mismatch"
+        ? `/app/billing/options?plan_change=mismatch&requested_plan_handle=${handle}`
+        : `/app/billing/options?plan_change=${result}`;
     expect(mocks.redirect).toHaveBeenCalledWith(expectedRedirect);
   });
 
   it("schedules reconciliation for verified current or pending state", async () => {
     await runLoader("free");
-    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(expect.objectContaining({ shopId: "shop-1", subscriptionId: "subscription-1" }));
+    expect(mocks.enqueueReconcile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-1",
+        subscriptionId: "subscription-1",
+      }),
+    );
     mocks.enqueueReconcile.mockClear();
-    mocks.recordReturn.mockResolvedValue({ result: "mismatch", subscriptionId: "subscription-1", nextReconcileAt: new Date() });
+    mocks.recordReturn.mockResolvedValue({
+      result: "mismatch",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: new Date(),
+    });
     await runLoader("other");
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
   });
 
   it("does not enqueue a freshness-fenced unverified result", async () => {
-    mocks.recordReturn.mockResolvedValue({ result: "unverified", subscriptionId: "subscription-1", nextReconcileAt: null });
+    mocks.recordReturn.mockResolvedValue({
+      result: "unverified",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: null,
+    });
 
     await runLoader("growth");
 
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ verificationFence }),
+    );
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified&requested_plan_handle=growth");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=unverified&requested_plan_handle=growth",
+    );
   });
 
   it("distinguishes no active subscription from verification failure", async () => {
-    mocks.getState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
-    mocks.recordReturn.mockResolvedValue({ result: "no_active", subscriptionId: "subscription-1", nextReconcileAt: new Date() });
+    mocks.getState.mockResolvedValue({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+    mocks.recordReturn.mockResolvedValue({
+      result: "no_active",
+      subscriptionId: "subscription-1",
+      nextReconcileAt: new Date(),
+    });
     await runLoader("free");
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=no_active");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=no_active",
+    );
     mocks.getState.mockRejectedValue(new Error("Partner unavailable"));
     await runLoader("free");
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence, {
-      code: "SUBSCRIPTION_SYNC_FAILED",
-      occurredAt: expect.any(Date),
-    });
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=unverified&requested_plan_handle=free");
+    expect(mocks.recordFailure).toHaveBeenCalledWith(
+      "shop-1",
+      verificationFence,
+      {
+        code: "SUBSCRIPTION_SYNC_FAILED",
+        occurredAt: expect.any(Date),
+      },
+    );
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=unverified&requested_plan_handle=free",
+    );
   });
 
   it("passes one read fence into provider failure recording", async () => {
@@ -960,10 +1275,14 @@ describe("hosted billing callback", () => {
     await runLoader("growth");
 
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence, {
-      code: "SUBSCRIPTION_SYNC_FAILED",
-      occurredAt: expect.any(Date),
-    });
+    expect(mocks.recordFailure).toHaveBeenCalledWith(
+      "shop-1",
+      verificationFence,
+      {
+        code: "SUBSCRIPTION_SYNC_FAILED",
+        occurredAt: expect.any(Date),
+      },
+    );
   });
 
   it("captures the durable hosted verification fence before the Partner read", async () => {
@@ -971,7 +1290,9 @@ describe("hosted billing callback", () => {
 
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getState).toHaveBeenCalledTimes(1);
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ verificationFence }),
+    );
   });
 
   it("passes the same durable hosted verification fence to provider failure recording", async () => {
@@ -981,24 +1302,39 @@ describe("hosted billing callback", () => {
 
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getState).toHaveBeenCalledTimes(1);
-    expect(mocks.recordFailure).toHaveBeenCalledWith("shop-1", verificationFence, {
-      code: "SUBSCRIPTION_SYNC_FAILED",
-      occurredAt: expect.any(Date),
-    });
+    expect(mocks.recordFailure).toHaveBeenCalledWith(
+      "shop-1",
+      verificationFence,
+      {
+        code: "SUBSCRIPTION_SYNC_FAILED",
+        occurredAt: expect.any(Date),
+      },
+    );
   });
 
   it("passes an absent durable verification fence unchanged through hosted NO_ACTIVE verification", async () => {
     mocks.getFence.mockResolvedValue(null);
-    mocks.getState.mockResolvedValue({ status: "NO_ACTIVE_SUBSCRIPTION", subscription: null });
-    mocks.recordReturn.mockResolvedValue({ result: "no_active", subscriptionId: null, nextReconcileAt: null });
+    mocks.getState.mockResolvedValue({
+      status: "NO_ACTIVE_SUBSCRIPTION",
+      subscription: null,
+    });
+    mocks.recordReturn.mockResolvedValue({
+      result: "no_active",
+      subscriptionId: null,
+      nextReconcileAt: null,
+    });
 
     await runLoader("growth");
 
     expect(mocks.getFence).toHaveBeenCalledBefore(mocks.getState);
     expect(mocks.getState).toHaveBeenCalledTimes(1);
-    expect(mocks.recordReturn).toHaveBeenCalledWith(expect.objectContaining({ verificationFence: null }));
+    expect(mocks.recordReturn).toHaveBeenCalledWith(
+      expect.objectContaining({ verificationFence: null }),
+    );
     expect(mocks.enqueueReconcile).not.toHaveBeenCalled();
-    expect(mocks.redirect).toHaveBeenCalledWith("/app/billing/options?plan_change=no_active");
+    expect(mocks.redirect).toHaveBeenCalledWith(
+      "/app/billing/options?plan_change=no_active",
+    );
   });
 
   it("passes an absent durable verification fence unchanged to failure recording", async () => {

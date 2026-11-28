@@ -5,7 +5,10 @@ import { promisify } from "node:util";
 import { resolve } from "node:path";
 
 import { PrismaClient } from "@prisma/client";
-import { startDisposablePostgres, type DisposablePostgres } from "../helpers/disposable-postgres";
+import {
+  startDisposablePostgres,
+  type DisposablePostgres,
+} from "../helpers/disposable-postgres";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../app/db.server", () => ({ default: {} }));
@@ -259,12 +262,14 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
     const firstProfile = await db.commerceShopProfile.findUniqueOrThrow({
       where: { shopId },
     });
-    const firstConfiguration = await db.commerceAgentConfiguration.findUniqueOrThrow({
-      where: { id: configuration.id },
-    });
-    const firstPublished = await db.commerceAgentPromptRevision.findUniqueOrThrow({
-      where: { id: firstConfiguration.activePromptRevisionId ?? "" },
-    });
+    const firstConfiguration =
+      await db.commerceAgentConfiguration.findUniqueOrThrow({
+        where: { id: configuration.id },
+      });
+    const firstPublished =
+      await db.commerceAgentPromptRevision.findUniqueOrThrow({
+        where: { id: firstConfiguration.activePromptRevisionId ?? "" },
+      });
 
     expect(firstResult).toMatchObject({
       activeCategoryId: categoryId,
@@ -282,7 +287,9 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
       sourceTemplateEditVersion: 7,
       publishedAt: selectionTime,
     });
-    expect(firstConfiguration.activePromptRevisionId).not.toBe(activeRevisionId);
+    expect(firstConfiguration.activePromptRevisionId).not.toBe(
+      activeRevisionId,
+    );
     expect(firstProfile).toMatchObject({
       activeCategoryId: categoryId,
       activeCategoryActivatedAt: selectionTime,
@@ -301,13 +308,17 @@ describeWithDatabase("Store Category selection PostgreSQL transaction", () => {
     });
     const secondTime = new Date("2026-09-30T12:05:00.000Z");
     const secondResult = await select(shopId, 1, db, secondTime);
-    const secondProfile = await db.commerceShopProfile.findUniqueOrThrow({ where: { shopId } });
-    const secondConfiguration = await db.commerceAgentConfiguration.findUniqueOrThrow({
-      where: { id: configuration.id },
+    const secondProfile = await db.commerceShopProfile.findUniqueOrThrow({
+      where: { shopId },
     });
-    const secondPublished = await db.commerceAgentPromptRevision.findUniqueOrThrow({
-      where: { id: secondConfiguration.activePromptRevisionId ?? "" },
-    });
+    const secondConfiguration =
+      await db.commerceAgentConfiguration.findUniqueOrThrow({
+        where: { id: configuration.id },
+      });
+    const secondPublished =
+      await db.commerceAgentPromptRevision.findUniqueOrThrow({
+        where: { id: secondConfiguration.activePromptRevisionId ?? "" },
+      });
     const drafts = await db.commerceAgentPromptRevision.findMany({
       where: { promptId, status: "DRAFT" },
     });

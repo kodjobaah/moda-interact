@@ -22,8 +22,13 @@ function requireFeaturePlan(
   status: SettingsReadContext["shop"]["status"] | undefined,
   plan: SettingsReadContext["plan"],
 ): asserts plan is NonNullable<SettingsReadContext["plan"]> {
-  if (!subscription || !["ACTIVE", "TRIALING"].includes(subscription.status) ||
-    status !== "ACTIVE" || !plan?.active) throw new PreferenceError("DENIED");
+  if (
+    !subscription ||
+    !["ACTIVE", "TRIALING"].includes(subscription.status) ||
+    status !== "ACTIVE" ||
+    !plan?.active
+  )
+    throw new PreferenceError("DENIED");
 }
 export async function loadFeaturePreferences(
   shopId: string,
@@ -46,7 +51,11 @@ export async function loadFeaturePreferences(
       shop: { select: { status: true } },
     },
   });
-  requireFeaturePlan(subscription, subscription?.shop.status, subscription?.plan ?? null);
+  requireFeaturePlan(
+    subscription,
+    subscription?.shop.status,
+    subscription?.plan ?? null,
+  );
   const preferences = await client.shopFeaturePreference.findMany({
     where: { shopId },
     orderBy: { featureId: "asc" },

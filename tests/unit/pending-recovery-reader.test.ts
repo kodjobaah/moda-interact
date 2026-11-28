@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const zsets = new Map<string, Array<[string, number]>>();
-const jobs = new Map<string, { name: string; data: Record<string, unknown>; state: string }>();
+const jobs = new Map<
+  string,
+  { name: string; data: Record<string, unknown>; state: string }
+>();
 let redisShouldFail = false;
 
 class FakeRedis {
@@ -28,7 +31,9 @@ class FakeRedis {
 }
 
 class FakeQueue {
-  on() { return this; }
+  on() {
+    return this;
+  }
   async getJob(id: string) {
     const job = jobs.get(id);
     if (!job) return undefined;
@@ -46,9 +51,8 @@ class FakeQueue {
 vi.mock("ioredis", () => ({ default: FakeRedis }));
 vi.mock("bullmq", () => ({ Queue: FakeQueue }));
 
-const { readPendingRecoveries } = await import(
-  "../../app/services/pending-recovery/pending-recovery-reader.server"
-);
+const { readPendingRecoveries } =
+  await import("../../app/services/pending-recovery/pending-recovery-reader.server");
 
 describe("pending recovery reader", () => {
   beforeEach(() => {
@@ -100,21 +104,30 @@ describe("pending recovery reader", () => {
       page: 1,
     });
 
-    expect(result).toMatchObject({ available: true, page: 1, total: 4, totalPages: 1 });
-    expect(result.items).toEqual([{
-      id: "job-active",
-      status: "active",
-      checkoutCreatedAt: "2026-09-05T08:00:00Z",
-      lastActivityAt: "2026-09-05T08:30:00Z",
-      scheduledFor: "2023-11-14T22:13:20.000Z",
-    }]);
+    expect(result).toMatchObject({
+      available: true,
+      page: 1,
+      total: 4,
+      totalPages: 1,
+    });
+    expect(result.items).toEqual([
+      {
+        id: "job-active",
+        status: "active",
+        checkoutCreatedAt: "2026-09-05T08:00:00Z",
+        lastActivityAt: "2026-09-05T08:30:00Z",
+        scheduledFor: "2023-11-14T22:13:20.000Z",
+      },
+    ]);
     expect(JSON.stringify(result)).not.toContain("secret-checkout");
     expect(JSON.stringify(result)).not.toContain("secret-cart");
     expect(JSON.stringify(result)).not.toContain("secret.example");
   });
 
   it("falls back to checkout creation for legacy candidate jobs", async () => {
-    zsets.set("pending-recovery:index:shop:shop-1", [["job-legacy", 1_700_000_000_000]]);
+    zsets.set("pending-recovery:index:shop:shop-1", [
+      ["job-legacy", 1_700_000_000_000],
+    ]);
     jobs.set("job-legacy", {
       name: "evaluate-pending-recovery",
       state: "delayed",
@@ -131,13 +144,19 @@ describe("pending recovery reader", () => {
       page: 1,
     });
 
-    expect(result.items).toEqual([expect.objectContaining({
-      lastActivityAt: "2026-09-05T08:00:00Z",
-    })]);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        lastActivityAt: "2026-09-05T08:00:00Z",
+      }),
+    ]);
   });
 
   it("uses a shop-scoped page of ten members and clamps invalid pages", async () => {
-    const members = Array.from({ length: 12 }, (_, index) => [`job-${index}`, 1_700_000_000_000 + index] as [string, number]);
+    const members = Array.from(
+      { length: 12 },
+      (_, index) =>
+        [`job-${index}`, 1_700_000_000_000 + index] as [string, number],
+    );
     zsets.set("pending-recovery:index:shop:shop-1", members);
     for (const [id] of members) {
       jobs.set(id, {
@@ -153,18 +172,26 @@ describe("pending recovery reader", () => {
       page: 0,
     });
 
-    expect(result).toMatchObject({ available: true, page: 1, pageSize: 10, total: 12, totalPages: 2 });
+    expect(result).toMatchObject({
+      available: true,
+      page: 1,
+      pageSize: 10,
+      total: 12,
+      totalPages: 2,
+    });
     expect(result.items).toHaveLength(10);
   });
 
   it("returns a safe unavailable state when Redis cannot be read", async () => {
     redisShouldFail = true;
 
-    await expect(readPendingRecoveries({
-      shopId: "shop-1",
-      shopDomain: "shop-1.myshopify.com",
-      page: 2,
-    })).resolves.toEqual({
+    await expect(
+      readPendingRecoveries({
+        shopId: "shop-1",
+        shopDomain: "shop-1.myshopify.com",
+        page: 2,
+      }),
+    ).resolves.toEqual({
       available: false,
       page: 2,
       pageSize: 10,

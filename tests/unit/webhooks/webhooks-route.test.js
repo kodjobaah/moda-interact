@@ -9,20 +9,27 @@ vi.mock("../../../app/shopify.server", () => ({
 const ingestShopifyWebhookMock = vi
   .fn()
   .mockResolvedValue(new Response(null, { status: 200 }));
-vi.mock("../../../app/services/webhooks/shopify-webhook-ingress.service", () => ({
-  ingestShopifyWebhook: ingestShopifyWebhookMock,
-}));
+vi.mock(
+  "../../../app/services/webhooks/shopify-webhook-ingress.service",
+  () => ({
+    ingestShopifyWebhook: ingestShopifyWebhookMock,
+  }),
+);
 
 const observabilityMocks = vi.hoisted(() => ({
   received: vi.fn(),
   authenticationFailure: vi.fn(),
   routeFailure: vi.fn(),
 }));
-vi.mock("../../../app/services/webhooks/shopify-webhook-observability.server", () => ({
-  recordShopifyWebhookReceived: observabilityMocks.received,
-  recordShopifyWebhookAuthenticationFailure: observabilityMocks.authenticationFailure,
-  recordShopifyWebhookRouteFailure: observabilityMocks.routeFailure,
-}));
+vi.mock(
+  "../../../app/services/webhooks/shopify-webhook-observability.server",
+  () => ({
+    recordShopifyWebhookReceived: observabilityMocks.received,
+    recordShopifyWebhookAuthenticationFailure:
+      observabilityMocks.authenticationFailure,
+    recordShopifyWebhookRouteFailure: observabilityMocks.routeFailure,
+  }),
+);
 
 const { action } = await import("../../../app/routes/webhooks/root/route.jsx");
 
@@ -35,17 +42,25 @@ describe("webhooks route action", () => {
     const raw = '{"customer_id":42}';
     authenticateWebhookMock.mockResolvedValueOnce({
       topic: "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE",
-      shop: "shop.myshopify.com", payload: {customer_id: 42},
-      apiVersion: "2026-07", eventId: "event-1",
+      shop: "shop.myshopify.com",
+      payload: { customer_id: 42 },
+      apiVersion: "2026-07",
+      eventId: "event-1",
     });
     const request = new Request("https://app.example/webhooks", {
-      method: "POST", headers: {"X-Shopify-Topic": "customers_whats_app_marketing_consent/update"}, body: raw,
+      method: "POST",
+      headers: {
+        "X-Shopify-Topic": "customers_whats_app_marketing_consent/update",
+      },
+      body: raw,
     });
     const clone = vi.spyOn(request, "clone");
-    expect((await action({request})).status).toBe(200);
+    expect((await action({ request })).status).toBe(200);
     expect(authenticateWebhookMock).toHaveBeenCalledWith(request);
     expect(clone).not.toHaveBeenCalled();
-    expect(ingestShopifyWebhookMock.mock.calls[0][0]).not.toHaveProperty("authenticatedConsentRawBody");
+    expect(ingestShopifyWebhookMock.mock.calls[0][0]).not.toHaveProperty(
+      "authenticatedConsentRawBody",
+    );
   });
 
   it("preserves an authentication failure instead of swallowing it", async () => {
@@ -62,7 +77,11 @@ describe("webhooks route action", () => {
       route: "/webhooks",
     });
     expect(observabilityMocks.authenticationFailure).toHaveBeenCalledWith(
-      expect.objectContaining({ request, route: "/webhooks", error: authError }),
+      expect.objectContaining({
+        request,
+        route: "/webhooks",
+        error: authError,
+      }),
     );
     expect(ingestShopifyWebhookMock).not.toHaveBeenCalled();
   });

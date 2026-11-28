@@ -89,9 +89,18 @@ describe("merchant navigation and history links", () => {
 
 it("renders the all-time usage ledger and preserves its source filter through paging", () => {
   const data = usageFixture();
-  Object.assign(data.history!, { usageView: "all", chargeSource: "PROMOTIONAL_CREDITS",
-    periodPage: { items: [], previousCursor: null, nextCursor: null }, selection: {} });
-  Object.assign(data.history!.usagePagination, { billId: null, periodStart: null, periodEnd: null, total: 25 });
+  Object.assign(data.history!, {
+    usageView: "all",
+    chargeSource: "PROMOTIONAL_CREDITS",
+    periodPage: { items: [], previousCursor: null, nextCursor: null },
+    selection: {},
+  });
+  Object.assign(data.history!.usagePagination, {
+    billId: null,
+    periodStart: null,
+    periodEnd: null,
+    total: 25,
+  });
   data.history!.usageEvents[0].chargedAgainst = "PROMOTIONAL_CREDITS";
   const html = renderUsage(data).replaceAll("&amp;", "&");
   expect(html).toContain("Lifetime usage");

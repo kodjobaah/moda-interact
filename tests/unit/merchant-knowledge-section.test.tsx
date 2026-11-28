@@ -14,7 +14,9 @@ vi.mock("react-router", () => ({
   useRevalidator: () => ({ revalidate: mocks.revalidate }),
 }));
 vi.mock("../../app/components/settings/SettingsForm", () => ({
-  default: ({ children }: { children: React.ReactNode }) => <form>{children}</form>,
+  default: ({ children }: { children: React.ReactNode }) => (
+    <form>{children}</form>
+  ),
 }));
 
 import FeaturePreferences from "../../app/components/settings/FeaturePreferences";
@@ -27,7 +29,7 @@ const englishI18n = createMerchantI18n({ locale: "en-GB", timeZone: "UTC" });
 
 const knowledge: Parameters<typeof MerchantKnowledgeSection>[0]["data"] = {
   entitlementState: "entitled" as const,
-    planEntitled: true,
+  planEntitled: true,
   merchantEnabled: false,
   effectiveEnabled: false,
   maxKnowledgeSources: 2,
@@ -36,16 +38,18 @@ const knowledge: Parameters<typeof MerchantKnowledgeSection>[0]["data"] = {
   planEligibleSourceCount: 0,
   defaultLanguageTag: "en",
   supportedLanguageTags: MODA_SUPPORTED_LANGUAGE_TAGS,
-  catalogue: [{
-    purpose: { key: "FAQ", displayName: "Frequently asked questions" },
-    dataFormat: {
-      key: "WEB_PAGE",
-      displayName: "Web page",
-      inputKind: "REMOTE_URL",
-      canonicalExtension: null,
-      acceptedContentTypes: [],
+  catalogue: [
+    {
+      purpose: { key: "FAQ", displayName: "Frequently asked questions" },
+      dataFormat: {
+        key: "WEB_PAGE",
+        displayName: "Web page",
+        inputKind: "REMOTE_URL",
+        canonicalExtension: null,
+        acceptedContentTypes: [],
+      },
     },
-  }],
+  ],
   sources: [],
 };
 
@@ -64,95 +68,129 @@ afterEach(async () => {
 });
 
 it("keeps source configuration available while OFF and uses only FeaturePreferences for activation", async () => {
-  await act(async () => root.render(
-    <Fragment>
-      <FeaturePreferences
-        snapshot={{
-          revision: "revision-1",
-          features: [{
-            id: "feature-mk",
-            key: "merchant_knowledge",
-            name: "Merchant Knowledge",
-            description: null,
-            enabled: false,
-            effective: false,
-            editable: true,
-          }],
-        }}
-        t={englishI18n.t}
-      />
-      <MerchantKnowledgeSection data={knowledge} t={englishI18n.t} formatDateTime={englishI18n.formatDateTime} />
-    </Fragment>,
-  ));
+  await act(async () =>
+    root.render(
+      <Fragment>
+        <FeaturePreferences
+          snapshot={{
+            revision: "revision-1",
+            features: [
+              {
+                id: "feature-mk",
+                key: "merchant_knowledge",
+                name: "Merchant Knowledge",
+                description: null,
+                enabled: false,
+                effective: false,
+                editable: true,
+              },
+            ],
+          }}
+          t={englishI18n.t}
+        />
+        <MerchantKnowledgeSection
+          data={knowledge}
+          t={englishI18n.t}
+          formatDateTime={englishI18n.formatDateTime}
+        />
+      </Fragment>,
+    ),
+  );
 
   expect(host.querySelector("#conversation-features")).not.toBeNull();
   expect(host.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
-  expect(host.querySelector('input[type="checkbox"][data-feature-id="feature-mk"]')).not.toBeNull();
-  expect(host.querySelector('form[action="/app/merchant-knowledge/source"]')).not.toBeNull();
+  expect(
+    host.querySelector('input[type="checkbox"][data-feature-id="feature-mk"]'),
+  ).not.toBeNull();
+  expect(
+    host.querySelector('form[action="/app/merchant-knowledge/source"]'),
+  ).not.toBeNull();
   expect(host.querySelector(".moda-merchant-knowledge-panel")).not.toBeNull();
-  expect(host.querySelector("form.moda-merchant-knowledge-form")).not.toBeNull();
-  expect(host.querySelectorAll("details.moda-merchant-knowledge-add")).toHaveLength(1);
-  expect(host.querySelector("details.moda-merchant-knowledge-add > summary")?.textContent).toContain("Add web page");
+  expect(
+    host.querySelector("form.moda-merchant-knowledge-form"),
+  ).not.toBeNull();
+  expect(
+    host.querySelectorAll("details.moda-merchant-knowledge-add"),
+  ).toHaveLength(1);
+  expect(
+    host.querySelector("details.moda-merchant-knowledge-add > summary")
+      ?.textContent,
+  ).toContain("Add web page");
   expect(host.querySelector('input[name="url"]')).not.toBeNull();
   expect(host.textContent).toContain("Ingestion and retrieval are disabled");
-  expect(host.querySelector('button[type="submit"]')?.hasAttribute("disabled")).toBe(false);
+  expect(
+    host.querySelector('button[type="submit"]')?.hasAttribute("disabled"),
+  ).toBe(false);
 });
 
-
 it("localizes known platform feature copy and preserves unknown dynamic feature fallback", async () => {
-  const french = createMerchantI18n({ locale: "fr-FR", timeZone: "Europe/Paris" });
-  await act(async () => root.render(
-    <FeaturePreferences
-      snapshot={{
-        revision: "revision-2",
-        features: [
-          {
-            id: "feature-products",
-            key: "product_search",
-            name: "Product Search",
-            description: "Search merchant products during customer conversations.",
-            enabled: true,
-            effective: true,
-            editable: true,
-          },
-          {
-            id: "feature-custom",
-            key: "custom_feature",
-            name: "Custom feature",
-            description: "Custom description.",
-            enabled: true,
-            effective: true,
-            editable: true,
-          },
-        ],
-      }}
-      t={french.t}
-    />,
-  ));
+  const french = createMerchantI18n({
+    locale: "fr-FR",
+    timeZone: "Europe/Paris",
+  });
+  await act(async () =>
+    root.render(
+      <FeaturePreferences
+        snapshot={{
+          revision: "revision-2",
+          features: [
+            {
+              id: "feature-products",
+              key: "product_search",
+              name: "Product Search",
+              description:
+                "Search merchant products during customer conversations.",
+              enabled: true,
+              effective: true,
+              editable: true,
+            },
+            {
+              id: "feature-custom",
+              key: "custom_feature",
+              name: "Custom feature",
+              description: "Custom description.",
+              enabled: true,
+              effective: true,
+              editable: true,
+            },
+          ],
+        }}
+        t={french.t}
+      />,
+    ),
+  );
 
   expect(host.textContent).toContain("Recherche de produits");
-  expect(host.textContent).toContain("Recherchez les produits de la boutique pendant les conversations avec les clients.");
+  expect(host.textContent).toContain(
+    "Recherchez les produits de la boutique pendant les conversations avec les clients.",
+  );
   expect(host.textContent).toContain("Custom feature");
   expect(host.textContent).toContain("Custom description.");
   expect(host.textContent).not.toContain("Product Search");
 });
 
 it("submits merchant knowledge forms with route paths instead of resolved absolute form actions", async () => {
-  await act(async () => root.render(
-    <MerchantKnowledgeSection
-      data={{ ...knowledge, merchantEnabled: true, effectiveEnabled: true }}
-      t={englishI18n.t}
-      formatDateTime={englishI18n.formatDateTime}
-    />,
-  ));
+  await act(async () =>
+    root.render(
+      <MerchantKnowledgeSection
+        data={{ ...knowledge, merchantEnabled: true, effectiveEnabled: true }}
+        t={englishI18n.t}
+        formatDateTime={englishI18n.formatDateTime}
+      />,
+    ),
+  );
 
-  const form = host.querySelector('form[action="/app/merchant-knowledge/source"]') as HTMLFormElement | null;
+  const form = host.querySelector(
+    'form[action="/app/merchant-knowledge/source"]',
+  ) as HTMLFormElement | null;
   expect(form).not.toBeNull();
   expect(form!.action).toMatch(/^https?:\/\//);
 
   mocks.submit.mockClear();
   await act(async () => {
-    form!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    form!.dispatchEvent(
+      new Event("submit", { bubbles: true, cancelable: true }),
+    );
   });
 
   expect(mocks.submit).toHaveBeenCalledTimes(1);
@@ -164,10 +202,17 @@ it("submits merchant knowledge forms with route paths instead of resolved absolu
 
 it("puts recovery behaviour first and progressively discloses lower-frequency context", async () => {
   const { readFileSync } = await import("node:fs");
-  const view = readFileSync("app/routes/app/recovery-settings/RecoverySettingsView.tsx", "utf8");
-  const recoverySettings = view.indexOf("<SettingsForm revision={data.revision}");
+  const view = readFileSync(
+    "app/routes/app/recovery-settings/RecoverySettingsView.tsx",
+    "utf8",
+  );
+  const recoverySettings = view.indexOf(
+    "<SettingsForm revision={data.revision}",
+  );
   const features = view.indexOf("<FeaturePreferences");
-  const context = view.indexOf('className="moda-recovery-panel moda-recovery-context-panel"');
+  const context = view.indexOf(
+    'className="moda-recovery-panel moda-recovery-context-panel"',
+  );
   const storeProfile = view.indexOf("<StoreProfileSection");
   const merchantKnowledge = view.indexOf("<MerchantKnowledgeSection");
 
@@ -182,9 +227,10 @@ it("puts recovery behaviour first and progressively discloses lower-frequency co
   expect(view).toContain('i18n.t("merchantKnowledge.sourceCount"');
   expect(view).toContain("moda-recovery-context-disclosure");
   expect(view).toContain("<StoreProfileSection\n                  embedded");
-  expect(view).toContain("<MerchantKnowledgeSection\n                  embedded");
+  expect(view).toContain(
+    "<MerchantKnowledgeSection\n                  embedded",
+  );
 });
-
 
 it("presents pending revisions as Processing and auto-refreshes while work is active", async () => {
   const intervalSpy = vi.spyOn(window, "setInterval");
@@ -218,35 +264,48 @@ it("presents pending revisions as Processing and auto-refreshes while work is ac
       activeTruncated: false,
       activeFetchedAt: null,
     },
-  } as Parameters<typeof MerchantKnowledgeSection>[0]["data"]["sources"][number];
+  } as Parameters<
+    typeof MerchantKnowledgeSection
+  >[0]["data"]["sources"][number];
 
-  await act(async () => root.render(
-    <MerchantKnowledgeSection
-      data={{
-        ...knowledge,
-        merchantEnabled: true,
-        effectiveEnabled: true,
-        configuredCount: 1,
-        planEligibleSourceCount: 1,
-        catalogue: [{
-          purpose: { key: "PRODUCT_INFORMATION", displayName: "Product information" },
-          dataFormat: {
-            key: "XLSX",
-            displayName: "Excel spreadsheet (.xlsx)",
-            inputKind: "UPLOAD",
-            canonicalExtension: ".xlsx",
-            acceptedContentTypes: ["application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"],
-          },
-        }],
-        sources: [processingSource],
-      }}
-      t={englishI18n.t}
-      formatDateTime={englishI18n.formatDateTime}
-    />,
-  ));
+  await act(async () =>
+    root.render(
+      <MerchantKnowledgeSection
+        data={{
+          ...knowledge,
+          merchantEnabled: true,
+          effectiveEnabled: true,
+          configuredCount: 1,
+          planEligibleSourceCount: 1,
+          catalogue: [
+            {
+              purpose: {
+                key: "PRODUCT_INFORMATION",
+                displayName: "Product information",
+              },
+              dataFormat: {
+                key: "XLSX",
+                displayName: "Excel spreadsheet (.xlsx)",
+                inputKind: "UPLOAD",
+                canonicalExtension: ".xlsx",
+                acceptedContentTypes: [
+                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                ],
+              },
+            },
+          ],
+          sources: [processingSource],
+        }}
+        t={englishI18n.t}
+        formatDateTime={englishI18n.formatDateTime}
+      />,
+    ),
+  );
 
   expect(host.textContent).toContain("Processing");
-  expect(host.textContent).toContain("This page updates automatically while the source is processing.");
+  expect(host.textContent).toContain(
+    "This page updates automatically while the source is processing.",
+  );
   expect(host.textContent).not.toContain("pending");
   expect(intervalSpy).toHaveBeenCalledWith(expect.any(Function), 4_000);
 });

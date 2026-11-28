@@ -9,10 +9,24 @@ import type {
 import { projectBillingFixture } from "../../../fixtures/commercial-read-context";
 // Keep the original domain fixture matrix, now projected without a production I/O facade.
 class MerchantBillingReadService {
-  constructor(private provider: BillingProvider, private database: PrismaClient,
-    private pricing: { readMerchantPricingPlan: (handle: string) => Promise<unknown> }) {}
-  getMerchantBillingState(shopId: string, commercial?: MerchantShopifySubscriptionState) {
-    return projectBillingFixture(this.database, this.provider, this.pricing, shopId, commercial);
+  constructor(
+    private provider: BillingProvider,
+    private database: PrismaClient,
+    private pricing: {
+      readMerchantPricingPlan: (handle: string) => Promise<unknown>;
+    },
+  ) {}
+  getMerchantBillingState(
+    shopId: string,
+    commercial?: MerchantShopifySubscriptionState,
+  ) {
+    return projectBillingFixture(
+      this.database,
+      this.provider,
+      this.pricing,
+      shopId,
+      commercial,
+    );
   }
 }
 
@@ -21,7 +35,9 @@ const shopifyShopId = "gid://shopify/Shop/1";
 const periodStart = new Date("2026-09-01T00:00:00.000Z");
 const periodEnd = new Date("2026-10-01T00:00:00.000Z");
 
-function providerSubscription(overrides: Partial<ProviderSubscription> = {}): ProviderSubscription {
+function providerSubscription(
+  overrides: Partial<ProviderSubscription> = {},
+): ProviderSubscription {
   return {
     provider: "SHOPIFY",
     planHandle: "free",
@@ -32,12 +48,20 @@ function providerSubscription(overrides: Partial<ProviderSubscription> = {}): Pr
       price: { amount: "0.00", currency: "USD" },
     },
     pendingFlatRatePlan: null,
-    usageItems: [{
-      handle: "credit-pack-meter",
-      description: "Recovery credit pack",
-      price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
-      usage: { quantity: 2, costAmount: "2.00", costCurrency: "USD" },
-    }],
+    usageItems: [
+      {
+        handle: "credit-pack-meter",
+        description: "Recovery credit pack",
+        price: {
+          kind: "TIERED",
+          active: true,
+          currency: "USD",
+          tiersMode: "VOLUME",
+          tiers: [],
+        },
+        usage: { quantity: 2, costAmount: "2.00", costCurrency: "USD" },
+      },
+    ],
     usageEventHandles: ["credit-pack-meter", "unknown-meter"],
     pendingPlanHandle: null,
     pendingEffectiveAt: null,
@@ -73,17 +97,19 @@ function activeCommercialState(): MerchantShopifySubscriptionState {
   };
 }
 
-function createService(options: {
-  planKind?: "FREE" | "PAID_METERED";
-  subscriptionOverrides?: Record<string, unknown>;
-  periodOverrides?: Record<string, unknown>;
-  periodCounterOverrides?: Record<string, unknown>;
-  shop?: Record<string, unknown> | null;
-  provider?: BillingProvider;
-  catalogue?: Record<string, unknown> | null;
-  latestPurchase?: Record<string, unknown> | null;
-  unresolvedPurchases?: Array<Record<string, unknown>>;
-} = {}) {
+function createService(
+  options: {
+    planKind?: "FREE" | "PAID_METERED";
+    subscriptionOverrides?: Record<string, unknown>;
+    periodOverrides?: Record<string, unknown>;
+    periodCounterOverrides?: Record<string, unknown>;
+    shop?: Record<string, unknown> | null;
+    provider?: BillingProvider;
+    catalogue?: Record<string, unknown> | null;
+    latestPurchase?: Record<string, unknown> | null;
+    unresolvedPurchases?: Array<Record<string, unknown>>;
+  } = {},
+) {
   const planKind = options.planKind ?? "FREE";
   const planHandle = planKind === "FREE" ? "free" : "growth";
   const plan = {
@@ -105,19 +131,22 @@ function createService(options: {
     periodEnd,
     status: "OPEN",
     includedRecoveryCreditsGranted: planKind === "PAID_METERED" ? 100 : null,
-    entitlementCounters: planKind === "PAID_METERED"
-      ? [{
-          shopId,
-          billingPeriodId: "period-1",
-          counter: "INCLUDED_RECOVERY_CREDITS",
-          grantedQuantity: 100,
-          currentAllowanceQuantity: null,
-          committedQuantity: 12,
-          reservedQuantity: 8,
-          forfeitedQuantity: 5,
-          ...options.periodCounterOverrides,
-        }]
-      : [],
+    entitlementCounters:
+      planKind === "PAID_METERED"
+        ? [
+            {
+              shopId,
+              billingPeriodId: "period-1",
+              counter: "INCLUDED_RECOVERY_CREDITS",
+              grantedQuantity: 100,
+              currentAllowanceQuantity: null,
+              committedQuantity: 12,
+              reservedQuantity: 8,
+              forfeitedQuantity: 5,
+              ...options.periodCounterOverrides,
+            },
+          ]
+        : [],
     ...options.periodOverrides,
   };
   const subscription = {
@@ -133,33 +162,73 @@ function createService(options: {
     billingPeriod: period,
     ...options.subscriptionOverrides,
   };
-  const findPlan = vi.fn().mockResolvedValue(options.catalogue === undefined
-    ? {
-        shopifyPlanHandle: planHandle,
-        usageEvents: [{ position: 0, eventHandle: "credit-pack-meter", adminLabel: "Credit pack", creditsGrantedPerUnit: 100 }],
-      }
-    : options.catalogue);
-  const findLatestPurchase = vi.fn().mockImplementation(async ({ where }: { where: { provider?: string } }) => {
-    const row = options.latestPurchase ?? null;
-    return row && (!where.provider || row.provider === where.provider) ? row : null;
-  });
-  const findUnresolvedPurchases = vi.fn().mockImplementation(async ({ where }: { where: { provider?: string } }) =>
-    (options.unresolvedPurchases ?? []).filter((row) => !where.provider || row.provider === where.provider),
+  const findPlan = vi.fn().mockResolvedValue(
+    options.catalogue === undefined
+      ? {
+          shopifyPlanHandle: planHandle,
+          usageEvents: [
+            {
+              position: 0,
+              eventHandle: "credit-pack-meter",
+              adminLabel: "Credit pack",
+              creditsGrantedPerUnit: 100,
+            },
+          ],
+        }
+      : options.catalogue,
   );
+  const findLatestPurchase = vi
+    .fn()
+    .mockImplementation(async ({ where }: { where: { provider?: string } }) => {
+      const row = options.latestPurchase ?? null;
+      return row && (!where.provider || row.provider === where.provider)
+        ? row
+        : null;
+    });
+  const findUnresolvedPurchases = vi
+    .fn()
+    .mockImplementation(async ({ where }: { where: { provider?: string } }) =>
+      (options.unresolvedPurchases ?? []).filter(
+        (row) => !where.provider || row.provider === where.provider,
+      ),
+    );
   const database = {
     shop: {
-      findUnique: vi.fn().mockResolvedValue(options.shop === undefined
-        ? { id: shopId, status: "ACTIVE", shopifyShopId }
-        : options.shop),
+      findUnique: vi
+        .fn()
+        .mockResolvedValue(
+          options.shop === undefined
+            ? { id: shopId, status: "ACTIVE", shopifyShopId }
+            : options.shop,
+        ),
     },
     subscription: { findUnique: vi.fn().mockResolvedValue(subscription) },
     shopEntitlementCounter: {
-      findUnique: vi.fn().mockImplementation(async ({ where }: { where: { shopId_counter: { counter: string } } }) =>
-        where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
-          ? { grantedQuantity: 100, committedQuantity: 20, reservedQuantity: 5, refundingQuantity: 10 }
-          : { grantedQuantity: 50, committedQuantity: 10, reservedQuantity: 5 }),
+      findUnique: vi
+        .fn()
+        .mockImplementation(
+          async ({
+            where,
+          }: {
+            where: { shopId_counter: { counter: string } };
+          }) =>
+            where.shopId_counter.counter === "PURCHASED_RECOVERY_CREDITS"
+              ? {
+                  grantedQuantity: 100,
+                  committedQuantity: 20,
+                  reservedQuantity: 5,
+                  refundingQuantity: 10,
+                }
+              : {
+                  grantedQuantity: 50,
+                  committedQuantity: 10,
+                  reservedQuantity: 5,
+                },
+        ),
     },
-    usageEvent: { aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }) },
+    usageEvent: {
+      aggregate: vi.fn().mockResolvedValue({ _sum: { quantity: 999 } }),
+    },
     recoveryCreditPurchase: {
       findFirst: findLatestPurchase,
       findMany: findUnresolvedPurchases,
@@ -167,7 +236,9 @@ function createService(options: {
     billingPlan: { findUnique: vi.fn() },
   };
   const provider = options.provider ?? {
-    getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({ planHandle })),
+    getActiveSubscription: vi
+      .fn()
+      .mockResolvedValue(providerSubscription({ planHandle })),
   };
   const readMerchantPricingPlan = findPlan;
   const service = new MerchantBillingReadService(
@@ -176,7 +247,14 @@ function createService(options: {
     { readMerchantPricingPlan } as never,
   );
 
-  return { service, database, provider, readMerchantPricingPlan, subscription, period };
+  return {
+    service,
+    database,
+    provider,
+    readMerchantPricingPlan,
+    subscription,
+    period,
+  };
 }
 
 describe("MerchantBillingReadService", () => {
@@ -187,7 +265,9 @@ describe("MerchantBillingReadService", () => {
   it("composes Free lifetime, usage and purchased balances with no cycle/provider lookup", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
-    const { service, provider } = createService({ shop: { id: shopId, status: "ACTIVE", shopifyShopId: null } });
+    const { service, provider } = createService({
+      shop: { id: shopId, status: "ACTIVE", shopifyShopId: null },
+    });
 
     const result = await service.getMerchantBillingState(shopId);
 
@@ -212,7 +292,10 @@ describe("MerchantBillingReadService", () => {
   });
 
   it("presents included Paid credits only for an exact valid local period and counter", async () => {
-    const valid = createService({ planKind: "PAID_METERED", shop: { id: shopId, shopifyShopId: null } });
+    const valid = createService({
+      planKind: "PAID_METERED",
+      shop: { id: shopId, shopifyShopId: null },
+    });
     const result = await valid.service.getMerchantBillingState(shopId);
     expect(result).toMatchObject({
       allowance: null,
@@ -229,7 +312,9 @@ describe("MerchantBillingReadService", () => {
 
     const invalid = createService({
       planKind: "PAID_METERED",
-      periodCounterOverrides: { committedQuantity: Number.MAX_SAFE_INTEGER + 1 },
+      periodCounterOverrides: {
+        committedQuantity: Number.MAX_SAFE_INTEGER + 1,
+      },
       shop: { id: shopId, shopifyShopId: null },
     });
     const invalidResult = await invalid.service.getMerchantBillingState(shopId);
@@ -240,16 +325,22 @@ describe("MerchantBillingReadService", () => {
   it("reuses supplied verified commercial state without another provider read", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
-    const { service, provider, readMerchantPricingPlan, database } = createService();
+    const { service, provider, readMerchantPricingPlan, database } =
+      createService();
 
-    const result = await service.getMerchantBillingState(shopId, activeCommercialState());
+    const result = await service.getMerchantBillingState(
+      shopId,
+      activeCommercialState(),
+    );
 
     expect(result).toMatchObject({
       billingPeriodPhase: "ACTIVE",
       recoveryCreditOfferVerificationState: "VERIFIED",
       recoveryCreditPackMeterVerified: true,
       recoveryCreditPackPurchaseEligible: true,
-      recoveryCreditOffers: [{ eventHandle: "credit-pack-meter", creditsGranted: 100 }],
+      recoveryCreditOffers: [
+        { eventHandle: "credit-pack-meter", creditsGranted: 100 },
+      ],
     });
     expect(provider.getActiveSubscription).not.toHaveBeenCalled();
     expect(readMerchantPricingPlan).toHaveBeenCalledTimes(1);
@@ -260,48 +351,70 @@ describe("MerchantBillingReadService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
     const packs = [
-      { eventHandle: "bronze-top-up-free", creditsGranted: 1, amountMinor: 12000 },
+      {
+        eventHandle: "bronze-top-up-free",
+        creditsGranted: 1,
+        amountMinor: 12000,
+      },
       { eventHandle: "silver-top-up", creditsGranted: 2, amountMinor: 13000 },
       { eventHandle: "gold-top-up", creditsGranted: 3, amountMinor: 15000 },
     ];
     const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
-        usageItems: packs.map(({ eventHandle }, index) => ({
-          handle: eventHandle,
-          description: eventHandle,
-          price: {
-            kind: "TIERED" as const,
-            active: true,
-            currency: "USD",
-            tiersMode: "VOLUME",
-            tiers: [{ upTo: null, amountPerUnit: "0.00", amount: "0.00" }],
-          },
-          usage: { quantity: index, costAmount: "0.00", costCurrency: "USD" },
-        })),
-        usageEventHandles: packs.map(({ eventHandle }) => eventHandle),
-      })),
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({
+          usageItems: packs.map(({ eventHandle }, index) => ({
+            handle: eventHandle,
+            description: eventHandle,
+            price: {
+              kind: "TIERED" as const,
+              active: true,
+              currency: "USD",
+              tiersMode: "VOLUME",
+              tiers: [{ upTo: null, amountPerUnit: "0.00", amount: "0.00" }],
+            },
+            usage: { quantity: index, costAmount: "0.00", costCurrency: "USD" },
+          })),
+          usageEventHandles: packs.map(({ eventHandle }) => eventHandle),
+        }),
+      ),
     };
     const catalogue = {
       shopifyPlanHandle: "free",
-      usageEvents: packs.map(({ eventHandle, creditsGranted, amountMinor }, position) => ({
-        id: `event-${position}`,
-        position,
-        eventHandle,
-        adminLabel: eventHandle,
-        creditsGrantedPerUnit: creditsGranted,
-        pricingMode: "FIXED",
-        fixedUnitAmountMinor: amountMinor,
-        currency: "USD",
-        tiers: [],
-      })),
+      usageEvents: packs.map(
+        ({ eventHandle, creditsGranted, amountMinor }, position) => ({
+          id: `event-${position}`,
+          position,
+          eventHandle,
+          adminLabel: eventHandle,
+          creditsGrantedPerUnit: creditsGranted,
+          pricingMode: "FIXED",
+          fixedUnitAmountMinor: amountMinor,
+          currency: "USD",
+          tiers: [],
+        }),
+      ),
     };
     const { service } = createService({ provider, catalogue });
 
     const result = await service.getMerchantBillingState(shopId);
-    expect(result.recoveryCreditOffers.map(({ eventHandle, quotedPackPrice }) => ({ eventHandle, quotedPackPrice }))).toEqual([
-      { eventHandle: "bronze-top-up-free", quotedPackPrice: { amountMinor: 12000, currency: "USD" } },
-      { eventHandle: "silver-top-up", quotedPackPrice: { amountMinor: 13000, currency: "USD" } },
-      { eventHandle: "gold-top-up", quotedPackPrice: { amountMinor: 15000, currency: "USD" } },
+    expect(
+      result.recoveryCreditOffers.map(({ eventHandle, quotedPackPrice }) => ({
+        eventHandle,
+        quotedPackPrice,
+      })),
+    ).toEqual([
+      {
+        eventHandle: "bronze-top-up-free",
+        quotedPackPrice: { amountMinor: 12000, currency: "USD" },
+      },
+      {
+        eventHandle: "silver-top-up",
+        quotedPackPrice: { amountMinor: 13000, currency: "USD" },
+      },
+      {
+        eventHandle: "gold-top-up",
+        quotedPackPrice: { amountMinor: 15000, currency: "USD" },
+      },
     ]);
     expect(result.recoveryCreditPackPurchaseEligible).toBe(true);
   });
@@ -312,37 +425,55 @@ describe("MerchantBillingReadService", () => {
     const { service } = createService({
       catalogue: {
         shopifyPlanHandle: "free",
-        usageEvents: [{
-          id: "graduated-event",
-          position: 0,
-          eventHandle: "credit-pack-meter",
-          adminLabel: "Credit pack",
-          creditsGrantedPerUnit: 100,
-          pricingMode: "GRADUATED",
-          fixedUnitAmountMinor: null,
-          currency: "USD",
-          tiers: [
-            { position: 0, upTo: 2, amountPerUnitMinor: 1000, flatAmountMinor: 0 },
-            { position: 1, upTo: null, amountPerUnitMinor: 800, flatAmountMinor: 0 },
-          ],
-        }],
+        usageEvents: [
+          {
+            id: "graduated-event",
+            position: 0,
+            eventHandle: "credit-pack-meter",
+            adminLabel: "Credit pack",
+            creditsGrantedPerUnit: 100,
+            pricingMode: "GRADUATED",
+            fixedUnitAmountMinor: null,
+            currency: "USD",
+            tiers: [
+              {
+                position: 0,
+                upTo: 2,
+                amountPerUnitMinor: 1000,
+                flatAmountMinor: 0,
+              },
+              {
+                position: 1,
+                upTo: null,
+                amountPerUnitMinor: 800,
+                flatAmountMinor: 0,
+              },
+            ],
+          },
+        ],
       },
     });
 
     const result = await service.getMerchantBillingState(shopId);
-    expect(result.recoveryCreditOffers[0].quotedPackPrice).toEqual({ amountMinor: 800, currency: "USD" });
+    expect(result.recoveryCreditOffers[0].quotedPackPrice).toEqual({
+      amountMinor: 800,
+      currency: "USD",
+    });
   });
 
   it("performs one provider read without SHOPIFY-003 plan mapping reads when no snapshot is supplied", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
-    const { service, provider, readMerchantPricingPlan, database } = createService();
+    const { service, provider, readMerchantPricingPlan, database } =
+      createService();
 
     const result = await service.getMerchantBillingState(shopId);
 
     expect(result.recoveryCreditPackPurchaseEligible).toBe(true);
     expect(provider.getActiveSubscription).toHaveBeenCalledTimes(1);
-    expect(provider.getActiveSubscription).toHaveBeenCalledWith({ shopifyShopId });
+    expect(provider.getActiveSubscription).toHaveBeenCalledWith({
+      shopifyShopId,
+    });
     expect(readMerchantPricingPlan).toHaveBeenCalledTimes(1);
     expect(database.billingPlan.findUnique).not.toHaveBeenCalled();
   });
@@ -350,7 +481,11 @@ describe("MerchantBillingReadService", () => {
   it("preserves local cycle phase and reports verification failure without offers", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-01T00:00:00.000Z"));
-    const provider = { getActiveSubscription: vi.fn().mockRejectedValue(new Error("provider unavailable")) };
+    const provider = {
+      getActiveSubscription: vi
+        .fn()
+        .mockRejectedValue(new Error("provider unavailable")),
+    };
     const { service } = createService({ provider });
 
     const result = await service.getMerchantBillingState(shopId);
@@ -371,19 +506,27 @@ describe("MerchantBillingReadService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-14T00:00:00.000Z"));
     const provider = {
-      getActiveSubscription: vi.fn().mockResolvedValue(providerSubscription({
-        usageItems: [
-          ...providerSubscription().usageItems,
-          {
-            handle: "unknown-meter",
-            description: "Unknown meter",
-            price: { kind: "TIERED", active: true, currency: "USD", tiersMode: "VOLUME", tiers: [] },
-            usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
-          },
-        ],
-        currentPeriodStart: new Date("2026-10-01T00:00:00.000Z"),
-        currentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
-      })),
+      getActiveSubscription: vi.fn().mockResolvedValue(
+        providerSubscription({
+          usageItems: [
+            ...providerSubscription().usageItems,
+            {
+              handle: "unknown-meter",
+              description: "Unknown meter",
+              price: {
+                kind: "TIERED",
+                active: true,
+                currency: "USD",
+                tiersMode: "VOLUME",
+                tiers: [],
+              },
+              usage: { quantity: 0, costAmount: "0.00", costCurrency: "USD" },
+            },
+          ],
+          currentPeriodStart: new Date("2026-10-01T00:00:00.000Z"),
+          currentPeriodEnd: new Date("2026-10-31T00:00:00.000Z"),
+        }),
+      ),
     };
     const latestPurchase = {
       id: "purchase-1",
@@ -398,22 +541,32 @@ describe("MerchantBillingReadService", () => {
       activatedAt: null,
       usageEvent: { shopifyReportState: "REPORTED" },
     };
-    const unresolvedPurchases = [{
-      id: "purchase-1",
-      provider: "SHOPIFY",
-      shopifyEventHandleSnapshot: "credit-pack-meter",
-      usageEventId: "usage-1",
-      creditsGranted: 100,
-      createdAt: latestPurchase.createdAt,
-      usageEvent: { shopifyReportState: "REPORTED" },
-    }];
-    const { service } = createService({ provider, latestPurchase, unresolvedPurchases });
+    const unresolvedPurchases = [
+      {
+        id: "purchase-1",
+        provider: "SHOPIFY",
+        shopifyEventHandleSnapshot: "credit-pack-meter",
+        usageEventId: "usage-1",
+        creditsGranted: 100,
+        createdAt: latestPurchase.createdAt,
+        usageEvent: { shopifyReportState: "REPORTED" },
+      },
+    ];
+    const { service } = createService({
+      provider,
+      latestPurchase,
+      unresolvedPurchases,
+    });
 
     const result = await service.getMerchantBillingState(shopId);
 
     expect(result).toMatchObject({
-      recoveryCreditOffers: [{ eventHandle: "credit-pack-meter", label: "Credit pack" }],
-      recoveryCreditOfferDiagnostics: [{ code: "UNKNOWN_PROVIDER_METER", handle: "unknown-meter" }],
+      recoveryCreditOffers: [
+        { eventHandle: "credit-pack-meter", label: "Credit pack" },
+      ],
+      recoveryCreditOfferDiagnostics: [
+        { code: "UNKNOWN_PROVIDER_METER", handle: "unknown-meter" },
+      ],
       recoveryCreditPackPurchaseEligible: false,
       unavailableReason: "Recovery credit offers are not currently available.",
       latestPurchase: {
@@ -422,7 +575,9 @@ describe("MerchantBillingReadService", () => {
         usageReportState: "REPORTED",
         activatedAt: null,
       },
-      unresolvedPurchases: [{ eventHandle: "credit-pack-meter", usageReportState: "REPORTED" }],
+      unresolvedPurchases: [
+        { eventHandle: "credit-pack-meter", usageReportState: "REPORTED" },
+      ],
     });
   });
 
@@ -431,12 +586,16 @@ describe("MerchantBillingReadService", () => {
 
     await service.getMerchantBillingState(shopId);
 
-    expect(database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: { shopId, provider: "SHOPIFY" },
-    }));
-    expect(database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { shopId, provider: "SHOPIFY", status: "REQUESTED" },
-    }));
+    expect(database.recoveryCreditPurchase.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { shopId, provider: "SHOPIFY" },
+      }),
+    );
+    expect(database.recoveryCreditPurchase.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { shopId, provider: "SHOPIFY", status: "REQUESTED" },
+      }),
+    );
   });
 
   it("excludes synthetic Woo latest and pending purchases from Shopify summaries", async () => {
@@ -498,5 +657,4 @@ describe("MerchantBillingReadService", () => {
     expect(result.paidIncluded).toBeNull();
     expect(result.paidConfigurationUnavailable).toBe(true);
   });
-
 });

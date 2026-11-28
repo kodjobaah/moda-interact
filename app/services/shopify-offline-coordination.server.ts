@@ -58,29 +58,53 @@ export type CoordinatedShopifyAuthentication = Readonly<{
   provider: ReturnType<typeof createShopifyOfflineTokenProvider>;
   sessionStorage: SessionStorage & { isReady(): Promise<boolean> };
   fetch: AbstractFetchFunc;
-  withAdminAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
-  withWebhookAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
-  withAppProxyAuthentication<T>(request: Request, authenticate: () => Promise<T>): Promise<T>;
-  withUnauthenticatedAdmin<T>(shop: string, authenticate: () => Promise<T>): Promise<T>;
-  withLifecycleLock<T>(integrationDomain: string, work: LifecycleWork<T>, options?: { sessionId?: string | null }): Promise<T>;
+  withAdminAuthentication<T>(
+    request: Request,
+    authenticate: () => Promise<T>,
+  ): Promise<T>;
+  withWebhookAuthentication<T>(
+    request: Request,
+    authenticate: () => Promise<T>,
+  ): Promise<T>;
+  withAppProxyAuthentication<T>(
+    request: Request,
+    authenticate: () => Promise<T>,
+  ): Promise<T>;
+  withUnauthenticatedAdmin<T>(
+    shop: string,
+    authenticate: () => Promise<T>,
+  ): Promise<T>;
+  withLifecycleLock<T>(
+    integrationDomain: string,
+    work: LifecycleWork<T>,
+    options?: { sessionId?: string | null },
+  ): Promise<T>;
 }>;
 
-function createOfflineProvider(database: PrismaClient, fetchImpl: typeof fetch) {
+function createOfflineProvider(
+  database: PrismaClient,
+  fetchImpl: typeof fetch,
+) {
   const structuralDatabase = database as unknown as ShopifyOfflineDatabase;
   return createShopifyOfflineTokenProvider({
     prisma: structuralDatabase,
-    readOAuth: () => createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials(),
+    readOAuth: () =>
+      createDefaultShopifyPlatformConfigurationService().requireShopifyOAuthCredentials(),
     fetch: fetchImpl,
     onEvent: recordShopifyOfflineRefreshEvent,
   });
 }
 
-function getRequestHint(request: Request, surface: "admin" | "webhook" | "app_proxy"): string | undefined {
+function getRequestHint(
+  request: Request,
+  surface: "admin" | "webhook" | "app_proxy",
+): string | undefined {
   if (surface === "app_proxy") {
     // A Shopify App Proxy `shop` query parameter is only a lock-selection hint.
     // The SDK must still verify the signed request before it can authorize a shop.
     const shops = new URL(request.url).searchParams.getAll("shop");
-    return shops.length === 1 && /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shops[0])
+    return shops.length === 1 &&
+      /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shops[0])
       ? shops[0]
       : undefined;
   }
@@ -106,7 +130,9 @@ function jwtDestination(token: string): string | undefined {
   const payload = token.split(".")[1];
   if (!payload) return undefined;
   try {
-    const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { dest?: unknown };
+    const decoded = JSON.parse(
+      Buffer.from(payload, "base64url").toString("utf8"),
+    ) as { dest?: unknown };
     if (typeof decoded.dest !== "string") return undefined;
     return new URL(decoded.dest).host || undefined;
   } catch {
@@ -116,11 +142,21 @@ function jwtDestination(token: string): string | undefined {
 
 function isOAuthCallback(request: Request): boolean {
   const url = new URL(request.url);
-  return url.pathname.startsWith("/auth/") && Boolean(url.searchParams.get("code"));
+  return (
+    url.pathname.startsWith("/auth/") && Boolean(url.searchParams.get("code"))
+  );
 }
 
-function canCommitResponse(result: CapturedResult<unknown>, stores: number): boolean {
-  return result.kind === "response" && result.response.status >= 300 && result.response.status < 400 && stores > 0;
+function canCommitResponse(
+  result: CapturedResult<unknown>,
+  stores: number,
+): boolean {
+  return (
+    result.kind === "response" &&
+    result.response.status >= 300 &&
+    result.response.status < 400 &&
+    stores > 0
+  );
 }
 
 function tokenRequestUrl(input: RequestInfo | URL): URL | undefined {
@@ -136,7 +172,11 @@ function tokenRequestUrl(input: RequestInfo | URL): URL | undefined {
   }
 }
 
-async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit | undefined, signal: AbortSignal): Promise<boolean> {
+async function isRefreshTokenGrant(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  signal: AbortSignal,
+): Promise<boolean> {
   signal.throwIfAborted();
   const body = init?.body;
   let text: string;
@@ -145,7 +185,8 @@ async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit |
     let size = 0;
     for (const [key, value] of body) {
       size += Buffer.byteLength(key) + Buffer.byteLength(value);
-      if (size > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
+      if (size > MAX_OAUTH_INTENT_BYTES)
+        throw new ShopifyOfflineTokenError("INVALID_SESSION");
     }
     text = body.toString();
   } else if (typeof body === "string") text = body;
@@ -166,7 +207,8 @@ async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit |
         const { done, value } = await Promise.race([reader.read(), aborted]);
         if (done) break;
         size += value.byteLength;
-        if (size > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
+        if (size > MAX_OAUTH_INTENT_BYTES)
+          throw new ShopifyOfflineTokenError("INVALID_SESSION");
         chunks.push(value);
       }
       text = Buffer.concat(chunks).toString("utf8");
@@ -178,12 +220,19 @@ async function isRefreshTokenGrant(input: RequestInfo | URL, init: RequestInit |
     }
   } else return false;
   signal.throwIfAborted();
-  if (Buffer.byteLength(text) > MAX_OAUTH_INTENT_BYTES) throw new ShopifyOfflineTokenError("INVALID_SESSION");
+  if (Buffer.byteLength(text) > MAX_OAUTH_INTENT_BYTES)
+    throw new ShopifyOfflineTokenError("INVALID_SESSION");
   try {
     const form = new URLSearchParams(text);
-    if (form.has("grant_type")) return form.get("grant_type") === "refresh_token";
-    return (JSON.parse(text) as { grant_type?: unknown }).grant_type === "refresh_token";
-  } catch { return false; }
+    if (form.has("grant_type"))
+      return form.get("grant_type") === "refresh_token";
+    return (
+      (JSON.parse(text) as { grant_type?: unknown }).grant_type ===
+      "refresh_token"
+    );
+  } catch {
+    return false;
+  }
 }
 
 function emitSdkRefreshEvent(
@@ -197,26 +246,53 @@ function emitSdkRefreshEvent(
     operationId: attempt.operationId,
     shopId: attempt.shopId,
     source: "SDK" as const,
-    durationMs: Math.min(60_000, Math.max(0, Math.round(performance.now() - attempt.startedAt))),
+    durationMs: Math.min(
+      60_000,
+      Math.max(0, Math.round(performance.now() - attempt.startedAt)),
+    ),
     outcome,
     reasonCode,
   });
-  try { void Promise.resolve(recordShopifyOfflineRefreshEvent(record)).catch(() => undefined); } catch { /* Telemetry cannot change authentication outcomes. */ }
+  try {
+    void Promise.resolve(recordShopifyOfflineRefreshEvent(record)).catch(
+      () => undefined,
+    );
+  } catch {
+    /* Telemetry cannot change authentication outcomes. */
+  }
 }
 
-function sdkRefreshFailure(error: unknown, tokenOutcome: "none" | "rejected" | "succeeded" | "unknown"):
-  { outcome: "REJECTED" | "UNKNOWN" | "CANCELLED" | "UNAVAILABLE"; reasonCode: ShopifyOfflineTokenErrorCode } {
+function sdkRefreshFailure(
+  error: unknown,
+  tokenOutcome: "none" | "rejected" | "succeeded" | "unknown",
+): {
+  outcome: "REJECTED" | "UNKNOWN" | "CANCELLED" | "UNAVAILABLE";
+  reasonCode: ShopifyOfflineTokenErrorCode;
+} {
   const code = error instanceof ShopifyOfflineTokenError ? error.code : null;
-  if (tokenOutcome === "unknown" || tokenOutcome === "succeeded" || code === "REFRESH_OUTCOME_UNKNOWN") {
+  if (
+    tokenOutcome === "unknown" ||
+    tokenOutcome === "succeeded" ||
+    code === "REFRESH_OUTCOME_UNKNOWN"
+  ) {
     return { outcome: "UNKNOWN", reasonCode: "REFRESH_OUTCOME_UNKNOWN" };
   }
-  if (code === "REFRESH_REJECTED" || tokenOutcome === "rejected") return { outcome: "REJECTED", reasonCode: "REFRESH_REJECTED" };
-  if (code === "CANCELLED") return { outcome: "CANCELLED", reasonCode: "CANCELLED" };
-  if (code === "DEADLINE") return { outcome: "CANCELLED", reasonCode: "DEADLINE" };
-  return { outcome: "UNAVAILABLE", reasonCode: code ?? "PERSISTENCE_UNAVAILABLE" };
+  if (code === "REFRESH_REJECTED" || tokenOutcome === "rejected")
+    return { outcome: "REJECTED", reasonCode: "REFRESH_REJECTED" };
+  if (code === "CANCELLED")
+    return { outcome: "CANCELLED", reasonCode: "CANCELLED" };
+  if (code === "DEADLINE")
+    return { outcome: "CANCELLED", reasonCode: "DEADLINE" };
+  return {
+    outcome: "UNAVAILABLE",
+    reasonCode: code ?? "PERSISTENCE_UNAVAILABLE",
+  };
 }
 
-async function readBoundedBody(response: Response, signal: AbortSignal): Promise<Uint8Array | null> {
+async function readBoundedBody(
+  response: Response,
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
   if (!response.body) return null;
   const length = Number(response.headers.get("content-length"));
   if (Number.isFinite(length) && length > MAX_OAUTH_RESPONSE_BYTES) {
@@ -252,8 +328,12 @@ async function readBoundedBody(response: Response, signal: AbortSignal): Promise
   return body;
 }
 
-function combineSignals(signals: Array<AbortSignal | null | undefined>): AbortSignal | undefined {
-  const active = signals.filter((signal): signal is AbortSignal => Boolean(signal));
+function combineSignals(
+  signals: Array<AbortSignal | null | undefined>,
+): AbortSignal | undefined {
+  const active = signals.filter((signal): signal is AbortSignal =>
+    Boolean(signal),
+  );
   if (active.length === 0) return undefined;
   if (active.length === 1) return active[0];
   return AbortSignal.any(active);
@@ -274,7 +354,11 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
     const timeoutController = new AbortController();
     const budgetMs = tokenUrl ? NETWORK_BUDGET_MS : AUTH_CALLBACK_BUDGET_MS;
     const timeout = setTimeout(() => timeoutController.abort(), budgetMs);
-    const signal = combineSignals([callerSignal, binding.signal, timeoutController.signal]);
+    const signal = combineSignals([
+      callerSignal,
+      binding.signal,
+      timeoutController.signal,
+    ]);
     let tokenDispatched = false;
     let sdkRefreshAttempt: SdkRefreshAttempt | null = null;
 
@@ -287,25 +371,39 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
         ) {
           throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
         }
-        const isRefresh = await isRefreshTokenGrant(input, init, signal ?? timeoutController.signal);
-        if (binding.closed || signal?.aborted) throw new ShopifyOfflineTokenError("DEADLINE");
+        const isRefresh = await isRefreshTokenGrant(
+          input,
+          init,
+          signal ?? timeoutController.signal,
+        );
+        if (binding.closed || signal?.aborted)
+          throw new ShopifyOfflineTokenError("DEADLINE");
         if (isRefresh) {
           sdkRefreshAttempt = {
             operationId: randomUUID(),
             startedAt: performance.now(),
             shopId: binding.context.shopId,
-            tokenOutcome: "none", credentialFingerprint: null, persisted: false,
+            tokenOutcome: "none",
+            credentialFingerprint: null,
+            persisted: false,
           };
           binding.sdkRefreshAttempts.push(sdkRefreshAttempt);
           binding.onSdkRefreshAttempt?.(sdkRefreshAttempt);
-          emitSdkRefreshEvent(sdkRefreshAttempt, "shopify.offline_refresh.started", "STARTED", null);
+          emitSdkRefreshEvent(
+            sdkRefreshAttempt,
+            "shopify.offline_refresh.started",
+            "STARTED",
+            null,
+          );
         }
         tokenDispatched = true;
       }
 
       const response = await nativeFetch(input, {
         ...init,
-        ...(tokenUrl ? { method: "POST", redirect: "error" as RequestRedirect } : {}),
+        ...(tokenUrl
+          ? { method: "POST", redirect: "error" as RequestRedirect }
+          : {}),
         ...(signal ? { signal } : {}),
       });
       if (!tokenUrl) return response;
@@ -327,16 +425,24 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
 
       let body: Uint8Array | null;
       try {
-        body = await readBoundedBody(response, signal ?? timeoutController.signal);
+        body = await readBoundedBody(
+          response,
+          signal ?? timeoutController.signal,
+        );
       } catch (error) {
-        if (callerSignal?.aborted) throw new ShopifyOfflineTokenError("CANCELLED");
+        if (callerSignal?.aborted)
+          throw new ShopifyOfflineTokenError("CANCELLED");
         binding.tokenOutcome = "unknown";
         if (error instanceof ShopifyOfflineTokenError) throw error;
         throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
       }
-      const bodyBuffer = body === null ? null : new ArrayBuffer(body.byteLength);
+      const bodyBuffer =
+        body === null ? null : new ArrayBuffer(body.byteLength);
       if (body !== null && bodyBuffer !== null) {
-        recordShopifyOAuthCredentialResponse(body, sdkRefreshAttempt ?? undefined);
+        recordShopifyOAuthCredentialResponse(
+          body,
+          sdkRefreshAttempt ?? undefined,
+        );
         new Uint8Array(bodyBuffer).set(body);
       }
       return new Response(bodyBuffer, {
@@ -345,15 +451,26 @@ function createBoundedFetch(nativeFetch: typeof fetch): AbstractFetchFunc {
         headers: response.headers,
       });
     } catch (error) {
-      if (tokenUrl && tokenDispatched && binding.tokenOutcome === "none") binding.tokenOutcome = "unknown";
-      if (sdkRefreshAttempt?.tokenOutcome === "none") sdkRefreshAttempt.tokenOutcome = "unknown";
-      if (callerSignal?.aborted) throw new ShopifyOfflineTokenError("CANCELLED");
-      if (binding.signal.aborted) throw new ShopifyOfflineTokenError("DEADLINE");
+      if (tokenUrl && tokenDispatched && binding.tokenOutcome === "none")
+        binding.tokenOutcome = "unknown";
+      if (sdkRefreshAttempt?.tokenOutcome === "none")
+        sdkRefreshAttempt.tokenOutcome = "unknown";
+      if (callerSignal?.aborted)
+        throw new ShopifyOfflineTokenError("CANCELLED");
+      if (binding.signal.aborted)
+        throw new ShopifyOfflineTokenError("DEADLINE");
       if (timeoutController.signal.aborted) {
-        throw new ShopifyOfflineTokenError(tokenUrl ? "REFRESH_OUTCOME_UNKNOWN" : "DEADLINE");
+        throw new ShopifyOfflineTokenError(
+          tokenUrl ? "REFRESH_OUTCOME_UNKNOWN" : "DEADLINE",
+        );
       }
-      if (error instanceof ShopifyOfflineTokenError || error instanceof ShopifySessionCoordinationRequiredError) throw error;
-      if (tokenUrl) throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
+      if (
+        error instanceof ShopifyOfflineTokenError ||
+        error instanceof ShopifySessionCoordinationRequiredError
+      )
+        throw error;
+      if (tokenUrl)
+        throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
       throw error;
     } finally {
       clearTimeout(timeout);
@@ -365,10 +482,12 @@ function statusFailure(): never {
   throw new ShopifyOfflineTokenError("INVALID_SESSION");
 }
 
-export function createCoordinatedShopifyAuthentication(input: {
-  database?: PrismaClient;
-  nativeFetch?: typeof fetch;
-} = {}): CoordinatedShopifyAuthentication {
+export function createCoordinatedShopifyAuthentication(
+  input: {
+    database?: PrismaClient;
+    nativeFetch?: typeof fetch;
+  } = {},
+): CoordinatedShopifyAuthentication {
   const database = input.database ?? prisma;
   const nativeFetch = input.nativeFetch ?? globalThis.fetch.bind(globalThis);
   const provider = createOfflineProvider(database, nativeFetch);
@@ -384,48 +503,84 @@ export function createCoordinatedShopifyAuthentication(input: {
     let committedResponse: CapturedResult<T>;
     try {
       committedResponse = await run<CapturedResult<T>>(async (context) => {
-      const bound = await runWithShopifySessionBinding(context, async () => {
-        try {
-          const value = await authenticate();
-          return value instanceof Response
-            ? { kind: "response", response: value } as CapturedResult<T>
-            : { kind: "value", value } as CapturedResult<T>;
-        } catch (error) {
-          if (error instanceof Response) return { kind: "response", response: error } as CapturedResult<T>;
-          return { kind: "error", error } as CapturedResult<T>;
+        const bound = await runWithShopifySessionBinding(
+          context,
+          async () => {
+            try {
+              const value = await authenticate();
+              return value instanceof Response
+                ? ({ kind: "response", response: value } as CapturedResult<T>)
+                : ({ kind: "value", value } as CapturedResult<T>);
+            } catch (error) {
+              if (error instanceof Response)
+                return {
+                  kind: "response",
+                  response: error,
+                } as CapturedResult<T>;
+              return { kind: "error", error } as CapturedResult<T>;
+            }
+          },
+          callerSignal,
+          15_000,
+          (attempt) => {
+            sdkRefreshAttempts.push(attempt);
+          },
+        );
+        const result = bound.value;
+        if (canCommitResponse(result, bound.successfulOfflineStores))
+          return result;
+        if (result.kind === "error") {
+          if (
+            bound.tokenOutcome === "succeeded" ||
+            bound.tokenOutcome === "unknown"
+          ) {
+            throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
+          }
+          if (bound.tokenOutcome === "rejected")
+            throw new ShopifyOfflineTokenError("REFRESH_REJECTED");
+          throw result.error;
         }
-      }, callerSignal, 15_000, (attempt) => { sdkRefreshAttempts.push(attempt); });
-      const result = bound.value;
-      if (canCommitResponse(result, bound.successfulOfflineStores)) return result;
-      if (result.kind === "error") {
-        if (bound.tokenOutcome === "succeeded" || bound.tokenOutcome === "unknown") {
-          throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
+        if (result.kind === "response") {
+          if (
+            bound.tokenOutcome === "succeeded" ||
+            bound.tokenOutcome === "unknown"
+          ) {
+            throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
+          }
+          if (bound.tokenOutcome === "rejected")
+            throw new ShopifyOfflineTokenError("REFRESH_REJECTED");
+          throw result.response;
         }
-        if (bound.tokenOutcome === "rejected") throw new ShopifyOfflineTokenError("REFRESH_REJECTED");
-        throw result.error;
-      }
-      if (result.kind === "response") {
-        if (bound.tokenOutcome === "succeeded" || bound.tokenOutcome === "unknown") {
-          throw new ShopifyOfflineTokenError("REFRESH_OUTCOME_UNKNOWN");
-        }
-        if (bound.tokenOutcome === "rejected") throw new ShopifyOfflineTokenError("REFRESH_REJECTED");
-        throw result.response;
-      }
-      return result;
+        return result;
       });
     } catch (error) {
       for (const attempt of sdkRefreshAttempts) {
         const failure = sdkRefreshFailure(error, attempt.tokenOutcome);
-        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
+        emitSdkRefreshEvent(
+          attempt,
+          "shopify.offline_refresh.failed",
+          failure.outcome,
+          failure.reasonCode,
+        );
       }
       throw error;
     }
     for (const attempt of sdkRefreshAttempts) {
       if (attempt.persisted && attempt.tokenOutcome === "succeeded") {
-        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.committed", "COMMITTED", null);
+        emitSdkRefreshEvent(
+          attempt,
+          "shopify.offline_refresh.committed",
+          "COMMITTED",
+          null,
+        );
       } else {
         const failure = sdkRefreshFailure(undefined, attempt.tokenOutcome);
-        emitSdkRefreshEvent(attempt, "shopify.offline_refresh.failed", failure.outcome, failure.reasonCode);
+        emitSdkRefreshEvent(
+          attempt,
+          "shopify.offline_refresh.failed",
+          failure.outcome,
+          failure.reasonCode,
+        );
       }
     }
     if (committedResponse.kind === "error") throw committedResponse.error;
@@ -436,7 +591,10 @@ export function createCoordinatedShopifyAuthentication(input: {
   async function withShopHint<T>(
     integrationDomain: string | undefined,
     authenticate: () => Promise<T>,
-    options: { surface: "admin" | "webhook" | "app_proxy" | "unauthenticated"; request?: Request },
+    options: {
+      surface: "admin" | "webhook" | "app_proxy" | "unauthenticated";
+      request?: Request;
+    },
   ): Promise<T> {
     if (!integrationDomain) return authenticate();
 
@@ -451,27 +609,35 @@ export function createCoordinatedShopifyAuthentication(input: {
       options.surface === "webhook" ||
       (options.surface === "admin" && isOAuthCallback(options.request!));
 
-    if (shop && shop.status !== "ACTIVE" && !isBootstrapRequest) statusFailure();
+    if (shop && shop.status !== "ACTIVE" && !isBootstrapRequest)
+      statusFailure();
     if (shop && shop.status === "ACTIVE") {
       const sessions = await database.session.findMany({
         where: { shop: shop.domain, isOnline: false },
         select: { id: true },
         take: 2,
       });
-      if (sessions.length > 1) throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+      if (sessions.length > 1)
+        throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
       if (sessions.length === 1) {
         return invokeInLock(
-          (work) => provider.withSessionLock(shop.id, work, { signal: options.request?.signal }),
+          (work) =>
+            provider.withSessionLock(shop.id, work, {
+              signal: options.request?.signal,
+            }),
           authenticate,
           options.request?.signal,
         );
       }
-      if (!isBootstrapRequest) throw new ShopifyOfflineTokenError("SESSION_MISSING");
+      if (!isBootstrapRequest)
+        throw new ShopifyOfflineTokenError("SESSION_MISSING");
     }
 
-    if (options.surface === "unauthenticated") throw new ShopifyOfflineTokenError("SESSION_MISSING");
+    if (options.surface === "unauthenticated")
+      throw new ShopifyOfflineTokenError("SESSION_MISSING");
     return invokeInLock(
-      (work) => provider.withSdkInstallationSessionLock(integrationDomain, work),
+      (work) =>
+        provider.withSdkInstallationSessionLock(integrationDomain, work),
       authenticate,
       options.request?.signal,
     );
@@ -484,14 +650,32 @@ export function createCoordinatedShopifyAuthentication(input: {
       return sessionStorage;
     },
     fetch: coordinatedFetch,
-    withAdminAuthentication<T>(request: Request, authenticate: () => Promise<T>) {
-      return withShopHint(getRequestHint(request, "admin"), authenticate, { surface: "admin", request });
+    withAdminAuthentication<T>(
+      request: Request,
+      authenticate: () => Promise<T>,
+    ) {
+      return withShopHint(getRequestHint(request, "admin"), authenticate, {
+        surface: "admin",
+        request,
+      });
     },
-    withWebhookAuthentication<T>(request: Request, authenticate: () => Promise<T>) {
-      return withShopHint(getRequestHint(request, "webhook"), authenticate, { surface: "webhook", request });
+    withWebhookAuthentication<T>(
+      request: Request,
+      authenticate: () => Promise<T>,
+    ) {
+      return withShopHint(getRequestHint(request, "webhook"), authenticate, {
+        surface: "webhook",
+        request,
+      });
     },
-    withAppProxyAuthentication<T>(request: Request, authenticate: () => Promise<T>) {
-      return withShopHint(getRequestHint(request, "app_proxy"), authenticate, { surface: "app_proxy", request });
+    withAppProxyAuthentication<T>(
+      request: Request,
+      authenticate: () => Promise<T>,
+    ) {
+      return withShopHint(getRequestHint(request, "app_proxy"), authenticate, {
+        surface: "app_proxy",
+        request,
+      });
     },
     withUnauthenticatedAdmin<T>(shop: string, authenticate: () => Promise<T>) {
       return withShopHint(shop, authenticate, { surface: "unauthenticated" });
@@ -501,54 +685,72 @@ export function createCoordinatedShopifyAuthentication(input: {
       work: LifecycleWork<T>,
       options: { sessionId?: string | null } = {},
     ): Promise<T> {
-      return provider.withSdkInstallationSessionLock(integrationDomain, async (context) => {
-        const transaction = context.transaction as unknown as Prisma.TransactionClient;
-        const shop = await transaction.shop.findUnique({
-          where: { domain: integrationDomain },
-          select: { id: true, domain: true, platform: true, status: true },
-        });
-        if (shop && shop.platform !== "SHOPIFY") statusFailure();
-        if (!shop) return work({ transaction, shop: null, sessionId: null });
-
-        await lockShopLifecycleRow(transaction, shop.id);
-        const currentShop = await transaction.shop.findUnique({
-          where: { id: shop.id },
-          select: { id: true, domain: true, platform: true, status: true, uninstalledAt: true },
-        });
-        if (!currentShop || currentShop.domain !== integrationDomain || currentShop.platform !== "SHOPIFY") {
-          throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
-        }
-
-        const offlineRows = await transaction.session.findMany({
-          where: { shop: currentShop.domain, isOnline: false },
-          select: { id: true, shop: true, isOnline: true },
-          take: 2,
-        });
-        if (offlineRows.length > 1) throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
-
-        let sessionId: string | null = offlineRows[0]?.id ?? null;
-        if (options.sessionId) {
-          const selected = await transaction.session.findUnique({
-            where: { id: options.sessionId },
-            select: { id: true, shop: true, isOnline: true },
+      return provider.withSdkInstallationSessionLock(
+        integrationDomain,
+        async (context) => {
+          const transaction =
+            context.transaction as unknown as Prisma.TransactionClient;
+          const shop = await transaction.shop.findUnique({
+            where: { domain: integrationDomain },
+            select: { id: true, domain: true, platform: true, status: true },
           });
-          if (!selected || selected.shop !== currentShop.domain) {
+          if (shop && shop.platform !== "SHOPIFY") statusFailure();
+          if (!shop) return work({ transaction, shop: null, sessionId: null });
+
+          await lockShopLifecycleRow(transaction, shop.id);
+          const currentShop = await transaction.shop.findUnique({
+            where: { id: shop.id },
+            select: {
+              id: true,
+              domain: true,
+              platform: true,
+              status: true,
+              uninstalledAt: true,
+            },
+          });
+          if (
+            !currentShop ||
+            currentShop.domain !== integrationDomain ||
+            currentShop.platform !== "SHOPIFY"
+          ) {
             throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
           }
-          if (!selected.isOnline && offlineRows[0]?.id !== selected.id) {
+
+          const offlineRows = await transaction.session.findMany({
+            where: { shop: currentShop.domain, isOnline: false },
+            select: { id: true, shop: true, isOnline: true },
+            take: 2,
+          });
+          if (offlineRows.length > 1)
             throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+
+          let sessionId: string | null = offlineRows[0]?.id ?? null;
+          if (options.sessionId) {
+            const selected = await transaction.session.findUnique({
+              where: { id: options.sessionId },
+              select: { id: true, shop: true, isOnline: true },
+            });
+            if (!selected || selected.shop !== currentShop.domain) {
+              throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+            }
+            if (!selected.isOnline && offlineRows[0]?.id !== selected.id) {
+              throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+            }
+            sessionId = selected.id;
           }
-          sessionId = selected.id;
-        }
-        if (sessionId) {
-          await transaction.$queryRaw(Prisma.sql`SELECT "id" FROM "shopify"."Session" WHERE "id" = ${sessionId} FOR UPDATE`);
-        }
-        return work({ transaction, shop: currentShop, sessionId });
-      });
+          if (sessionId) {
+            await transaction.$queryRaw(
+              Prisma.sql`SELECT "id" FROM "shopify"."Session" WHERE "id" = ${sessionId} FOR UPDATE`,
+            );
+          }
+          return work({ transaction, shop: currentShop, sessionId });
+        },
+      );
     },
   });
 }
 
-export const shopifyOfflineCoordination = createCoordinatedShopifyAuthentication();
+export const shopifyOfflineCoordination =
+  createCoordinatedShopifyAuthentication();
 
 export { ShopifyOfflineTokenError };

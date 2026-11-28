@@ -14,7 +14,10 @@ export async function loadRecoveryList({
   request,
   context,
 }: LoaderFunctionArgs): Promise<RecoveryListData> {
-  const { shopId, merchantUi, embed } = await requireRecoveryHistory(request, context);
+  const { shopId, merchantUi, embed } = await requireRecoveryHistory(
+    request,
+    context,
+  );
   const url = new URL(request.url);
   const now = new Date();
   const defaults = normalizeRecoveryQuery(

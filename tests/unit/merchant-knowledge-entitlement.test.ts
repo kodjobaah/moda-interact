@@ -37,7 +37,9 @@ function clientWith(subscription: unknown) {
 function loadEntitlement(shopId: string, client: TestClient) {
   return loadCurrentMerchantKnowledgeEntitlement(
     shopId,
-    client as unknown as NonNullable<Parameters<typeof loadCurrentMerchantKnowledgeEntitlement>[1]>,
+    client as unknown as NonNullable<
+      Parameters<typeof loadCurrentMerchantKnowledgeEntitlement>[1]
+    >,
   );
 }
 
@@ -49,9 +51,10 @@ beforeEach(() => {
 it("grants configuration access from the current active opt-in mapping only", async () => {
   const { client, findUnique } = clientWith(validSubscription);
 
-  await expect(
-    loadEntitlement("shop-1", client),
-  ).resolves.toEqual({ kind: "entitled", configuration });
+  await expect(loadEntitlement("shop-1", client)).resolves.toEqual({
+    kind: "entitled",
+    configuration,
+  });
   expect(findUnique).toHaveBeenCalledWith(
     expect.objectContaining({
       where: { shopId: "shop-1" },
@@ -81,29 +84,41 @@ it.each([
       ],
     },
   },
-])("denies configuration without a current eligible plan mapping", async (subscription) => {
-  const { client } = clientWith(subscription);
+])(
+  "denies configuration without a current eligible plan mapping",
+  async (subscription) => {
+    const { client } = clientWith(subscription);
 
-  await expect(
-    loadEntitlement("shop-1", client),
-  ).resolves.toEqual({ kind: "denied" });
-  expect(mocks.parse).not.toHaveBeenCalled();
-});
+    await expect(loadEntitlement("shop-1", client)).resolves.toEqual({
+      kind: "denied",
+    });
+    expect(mocks.parse).not.toHaveBeenCalled();
+  },
+);
 
 it("fails closed for malformed Shared C2 configuration", async () => {
-  mocks.parse.mockReturnValue({ success: false, error: new Error("invalid configuration marker") });
+  mocks.parse.mockReturnValue({
+    success: false,
+    error: new Error("invalid configuration marker"),
+  });
   const { client } = clientWith(validSubscription);
 
-  await expect(
-    loadEntitlement("shop-1", client),
-  ).resolves.toMatchObject({ kind: "unavailable", retryable: false, cause: expect.any(Error) });
+  await expect(loadEntitlement("shop-1", client)).resolves.toMatchObject({
+    kind: "unavailable",
+    retryable: false,
+    cause: expect.any(Error),
+  });
 });
 
 it("reports a database read failure as retryable and unavailable", async () => {
   const { client } = clientWith(null);
-  client.subscription.findUnique.mockRejectedValue(new Error("database offline"));
+  client.subscription.findUnique.mockRejectedValue(
+    new Error("database offline"),
+  );
 
-  await expect(
-    loadEntitlement("shop-1", client),
-  ).resolves.toMatchObject({ kind: "unavailable", retryable: true, cause: expect.any(Error) });
+  await expect(loadEntitlement("shop-1", client)).resolves.toMatchObject({
+    kind: "unavailable",
+    retryable: true,
+    cause: expect.any(Error),
+  });
 });

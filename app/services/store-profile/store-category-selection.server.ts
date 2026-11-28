@@ -22,7 +22,10 @@ export type StoreCategorySelectionInput = {
 };
 
 export class StoreCategorySelectionError extends Error {
-  constructor(readonly code: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "SHOP_UNAVAILABLE", options?: ErrorOptions) {
+  constructor(
+    readonly code: "CONFLICT" | "CATEGORY_UNAVAILABLE" | "SHOP_UNAVAILABLE",
+    options?: ErrorOptions,
+  ) {
     super(code, options);
     this.name = "StoreCategorySelectionError";
   }
@@ -71,13 +74,18 @@ async function prepareStoreCategorySelection(
     !template.enabled ||
     template.categoryId !== category.id ||
     !template.promptText.trim()
-  ) throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
+  )
+    throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
 
   const selectedMappingIds = [...(input.selectedMappingIds ?? [])];
   if (new Set(selectedMappingIds).size !== selectedMappingIds.length)
     throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
-  const mappingById = new Map(category.taxonomyMappings.map((mapping) => [mapping.id, mapping]));
-  const selectedMappings = selectedMappingIds.map((mappingId) => mappingById.get(mappingId));
+  const mappingById = new Map(
+    category.taxonomyMappings.map((mapping) => [mapping.id, mapping]),
+  );
+  const selectedMappings = selectedMappingIds.map((mappingId) =>
+    mappingById.get(mappingId),
+  );
   if (selectedMappings.some((mapping) => !mapping || !mapping.conditionKey))
     throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
 
@@ -98,14 +106,22 @@ async function prepareStoreCategorySelection(
     });
   } catch (error) {
     recordMerchantSettingsFailure("category", "render", input.shopId, error);
-    throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE", { cause: error });
+    throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE", {
+      cause: error,
+    });
   }
   if (!renderedPrompt.ok || !renderedPrompt.promptText.trim())
     throw new StoreCategorySelectionError("CATEGORY_UNAVAILABLE");
 
   const preparedMappings = selectedMappings.flatMap((mapping) =>
     mapping?.conditionKey
-      ? [{ id: mapping.id, editVersion: mapping.editVersion, conditionKey: mapping.conditionKey }]
+      ? [
+          {
+            id: mapping.id,
+            editVersion: mapping.editVersion,
+            conditionKey: mapping.conditionKey,
+          },
+        ]
       : [],
   );
 
@@ -144,7 +160,9 @@ async function assertPreparedSelectionStillCurrent(
         },
       },
       taxonomyMappings: {
-        where: { id: { in: prepared.selectedMappings.map((mapping) => mapping.id) } },
+        where: {
+          id: { in: prepared.selectedMappings.map((mapping) => mapping.id) },
+        },
         select: {
           id: true,
           categoryId: true,
@@ -165,16 +183,24 @@ async function assertPreparedSelectionStillCurrent(
     template.id !== prepared.templateId ||
     template.categoryId !== prepared.categoryId ||
     template.editVersion !== prepared.templateEditVersion
-  ) throw conflict();
+  )
+    throw conflict();
 
-  const mappingById = new Map(category.taxonomyMappings.map((mapping) => [mapping.id, mapping]));
-  if (prepared.selectedMappings.some((preparedMapping) => {
-    const mapping = mappingById.get(preparedMapping.id);
-    return !mapping ||
-      mapping.categoryId !== prepared.categoryId ||
-      mapping.editVersion !== preparedMapping.editVersion ||
-      mapping.conditionKey !== preparedMapping.conditionKey;
-  })) throw conflict();
+  const mappingById = new Map(
+    category.taxonomyMappings.map((mapping) => [mapping.id, mapping]),
+  );
+  if (
+    prepared.selectedMappings.some((preparedMapping) => {
+      const mapping = mappingById.get(preparedMapping.id);
+      return (
+        !mapping ||
+        mapping.categoryId !== prepared.categoryId ||
+        mapping.editVersion !== preparedMapping.editVersion ||
+        mapping.conditionKey !== preparedMapping.conditionKey
+      );
+    })
+  )
+    throw conflict();
 }
 
 export async function selectPendingStoreCategory(
@@ -187,9 +213,12 @@ export async function selectPendingStoreCategory(
     select: { pendingSelectionGeneration: true },
   });
   if (
-    (existingProfile && existingProfile.pendingSelectionGeneration !== input.expectedPendingSelectionGeneration) ||
+    (existingProfile &&
+      existingProfile.pendingSelectionGeneration !==
+        input.expectedPendingSelectionGeneration) ||
     (!existingProfile && input.expectedPendingSelectionGeneration !== 0)
-  ) throw conflict();
+  )
+    throw conflict();
 
   const prepared = await prepareStoreCategorySelection(input, client);
 
@@ -198,11 +227,20 @@ export async function selectPendingStoreCategory(
       SELECT "id" FROM "commerce"."Shop" WHERE "id" = ${input.shopId} AND "status" = 'ACTIVE' FOR UPDATE
     `);
 
-    if (!shops.length) throw new StoreCategorySelectionError("SHOP_UNAVAILABLE");
+    if (!shops.length)
+      throw new StoreCategorySelectionError("SHOP_UNAVAILABLE");
 
-    let profile = await tx.commerceShopProfile.findUnique({ where: { shopId: input.shopId } });
-    if (!profile) profile = await tx.commerceShopProfile.create({ data: { shopId: input.shopId } });
-    if (profile.pendingSelectionGeneration !== input.expectedPendingSelectionGeneration)
+    let profile = await tx.commerceShopProfile.findUnique({
+      where: { shopId: input.shopId },
+    });
+    if (!profile)
+      profile = await tx.commerceShopProfile.create({
+        data: { shopId: input.shopId },
+      });
+    if (
+      profile.pendingSelectionGeneration !==
+      input.expectedPendingSelectionGeneration
+    )
       throw conflict();
 
     await assertPreparedSelectionStillCurrent(tx, prepared);
@@ -212,10 +250,12 @@ export async function selectPendingStoreCategory(
       select: { id: true },
     });
     if (lineages.length > 1) throw conflict();
-    const lineage = lineages[0] ?? await tx.commerceAgentPrompt.create({
-      data: { scope: CommerceAgentPromptScope.SHOP, shopId: input.shopId },
-      select: { id: true },
-    });
+    const lineage =
+      lineages[0] ??
+      (await tx.commerceAgentPrompt.create({
+        data: { scope: CommerceAgentPromptScope.SHOP, shopId: input.shopId },
+        select: { id: true },
+      }));
 
     const nextGeneration = input.expectedPendingSelectionGeneration + 1;
 
@@ -226,15 +266,23 @@ export async function selectPendingStoreCategory(
 
       let revision;
       if (profile.pendingPromptRevisionId) {
-        const pendingRevision = await tx.commerceAgentPromptRevision.findUnique({
-          where: { id: profile.pendingPromptRevisionId },
-          select: { id: true, promptId: true, revisionNumber: true, status: true },
-        });
+        const pendingRevision = await tx.commerceAgentPromptRevision.findUnique(
+          {
+            where: { id: profile.pendingPromptRevisionId },
+            select: {
+              id: true,
+              promptId: true,
+              revisionNumber: true,
+              status: true,
+            },
+          },
+        );
         if (
           !pendingRevision ||
           pendingRevision.promptId !== lineage.id ||
           pendingRevision.status !== CommercePromptRevisionStatus.DRAFT
-        ) throw conflict();
+        )
+          throw conflict();
         revision = await tx.commerceAgentPromptRevision.update({
           where: { id: pendingRevision.id },
           data: {
@@ -251,7 +299,10 @@ export async function selectPendingStoreCategory(
         });
       } else {
         const existingDraft = await tx.commerceAgentPromptRevision.findFirst({
-          where: { promptId: lineage.id, status: CommercePromptRevisionStatus.DRAFT },
+          where: {
+            promptId: lineage.id,
+            status: CommercePromptRevisionStatus.DRAFT,
+          },
           select: { id: true },
         });
         if (existingDraft) throw conflict();
@@ -336,13 +387,20 @@ export async function selectPendingStoreCategory(
     if (profile.pendingPromptRevisionId) {
       revision = await tx.commerceAgentPromptRevision.findUnique({
         where: { id: profile.pendingPromptRevisionId },
-        select: { id: true, promptId: true, revisionNumber: true, status: true, editVersion: true },
+        select: {
+          id: true,
+          promptId: true,
+          revisionNumber: true,
+          status: true,
+          editVersion: true,
+        },
       });
       if (
         !revision ||
         revision.promptId !== lineage.id ||
         revision.status !== CommercePromptRevisionStatus.DRAFT
-      ) throw conflict();
+      )
+        throw conflict();
       revision = await tx.commerceAgentPromptRevision.update({
         where: { id: revision.id },
         data: {
@@ -356,7 +414,10 @@ export async function selectPendingStoreCategory(
       });
     } else {
       const existingDraft = await tx.commerceAgentPromptRevision.findFirst({
-        where: { promptId: lineage.id, status: CommercePromptRevisionStatus.DRAFT },
+        where: {
+          promptId: lineage.id,
+          status: CommercePromptRevisionStatus.DRAFT,
+        },
         select: { id: true },
       });
       if (existingDraft) throw conflict();
@@ -380,7 +441,10 @@ export async function selectPendingStoreCategory(
     }
 
     const updated = await tx.commerceShopProfile.updateMany({
-      where: { shopId: input.shopId, pendingSelectionGeneration: input.expectedPendingSelectionGeneration },
+      where: {
+        shopId: input.shopId,
+        pendingSelectionGeneration: input.expectedPendingSelectionGeneration,
+      },
       data: {
         pendingCategoryId: prepared.categoryId,
         pendingPromptRevisionId: revision.id,

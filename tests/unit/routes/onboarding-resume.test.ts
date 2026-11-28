@@ -25,9 +25,12 @@ vi.mock("../../../app/services/shop/merchant-request-context.server", () => ({
 vi.mock("../../../app/services/shop/shop-access-policy", () => ({
   assertActiveShop: mocks.assertActiveShop,
 }));
-vi.mock("../../../app/services/recoveries/onboarding-template-assignments.server", () => ({
-  ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
-}));
+vi.mock(
+  "../../../app/services/recoveries/onboarding-template-assignments.server",
+  () => ({
+    ensureOnboardingRecoveryTemplatesBestEffort: mocks.provisionTemplates,
+  }),
+);
 vi.mock("../../../app/services/billing/billing.service", () => ({
   billingService: {
     getSubscriptionProjection: mocks.getSubscriptionProjection,
@@ -48,9 +51,17 @@ async function captureSharedErrorRecords(
   const sink = vi.spyOn(console, "error").mockImplementation((line) => {
     if (options.throwFromSink) throw new Error("test Shared sink failure");
     if (typeof line !== "string") return;
-    try { records.push(JSON.parse(line) as Record<string, unknown>); } catch { return; }
+    try {
+      records.push(JSON.parse(line) as Record<string, unknown>);
+    } catch {
+      return;
+    }
   });
-  try { await run(); } finally { sink.mockRestore(); }
+  try {
+    await run();
+  } finally {
+    sink.mockRestore();
+  }
   return records;
 }
 
@@ -91,10 +102,12 @@ beforeEach(() => {
     status: "ACTIVE",
     planId: "plan-free",
   });
-  mocks.transaction.mockImplementation(async (callback) => callback({
-    shop: { updateMany: mocks.updateShopOnboarding },
-    shopSettings: { updateMany: mocks.updateSettingsOnboarding },
-  }));
+  mocks.transaction.mockImplementation(async (callback) =>
+    callback({
+      shop: { updateMany: mocks.updateShopOnboarding },
+      shopSettings: { updateMany: mocks.updateSettingsOnboarding },
+    }),
+  );
   mocks.updateShopOnboarding.mockResolvedValue({ count: 1 });
   mocks.updateSettingsOnboarding.mockResolvedValue({ count: 1 });
 });
@@ -104,7 +117,10 @@ describe("onboarding resume action", () => {
     const response = await action({ request: request() } as never);
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, onboardingCompleted: true });
+    expect(await response.json()).toEqual({
+      ok: true,
+      onboardingCompleted: true,
+    });
     expect(mocks.syncSubscription).toHaveBeenCalledWith("shop-1");
     expect(mocks.updateShopOnboarding).toHaveBeenCalledWith({
       where: { id: "shop-1" },
@@ -143,20 +159,30 @@ describe("onboarding resume action", () => {
   });
 
   it("rejects obsolete generation-bearing submissions without resuming billing", async () => {
-    const response = await action({ request: request(new URLSearchParams({
-      expectedPendingSelectionGeneration: "19",
-    })) } as never);
+    const response = await action({
+      request: request(
+        new URLSearchParams({
+          expectedPendingSelectionGeneration: "19",
+        }),
+      ),
+    } as never);
     expect(response.status).toBe(400);
     expect(mocks.syncSubscription).not.toHaveBeenCalled();
   });
 
   it("emits the actual milestone persistence failure without reporting success", async () => {
-    const failure = Object.assign(new Error("resume milestone marker"), { code: "P2025" });
+    const failure = Object.assign(new Error("resume milestone marker"), {
+      code: "P2025",
+    });
     mocks.transaction.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
-      await expect(action({ request: request() } as never)).rejects.toBe(failure);
+      await expect(action({ request: request() } as never)).rejects.toBe(
+        failure,
+      );
     });
-    const record = records.find((item) => item.event === "billing.onboarding_milestone.persist_failed");
+    const record = records.find(
+      (item) => item.event === "billing.onboarding_milestone.persist_failed",
+    );
     const data = record?.data as Record<string, unknown>;
 
     expect(data).toMatchObject({
@@ -167,22 +193,35 @@ describe("onboarding resume action", () => {
       databaseCode: "P2025",
       error: { name: "Error", message: "resume milestone marker" },
     });
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      await expect(action({ request: request() } as never)).rejects.toBe(failure);
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        await expect(action({ request: request() } as never)).rejects.toBe(
+          failure,
+        );
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 
   it("logs original synchronization failure but preserves the bounded 503 response", async () => {
     const cause = new Error("resume provider adapter marker");
-    const failure = Object.assign(new Error("resume projection marker", { cause }), { code: "P2034" });
+    const failure = Object.assign(
+      new Error("resume projection marker", { cause }),
+      { code: "P2034" },
+    );
     mocks.syncSubscription.mockRejectedValue(failure);
     const records = await captureSharedErrorRecords(async () => {
       const response = await action({ request: request() } as never);
       expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({ ok: false, error: "BILLING_RECONCILIATION_FAILED" });
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: "BILLING_RECONCILIATION_FAILED",
+      });
     });
-    const record = records.find((item) => item.event === "billing.onboarding_resume.sync_failed");
+    const record = records.find(
+      (item) => item.event === "billing.onboarding_resume.sync_failed",
+    );
 
     expect(record?.data).toMatchObject({
       operation: "sync_subscription_for_onboarding_resume",
@@ -191,13 +230,21 @@ describe("onboarding resume action", () => {
       shopId: "shop-1",
       databaseCode: "P2034",
       error: { name: "Error", message: "resume projection marker" },
-      causeChain: [{ name: "Error", message: "resume provider adapter marker" }],
+      causeChain: [
+        { name: "Error", message: "resume provider adapter marker" },
+      ],
     });
-    const isolatedRecords = await captureSharedErrorRecords(async () => {
-      const response = await action({ request: request() } as never);
-      expect(response.status).toBe(503);
-      expect(await response.json()).toEqual({ ok: false, error: "BILLING_RECONCILIATION_FAILED" });
-    }, { throwFromSink: true });
+    const isolatedRecords = await captureSharedErrorRecords(
+      async () => {
+        const response = await action({ request: request() } as never);
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({
+          ok: false,
+          error: "BILLING_RECONCILIATION_FAILED",
+        });
+      },
+      { throwFromSink: true },
+    );
     expect(isolatedRecords).toHaveLength(0);
   });
 });

@@ -31,9 +31,11 @@ export default function StoreCategoryMappingSelector({
     const next = new Set(selected);
     if (checked) next.add(mappingId);
     else next.delete(mappingId);
-    onChange(category.mappings
-      ?.map((mapping) => mapping.id)
-      .filter((mappingId) => next.has(mappingId)) ?? []);
+    onChange(
+      category.mappings
+        ?.map((mapping) => mapping.id)
+        .filter((mappingId) => next.has(mappingId)) ?? [],
+    );
   };
 
   return (
@@ -49,7 +51,9 @@ export default function StoreCategoryMappingSelector({
             name="mappingId"
             value={mapping.id}
             checked={selected.has(mapping.id)}
-            onChange={(event) => toggle(mapping.id, event.currentTarget.checked)}
+            onChange={(event) =>
+              toggle(mapping.id, event.currentTarget.checked)
+            }
             disabled={disabled}
           />
           <span>{mapping.localizedDisplayName}</span>

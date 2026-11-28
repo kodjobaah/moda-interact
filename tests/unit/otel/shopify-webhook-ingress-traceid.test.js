@@ -1,6 +1,14 @@
 import { context, trace } from "@opentelemetry/api";
 import { AsyncHooksContextManager } from "@opentelemetry/context-async-hooks";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 const store = {
   shopsByDomain: new Map(),
@@ -8,7 +16,9 @@ const store = {
 
 const dbMock = {
   shop: {
-    findUnique: vi.fn(async ({ where }) => store.shopsByDomain.get(where.domain) ?? null),
+    findUnique: vi.fn(
+      async ({ where }) => store.shopsByDomain.get(where.domain) ?? null,
+    ),
   },
 };
 
@@ -31,11 +41,13 @@ const publicationMock = {
 };
 
 vi.mock("../../../app/db.server", () => ({ default: dbMock }));
-vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => publicationMock);
-
-const { ingestShopifyWebhook } = await import(
-  "../../../app/services/webhooks/shopify-webhook-ingress.service"
+vi.mock(
+  "../../../app/services/webhooks/shopify-webhook-queue.server",
+  () => publicationMock,
 );
+
+const { ingestShopifyWebhook } =
+  await import("../../../app/services/webhooks/shopify-webhook-ingress.service");
 
 function activeShop() {
   return {
@@ -98,7 +110,8 @@ describe("OpenTelemetry trace propagation into recovery events", () => {
 
       expect(response.status).toBe(200);
       const publishedEvent =
-        publicationMock.publishShopifyCheckoutCreatedEvent.mock.calls[0][0].event;
+        publicationMock.publishShopifyCheckoutCreatedEvent.mock.calls[0][0]
+          .event;
       expect(publishedEvent.traceId).toBe(span.spanContext().traceId);
     });
 

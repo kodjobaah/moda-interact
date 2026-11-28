@@ -20,7 +20,10 @@ query CustomerWhatsAppConsent($id: ID!) {
     id
     defaultPhoneNumber {
       phoneNumber
-      whatsAppMarketingConsent { state updatedAt }
+      whatsAppMarketingConsent {
+        state
+        updatedAt
+      }
     }
   }
 }

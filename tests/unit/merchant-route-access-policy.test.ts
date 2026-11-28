@@ -54,7 +54,10 @@ describe("merchant route access policy", () => {
     expect(
       resolveMerchantExperienceState({
         shop: activeShop,
-        subscription: { status: "NO_CONTRACT", lastProviderLifecycleState: null },
+        subscription: {
+          status: "NO_CONTRACT",
+          lastProviderLifecycleState: null,
+        },
       }),
     ).toBe("NO_CONTRACT");
     expect(

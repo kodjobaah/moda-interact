@@ -12,12 +12,16 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import type { PrismaClient } from "@prisma/client";
 
-export type ShopifySessionCoordinationContext = LockedSessionContext | SdkInstallationSessionContext;
+export type ShopifySessionCoordinationContext =
+  LockedSessionContext | SdkInstallationSessionContext;
 
 export type SdkRefreshAttempt = {
-  operationId: string; startedAt: number; shopId: string | null;
+  operationId: string;
+  startedAt: number;
+  shopId: string | null;
   tokenOutcome: "none" | "rejected" | "succeeded" | "unknown";
-  credentialFingerprint: string | null; persisted: boolean;
+  credentialFingerprint: string | null;
+  persisted: boolean;
 };
 
 type SessionBinding = {
@@ -62,19 +66,33 @@ function credentialFingerprint(input: {
   refreshToken?: string | null;
 }): string {
   return createHash("sha256")
-    .update(JSON.stringify([input.shop, input.accessToken ?? "", input.refreshToken ?? null]))
+    .update(
+      JSON.stringify([
+        input.shop,
+        input.accessToken ?? "",
+        input.refreshToken ?? null,
+      ]),
+    )
     .digest("hex");
 }
 
-export function recordShopifyOAuthCredentialResponse(responseBody: Uint8Array, attempt?: SdkRefreshAttempt): void {
+export function recordShopifyOAuthCredentialResponse(
+  responseBody: Uint8Array,
+  attempt?: SdkRefreshAttempt,
+): void {
   const binding = sessionBinding.getStore();
-  if (!binding || binding.closed) throw new ShopifySessionCoordinationRequiredError();
+  if (!binding || binding.closed)
+    throw new ShopifySessionCoordinationRequiredError();
   try {
     const payload = JSON.parse(new TextDecoder().decode(responseBody)) as {
       access_token?: unknown;
       refresh_token?: unknown;
     };
-    if (typeof payload.access_token !== "string" || typeof payload.refresh_token !== "string") return;
+    if (
+      typeof payload.access_token !== "string" ||
+      typeof payload.refresh_token !== "string"
+    )
+      return;
     const fingerprint = credentialFingerprint({
       shop: binding.context.shop,
       accessToken: payload.access_token,
@@ -91,7 +109,9 @@ export class ShopifySessionCoordinationRequiredError extends Error {
   readonly code = "COORDINATION_REQUIRED";
 
   constructor() {
-    super("Shopify offline session access requires coordinated authentication.");
+    super(
+      "Shopify offline session access requires coordinated authentication.",
+    );
     this.name = "ShopifySessionCoordinationRequiredError";
   }
 }
@@ -115,9 +135,11 @@ export function runWithShopifySessionBinding<T>(
 }> {
   const timeoutController = new AbortController();
   const timeout = setTimeout(() => timeoutController.abort(), timeoutMs);
-  const signals = [context.signal, callerSignal, timeoutController.signal].filter(
-    (signal): signal is AbortSignal => signal !== undefined,
-  );
+  const signals = [
+    context.signal,
+    callerSignal,
+    timeoutController.signal,
+  ].filter((signal): signal is AbortSignal => signal !== undefined);
   const signal = AbortSignal.any(signals);
   const binding: SessionBinding = {
     context,
@@ -132,7 +154,9 @@ export function runWithShopifySessionBinding<T>(
     sdkRefreshAttempts: [],
     onSdkRefreshAttempt,
   };
-  const closeOnAbort = () => { binding.closed = true; };
+  const closeOnAbort = () => {
+    binding.closed = true;
+  };
   signal.addEventListener("abort", closeOnAbort, { once: true });
   if (signal.aborted) closeOnAbort();
 
@@ -140,8 +164,15 @@ export function runWithShopifySessionBinding<T>(
     let onAbort: (() => void) | undefined;
     try {
       if (context.sessionId !== null) {
-        const row = await context.transaction.session.findUnique({ where: { id: context.sessionId } }) as unknown as ShopifyStoredSessionRow | null;
-        if (!row || row.id !== context.sessionId || row.shop !== context.shop || row.isOnline) {
+        const row = (await context.transaction.session.findUnique({
+          where: { id: context.sessionId },
+        })) as unknown as ShopifyStoredSessionRow | null;
+        if (
+          !row ||
+          row.id !== context.sessionId ||
+          row.shop !== context.shop ||
+          row.isOnline
+        ) {
           throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
         }
         binding.persistedCredentialFingerprint = credentialFingerprint(row);
@@ -150,13 +181,22 @@ export function runWithShopifySessionBinding<T>(
       // The session lookup above can be pending when a caller aborts; constructing
       // this promise before that await leaves its rejection unhandled by Node.
       const aborted = new Promise<never>((_resolve, reject) => {
-        onAbort = () => reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"));
+        onAbort = () =>
+          reject(
+            new ShopifyOfflineTokenError(
+              callerSignal?.aborted ? "CANCELLED" : "DEADLINE",
+            ),
+          );
         if (signal.aborted) onAbort();
         else signal.addEventListener("abort", onAbort, { once: true });
       });
       const value = await Promise.race([
         signal.aborted
-          ? Promise.reject(new ShopifyOfflineTokenError(callerSignal?.aborted ? "CANCELLED" : "DEADLINE"))
+          ? Promise.reject(
+              new ShopifyOfflineTokenError(
+                callerSignal?.aborted ? "CANCELLED" : "DEADLINE",
+              ),
+            )
           : work(),
         aborted,
       ]);
@@ -194,7 +234,9 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
   async loadSession(id: string): Promise<Session | undefined> {
     const binding = this.getOpenBinding();
     if (binding) {
-      const row = await binding.context.transaction.session.findUnique({ where: { id } }) as unknown as ShopifyStoredSessionRow | null;
+      const row = (await binding.context.transaction.session.findUnique({
+        where: { id },
+      })) as unknown as ShopifyStoredSessionRow | null;
       if (!row) return undefined;
       if (row.isOnline) return this.onlineStorage.loadSession(id);
       this.assertOfflineRow(binding, row);
@@ -207,7 +249,8 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     }
 
     const session = await this.onlineStorage.loadSession(id);
-    if (session && !session.isOnline) throw new ShopifySessionCoordinationRequiredError();
+    if (session && !session.isOnline)
+      throw new ShopifySessionCoordinationRequiredError();
     return session;
   }
 
@@ -228,8 +271,11 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     this.assertOfflineSession(binding, session);
 
     const sessionRow = this.sessionToRow(session);
-    const existing = await binding.context.transaction.session.findUnique({ where: { id: session.id } });
-    if (existing?.isOnline) throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
+    const existing = await binding.context.transaction.session.findUnique({
+      where: { id: session.id },
+    });
+    if (existing?.isOnline)
+      throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     if (existing && existing.shop !== binding.context.shop) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
@@ -239,7 +285,10 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     if (!existing && binding.sessionId !== null) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
-    if (existing && credentialFingerprint(existing) !== binding.persistedCredentialFingerprint) {
+    if (
+      existing &&
+      credentialFingerprint(existing) !== binding.persistedCredentialFingerprint
+    ) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
     const candidateFingerprint = credentialFingerprint(session);
@@ -258,7 +307,8 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     if (binding.pendingCredentialFingerprints.has(candidateFingerprint)) {
       binding.persistedRefreshCredentialPair = true;
       for (const attempt of binding.sdkRefreshAttempts) {
-        if (attempt.credentialFingerprint === candidateFingerprint) attempt.persisted = true;
+        if (attempt.credentialFingerprint === candidateFingerprint)
+          attempt.persisted = true;
       }
     }
     if (binding.sessionId === null) binding.sessionId = session.id;
@@ -295,11 +345,14 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
           take: ids.length,
         });
     const offlineRows = rows.filter((row) => !row.isOnline);
-    if (offlineRows.length > 0 && !binding) throw new ShopifySessionCoordinationRequiredError();
-    if (binding) offlineRows.forEach((row) => this.assertOfflineRow(binding, row));
+    if (offlineRows.length > 0 && !binding)
+      throw new ShopifySessionCoordinationRequiredError();
+    if (binding)
+      offlineRows.forEach((row) => this.assertOfflineRow(binding, row));
 
     const onlineIds = rows.filter((row) => row.isOnline).map((row) => row.id);
-    if (onlineIds.length > 0) await this.onlineStorage.deleteSessions(onlineIds);
+    if (onlineIds.length > 0)
+      await this.onlineStorage.deleteSessions(onlineIds);
     if (offlineRows.length > 0) {
       await binding!.context.transaction.session.deleteMany({
         where: { id: { in: offlineRows.map((row) => row.id) } },
@@ -311,24 +364,44 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
   async findSessionsByShop(shop: string): Promise<Session[]> {
     const binding = this.getOpenBinding();
     const rows = (binding
-      ? await binding.context.transaction.session.findMany({ where: { shop }, take: 25 })
+      ? await binding.context.transaction.session.findMany({
+          where: { shop },
+          take: 25,
+        })
       : await this.database.session.findMany({
           where: { shop },
           select: {
-            id: true, shop: true, state: true, isOnline: true, scope: true,
-            expires: true, accessToken: true, userId: true, firstName: true,
-            lastName: true, email: true, accountOwner: true, locale: true,
-            collaborator: true, emailVerified: true, refreshToken: true,
+            id: true,
+            shop: true,
+            state: true,
+            isOnline: true,
+            scope: true,
+            expires: true,
+            accessToken: true,
+            userId: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            accountOwner: true,
+            locale: true,
+            collaborator: true,
+            emailVerified: true,
+            refreshToken: true,
             refreshTokenExpires: true,
           },
           take: 25,
           orderBy: [{ expires: "desc" }],
         })) as unknown as ShopifyStoredSessionRow[];
     const offlineRows = rows.filter((row) => !row.isOnline);
-    if (offlineRows.length > 0 && !binding) throw new ShopifySessionCoordinationRequiredError();
-    if (binding) offlineRows.forEach((row) => this.assertOfflineRow(binding, row));
+    if (offlineRows.length > 0 && !binding)
+      throw new ShopifySessionCoordinationRequiredError();
+    if (binding)
+      offlineRows.forEach((row) => this.assertOfflineRow(binding, row));
     return rows
-      .sort((left, right) => (right.expires?.getTime() ?? 0) - (left.expires?.getTime() ?? 0))
+      .sort(
+        (left, right) =>
+          (right.expires?.getTime() ?? 0) - (left.expires?.getTime() ?? 0),
+      )
       .map((row) => this.rowToSession(row));
   }
 
@@ -338,7 +411,10 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     return binding;
   }
 
-  private assertOfflineSession(binding: SessionBinding, session: Session): void {
+  private assertOfflineSession(
+    binding: SessionBinding,
+    session: Session,
+  ): void {
     if (session.isOnline || session.shop !== binding.context.shop) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
@@ -347,8 +423,16 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
     }
   }
 
-  private assertOfflineRow(binding: SessionBinding, row: Pick<ShopifyOfflineSessionRecord, "id" | "shop" | "isOnline">): void {
-    if (row.isOnline || row.shop !== binding.context.shop || binding.sessionId === null || row.id !== binding.sessionId) {
+  private assertOfflineRow(
+    binding: SessionBinding,
+    row: Pick<ShopifyOfflineSessionRecord, "id" | "shop" | "isOnline">,
+  ): void {
+    if (
+      row.isOnline ||
+      row.shop !== binding.context.shop ||
+      binding.sessionId === null ||
+      row.id !== binding.sessionId
+    ) {
       throw new ShopifyOfflineTokenError("SESSION_IDENTITY_CONFLICT");
     }
   }
@@ -368,10 +452,13 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
       firstName: params.onlineAccessInfo?.associated_user.first_name || null,
       lastName: params.onlineAccessInfo?.associated_user.last_name || null,
       email: params.onlineAccessInfo?.associated_user.email || null,
-      accountOwner: params.onlineAccessInfo?.associated_user.account_owner || false,
+      accountOwner:
+        params.onlineAccessInfo?.associated_user.account_owner || false,
       locale: params.onlineAccessInfo?.associated_user.locale || null,
-      collaborator: params.onlineAccessInfo?.associated_user.collaborator || false,
-      emailVerified: params.onlineAccessInfo?.associated_user.email_verified || false,
+      collaborator:
+        params.onlineAccessInfo?.associated_user.collaborator || false,
+      emailVerified:
+        params.onlineAccessInfo?.associated_user.email_verified || false,
       refreshToken: params.refreshToken || null,
       refreshTokenExpires: params.refreshTokenExpires || null,
     };
@@ -389,14 +476,21 @@ export class CoordinatedShopifySessionStorage implements SessionStorage {
       email: String(row.email),
       locale: String(row.locale),
     };
-    if (row.accountOwner !== null) sessionParams.accountOwner = row.accountOwner;
-    if (row.collaborator !== null) sessionParams.collaborator = row.collaborator;
-    if (row.emailVerified !== null) sessionParams.emailVerified = row.emailVerified;
+    if (row.accountOwner !== null)
+      sessionParams.accountOwner = row.accountOwner;
+    if (row.collaborator !== null)
+      sessionParams.collaborator = row.collaborator;
+    if (row.emailVerified !== null)
+      sessionParams.emailVerified = row.emailVerified;
     if (row.expires) sessionParams.expires = row.expires.getTime();
     if (row.scope) sessionParams.scope = row.scope;
     if (row.accessToken) sessionParams.accessToken = row.accessToken;
     if (row.refreshToken) sessionParams.refreshToken = row.refreshToken;
-    if (row.refreshTokenExpires) sessionParams.refreshTokenExpires = row.refreshTokenExpires.getTime();
-    return Session.fromPropertyArray(Object.entries(sessionParams) as [string, string | number | boolean][], true);
+    if (row.refreshTokenExpires)
+      sessionParams.refreshTokenExpires = row.refreshTokenExpires.getTime();
+    return Session.fromPropertyArray(
+      Object.entries(sessionParams) as [string, string | number | boolean][],
+      true,
+    );
   }
 }

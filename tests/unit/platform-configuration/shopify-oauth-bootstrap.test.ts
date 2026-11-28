@@ -13,19 +13,29 @@ vi.mock("@shopify/shopify-app-react-router/server", () => ({
   shopifyApp: mocks.construct,
 }));
 vi.mock("@shopify/shopify-app-session-storage-prisma", () => ({
-  PrismaSessionStorage: class PrismaSessionStorage { constructor(database: unknown) { void database; } },
+  PrismaSessionStorage: class PrismaSessionStorage {
+    constructor(database: unknown) {
+      void database;
+    }
+  },
 }));
 vi.mock("../../../app/db.server", () => ({ default: {} }));
-vi.mock("../../../app/services/platform-configuration/composition.server", () => ({
-  createDefaultShopifyPlatformConfigurationService: () => ({
-    requireShopifyOAuthCredentials: mocks.read,
+vi.mock(
+  "../../../app/services/platform-configuration/composition.server",
+  () => ({
+    createDefaultShopifyPlatformConfigurationService: () => ({
+      requireShopifyOAuthCredentials: mocks.read,
+    }),
   }),
-}));
+);
 
 const client = Object.freeze({
   authenticate: { webhook: vi.fn(), admin: vi.fn() },
-  unauthenticated: {}, login: vi.fn(), registerWebhooks: vi.fn(),
-  sessionStorage: {}, addDocumentResponseHeaders: vi.fn(),
+  unauthenticated: {},
+  login: vi.fn(),
+  registerWebhooks: vi.fn(),
+  sessionStorage: {},
+  addDocumentResponseHeaders: vi.fn(),
 });
 
 beforeEach(() => {
@@ -37,38 +47,62 @@ afterEach(() => vi.unstubAllEnvs());
 
 describe("ARCH-043 Shopify OAuth boot gating", () => {
   it("does not construct or export an active SDK until the sealed credential read resolves", async () => {
-    let release!: (credentials: { version: number; apiKey: string; apiSecret: string }) => void;
-    mocks.read.mockReturnValue(new Promise((resolve) => { release = resolve; }));
+    let release!: (credentials: {
+      version: number;
+      apiKey: string;
+      apiSecret: string;
+    }) => void;
+    mocks.read.mockReturnValue(
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+    );
     vi.stubEnv("SHOPIFY_API_KEY", "stale-environment-key");
     vi.stubEnv("SHOPIFY_API_SECRET", "stale-environment-secret");
     const loading = import("../../../app/shopify.server.js");
-    await vi.waitFor(() => expect(mocks.read).toHaveBeenCalledOnce(), { timeout: 10_000 });
+    await vi.waitFor(() => expect(mocks.read).toHaveBeenCalledOnce(), {
+      timeout: 10_000,
+    });
     expect(mocks.construct).not.toHaveBeenCalled();
-    release({ version: 2, apiKey: "database-public-key", apiSecret: "database-private-secret" });
+    release({
+      version: 2,
+      apiKey: "database-public-key",
+      apiSecret: "database-private-secret",
+    });
     const runtime = await loading;
     expect(mocks.construct).toHaveBeenCalledOnce();
     expect(mocks.construct.mock.calls[0]?.[0]).toMatchObject({
-      apiKey: "database-public-key", apiSecretKey: "database-private-secret",
+      apiKey: "database-public-key",
+      apiSecretKey: "database-private-secret",
     });
     expect(runtime.apiKey).toBe("database-public-key");
     expect(runtime.authenticate.admin).toBeTypeOf("function");
     expect(runtime.authenticate.webhook).toBeTypeOf("function");
-    expect(runtime.sessionStorage).toBe(mocks.construct.mock.calls[0]?.[0].sessionStorage);
+    expect(runtime.sessionStorage).toBe(
+      mocks.construct.mock.calls[0]?.[0].sessionStorage,
+    );
   }, 15_000);
 
   it("fails module initialization closed when credentials are absent or revoked", async () => {
     mocks.read.mockRejectedValue(new Error("MISSING"));
-    await expect(import("../../../app/shopify.server.js")).rejects.toThrow("MISSING");
+    await expect(import("../../../app/shopify.server.js")).rejects.toThrow(
+      "MISSING",
+    );
     expect(mocks.construct).not.toHaveBeenCalled();
   });
 
   it("constructs a new SDK with the rotated revision after process/module restart", async () => {
-    mocks.read.mockResolvedValue({ version: 3, apiKey: "rotated-key", apiSecret: "rotated-secret" });
+    mocks.read.mockResolvedValue({
+      version: 3,
+      apiKey: "rotated-key",
+      apiSecret: "rotated-secret",
+    });
     const runtime = await import("../../../app/shopify.server.js");
     expect(runtime.apiKey).toBe("rotated-key");
     expect(mocks.construct).toHaveBeenCalledOnce();
     expect(mocks.construct.mock.calls[0]?.[0]).toMatchObject({
-      apiKey: "rotated-key", apiSecretKey: "rotated-secret",
+      apiKey: "rotated-key",
+      apiSecretKey: "rotated-secret",
     });
   });
 });

@@ -21,11 +21,12 @@ const mocks = vi.hoisted(() => ({
   related: vi.fn(),
 }));
 vi.mock("../../app/services/shop/merchant-request-context.server", () => ({
-  getMerchantRequestContext: async ({request}: {request: Request}) => {
+  getMerchantRequestContext: async ({ request }: { request: Request }) => {
     const authentication = await mocks.authenticate(request);
-    const shop = await mocks.shop({domain: authentication.session.shop});
+    const shop = await mocks.shop({ domain: authentication.session.shop });
     return {
-      authentication, shop,
+      authentication,
+      shop,
       readSubscription: () => mocks.subscription(shop.id),
       readSettings: () => Promise.resolve(null),
     };
@@ -45,7 +46,13 @@ vi.mock("../../app/services/billing/billing.service", () => ({
 vi.mock("../../app/services/recoveries/recovery-detail.server", () => ({
   createRecoveryDetailReader: async (identity: unknown) => {
     const detail = await mocks.detail(identity);
-    return detail ? { detail, readMessages: () => mocks.messages(identity), readRelated: () => mocks.related(identity) } : null;
+    return detail
+      ? {
+          detail,
+          readMessages: () => mocks.messages(identity),
+          readRelated: () => mocks.related(identity),
+        }
+      : null;
   },
   readRecoveryMessages: mocks.messages,
   readRelatedRecoveries: mocks.related,
@@ -71,7 +78,12 @@ const detail = {
   value: { amount: "100.25", currency: "GBP", incomplete: false },
   hasConversation: true,
   conversation: null,
-  basket: { items: [], currency: "GBP", recoveryTotal: "100.25", unavailableReason: "missing" },
+  basket: {
+    items: [],
+    currency: "GBP",
+    recoveryTotal: "100.25",
+    unavailableReason: "missing",
+  },
   milestones: {
     detectedAt: "2026-09-10T23:30:00.000Z",
     messageSentAt: null,

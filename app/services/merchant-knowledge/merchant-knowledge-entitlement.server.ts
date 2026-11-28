@@ -55,16 +55,32 @@ export async function loadCurrentMerchantKnowledgeEntitlement(
       select: subscriptionSelection,
     });
   } catch (cause) {
-    recordMerchantKnowledgeFailure({ shopId, operation: "entitlement", error: cause, origin: "database" });
+    recordMerchantKnowledgeFailure({
+      shopId,
+      operation: "entitlement",
+      error: cause,
+      origin: "database",
+    });
     return { kind: "unavailable", retryable: true, cause };
   }
-  const result = projectMerchantKnowledgeEntitlement(subscription, subscription?.plan ?? null);
-  if (result.kind === "unavailable") recordMerchantKnowledgeFailure({shopId, operation: "entitlement_configuration", error: result.cause, origin: "internal"});
+  const result = projectMerchantKnowledgeEntitlement(
+    subscription,
+    subscription?.plan ?? null,
+  );
+  if (result.kind === "unavailable")
+    recordMerchantKnowledgeFailure({
+      shopId,
+      operation: "entitlement_configuration",
+      error: result.cause,
+      origin: "internal",
+    });
   return result;
 }
 
-export function projectMerchantKnowledgeEntitlement(subscription: {status: string; planId: string | null} | null, plan: SubscriptionRow["plan"]): MerchantKnowledgeEntitlement {
-
+export function projectMerchantKnowledgeEntitlement(
+  subscription: { status: string; planId: string | null } | null,
+  plan: SubscriptionRow["plan"],
+): MerchantKnowledgeEntitlement {
   if (
     !subscription ||
     (subscription.status !== "ACTIVE" && subscription.status !== "TRIALING") ||
@@ -87,7 +103,11 @@ export function projectMerchantKnowledgeEntitlement(subscription: {status: strin
     mapping.configuration,
   );
   if (!configuration.success) {
-    return { kind: "unavailable", retryable: false, cause: configuration.error };
+    return {
+      kind: "unavailable",
+      retryable: false,
+      cause: configuration.error,
+    };
   }
 
   return { kind: "entitled", configuration: configuration.data };

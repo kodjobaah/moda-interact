@@ -16,7 +16,9 @@ const store = {
 
 const dbMock = {
   shop: {
-    findUnique: vi.fn(async ({ where }) => store.shopsByDomain.get(where.domain) ?? null),
+    findUnique: vi.fn(
+      async ({ where }) => store.shopsByDomain.get(where.domain) ?? null,
+    ),
   },
 };
 
@@ -51,11 +53,13 @@ const publicationMock = {
 
 vi.mock("../../../app/db.server", () => ({ default: dbMock }));
 
-vi.mock("../../../app/services/webhooks/shopify-webhook-queue.server", () => publicationMock);
-
-const { ingestShopifyWebhook } = await import(
-  "../../../app/services/webhooks/shopify-webhook-ingress.service"
+vi.mock(
+  "../../../app/services/webhooks/shopify-webhook-queue.server",
+  () => publicationMock,
 );
+
+const { ingestShopifyWebhook } =
+  await import("../../../app/services/webhooks/shopify-webhook-ingress.service");
 
 function resetState() {
   store.shopsByDomain.clear();
@@ -115,7 +119,8 @@ function orderInput(overrides = {}) {
     payload: {
       admin_graphql_api_id: "gid://shopify/Order/123",
       token: "ignored-checkout-token",
-      order_status_url: "https://example.invalid/orders/123/authenticate?key=ignored",
+      order_status_url:
+        "https://example.invalid/orders/123/authenticate?key=ignored",
       checkout_token: null,
       cart_token: null,
       customer: { admin_graphql_api_id: "gid://shopify/Customer/42" },
@@ -139,25 +144,35 @@ describe("shopify webhook ingress", () => {
   it.each([
     "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE",
     "customers_whats_app_marketing_consent/update",
-  ])("ignores retired native WhatsApp consent topic %s after validating metadata", async topic => {
-    const response = await ingestShopifyWebhook(checkoutInput({
-      topic,
-      payload: { customer_id: "706405506930370084" },
-    }));
+  ])(
+    "ignores retired native WhatsApp consent topic %s after validating metadata",
+    async (topic) => {
+      const response = await ingestShopifyWebhook(
+        checkoutInput({
+          topic,
+          payload: { customer_id: "706405506930370084" },
+        }),
+      );
 
-    expect(response.status).toBe(200);
-    expect(dbMock.shop.findUnique).not.toHaveBeenCalled();
-    for (const [publisher, mock] of Object.entries(publicationMock)) {
-      if (publisher.startsWith("publish")) expect(mock).not.toHaveBeenCalled();
-    }
-  });
+      expect(response.status).toBe(200);
+      expect(dbMock.shop.findUnique).not.toHaveBeenCalled();
+      for (const [publisher, mock] of Object.entries(publicationMock)) {
+        if (publisher.startsWith("publish"))
+          expect(mock).not.toHaveBeenCalled();
+      }
+    },
+  );
 
   it("rejects missing delivery metadata on a retired native consent topic", async () => {
-    const request = checkoutInput({ topic: "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE" });
+    const request = checkoutInput({
+      topic: "CUSTOMERS_WHATS_APP_MARKETING_CONSENT_UPDATE",
+    });
     request.request.headers.delete("X-Shopify-Webhook-Id");
     expect((await ingestShopifyWebhook(request)).status).toBe(400);
     expect(dbMock.shop.findUnique).not.toHaveBeenCalled();
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -166,23 +181,28 @@ describe("shopify webhook ingress", () => {
     ["DISCOUNTS_DELETE", "discounts/delete"],
     ["DISCOUNTS_REDEEMCODE_ADDED", "discounts/redeemcode_added"],
     ["DISCOUNTS_REDEEMCODE_REMOVED", "discounts/redeemcode_removed"],
-  ])("publishes %s as a canonical discount sync job", async (topic, webhookTopic) => {
-    store.shopsByDomain.set("shop.myshopify.com", activeShop());
+  ])(
+    "publishes %s as a canonical discount sync job",
+    async (topic, webhookTopic) => {
+      store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(checkoutInput({ topic }));
+      const response = await ingestShopifyWebhook(checkoutInput({ topic }));
 
-    expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyDiscountSyncJob).toHaveBeenCalledWith({
-      event: expect.objectContaining({
-        schemaVersion: 1,
-        shopId: "shop_1",
-        shopDomain: "shop.myshopify.com",
-        reason: "DISCOUNT_WEBHOOK",
-        deliveryId: "delivery-1",
-        webhookTopic,
-      }),
-    });
-  });
+      expect(response.status).toBe(200);
+      expect(
+        publicationMock.publishShopifyDiscountSyncJob,
+      ).toHaveBeenCalledWith({
+        event: expect.objectContaining({
+          schemaVersion: 1,
+          shopId: "shop_1",
+          shopDomain: "shop.myshopify.com",
+          reason: "DISCOUNT_WEBHOOK",
+          deliveryId: "delivery-1",
+          webhookTopic,
+        }),
+      });
+    },
+  );
 
   it("does not contain the legacy receipt, outbox, GraphQL, or unified-queue paths", () => {
     const source = readFileSync(
@@ -207,8 +227,12 @@ describe("shopify webhook ingress", () => {
     const response = await ingestShopifyWebhook(checkoutInput());
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledTimes(1);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           schemaVersion: 2,
@@ -241,8 +265,12 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledTimes(1);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           schemaVersion: 2,
@@ -274,7 +302,9 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           internationalContext: {
@@ -306,8 +336,12 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledTimes(1);
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           schemaVersion: 3,
@@ -331,13 +365,17 @@ describe("shopify webhook ingress", () => {
   it("accepts a token-only v3 update without inventing lookup hints", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(checkoutInput({
-      topic: "CHECKOUTS_UPDATE",
-      payload: { token: "checkout-token-1", line_items: [] },
-    }));
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CHECKOUTS_UPDATE",
+        payload: { token: "checkout-token-1", line_items: [] },
+      }),
+    );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith({
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).toHaveBeenCalledWith({
       event: expect.objectContaining({
         schemaVersion: 3,
         eventType: "checkout.updated",
@@ -350,21 +388,28 @@ describe("shopify webhook ingress", () => {
   it("accepts a v3 update with malformed optional lookup hints, preserving valid fields", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(checkoutInput({
-      topic: "CHECKOUTS_UPDATE",
-      payload: {
-        token: "checkout-token-1",
-        cart_token: "cart-token-1",
-        created_at: "invalid",
-        abandoned_checkout_url: "not-a-url",
-      },
-    }));
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CHECKOUTS_UPDATE",
+        payload: {
+          token: "checkout-token-1",
+          cart_token: "cart-token-1",
+          created_at: "invalid",
+          abandoned_checkout_url: "not-a-url",
+        },
+      }),
+    );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith({
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).toHaveBeenCalledWith({
       event: expect.objectContaining({
         schemaVersion: 3,
-        payload: { checkoutToken: "checkout-token-1", cartToken: "cart-token-1" },
+        payload: {
+          checkoutToken: "checkout-token-1",
+          cartToken: "cart-token-1",
+        },
       }),
     });
   });
@@ -372,17 +417,21 @@ describe("shopify webhook ingress", () => {
   it("rejects checkout.updated without a token even when a URL is present", async () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
-    const response = await ingestShopifyWebhook(checkoutInput({
-      topic: "CHECKOUTS_UPDATE",
-      payload: {
-        cart_token: "cart-token-1",
-        created_at: "2024-01-01T00:00:00Z",
-        abandoned_checkout_url: "https://shop.example/checkout/1",
-      },
-    }));
+    const response = await ingestShopifyWebhook(
+      checkoutInput({
+        topic: "CHECKOUTS_UPDATE",
+        payload: {
+          cart_token: "cart-token-1",
+          created_at: "2024-01-01T00:00:00Z",
+          abandoned_checkout_url: "https://shop.example/checkout/1",
+        },
+      }),
+    );
 
     expect(response.status).toBe(400);
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).not.toHaveBeenCalled();
   });
 
   it("emits updated buyer context without changing checkout ordering", async () => {
@@ -401,7 +450,9 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           orderingKey: "shop_1:checkout-token-1",
@@ -425,7 +476,8 @@ describe("shopify webhook ingress", () => {
         payload: {
           admin_graphql_api_id: "gid://shopify/Order/456",
           token: "ignored-token",
-          order_status_url: "https://example.invalid/orders/456/authenticate?key=ignored",
+          order_status_url:
+            "https://example.invalid/orders/456/authenticate?key=ignored",
           checkout_token: null,
           cart_token: null,
           customer: { admin_graphql_api_id: "gid://shopify/Customer/43" },
@@ -437,8 +489,12 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledTimes(1);
-    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyOrderCompletedEvent,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      publicationMock.publishShopifyOrderCompletedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           schemaVersion: 2,
@@ -473,7 +529,9 @@ describe("shopify webhook ingress", () => {
       }),
     );
 
-    expect(publicationMock.publishShopifyOrderCompletedEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyOrderCompletedEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           internationalContext: {
@@ -501,9 +559,15 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(publicationMock.publishShopifyCheckoutCreatedEvent).not.toHaveBeenCalled();
-    expect(publicationMock.publishShopifyCheckoutUpdatedEvent).not.toHaveBeenCalled();
-    expect(publicationMock.publishShopifyOrderCompletedEvent).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyCheckoutCreatedEvent,
+    ).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyCheckoutUpdatedEvent,
+    ).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyOrderCompletedEvent,
+    ).not.toHaveBeenCalled();
   });
 
   it("returns 503 when publication fails", async () => {
@@ -531,14 +595,19 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCartActivityEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCartActivityEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           schemaVersion: 2,
           eventType: "cart.activity",
           orderingKey: "cart:6:shop_1:12:cart-token-1",
           tenant: { shopId: "shop_1", shopDomain: "shop.myshopify.com" },
-          payload: { cartToken: "cart-token-1", isEmpty: lineItems.length === 0 },
+          payload: {
+            cartToken: "cart-token-1",
+            isEmpty: lineItems.length === 0,
+          },
         }),
       }),
     );
@@ -569,11 +638,16 @@ describe("shopify webhook ingress", () => {
     store.shopsByDomain.set("shop.myshopify.com", activeShop());
 
     const response = await ingestShopifyWebhook(
-      checkoutInput({ topic: "carts/update", payload: { token: "cart-token-1" } }),
+      checkoutInput({
+        topic: "carts/update",
+        payload: { token: "cart-token-1" },
+      }),
     );
 
     expect(response.status).toBe(200);
-    expect(publicationMock.publishShopifyCartActivityEvent).toHaveBeenCalledWith(
+    expect(
+      publicationMock.publishShopifyCartActivityEvent,
+    ).toHaveBeenCalledWith(
       expect.objectContaining({
         event: expect.objectContaining({
           payload: { cartToken: "cart-token-1", isEmpty: null },
@@ -590,7 +664,9 @@ describe("shopify webhook ingress", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(publicationMock.publishShopifyCartActivityEvent).not.toHaveBeenCalled();
+    expect(
+      publicationMock.publishShopifyCartActivityEvent,
+    ).not.toHaveBeenCalled();
   });
 
   it("logs a structured PII-safe record through the shared logging boundary", async () => {

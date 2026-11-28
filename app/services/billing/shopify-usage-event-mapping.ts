@@ -15,9 +15,15 @@ export async function mapShopifyUsageEventHandles(
     where: { shopifyPlanHandle: planHandle },
     select: { usageEvents: { select: { eventHandle: true } } },
   });
-  const catalogueHandles = new Set(catalogue?.usageEvents.map((event) => event.eventHandle) ?? []);
+  const catalogueHandles = new Set(
+    catalogue?.usageEvents.map((event) => event.eventHandle) ?? [],
+  );
   return {
-    mappedHandles: providerHandles.filter((handle) => catalogueHandles.has(handle)),
-    unmappedHandles: providerHandles.filter((handle) => !catalogueHandles.has(handle)),
+    mappedHandles: providerHandles.filter((handle) =>
+      catalogueHandles.has(handle),
+    ),
+    unmappedHandles: providerHandles.filter(
+      (handle) => !catalogueHandles.has(handle),
+    ),
   };
 }

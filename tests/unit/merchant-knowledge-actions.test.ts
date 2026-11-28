@@ -26,25 +26,39 @@ const mocks = vi.hoisted(() => {
 vi.mock("../../app/services/feature-preferences/access.server", () => ({
   settingsMutationAccess: mocks.settingsAccess,
 }));
-vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-error.server", () => ({ MerchantKnowledgeError: mocks.MerchantKnowledgeError, knowledgeFailureRetryable: () => false }));
-vi.mock("../../app/services/merchant-knowledge/merchant-knowledge.server", () => ({
-  createWebPageSource: mocks.createWebPageSource,
-  editWebPageSource: mocks.editWebPageSource,
-  refreshWebPageSource: mocks.refreshWebPageSource,
-  reorderMerchantKnowledgeSources: mocks.reorderMerchantKnowledgeSources,
-  deleteMerchantKnowledgeSource: mocks.deleteMerchantKnowledgeSource,
-  MerchantKnowledgeError: mocks.MerchantKnowledgeError,
-}));
+vi.mock(
+  "../../app/services/merchant-knowledge/merchant-knowledge-error.server",
+  () => ({
+    MerchantKnowledgeError: mocks.MerchantKnowledgeError,
+    knowledgeFailureRetryable: () => false,
+  }),
+);
+vi.mock(
+  "../../app/services/merchant-knowledge/merchant-knowledge.server",
+  () => ({
+    createWebPageSource: mocks.createWebPageSource,
+    editWebPageSource: mocks.editWebPageSource,
+    refreshWebPageSource: mocks.refreshWebPageSource,
+    reorderMerchantKnowledgeSources: mocks.reorderMerchantKnowledgeSources,
+    deleteMerchantKnowledgeSource: mocks.deleteMerchantKnowledgeSource,
+    MerchantKnowledgeError: mocks.MerchantKnowledgeError,
+  }),
+);
 vi.mock("../../app/services/merchant-knowledge/upload.server", () => ({
-  createMerchantKnowledgeUploadIntent: mocks.createMerchantKnowledgeUploadIntent,
+  createMerchantKnowledgeUploadIntent:
+    mocks.createMerchantKnowledgeUploadIntent,
   finalizeMerchantKnowledgeUpload: mocks.finalizeMerchantKnowledgeUpload,
   reprocessMerchantKnowledgeUpload: mocks.reprocessMerchantKnowledgeUpload,
   editMerchantKnowledgeUploadSource: vi.fn(),
 }));
-vi.mock("../../app/services/merchant-knowledge/merchant-knowledge-observability.server", () => ({
-  recordMerchantKnowledgeUploadFailure: mocks.recordMerchantKnowledgeUploadFailure,
-  recordMerchantKnowledgeFailure: vi.fn(),
-}));
+vi.mock(
+  "../../app/services/merchant-knowledge/merchant-knowledge-observability.server",
+  () => ({
+    recordMerchantKnowledgeUploadFailure:
+      mocks.recordMerchantKnowledgeUploadFailure,
+    recordMerchantKnowledgeFailure: vi.fn(),
+  }),
+);
 
 import { action as sourceAction } from "../../app/routes/app/merchant-knowledge/source/route";
 import { action as reorderAction } from "../../app/routes/app/merchant-knowledge/reorder/route";
@@ -61,7 +75,10 @@ async function post(action: Action, fields: Record<string, string>) {
   const form = new FormData();
   for (const [key, value] of Object.entries(fields)) form.append(key, value);
   return action({
-    request: new Request("https://app.example.test/", { method: "POST", body: form }),
+    request: new Request("https://app.example.test/", {
+      method: "POST",
+      body: form,
+    }),
   });
 }
 
@@ -78,7 +95,10 @@ async function postJson(action: Action, body: Record<string, unknown>) {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.settingsAccess.mockResolvedValue({
-    shop: { id: "authenticated-shop", domain: "authenticated-shop.myshopify.com" },
+    shop: {
+      id: "authenticated-shop",
+      domain: "authenticated-shop.myshopify.com",
+    },
   });
   mocks.createWebPageSource.mockResolvedValue({ sourceId: "source-1" });
   mocks.editWebPageSource.mockResolvedValue({ ok: true });
@@ -92,7 +112,10 @@ beforeEach(() => {
     requiredHeaders: { "Content-Type": "text/csv" },
     maxUploadBytes: 1_000_000,
   });
-  mocks.finalizeMerchantKnowledgeUpload.mockResolvedValue({ sourceId: "source-1", queued: false });
+  mocks.finalizeMerchantKnowledgeUpload.mockResolvedValue({
+    sourceId: "source-1",
+    queued: false,
+  });
   mocks.reprocessMerchantKnowledgeUpload.mockResolvedValue({ ok: true });
 });
 
@@ -107,9 +130,11 @@ it("uses the authenticated shop for create and edit and does not expose source c
   });
   expect(create.status).toBe(200);
   expect(await create.json()).toEqual({ ok: true, sourceId: "source-1" });
-  expect(mocks.createWebPageSource).toHaveBeenCalledWith(expect.objectContaining({
-    shopId: "authenticated-shop",
-  }));
+  expect(mocks.createWebPageSource).toHaveBeenCalledWith(
+    expect.objectContaining({
+      shopId: "authenticated-shop",
+    }),
+  );
 
   const edit = await post(sourceAction as Action, {
     operation: "edit",
@@ -119,10 +144,12 @@ it("uses the authenticated shop for create and edit and does not expose source c
     languageTag: "en",
   });
   expect(edit.status).toBe(200);
-  expect(mocks.editWebPageSource).toHaveBeenCalledWith(expect.objectContaining({
-    shopId: "authenticated-shop",
-    sourceId: "source-1",
-  }));
+  expect(mocks.editWebPageSource).toHaveBeenCalledWith(
+    expect.objectContaining({
+      shopId: "authenticated-shop",
+      sourceId: "source-1",
+    }),
+  );
 });
 
 it("rejects browser-supplied shop IDs before source creation", async () => {
@@ -167,7 +194,9 @@ it("routes reorder, refresh, and delete only with the authenticated shop", async
 it("does not invoke a mutation when authenticated settings access fails", async () => {
   mocks.settingsAccess.mockRejectedValue(new Response(null, { status: 401 }));
 
-  await expect(post(deleteAction as Action, { sourceId: "source-1" })).rejects.toMatchObject({
+  await expect(
+    post(deleteAction as Action, { sourceId: "source-1" }),
+  ).rejects.toMatchObject({
     status: 401,
   });
   expect(mocks.deleteMerchantKnowledgeSource).not.toHaveBeenCalled();
@@ -225,15 +254,23 @@ it("routes upload finalization and reprocess with the authenticated shop only", 
     sha256: "a".repeat(64),
     contentType: "text/csv",
   });
-  const reprocess = await post(reprocessAction as Action, { sourceId: "source-1" });
+  const reprocess = await post(reprocessAction as Action, {
+    sourceId: "source-1",
+  });
 
   expect(finalize.status).toBe(200);
-  expect(await finalize.json()).toEqual({ ok: true, sourceId: "source-1", queued: false });
+  expect(await finalize.json()).toEqual({
+    ok: true,
+    sourceId: "source-1",
+    queued: false,
+  });
   expect(reprocess.status).toBe(200);
-  expect(mocks.finalizeMerchantKnowledgeUpload).toHaveBeenCalledWith(expect.objectContaining({
-    shopId: "authenticated-shop",
-    assetId: "asset-1",
-  }));
+  expect(mocks.finalizeMerchantKnowledgeUpload).toHaveBeenCalledWith(
+    expect.objectContaining({
+      shopId: "authenticated-shop",
+      assetId: "asset-1",
+    }),
+  );
   expect(mocks.reprocessMerchantKnowledgeUpload).toHaveBeenCalledWith({
     shopId: "authenticated-shop",
     sourceId: "source-1",
@@ -247,7 +284,8 @@ it("records Merchant Knowledge upload failures with authenticated shop identity"
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "XLSX",
     sizeBytes: 4096,
-    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     statusCode: 403,
     errorCode: "STORAGE_HTTP_403",
   });
@@ -260,7 +298,8 @@ it("records Merchant Knowledge upload failures with authenticated shop identity"
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "XLSX",
     sizeBytes: 4096,
-    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     statusCode: 403,
     errorCode: "STORAGE_HTTP_403",
   });
@@ -275,13 +314,14 @@ it("logs server-side upload intent failures without browser filenames", async ()
     purposeKey: "PRODUCT_INFORMATION",
     dataFormatKey: "XLSX",
     originalFileName: "customer-private-name.xlsx",
-    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    contentType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     sizeBytes: 4096,
   });
 
   expect(response.status).toBe(403);
   expect(mocks.recordMerchantKnowledgeUploadFailure).not.toHaveBeenCalled();
-  expect(JSON.stringify(mocks.recordMerchantKnowledgeUploadFailure.mock.calls)).not.toContain(
-    "customer-private-name.xlsx",
-  );
+  expect(
+    JSON.stringify(mocks.recordMerchantKnowledgeUploadFailure.mock.calls),
+  ).not.toContain("customer-private-name.xlsx");
 });

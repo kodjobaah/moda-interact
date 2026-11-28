@@ -10,7 +10,10 @@ type UploadFormat = {
     acceptedContentTypes: unknown;
   };
 };
-type Translate = (key: string, values?: Record<string, string | number>) => string;
+type Translate = (
+  key: string,
+  values?: Record<string, string | number>,
+) => string;
 type Stage = "idle" | "preparing" | "uploading" | "finalizing" | "failed";
 type UploadFailureStage = "intent" | "storage_put" | "client_hash" | "finalize";
 
@@ -26,21 +29,36 @@ class UploadPipelineError extends Error {
 }
 
 function contentTypes(value: unknown): string[] {
-  return Array.isArray(value) && value.every((entry) => typeof entry === "string") ? value : [];
+  return Array.isArray(value) &&
+    value.every((entry) => typeof entry === "string")
+    ? value
+    : [];
 }
 
-function localized(t: Translate, key: string, fallback: string, values?: Record<string, string | number>): string {
+function localized(
+  t: Translate,
+  key: string,
+  fallback: string,
+  values?: Record<string, string | number>,
+): string {
   const result = t(key, values);
   return result === key ? fallback : result;
 }
 
-function sourceNameFromFile(fileName: string, canonicalExtension: string | null): string {
+function sourceNameFromFile(
+  fileName: string,
+  canonicalExtension: string | null,
+): string {
   const trimmed = fileName.trim();
   const extension = canonicalExtension?.toLowerCase();
-  const withoutExtension = extension && trimmed.toLowerCase().endsWith(extension)
-    ? trimmed.slice(0, -extension.length)
-    : trimmed.replace(/\.[^.]+$/, "");
-  const normalized = withoutExtension.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  const withoutExtension =
+    extension && trimmed.toLowerCase().endsWith(extension)
+      ? trimmed.slice(0, -extension.length)
+      : trimmed.replace(/\.[^.]+$/, "");
+  const normalized = withoutExtension
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return (normalized || withoutExtension || trimmed).slice(0, 160);
 }
 
@@ -72,30 +90,47 @@ export default function MerchantKnowledgeUploadForm({
   const [dragActive, setDragActive] = useState(false);
   const [name, setName] = useState(initialName ?? "");
   const nameEdited = useRef(Boolean(initialName?.trim()));
-  const [languageTag, setLanguageTag] = useState(initialLanguageTag ?? defaultLanguageTag);
+  const [languageTag, setLanguageTag] = useState(
+    initialLanguageTag ?? defaultLanguageTag,
+  );
   const [stage, setStage] = useState<Stage>("idle");
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const selected = catalogue[pairIndex];
-  const accepted = selected ? contentTypes(selected.dataFormat.acceptedContentTypes) : [];
+  const accepted = selected
+    ? contentTypes(selected.dataFormat.acceptedContentTypes)
+    : [];
   const accept = selected
-    ? [selected.dataFormat.canonicalExtension, ...accepted].filter(Boolean).join(",")
+    ? [selected.dataFormat.canonicalExtension, ...accepted]
+        .filter(Boolean)
+        .join(",")
     : "";
-  const busy = disabled || stage === "preparing" || stage === "uploading" || stage === "finalizing";
+  const busy =
+    disabled ||
+    stage === "preparing" ||
+    stage === "uploading" ||
+    stage === "finalizing";
   const selectedFormatLabel = selected
-    ? localized(t, `merchantKnowledge.dataFormats.${selected.dataFormat.key}.label`, selected.dataFormat.displayName)
+    ? localized(
+        t,
+        `merchantKnowledge.dataFormats.${selected.dataFormat.key}.label`,
+        selected.dataFormat.displayName,
+      )
     : "";
 
   function validFile(candidate: File): boolean {
     const extension = selected?.dataFormat.canonicalExtension?.toLowerCase();
     const fileType = candidate.type.split(";", 1)[0]!.trim().toLowerCase();
     return Boolean(
-      selected
-      && candidate.size > 0
-      && candidate.size <= maxUploadBytes
-      && extension
-      && candidate.name.toLowerCase().endsWith(extension)
-      && accepted.some((contentType) => contentType.split(";", 1)[0]!.trim().toLowerCase() === fileType),
+      selected &&
+      candidate.size > 0 &&
+      candidate.size <= maxUploadBytes &&
+      extension &&
+      candidate.name.toLowerCase().endsWith(extension) &&
+      accepted.some(
+        (contentType) =>
+          contentType.split(";", 1)[0]!.trim().toLowerCase() === fileType,
+      ),
     );
   }
 
@@ -106,13 +141,20 @@ export default function MerchantKnowledgeUploadForm({
     }
     if (!validFile(candidate)) {
       setFile(null);
-      setFailure(localized(t, "merchantKnowledge.upload.failed", "Upload failed"));
+      setFailure(
+        localized(t, "merchantKnowledge.upload.failed", "Upload failed"),
+      );
       setStage("failed");
       return false;
     }
     setFile(candidate);
     if (!nameEdited.current && selected) {
-      setName(sourceNameFromFile(candidate.name, selected.dataFormat.canonicalExtension));
+      setName(
+        sourceNameFromFile(
+          candidate.name,
+          selected.dataFormat.canonicalExtension,
+        ),
+      );
     }
     setFailure(null);
     setNotice(null);
@@ -154,7 +196,9 @@ export default function MerchantKnowledgeUploadForm({
     setFailure(null);
     setNotice(null);
     if (!validFile(file)) {
-      setFailure(localized(t, "merchantKnowledge.upload.failed", "Upload failed"));
+      setFailure(
+        localized(t, "merchantKnowledge.upload.failed", "Upload failed"),
+      );
       setStage("failed");
       return;
     }
@@ -164,27 +208,39 @@ export default function MerchantKnowledgeUploadForm({
 
     try {
       setStage("preparing");
-      const intentResponse = await fetch("/app/merchant-knowledge/upload-intent", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          purposeKey: selected.purpose.key,
-          dataFormatKey: selected.dataFormat.key,
-          originalFileName: file.name,
-          contentType: file.type,
-          sizeBytes: file.size,
-        }),
-      });
-      const intent = await intentResponse.json() as {
+      const intentResponse = await fetch(
+        "/app/merchant-knowledge/upload-intent",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            purposeKey: selected.purpose.key,
+            dataFormatKey: selected.dataFormat.key,
+            originalFileName: file.name,
+            contentType: file.type,
+            sizeBytes: file.size,
+          }),
+        },
+      );
+      const intent = (await intentResponse.json()) as {
         assetId?: string;
         uploadUrl?: string;
         requiredHeaders?: Record<string, string>;
         error?: string;
         retryable?: boolean;
       };
-      if (!intentResponse.ok || !intent.assetId || !intent.uploadUrl || !intent.requiredHeaders) {
-        throw new UploadPipelineError(intent.error ?? "UPLOAD_INTENT_FAILED", "intent", intentResponse.status);
+      if (
+        !intentResponse.ok ||
+        !intent.assetId ||
+        !intent.uploadUrl ||
+        !intent.requiredHeaders
+      ) {
+        throw new UploadPipelineError(
+          intent.error ?? "UPLOAD_INTENT_FAILED",
+          "intent",
+          intentResponse.status,
+        );
       }
       assetId = intent.assetId;
 
@@ -202,14 +258,20 @@ export default function MerchantKnowledgeUploadForm({
         throw new UploadPipelineError("STORAGE_NETWORK_ERROR", "storage_put");
       }
       if (!putResponse.ok) {
-        throw new UploadPipelineError(`STORAGE_HTTP_${putResponse.status}`, "storage_put", putResponse.status);
+        throw new UploadPipelineError(
+          `STORAGE_HTTP_${putResponse.status}`,
+          "storage_put",
+          putResponse.status,
+        );
       }
 
       failureStage = "client_hash";
       setStage("finalizing");
       const bytes = await file.arrayBuffer();
       const digest = await crypto.subtle.digest("SHA-256", bytes);
-      const sha256 = [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const sha256 = [...new Uint8Array(digest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
       const finalization = {
         assetId: intent.assetId,
         purposeKey: selected.purpose.key,
@@ -222,18 +284,36 @@ export default function MerchantKnowledgeUploadForm({
       };
 
       failureStage = "finalize";
-      const finalResponse = await fetch("/app/merchant-knowledge/upload-finalize", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(finalization),
-      });
-      const finalResult = await finalResponse.json() as { ok?: boolean; error?: string; queued?: boolean; retryable?: boolean };
+      const finalResponse = await fetch(
+        "/app/merchant-knowledge/upload-finalize",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(finalization),
+        },
+      );
+      const finalResult = (await finalResponse.json()) as {
+        ok?: boolean;
+        error?: string;
+        queued?: boolean;
+        retryable?: boolean;
+      };
       if (!finalResponse.ok || !finalResult.ok) {
-        throw new UploadPipelineError(finalResult.error ?? "UPLOAD_FINALIZATION_FAILED", "finalize", finalResponse.status);
+        throw new UploadPipelineError(
+          finalResult.error ?? "UPLOAD_FINALIZATION_FAILED",
+          "finalize",
+          finalResponse.status,
+        );
       }
       setStage("idle");
-      setNotice(localized(t, "merchantKnowledge.upload.pending", "Saved for processing"));
+      setNotice(
+        localized(
+          t,
+          "merchantKnowledge.upload.pending",
+          "Saved for processing",
+        ),
+      );
       setFile(null);
       if (!sourceId) {
         setName("");
@@ -241,20 +321,24 @@ export default function MerchantKnowledgeUploadForm({
       }
       await revalidator.revalidate();
     } catch (error) {
-      const uploadError = error instanceof UploadPipelineError
-        ? error
-        : new UploadPipelineError(
-            failureStage === "storage_put"
-              ? "STORAGE_NETWORK_ERROR"
-              : failureStage === "client_hash"
-                ? "HASH_FAILED"
-                : failureStage === "finalize"
-                  ? "UPLOAD_FINALIZATION_FAILED"
-                  : "UPLOAD_INTENT_FAILED",
-            failureStage,
-          );
+      const uploadError =
+        error instanceof UploadPipelineError
+          ? error
+          : new UploadPipelineError(
+              failureStage === "storage_put"
+                ? "STORAGE_NETWORK_ERROR"
+                : failureStage === "client_hash"
+                  ? "HASH_FAILED"
+                  : failureStage === "finalize"
+                    ? "UPLOAD_FINALIZATION_FAILED"
+                    : "UPLOAD_INTENT_FAILED",
+              failureStage,
+            );
 
-      if (uploadError.stage === "storage_put" || uploadError.stage === "client_hash") {
+      if (
+        uploadError.stage === "storage_put" ||
+        uploadError.stage === "client_hash"
+      ) {
         void fetch("/app/merchant-knowledge/upload-failure", {
           method: "POST",
           credentials: "same-origin",
@@ -267,14 +351,20 @@ export default function MerchantKnowledgeUploadForm({
             dataFormatKey: selected.dataFormat.key,
             sizeBytes: file.size,
             contentType: file.type,
-            ...(uploadError.statusCode ? { statusCode: uploadError.statusCode } : {}),
+            ...(uploadError.statusCode
+              ? { statusCode: uploadError.statusCode }
+              : {}),
             errorCode: uploadError.code,
           }),
         }).catch(() => {});
       }
 
       setNotice(null);
-      setFailure(uploadError.code === "UNAVAILABLE" ? t("common.unavailable") : `${localized(t, "merchantKnowledge.upload.failed", "Upload failed")} (${uploadError.code})`);
+      setFailure(
+        uploadError.code === "UNAVAILABLE"
+          ? t("common.unavailable")
+          : `${localized(t, "merchantKnowledge.upload.failed", "Upload failed")} (${uploadError.code})`,
+      );
       setStage("failed");
     }
   }
@@ -282,17 +372,34 @@ export default function MerchantKnowledgeUploadForm({
   if (!catalogue.length) return null;
 
   return (
-    <form className="moda-merchant-knowledge-form moda-merchant-knowledge-upload-form" onSubmit={upload}>
+    <form
+      className="moda-merchant-knowledge-form moda-merchant-knowledge-upload-form"
+      onSubmit={upload}
+    >
       <label className="moda-merchant-knowledge-field">
-          {localized(t, "merchantKnowledge.upload.purpose", "Purpose")}
+        {localized(t, "merchantKnowledge.upload.purpose", "Purpose")}
         <select
           value={selected?.purpose.key ?? ""}
-          onChange={(event) => setPairIndex(catalogue.findIndex((entry) => entry.purpose.key === event.currentTarget.value))}
+          onChange={(event) =>
+            setPairIndex(
+              catalogue.findIndex(
+                (entry) => entry.purpose.key === event.currentTarget.value,
+              ),
+            )
+          }
           required
         >
-          {[...new Map(catalogue.map((entry) => [entry.purpose.key, entry.purpose])).values()].map((purpose) => (
+          {[
+            ...new Map(
+              catalogue.map((entry) => [entry.purpose.key, entry.purpose]),
+            ).values(),
+          ].map((purpose) => (
             <option key={purpose.key} value={purpose.key}>
-              {localized(t, `merchantKnowledge.purposes.${purpose.key}.label`, purpose.displayName)}
+              {localized(
+                t,
+                `merchantKnowledge.purposes.${purpose.key}.label`,
+                purpose.displayName,
+              )}
             </option>
           ))}
         </select>
@@ -303,12 +410,32 @@ export default function MerchantKnowledgeUploadForm({
           <select
             value={selected.dataFormat.key}
             onChange={(event) => {
-              const nextIndex = catalogue.findIndex((entry) => entry.purpose.key === selected.purpose.key && entry.dataFormat.key === event.currentTarget.value);
+              const nextIndex = catalogue.findIndex(
+                (entry) =>
+                  entry.purpose.key === selected.purpose.key &&
+                  entry.dataFormat.key === event.currentTarget.value,
+              );
               if (nextIndex >= 0) setPairIndex(nextIndex);
             }}
           >
-            {[...new Set(catalogue.filter((entry) => entry.purpose.key === selected.purpose.key).map((entry) => entry.dataFormat.key))].map((key) => (
-              <option key={key} value={key}>{localized(t, `merchantKnowledge.dataFormats.${key}.label`, catalogue.find((entry) => entry.purpose.key === selected.purpose.key && entry.dataFormat.key === key)?.dataFormat.displayName ?? key)}</option>
+            {[
+              ...new Set(
+                catalogue
+                  .filter((entry) => entry.purpose.key === selected.purpose.key)
+                  .map((entry) => entry.dataFormat.key),
+              ),
+            ].map((key) => (
+              <option key={key} value={key}>
+                {localized(
+                  t,
+                  `merchantKnowledge.dataFormats.${key}.label`,
+                  catalogue.find(
+                    (entry) =>
+                      entry.purpose.key === selected.purpose.key &&
+                      entry.dataFormat.key === key,
+                  )?.dataFormat.displayName ?? key,
+                )}
+              </option>
             ))}
           </select>
         </label>
@@ -340,35 +467,68 @@ export default function MerchantKnowledgeUploadForm({
             aria-required="true"
             disabled={busy}
             onChange={(event) => {
-              const acceptedFile = chooseFile(event.currentTarget.files?.[0] ?? null);
+              const acceptedFile = chooseFile(
+                event.currentTarget.files?.[0] ?? null,
+              );
               if (!acceptedFile) event.currentTarget.value = "";
             }}
           />
-          <span className="moda-merchant-knowledge-selected-file" aria-live="polite">
+          <span
+            className="moda-merchant-knowledge-selected-file"
+            aria-live="polite"
+          >
             {file?.name ?? selectedFormatLabel}
           </span>
         </div>
       </label>
-      <p className="moda-merchant-knowledge-help">{localized(t, "merchantKnowledge.upload.maxSize", `Maximum upload size: ${maxUploadBytes} bytes`, { bytes: maxUploadBytes })}</p>
+      <p className="moda-merchant-knowledge-help">
+        {localized(
+          t,
+          "merchantKnowledge.upload.maxSize",
+          `Maximum upload size: ${maxUploadBytes} bytes`,
+          { bytes: maxUploadBytes },
+        )}
+      </p>
       <label className="moda-merchant-knowledge-field">
         {localized(t, "merchantKnowledge.upload.language", "Language")}
-        <select value={languageTag} onChange={(event) => setLanguageTag(event.currentTarget.value)}>
-          {supportedLanguageTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+        <select
+          value={languageTag}
+          onChange={(event) => setLanguageTag(event.currentTarget.value)}
+        >
+          {supportedLanguageTags.map((tag) => (
+            <option key={tag} value={tag}>
+              {tag}
+            </option>
+          ))}
         </select>
       </label>
-      <button className="moda-merchant-knowledge-primary-action" type="submit" disabled={busy || !file || !name.trim()}>
-        {localized(t, `merchantKnowledge.upload.${stage === "idle" ? "submit" : stage}`, {
-          idle: "Upload file",
-          preparing: "Preparing",
-          uploading: "Uploading",
-          finalizing: "Finalizing",
-          failed: "Failed",
-        }[stage])}
+      <button
+        className="moda-merchant-knowledge-primary-action"
+        type="submit"
+        disabled={busy || !file || !name.trim()}
+      >
+        {localized(
+          t,
+          `merchantKnowledge.upload.${stage === "idle" ? "submit" : stage}`,
+          {
+            idle: "Upload file",
+            preparing: "Preparing",
+            uploading: "Uploading",
+            finalizing: "Finalizing",
+            failed: "Failed",
+          }[stage],
+        )}
       </button>
       {failure ? <p role="alert">{failure}</p> : null}
       {!failure && notice ? <p role="status">{notice}</p> : null}
       {!failure && !notice && stage !== "idle" ? (
-        <p role="status">{localized(t, `merchantKnowledge.upload.${stage}`, stage[0]!.toUpperCase() + stage.slice(1))}</p>
+        <p role="status">
+          {localized(
+            t,
+            `merchantKnowledge.upload.${stage}`,
+            stage[0]!.toUpperCase() + stage.slice(1),
+          )}
+        </p>
       ) : null}
     </form>
   );

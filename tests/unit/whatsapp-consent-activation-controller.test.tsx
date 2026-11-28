@@ -11,30 +11,45 @@ const router = vi.hoisted(() => ({
 }));
 
 vi.mock("react-router", () => ({
-  useFetcher: () => (++router.callCount % 2 === 1 ? router.activation : router.verification),
+  useFetcher: () =>
+    ++router.callCount % 2 === 1 ? router.activation : router.verification,
   useRevalidator: () => ({ revalidate: router.revalidate, state: "idle" }),
 }));
 
-import WhatsAppConsentActivationController from
-  "@/routes/app/recovery-settings/WhatsAppConsentActivationController";
-import type { WhatsAppConsentActivation } from
-  "@/routes/app/recovery-settings/WhatsAppCustomerConsent";
+import WhatsAppConsentActivationController from "@/routes/app/recovery-settings/WhatsAppConsentActivationController";
+import type { WhatsAppConsentActivation } from "@/routes/app/recovery-settings/WhatsAppCustomerConsent";
 
 const activation: WhatsAppConsentActivation = {
-  placement: "non_plus_cart", cartStatus: "inactive", cartBlockPresence: "absent",
-  plusStatus: "unsupported", gateState: "disabled", setupPhase: "never",
-  cartThemeEditorUrl: "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
-  checkoutEditorUrl: null, appProxyDefaultRoot: "/apps/moda-consent",
+  placement: "non_plus_cart",
+  cartStatus: "inactive",
+  cartBlockPresence: "absent",
+  plusStatus: "unsupported",
+  gateState: "disabled",
+  setupPhase: "never",
+  cartThemeEditorUrl:
+    "https://merchant.myshopify.com/admin/themes/current/editor?template=cart",
+  checkoutEditorUrl: null,
+  appProxyDefaultRoot: "/apps/moda-consent",
 };
-const editorUrl = "https://merchant.myshopify.com/admin/themes/current/editor?template=cart&addAppBlockId=test%2Fcart-consent";
+const editorUrl =
+  "https://merchant.myshopify.com/admin/themes/current/editor?template=cart&addAppBlockId=test%2Fcart-consent";
 let root: Root;
 let host: HTMLDivElement;
-let tab: { closed: boolean; close: ReturnType<typeof vi.fn>; location: { replace: ReturnType<typeof vi.fn> } };
+let tab: {
+  closed: boolean;
+  close: ReturnType<typeof vi.fn>;
+  location: { replace: ReturnType<typeof vi.fn> };
+};
 
 async function render() {
-  await act(async () => root.render(
-    <WhatsAppConsentActivationController t={(key) => key} activation={activation} />,
-  ));
+  await act(async () =>
+    root.render(
+      <WhatsAppConsentActivationController
+        t={(key) => key}
+        activation={activation}
+      />,
+    ),
+  );
 }
 
 beforeEach(() => {
@@ -65,12 +80,18 @@ describe("Shopify consent activation during automatic verification", () => {
   it("keeps Activate clickable while verification runs, queues one click, then opens the editor", async () => {
     await render();
     await act(async () => window.dispatchEvent(new Event("focus")));
-    expect(router.verification.submit).toHaveBeenCalledWith({ intent: "verify" }, {
-      method: "post", action: "/app/consent-activate",
-    });
+    expect(router.verification.submit).toHaveBeenCalledWith(
+      { intent: "verify" },
+      {
+        method: "post",
+        action: "/app/consent-activate",
+      },
+    );
     router.verification.state = "submitting";
     await render();
-    const button = host.querySelector<HTMLButtonElement>("button.moda-recovery-consent-action")!;
+    const button = host.querySelector<HTMLButtonElement>(
+      "button.moda-recovery-consent-action",
+    )!;
     expect(button.disabled).toBe(false);
 
     await act(async () => {
@@ -87,14 +108,26 @@ describe("Shopify consent activation during automatic verification", () => {
     expect(router.verification.submit).toHaveBeenCalledTimes(1);
 
     router.verification.state = "idle";
-    router.verification.data = { ok: true, placement: "non_plus_cart", status: "inactive" };
+    router.verification.data = {
+      ok: true,
+      placement: "non_plus_cart",
+      status: "inactive",
+    };
     await render();
     expect(router.activation.submit).toHaveBeenCalledTimes(1);
-    expect(router.activation.submit).toHaveBeenCalledWith({ intent: "activate" }, {
-      method: "post", action: "/app/consent-activate",
-    });
+    expect(router.activation.submit).toHaveBeenCalledWith(
+      { intent: "activate" },
+      {
+        method: "post",
+        action: "/app/consent-activate",
+      },
+    );
 
-    router.activation.data = { ok: true, placement: "non_plus_cart", editorUrl };
+    router.activation.data = {
+      ok: true,
+      placement: "non_plus_cart",
+      editorUrl,
+    };
     await render();
     expect(tab.location.replace).toHaveBeenCalledWith(editorUrl);
     expect(router.activation.submit).toHaveBeenCalledTimes(1);
@@ -103,8 +136,13 @@ describe("Shopify consent activation during automatic verification", () => {
 
   it("submits directly when no verification is running, without duplicate clicks", async () => {
     await render();
-    const button = host.querySelector<HTMLButtonElement>("button.moda-recovery-consent-action")!;
-    await act(async () => { button.click(); button.click(); });
+    const button = host.querySelector<HTMLButtonElement>(
+      "button.moda-recovery-consent-action",
+    )!;
+    await act(async () => {
+      button.click();
+      button.click();
+    });
     expect(router.activation.submit).toHaveBeenCalledTimes(1);
     expect(window.open).toHaveBeenCalledTimes(1);
   });
@@ -112,16 +150,26 @@ describe("Shopify consent activation during automatic verification", () => {
   it("offers an editor link if Shopify blocks the popup", async () => {
     vi.spyOn(window, "open").mockReturnValue(null);
     await render();
-    const button = host.querySelector<HTMLButtonElement>("button.moda-recovery-consent-action")!;
+    const button = host.querySelector<HTMLButtonElement>(
+      "button.moda-recovery-consent-action",
+    )!;
     await act(async () => button.click());
-    router.activation.data = { ok: true, placement: "non_plus_cart", editorUrl };
+    router.activation.data = {
+      ok: true,
+      placement: "non_plus_cart",
+      editorUrl,
+    };
     await render();
-    expect(host.querySelector<HTMLAnchorElement>(`a[href="${editorUrl}"]`)).not.toBeNull();
+    expect(
+      host.querySelector<HTMLAnchorElement>(`a[href="${editorUrl}"]`),
+    ).not.toBeNull();
   });
 
   it("reports a rejected activation without claiming installation succeeded", async () => {
     await render();
-    const button = host.querySelector<HTMLButtonElement>("button.moda-recovery-consent-action")!;
+    const button = host.querySelector<HTMLButtonElement>(
+      "button.moda-recovery-consent-action",
+    )!;
     await act(async () => button.click());
     router.activation.data = { ok: false, error: "SETUP_UNAVAILABLE" };
     await render();

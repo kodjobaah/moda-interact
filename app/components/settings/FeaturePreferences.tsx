@@ -4,7 +4,10 @@ import type { loadFeaturePreferences } from "@/services/feature-preferences/feat
 
 type Snapshot = Awaited<ReturnType<typeof loadFeaturePreferences>>;
 
-const PLATFORM_FEATURE_COPY_KEYS: Record<string, { name: string; description: string }> = {
+const PLATFORM_FEATURE_COPY_KEYS: Record<
+  string,
+  { name: string; description: string }
+> = {
   checkout_recovery: {
     name: "merchantFeatures.features.checkout_recovery.name",
     description: "merchantFeatures.features.checkout_recovery.description",

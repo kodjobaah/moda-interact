@@ -10,7 +10,11 @@ import "./Onboarding.css";
 void React;
 
 function BenefitIcon({ children }) {
-  return <div className="mi-benefit-icon" aria-hidden="true">{children}</div>;
+  return (
+    <div className="mi-benefit-icon" aria-hidden="true">
+      {children}
+    </div>
+  );
 }
 
 BenefitIcon.propTypes = {
@@ -33,9 +37,17 @@ export default function Onboarding({
   // A prior Shopify selection can complete onboarding without Store Category data.
   // This is a one-shot resume attempt; provider reconciliation remains authoritative.
   useEffect(() => {
-    if (!resumeExistingSubscription || resumeRequested.current || resumeFetcher.state !== "idle") return;
+    if (
+      !resumeExistingSubscription ||
+      resumeRequested.current ||
+      resumeFetcher.state !== "idle"
+    )
+      return;
     resumeRequested.current = true;
-    resumeFetcher.submit({}, { method: "post", action: "/app/onboarding/resume" });
+    resumeFetcher.submit(
+      {},
+      { method: "post", action: "/app/onboarding/resume" },
+    );
   }, [resumeExistingSubscription, resumeFetcher]);
 
   useEffect(() => {
@@ -47,9 +59,11 @@ export default function Onboarding({
   return (
     <s-page heading={t("onboarding.title")}>
       <div className="mi-onboarding">
-          <section className="mi-cta" aria-labelledby="mi-cta-title">
+        <section className="mi-cta" aria-labelledby="mi-cta-title">
           <div>
-            <div className="mi-eyebrow mi-eyebrow-light">{t("onboarding.cta.eyebrow")}</div>
+            <div className="mi-eyebrow mi-eyebrow-light">
+              {t("onboarding.cta.eyebrow")}
+            </div>
             <h2 id="mi-cta-title">{t("onboarding.cta.title")}</h2>
             <p>
               <span className="mi-cta-link">
@@ -57,7 +71,9 @@ export default function Onboarding({
               </span>
             </p>
             <div className="mi-shopify-note">
-              <span className="mi-lock" aria-hidden="true">✓</span>
+              <span className="mi-lock" aria-hidden="true">
+                ✓
+              </span>
               <span>{t("onboarding.cta.shopifyManaged")}</span>
             </div>
           </div>
@@ -85,7 +101,11 @@ export default function Onboarding({
               </a>
             </div>
 
-            <div className="mi-proof-strip" role="list" aria-label={t("onboarding.hero.highlightsLabel")}>
+            <div
+              className="mi-proof-strip"
+              role="list"
+              aria-label={t("onboarding.hero.highlightsLabel")}
+            >
               {firstFreePlan && (
                 <div className="mi-proof-item" role="listitem">
                   <strong>{firstFreePlan.includedRecoveryCredits}</strong>
@@ -114,7 +134,9 @@ export default function Onboarding({
             <div className="mi-visual-chip mi-chip-one">Shopify</div>
             <div className="mi-visual-chip mi-chip-two">WhatsApp</div>
             <div className="mi-visual-chip mi-chip-three">AI</div>
-            <div className="mi-visual-chip mi-chip-four">{t("onboarding.visual.multilingual")}</div>
+            <div className="mi-visual-chip mi-chip-four">
+              {t("onboarding.visual.multilingual")}
+            </div>
           </div>
         </section>
 
@@ -149,7 +171,11 @@ export default function Onboarding({
           </div>
         </section>
 
-        <section id="how-it-works" className="mi-section mi-how" aria-labelledby="mi-how-title">
+        <section
+          id="how-it-works"
+          className="mi-section mi-how"
+          aria-labelledby="mi-how-title"
+        >
           <div className="mi-section-heading">
             <div className="mi-eyebrow">{t("onboarding.how.eyebrow")}</div>
             <h2 id="mi-how-title">{t("onboarding.how.title")}</h2>
@@ -162,19 +188,25 @@ export default function Onboarding({
               <h3>{t("onboarding.how.step1.title")}</h3>
               <p>{t("onboarding.how.step1.description")}</p>
             </article>
-            <div className="mi-flow-arrow" aria-hidden="true">→</div>
+            <div className="mi-flow-arrow" aria-hidden="true">
+              →
+            </div>
             <article className="mi-flow-step" role="listitem">
               <div className="mi-step-number">2</div>
               <h3>{t("onboarding.how.step2.title")}</h3>
               <p>{t("onboarding.how.step2.description")}</p>
             </article>
-            <div className="mi-flow-arrow" aria-hidden="true">→</div>
+            <div className="mi-flow-arrow" aria-hidden="true">
+              →
+            </div>
             <article className="mi-flow-step" role="listitem">
               <div className="mi-step-number">3</div>
               <h3>{t("onboarding.how.step3.title")}</h3>
               <p>{t("onboarding.how.step3.description")}</p>
             </article>
-            <div className="mi-flow-arrow" aria-hidden="true">→</div>
+            <div className="mi-flow-arrow" aria-hidden="true">
+              →
+            </div>
             <article className="mi-flow-step" role="listitem">
               <div className="mi-step-number">4</div>
               <h3>{t("onboarding.how.step4.title")}</h3>
@@ -190,35 +222,43 @@ export default function Onboarding({
             <p>{t("onboarding.pricing.description")}</p>
           </div>
 
-          <MerchantPricingCatalogue merchantUi={merchantUi} pricingCatalogue={cataloguePlans} showChoosePlanAction={false} />
+          <MerchantPricingCatalogue
+            merchantUi={merchantUi}
+            pricingCatalogue={cataloguePlans}
+            showChoosePlanAction={false}
+          />
 
           <div className="mi-shared-features">
             <strong>{t("onboarding.pricing.sameProduct.title")}</strong>
             <span>{t("onboarding.pricing.sameProduct.description")}</span>
           </div>
         </section>
-
       </div>
     </s-page>
   );
 }
 
 Onboarding.propTypes = {
-  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  merchantUi: PropTypes.shape({
+    locale: PropTypes.string,
+    timeZone: PropTypes.string,
+  }),
   resumeExistingSubscription: PropTypes.bool,
-  pricingCatalogue: PropTypes.arrayOf(PropTypes.shape({
-    shopifyPlanHandle: PropTypes.string.isRequired,
-    displayName: PropTypes.string.isRequired,
-    planKind: PropTypes.string.isRequired,
-    cataloguePosition: PropTypes.number.isRequired,
-    featured: PropTypes.bool.isRequired,
-    localizedDescription: PropTypes.string.isRequired,
-    includedRecoveryCredits: PropTypes.number.isRequired,
-    allowancePeriod: PropTypes.string.isRequired,
-    billingPeriod: PropTypes.string.isRequired,
-    recurringAmountMinor: PropTypes.number.isRequired,
-    currency: PropTypes.string.isRequired,
-    usageEvents: PropTypes.array.isRequired,
-    highlights: PropTypes.array.isRequired,
-  })),
+  pricingCatalogue: PropTypes.arrayOf(
+    PropTypes.shape({
+      shopifyPlanHandle: PropTypes.string.isRequired,
+      displayName: PropTypes.string.isRequired,
+      planKind: PropTypes.string.isRequired,
+      cataloguePosition: PropTypes.number.isRequired,
+      featured: PropTypes.bool.isRequired,
+      localizedDescription: PropTypes.string.isRequired,
+      includedRecoveryCredits: PropTypes.number.isRequired,
+      allowancePeriod: PropTypes.string.isRequired,
+      billingPeriod: PropTypes.string.isRequired,
+      recurringAmountMinor: PropTypes.number.isRequired,
+      currency: PropTypes.string.isRequired,
+      usageEvents: PropTypes.array.isRequired,
+      highlights: PropTypes.array.isRequired,
+    }),
+  ),
 };

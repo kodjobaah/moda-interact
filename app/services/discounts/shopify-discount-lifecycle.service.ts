@@ -10,7 +10,9 @@ import { recordShopifyLifecycleFailure } from "../webhooks/shopify-webhook-obser
 
 export type DiscountSyncTrigger = ShopifyDiscountSyncJob["reason"];
 
-export const DISCOUNT_WEBHOOK_TOPICS = new Set<ShopifyDiscountSyncJob["webhookTopic"]>([
+export const DISCOUNT_WEBHOOK_TOPICS = new Set<
+  ShopifyDiscountSyncJob["webhookTopic"]
+>([
   "discounts/create",
   "discounts/update",
   "discounts/delete",
@@ -18,8 +20,13 @@ export const DISCOUNT_WEBHOOK_TOPICS = new Set<ShopifyDiscountSyncJob["webhookTo
   "discounts/redeemcode_removed",
 ]);
 
-export function hasReadDiscountsScope(scope: string | null | undefined): boolean {
-  return scope?.split(",").some((entry) => entry.trim() === "read_discounts") ?? false;
+export function hasReadDiscountsScope(
+  scope: string | null | undefined,
+): boolean {
+  return (
+    scope?.split(",").some((entry) => entry.trim() === "read_discounts") ??
+    false
+  );
 }
 
 export function isDiscountSyncEligible(input: {
@@ -31,7 +38,8 @@ export function isDiscountSyncEligible(input: {
   return (
     input.shopStatus === "ACTIVE" &&
     input.onboardingCompleted &&
-    (input.subscriptionStatus === "ACTIVE" || input.subscriptionStatus === "TRIALING") &&
+    (input.subscriptionStatus === "ACTIVE" ||
+      input.subscriptionStatus === "TRIALING") &&
     hasReadDiscountsScope(input.sessionScope)
   );
 }
@@ -123,42 +131,51 @@ export async function enqueueSubscriptionActivatedDiscountSyncBestEffort(
 ): Promise<void> {
   const requestedAt = new Date();
   try {
-    const syncRequest = await db.$transaction(async (transaction: Prisma.TransactionClient) => {
-      const shop = await transaction.shop.findUnique({
-        where: { id: shopId },
-        select: { id: true },
-      });
-      if (!shop) return null;
+    const syncRequest = await db.$transaction(
+      async (transaction: Prisma.TransactionClient) => {
+        const shop = await transaction.shop.findUnique({
+          where: { id: shopId },
+          select: { id: true },
+        });
+        if (!shop) return null;
 
-      await lockShopLifecycleRow(transaction, shop.id);
-      const authoritativeShop = await transaction.shop.findUnique({
-        where: { id: shop.id },
-        select: {
-          id: true,
-          domain: true,
-          status: true,
-          onboardingCompleted: true,
-          subscription: { select: { status: true } },
-        },
-      });
-      if (!authoritativeShop) return null;
+        await lockShopLifecycleRow(transaction, shop.id);
+        const authoritativeShop = await transaction.shop.findUnique({
+          where: { id: shop.id },
+          select: {
+            id: true,
+            domain: true,
+            status: true,
+            onboardingCompleted: true,
+            subscription: { select: { status: true } },
+          },
+        });
+        if (!authoritativeShop) return null;
 
-      const offlineSession = await transaction.session.findFirst({
-        where: { shop: authoritativeShop.domain, isOnline: false },
-        select: { scope: true },
-        orderBy: { expires: "desc" },
-      });
-      const eligible = isDiscountSyncEligible({
-        shopStatus: authoritativeShop.status,
-        onboardingCompleted: authoritativeShop.onboardingCompleted,
-        subscriptionStatus: authoritativeShop.subscription?.status,
-        sessionScope: offlineSession?.scope,
-      });
-      if (!eligible) return null;
+        const offlineSession = await transaction.session.findFirst({
+          where: { shop: authoritativeShop.domain, isOnline: false },
+          select: { scope: true },
+          orderBy: { expires: "desc" },
+        });
+        const eligible = isDiscountSyncEligible({
+          shopStatus: authoritativeShop.status,
+          onboardingCompleted: authoritativeShop.onboardingCompleted,
+          subscriptionStatus: authoritativeShop.subscription?.status,
+          sessionScope: offlineSession?.scope,
+        });
+        if (!eligible) return null;
 
-      await markDiscountCatalogueSyncRequired(transaction, shopId, requestedAt);
-      return { shopId: authoritativeShop.id, shopDomain: authoritativeShop.domain };
-    });
+        await markDiscountCatalogueSyncRequired(
+          transaction,
+          shopId,
+          requestedAt,
+        );
+        return {
+          shopId: authoritativeShop.id,
+          shopDomain: authoritativeShop.domain,
+        };
+      },
+    );
 
     if (!syncRequest) return;
     await publishShopifyDiscountSyncJob({

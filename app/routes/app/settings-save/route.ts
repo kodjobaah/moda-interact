@@ -65,8 +65,7 @@ export async function action({ request, context }: ActionFunctionArgs) {
     );
 
   const requestBody = await readRequestBodyWithinLimit(request);
-  if (!requestBody)
-    return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+  if (!requestBody) return reply({ ok: false, error: "INVALID_INPUT" }, 400);
   const formRequest = new Request(request.url, {
     method: request.method,
     headers: request.headers,
@@ -91,7 +90,12 @@ export async function action({ request, context }: ActionFunctionArgs) {
         : intent === "ai-response-delay"
           ? ["aiResponseDelayMinutes"]
           : [];
-  const allowed = new Set(["operationId", "intent", "revision", ...intentFields]);
+  const allowed = new Set([
+    "operationId",
+    "intent",
+    "revision",
+    ...intentFields,
+  ]);
   if (
     !/^[a-zA-Z0-9-]{1,64}$/.test(operationId) ||
     !["features", "recovery", "ai-response-delay"].includes(String(intent)) ||
@@ -102,7 +106,11 @@ export async function action({ request, context }: ActionFunctionArgs) {
     if (intent === "ai-response-delay") {
       const rawMinutes = form.get("aiResponseDelayMinutes");
       const revision = form.get("revision");
-      if (typeof rawMinutes !== "string" || typeof revision !== "string" || !revision)
+      if (
+        typeof rawMinutes !== "string" ||
+        typeof revision !== "string" ||
+        !revision
+      )
         return reply({ ok: false, error: "INVALID_INPUT" }, 400);
       const settings = await saveAiResponseDelay(shop.id, rawMinutes, revision);
       return reply({ ok: true, revision: settings.updatedAt.toISOString() });
@@ -124,27 +132,40 @@ export async function action({ request, context }: ActionFunctionArgs) {
       );
       return reply({ ok: true, revision: snapshot.revision });
     }
-    const notifyOnInitialRecoveryOutreach = form.get("notifyOnInitialRecoveryOutreach");
-    if (notifyOnInitialRecoveryOutreach !== "true" && notifyOnInitialRecoveryOutreach !== "false")
+    const notifyOnInitialRecoveryOutreach = form.get(
+      "notifyOnInitialRecoveryOutreach",
+    );
+    if (
+      notifyOnInitialRecoveryOutreach !== "true" &&
+      notifyOnInitialRecoveryOutreach !== "false"
+    )
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     const rawSelectedDiscountIds = form.get("selectedDiscountIds");
     if (
       typeof rawSelectedDiscountIds !== "string" ||
       new TextEncoder().encode(rawSelectedDiscountIds).byteLength > 8192
-    ) return reply({ ok: false, error: "INVALID_INPUT" }, 400);
+    )
+      return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     let selectedDiscountIds: unknown;
     try {
       selectedDiscountIds = JSON.parse(rawSelectedDiscountIds);
     } catch {
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     }
-    if (!Array.isArray(selectedDiscountIds) || selectedDiscountIds.some(
-      (id) => typeof id !== "string" || id.length === 0,
-    ) || new Set(selectedDiscountIds).size !== selectedDiscountIds.length)
+    if (
+      !Array.isArray(selectedDiscountIds) ||
+      selectedDiscountIds.some(
+        (id) => typeof id !== "string" || id.length === 0,
+      ) ||
+      new Set(selectedDiscountIds).size !== selectedDiscountIds.length
+    )
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     if (selectedDiscountIds.length > 50)
       return reply({ ok: false, error: "TOO_MANY_DISCOUNTS" }, 422);
-    if (form.get("recoveryOfferMode") === "FIXED" && selectedDiscountIds.length === 0)
+    if (
+      form.get("recoveryOfferMode") === "FIXED" &&
+      selectedDiscountIds.length === 0
+    )
       return reply({ ok: false, error: "FIXED_SELECTION_REQUIRED" }, 422);
     selectedDiscountIds.sort((left: string, right: string) =>
       left < right ? -1 : left > right ? 1 : 0,
@@ -157,7 +178,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
         selectedDiscountIds,
         followUpEnabled: form.get("followUpEnabled"),
         followUpDelayMinutes: form.get("followUpDelayMinutes"),
-        notifyOnInitialRecoveryOutreach: notifyOnInitialRecoveryOutreach === "true",
+        notifyOnInitialRecoveryOutreach:
+          notifyOnInitialRecoveryOutreach === "true",
       },
       String(form.get("revision")),
     );
@@ -176,7 +198,8 @@ export async function action({ request, context }: ActionFunctionArgs) {
       if (
         error instanceof RecoveryPolicyValidationError &&
         ["TOO_MANY_DISCOUNTS", "FIXED_SELECTION_REQUIRED"].includes(error.code)
-      ) return reply({ ok: false, error: error.code }, 422);
+      )
+        return reply({ ok: false, error: error.code }, 422);
       return reply({ ok: false, error: "INVALID_INPUT" }, 400);
     }
     recordMerchantSettingsFailure("save", String(intent), shop.id, error);

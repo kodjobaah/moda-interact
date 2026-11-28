@@ -16,29 +16,40 @@ describe("Shopify billing provider diagnostics", () => {
       environment: "test",
       sink: (record) => records.push(JSON.stringify(record)),
     });
-    const cause = new Error("request token=secret-token-123 failed for merchant@example.com");
-    const error = createShopifyBillingProviderError({
-      operation: "get_active_subscription",
-      failureKind: "GRAPHQL",
-      origin: "provider_response",
-      message: "Partner marker token=secret-token-123 returned error",
-      cause,
-      httpStatus: 200,
-      providerRequestId: "request-123",
-      providerErrorExcerpt: "Partner marker password=secret-pass; email=merchant@example.com",
-      providerErrors: Array.from({ length: 6 }, (_, index) => ({
-        code: index === 0 ? "ACCESS_DENIED" : `CODE_${index}`,
-        message: index === 0 ? "Partner marker token=secret-token-123" : `marker-${index}`,
-        details: index === 0 ? "email=merchant@example.com" : undefined,
-      })),
-      sensitiveValues: ["secret-token-123"],
-    }, diagnosticLogger);
+    const cause = new Error(
+      "request token=secret-token-123 failed for merchant@example.com",
+    );
+    const error = createShopifyBillingProviderError(
+      {
+        operation: "get_active_subscription",
+        failureKind: "GRAPHQL",
+        origin: "provider_response",
+        message: "Partner marker token=secret-token-123 returned error",
+        cause,
+        httpStatus: 200,
+        providerRequestId: "request-123",
+        providerErrorExcerpt:
+          "Partner marker password=secret-pass; email=merchant@example.com",
+        providerErrors: Array.from({ length: 6 }, (_, index) => ({
+          code: index === 0 ? "ACCESS_DENIED" : `CODE_${index}`,
+          message:
+            index === 0
+              ? "Partner marker token=secret-token-123"
+              : `marker-${index}`,
+          details: index === 0 ? "email=merchant@example.com" : undefined,
+        })),
+        sensitiveValues: ["secret-token-123"],
+      },
+      diagnosticLogger,
+    );
 
     const output = records.join("\n");
     expect(error.sourceDiagnosticEmitted).toBe(true);
     expect(error.cause).toBe(cause);
     expect(output).toContain("Partner marker token=[REDACTED] returned error");
-    expect(error.message).toBe("Partner marker token=[REDACTED] returned error");
+    expect(error.message).toBe(
+      "Partner marker token=[REDACTED] returned error",
+    );
     expect(output).toContain("ACCESS_DENIED");
     expect(output).toContain("request-123");
     expect(output).toContain("providerErrorExcerpt");
@@ -58,12 +69,15 @@ describe("Shopify billing provider diagnostics", () => {
     });
     const scheduledAt = "2026-11-04T06:00:00.000Z";
 
-    createShopifyBillingProviderError({
-      operation: "schedule_retry",
-      failureKind: "MALFORMED_RESPONSE",
-      origin: "internal",
-      message: `schedule contact +447700900123 ${scheduledAt}`,
-    }, diagnosticLogger);
+    createShopifyBillingProviderError(
+      {
+        operation: "schedule_retry",
+        failureKind: "MALFORMED_RESPONSE",
+        origin: "internal",
+        message: `schedule contact +447700900123 ${scheduledAt}`,
+      },
+      diagnosticLogger,
+    );
 
     const output = records.join("\n");
     expect(output).toContain(`[REDACTED] ${scheduledAt}`);
@@ -81,12 +95,15 @@ describe("Shopify billing provider diagnostics", () => {
       sink,
     });
 
-    const error = createShopifyBillingProviderError({
-      operation: "get_active_subscription",
-      failureKind: "TRANSPORT",
-      origin: "transport",
-      message: "socket marker",
-    }, diagnosticLogger);
+    const error = createShopifyBillingProviderError(
+      {
+        operation: "get_active_subscription",
+        failureKind: "TRANSPORT",
+        origin: "transport",
+        message: "socket marker",
+      },
+      diagnosticLogger,
+    );
 
     expect(sink).toHaveBeenCalledTimes(1);
     expect(error.message).toBe("socket marker");
@@ -109,15 +126,24 @@ describe("Shopify billing provider diagnostics", () => {
       message: "Credential read failed",
     });
 
-    expect(classifyBillingVerificationFailure(providerError, occurredAt)).toEqual({
+    expect(
+      classifyBillingVerificationFailure(providerError, occurredAt),
+    ).toEqual({
       code: "PARTNER_API_ERROR",
       occurredAt,
     });
-    expect(classifyBillingVerificationFailure(configurationError, occurredAt)).toEqual({
+    expect(
+      classifyBillingVerificationFailure(configurationError, occurredAt),
+    ).toEqual({
       code: "SUBSCRIPTION_SYNC_FAILED",
       occurredAt,
     });
-    expect(classifyBillingVerificationFailure(new Error("local projection failure"), occurredAt)).toEqual({
+    expect(
+      classifyBillingVerificationFailure(
+        new Error("local projection failure"),
+        occurredAt,
+      ),
+    ).toEqual({
       code: "SUBSCRIPTION_SYNC_FAILED",
       occurredAt,
     });
@@ -131,7 +157,10 @@ describe("Shopify billing provider diagnostics", () => {
       sink: (record) => records.push(JSON.stringify(record)),
     });
     const cause = new Error("password=secret-pass for merchant@example.com");
-    const error = Object.assign(new Error("write failed password=secret-pass", { cause }), { code: "P2025" });
+    const error = Object.assign(
+      new Error("write failed password=secret-pass", { cause }),
+      { code: "P2025" },
+    );
     const input = {
       event: "billing.test.failed",
       operation: "test_write",

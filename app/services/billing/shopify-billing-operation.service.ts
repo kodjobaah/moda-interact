@@ -17,12 +17,14 @@ export type ShopifyUsageEventQuote = Readonly<{
   pricingMode: MerchantPricingUsagePricingMode;
   currency: string;
   fixedUnitAmountMinor: number | null;
-  tiers: ReadonlyArray<Readonly<{
-    position: number;
-    upTo: number | null;
-    amountPerUnitMinor: number;
-    flatAmountMinor: number;
-  }>>;
+  tiers: ReadonlyArray<
+    Readonly<{
+      position: number;
+      upTo: number | null;
+      amountPerUnitMinor: number;
+      flatAmountMinor: number;
+    }>
+  >;
 }>;
 
 type RecurringOperationKind = Exclude<BillingOperationKind, "ONE_TIME_CHARGE">;
@@ -57,15 +59,23 @@ function assertCanonicalField(value: string): void {
   for (const character of value) {
     const codePoint = character.codePointAt(0);
     if (codePoint !== undefined && (codePoint <= 31 || codePoint === 127)) {
-      throw new TypeError("Shopify billing operation identity contains control characters.");
+      throw new TypeError(
+        "Shopify billing operation identity contains control characters.",
+      );
     }
   }
 }
 
-function operationRequestKey(kind: BillingOperationKind, fields: readonly string[]): string {
+function operationRequestKey(
+  kind: BillingOperationKind,
+  fields: readonly string[],
+): string {
   for (const value of fields) assertCanonicalField(value);
   const digest = createHash("sha256")
-    .update(`shopify-billing-operation-key-v1\n${kind}\n${fields.join("\n")}\n`, "utf8")
+    .update(
+      `shopify-billing-operation-key-v1\n${kind}\n${fields.join("\n")}\n`,
+      "utf8",
+    )
     .digest("hex");
   return `shopify:${kind.toLowerCase()}:${digest}`;
 }
@@ -88,7 +98,9 @@ export function shopifyRecurringRequestFingerprint(input: {
       !input.quotedCurrency ||
       !input.quotedBillingPeriod
     ) {
-      throw new TypeError("Shopify recurring billing operation quote is invalid.");
+      throw new TypeError(
+        "Shopify recurring billing operation quote is invalid.",
+      );
     }
     assertCanonicalField(input.merchantPricingPlanId);
     assertCanonicalField(String(input.quotedAmountMinor));
@@ -101,7 +113,9 @@ export function shopifyRecurringRequestFingerprint(input: {
       input.quotedBillingPeriod,
     );
   }
-  return createHash("sha256").update(`${fields.join("\n")}\n`, "utf8").digest();
+  return createHash("sha256")
+    .update(`${fields.join("\n")}\n`, "utf8")
+    .digest();
 }
 
 export function shopifyOneTimeChargeRequestFingerprint(input: {
@@ -115,34 +129,55 @@ export function shopifyOneTimeChargeRequestFingerprint(input: {
     input.merchantPricingUsageEventId,
     String(input.quotedAmountMinor),
     input.quotedCurrency,
-  ]) assertCanonicalField(value);
-  if (!Number.isSafeInteger(input.quotedAmountMinor) || input.quotedAmountMinor <= 0) {
-    throw new TypeError("Shopify one-time charge quote must be a positive safe integer.");
+  ])
+    assertCanonicalField(value);
+  if (
+    !Number.isSafeInteger(input.quotedAmountMinor) ||
+    input.quotedAmountMinor <= 0
+  ) {
+    throw new TypeError(
+      "Shopify one-time charge quote must be a positive safe integer.",
+    );
   }
-  return createHash("sha256").update(
-    `shopify-billing-topup-v1\nONE_TIME_CHARGE\n${input.shopId}\n${input.merchantPricingUsageEventId}\n${input.quotedAmountMinor}\n${input.quotedCurrency}\n`,
-    "utf8",
-  ).digest();
+  return createHash("sha256")
+    .update(
+      `shopify-billing-topup-v1\nONE_TIME_CHARGE\n${input.shopId}\n${input.merchantPricingUsageEventId}\n${input.quotedAmountMinor}\n${input.quotedCurrency}\n`,
+      "utf8",
+    )
+    .digest();
 }
 
 function safeCost(value: number): number | null {
-  return Number.isFinite(value) && Number.isSafeInteger(value) && value >= 0 ? value : null;
+  return Number.isFinite(value) && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
 }
 
-function pricingCostMinor(event: ShopifyUsageEventQuote, quantity: number): number | null {
+function pricingCostMinor(
+  event: ShopifyUsageEventQuote,
+  quantity: number,
+): number | null {
   if (!Number.isFinite(quantity) || quantity < 0) return null;
   if (quantity === 0) return 0;
 
   if (event.pricingMode === MerchantPricingUsagePricingMode.FIXED) {
-    if (!Number.isSafeInteger(event.fixedUnitAmountMinor) || (event.fixedUnitAmountMinor ?? -1) < 0) return null;
+    if (
+      !Number.isSafeInteger(event.fixedUnitAmountMinor) ||
+      (event.fixedUnitAmountMinor ?? -1) < 0
+    )
+      return null;
     return safeCost((event.fixedUnitAmountMinor ?? 0) * quantity);
   }
 
-  const tiers = [...event.tiers].sort((left, right) => left.position - right.position);
+  const tiers = [...event.tiers].sort(
+    (left, right) => left.position - right.position,
+  );
   if (!tiers.length) return null;
 
   if (event.pricingMode === MerchantPricingUsagePricingMode.VOLUME) {
-    const tier = tiers.find((candidate) => candidate.upTo === null || quantity <= candidate.upTo);
+    const tier = tiers.find(
+      (candidate) => candidate.upTo === null || quantity <= candidate.upTo,
+    );
     if (!tier) return null;
     return safeCost(tier.flatAmountMinor + tier.amountPerUnitMinor * quantity);
   }
@@ -168,7 +203,8 @@ export function calculateShopifyUsageEventQuoteMinor(
   providerQuantityBefore: number,
 ): number | null {
   if (event.pricingMode === MerchantPricingUsagePricingMode.FIXED) {
-    return Number.isSafeInteger(event.fixedUnitAmountMinor) && (event.fixedUnitAmountMinor ?? 0) > 0
+    return Number.isSafeInteger(event.fixedUnitAmountMinor) &&
+      (event.fixedUnitAmountMinor ?? 0) > 0
       ? event.fixedUnitAmountMinor
       : null;
   }
@@ -197,11 +233,14 @@ export class ShopifyBillingOperationService {
     },
   ): Promise<BillingOperation> {
     await this.assertShopifyShop(transaction, input.shopId);
-    const quote = await this.requirePaidPlanQuote(transaction, input.targetPlanHandle);
-    const requestKey = operationRequestKey(BillingOperationKind.SUBSCRIPTION_CREATE, [
-      input.subscriptionId,
-      quote.id,
-    ]);
+    const quote = await this.requirePaidPlanQuote(
+      transaction,
+      input.targetPlanHandle,
+    );
+    const requestKey = operationRequestKey(
+      BillingOperationKind.SUBSCRIPTION_CREATE,
+      [input.subscriptionId, quote.id],
+    );
     const requestFingerprint = shopifyRecurringRequestFingerprint({
       kind: BillingOperationKind.SUBSCRIPTION_CREATE,
       shopId: input.shopId,
@@ -259,7 +298,8 @@ export class ShopifyBillingOperationService {
     if (!target?.isActive) return null;
 
     const providerReference = nonBlank(input.providerReference);
-    const boundary = input.providerPendingEffectiveAt ??
+    const boundary =
+      input.providerPendingEffectiveAt ??
       input.providerCurrentPeriodStart ??
       input.providerCurrentPeriodEnd ??
       input.previousCurrentPeriodEnd?.toISOString() ??
@@ -270,9 +310,14 @@ export class ShopifyBillingOperationService {
         !input.previousPlanHandle ||
         input.previousPlanHandle === input.requestedPlanHandle ||
         (input.result !== "no_active" && !input.cancelAtEndOfCycle)
-      ) return null;
+      )
+        return null;
       const kind = BillingOperationKind.CANCEL;
-      const requestKey = operationRequestKey(kind, [input.subscriptionId, input.previousPlanHandle, boundary]);
+      const requestKey = operationRequestKey(kind, [
+        input.subscriptionId,
+        input.previousPlanHandle,
+        boundary,
+      ]);
       const requestFingerprint = shopifyRecurringRequestFingerprint({
         kind,
         shopId: input.shopId,
@@ -306,7 +351,8 @@ export class ShopifyBillingOperationService {
       target.billingPeriod !== MerchantPricingBillingPeriod.EVERY_30_DAYS ||
       input.result === "no_active" ||
       input.previousPlanHandle === input.requestedPlanHandle
-    ) return null;
+    )
+      return null;
 
     if (!input.previousPlanHandle) return null;
 
@@ -325,9 +371,10 @@ export class ShopifyBillingOperationService {
       quotedCurrency: target.currency,
       quotedBillingPeriod: target.billingPeriod,
     });
-    const desiredState = input.result === "current"
-      ? BillingOperationState.CONFIRMED
-      : BillingOperationState.AWAITING_CONFIRMATION;
+    const desiredState =
+      input.result === "current"
+        ? BillingOperationState.CONFIRMED
+        : BillingOperationState.AWAITING_CONFIRMATION;
     const operation = await this.ensureOperation(transaction, {
       shopId: input.shopId,
       kind,
@@ -363,7 +410,9 @@ export class ShopifyBillingOperationService {
       quotedAmountMinor === null ||
       !/^[A-Z]{3}$/.test(input.usageEvent.currency)
     ) {
-      throw new Error("Shopify one-time charge operation quote is unavailable.");
+      throw new Error(
+        "Shopify one-time charge operation quote is unavailable.",
+      );
     }
     const requestKey = `shopify:one-time-charge:${input.purchaseId}`;
     const requestFingerprint = shopifyOneTimeChargeRequestFingerprint({
@@ -455,11 +504,17 @@ export class ShopifyBillingOperationService {
     ): Promise<void> => {
       if (!providerReference) return;
       const matchesOutcome = (operation: BillingOperation) =>
-        operation.kind === kind && (planId === undefined || operation.merchantPricingPlanId === planId);
+        operation.kind === kind &&
+        (planId === undefined || operation.merchantPricingPlanId === planId);
       const confirmedNull = confirmedWithoutReference.filter(matchesOutcome);
       const confirmedExact = confirmedWithReference.filter(matchesOutcome);
       const openCandidates = operations.filter(matchesOutcome);
-      if (confirmedNull.length !== 1 || confirmedExact.length !== 0 || openCandidates.length !== 0) return;
+      if (
+        confirmedNull.length !== 1 ||
+        confirmedExact.length !== 0 ||
+        openCandidates.length !== 0
+      )
+        return;
 
       await transaction.billingOperation.updateMany({
         where: {
@@ -469,90 +524,143 @@ export class ShopifyBillingOperationService {
         },
         data: { providerReference },
       });
-      const updated = await this.requireOperation(transaction, confirmedNull[0]!.id);
-      if (updated.state !== BillingOperationState.CONFIRMED || updated.providerReference !== providerReference) {
-        throw new Error("Shopify billing operation provider reference conflict.");
+      const updated = await this.requireOperation(
+        transaction,
+        confirmedNull[0]!.id,
+      );
+      if (
+        updated.state !== BillingOperationState.CONFIRMED ||
+        updated.providerReference !== providerReference
+      ) {
+        throw new Error(
+          "Shopify billing operation provider reference conflict.",
+        );
       }
     };
 
     if (currentPlan) {
-      const createsForPlan = operations.filter((operation) =>
-        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const createsForPlan = operations.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+          operation.merchantPricingPlanId === currentPlan.id,
       );
       const exactCreates = providerReference
-        ? createsForPlan.filter((operation) => operation.providerReference === providerReference)
+        ? createsForPlan.filter(
+            (operation) => operation.providerReference === providerReference,
+          )
         : createsForPlan;
-      const unresolvedCreates = createsForPlan.filter((operation) => operation.providerReference === null);
-      const confirmedNullCreates = confirmedWithoutReference.filter((operation) =>
-        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const unresolvedCreates = createsForPlan.filter(
+        (operation) => operation.providerReference === null,
       );
-      const confirmedExactCreates = confirmedWithReference.filter((operation) =>
-        operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const confirmedNullCreates = confirmedWithoutReference.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+          operation.merchantPricingPlanId === currentPlan.id,
       );
-      const matchingCreate = exactCreates.length === 1
-        ? exactCreates[0]
-        : exactCreates.length === 0 && unresolvedCreates.length === 1 &&
-          confirmedNullCreates.length === 0 && confirmedExactCreates.length === 0
-          ? unresolvedCreates[0]
-          : null;
+      const confirmedExactCreates = confirmedWithReference.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.SUBSCRIPTION_CREATE &&
+          operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const matchingCreate =
+        exactCreates.length === 1
+          ? exactCreates[0]
+          : exactCreates.length === 0 &&
+              unresolvedCreates.length === 1 &&
+              confirmedNullCreates.length === 0 &&
+              confirmedExactCreates.length === 0
+            ? unresolvedCreates[0]
+            : null;
       if (matchingCreate) {
-        await this.confirmOperation(transaction, matchingCreate, providerReference);
+        await this.confirmOperation(
+          transaction,
+          matchingCreate,
+          providerReference,
+        );
       }
-      await enrichConfirmedReference(BillingOperationKind.SUBSCRIPTION_CREATE, currentPlan.id);
+      await enrichConfirmedReference(
+        BillingOperationKind.SUBSCRIPTION_CREATE,
+        currentPlan.id,
+      );
 
-      const switches = operations.filter((operation) =>
-        operation.kind === BillingOperationKind.PLAN_SWITCH &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const switches = operations.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.PLAN_SWITCH &&
+          operation.merchantPricingPlanId === currentPlan.id,
       );
       const exactSwitches = providerReference
-        ? switches.filter((operation) => operation.providerReference === providerReference)
+        ? switches.filter(
+            (operation) => operation.providerReference === providerReference,
+          )
         : switches;
-      const unresolvedSwitches = switches.filter((operation) => operation.providerReference === null);
-      const confirmedNullSwitches = confirmedWithoutReference.filter((operation) =>
-        operation.kind === BillingOperationKind.PLAN_SWITCH &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const unresolvedSwitches = switches.filter(
+        (operation) => operation.providerReference === null,
       );
-      const confirmedExactSwitches = confirmedWithReference.filter((operation) =>
-        operation.kind === BillingOperationKind.PLAN_SWITCH &&
-        operation.merchantPricingPlanId === currentPlan.id,
+      const confirmedNullSwitches = confirmedWithoutReference.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.PLAN_SWITCH &&
+          operation.merchantPricingPlanId === currentPlan.id,
       );
-      const matchingSwitch = exactSwitches.length === 1
-        ? exactSwitches[0]
-        : exactSwitches.length === 0 && unresolvedSwitches.length === 1 &&
-          confirmedNullSwitches.length === 0 && confirmedExactSwitches.length === 0
-          ? unresolvedSwitches[0]
-          : null;
+      const confirmedExactSwitches = confirmedWithReference.filter(
+        (operation) =>
+          operation.kind === BillingOperationKind.PLAN_SWITCH &&
+          operation.merchantPricingPlanId === currentPlan.id,
+      );
+      const matchingSwitch =
+        exactSwitches.length === 1
+          ? exactSwitches[0]
+          : exactSwitches.length === 0 &&
+              unresolvedSwitches.length === 1 &&
+              confirmedNullSwitches.length === 0 &&
+              confirmedExactSwitches.length === 0
+            ? unresolvedSwitches[0]
+            : null;
       if (matchingSwitch) {
-        await this.confirmOperation(transaction, matchingSwitch, providerReference);
+        await this.confirmOperation(
+          transaction,
+          matchingSwitch,
+          providerReference,
+        );
       }
-      await enrichConfirmedReference(BillingOperationKind.PLAN_SWITCH, currentPlan.id);
+      await enrichConfirmedReference(
+        BillingOperationKind.PLAN_SWITCH,
+        currentPlan.id,
+      );
     }
 
     if (input.cancelAtEndOfCycle) {
-      const cancellations = operations.filter((operation) =>
-        operation.kind === BillingOperationKind.CANCEL,
+      const cancellations = operations.filter(
+        (operation) => operation.kind === BillingOperationKind.CANCEL,
       );
       const exactCancellations = providerReference
-        ? cancellations.filter((operation) => operation.providerReference === providerReference)
+        ? cancellations.filter(
+            (operation) => operation.providerReference === providerReference,
+          )
         : cancellations;
-      const unresolvedCancellations = cancellations.filter((operation) => operation.providerReference === null);
-      const confirmedNullCancellations = confirmedWithoutReference.filter((operation) =>
-        operation.kind === BillingOperationKind.CANCEL,
+      const unresolvedCancellations = cancellations.filter(
+        (operation) => operation.providerReference === null,
       );
-      const confirmedExactCancellations = confirmedWithReference.filter((operation) =>
-        operation.kind === BillingOperationKind.CANCEL,
+      const confirmedNullCancellations = confirmedWithoutReference.filter(
+        (operation) => operation.kind === BillingOperationKind.CANCEL,
       );
-      const matchingCancellation = exactCancellations.length === 1
-        ? exactCancellations[0]
-        : exactCancellations.length === 0 && unresolvedCancellations.length === 1 &&
-          confirmedNullCancellations.length === 0 && confirmedExactCancellations.length === 0
-          ? unresolvedCancellations[0]
-          : null;
+      const confirmedExactCancellations = confirmedWithReference.filter(
+        (operation) => operation.kind === BillingOperationKind.CANCEL,
+      );
+      const matchingCancellation =
+        exactCancellations.length === 1
+          ? exactCancellations[0]
+          : exactCancellations.length === 0 &&
+              unresolvedCancellations.length === 1 &&
+              confirmedNullCancellations.length === 0 &&
+              confirmedExactCancellations.length === 0
+            ? unresolvedCancellations[0]
+            : null;
       if (matchingCancellation) {
-        await this.confirmOperation(transaction, matchingCancellation, providerReference);
+        await this.confirmOperation(
+          transaction,
+          matchingCancellation,
+          providerReference,
+        );
       }
       await enrichConfirmedReference(BillingOperationKind.CANCEL);
     }
@@ -618,7 +726,10 @@ export class ShopifyBillingOperationService {
         `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has planKind "${String(plan.planKind)}"; expected "PAID_METERED".`,
       );
     }
-    if (!Number.isSafeInteger(plan.recurringAmountMinor) || plan.recurringAmountMinor <= 0) {
+    if (
+      !Number.isSafeInteger(plan.recurringAmountMinor) ||
+      plan.recurringAmountMinor <= 0
+    ) {
       throw new ShopifyPaidBillingQuoteUnavailableError(
         `Shopify paid billing quote unavailable: MerchantPricingPlan "${planHandle}" (${plan.id}) has recurringAmountMinor "${String(plan.recurringAmountMinor)}"; expected a positive safe integer.`,
       );
@@ -682,7 +793,8 @@ export class ShopifyBillingOperationService {
       operation.shopId !== input.shopId ||
       operation.kind !== input.kind ||
       operation.merchantPricingPlanId !== input.merchantPricingPlanId ||
-      operation.merchantPricingUsageEventId !== input.merchantPricingUsageEventId ||
+      operation.merchantPricingUsageEventId !==
+        input.merchantPricingUsageEventId ||
       operation.quotedAmountMinor !== input.quotedAmountMinor ||
       operation.quotedCurrency !== input.quotedCurrency ||
       operation.quotedBillingPeriod !== input.quotedBillingPeriod ||
@@ -699,10 +811,18 @@ export class ShopifyBillingOperationService {
       throw new Error("Shopify billing operation provider reference conflict.");
     }
     if (input.state === BillingOperationState.CONFIRMED) {
-      return this.confirmOperation(transaction, operation, input.providerReference);
+      return this.confirmOperation(
+        transaction,
+        operation,
+        input.providerReference,
+      );
     }
     if (input.providerReference && operation.providerReference === null) {
-      operation = await this.attachProviderReference(transaction, operation, input.providerReference);
+      operation = await this.attachProviderReference(
+        transaction,
+        operation,
+        input.providerReference,
+      );
     }
     if (
       input.state === BillingOperationState.AWAITING_CONFIRMATION &&
@@ -714,7 +834,10 @@ export class ShopifyBillingOperationService {
           state: BillingOperationState.INITIATING,
           providerReference: operation.providerReference,
         },
-        data: { state: BillingOperationState.AWAITING_CONFIRMATION, lastErrorCode: null },
+        data: {
+          state: BillingOperationState.AWAITING_CONFIRMATION,
+          lastErrorCode: null,
+        },
       });
       return this.requireOperation(transaction, operation.id);
     }
@@ -738,7 +861,9 @@ export class ShopifyBillingOperationService {
     await transaction.billingOperation.updateMany({
       where: {
         id: operation.id,
-        state: { in: [...OPEN_OPERATION_STATES, BillingOperationState.CONFIRMED] },
+        state: {
+          in: [...OPEN_OPERATION_STATES, BillingOperationState.CONFIRMED],
+        },
         ...(operation.providerReference
           ? { providerReference: operation.providerReference }
           : { providerReference: null }),
@@ -750,7 +875,10 @@ export class ShopifyBillingOperationService {
       },
     });
     const confirmed = await this.requireOperation(transaction, operation.id);
-    if (providerReference && confirmed.providerReference !== providerReference) {
+    if (
+      providerReference &&
+      confirmed.providerReference !== providerReference
+    ) {
       throw new Error("Shopify billing operation provider reference conflict.");
     }
     return confirmed;
@@ -776,8 +904,13 @@ export class ShopifyBillingOperationService {
     transaction: BillingOperationTransaction,
     id: string,
   ): Promise<BillingOperation> {
-    const operation = await transaction.billingOperation.findUnique({ where: { id } });
-    if (!operation) throw new Error("Shopify billing operation disappeared during reconciliation.");
+    const operation = await transaction.billingOperation.findUnique({
+      where: { id },
+    });
+    if (!operation)
+      throw new Error(
+        "Shopify billing operation disappeared during reconciliation.",
+      );
     return operation;
   }
 }

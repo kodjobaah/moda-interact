@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 
 import { focusRecoveryConversationAnchor } from "../../app/routes/app/recovery-detail/recovery-conversation-thread";
 
-const threadSource = readFileSync("app/routes/app/recovery-detail/recovery-conversation-thread.tsx", "utf8");
+const threadSource = readFileSync(
+  "app/routes/app/recovery-detail/recovery-conversation-thread.tsx",
+  "utf8",
+);
 
 describe("recovery conversation anchor", () => {
   afterEach(() => {
@@ -37,6 +40,8 @@ describe("recovery conversation anchor", () => {
   it("wires initial hash navigation to the stable transcript section and heading", () => {
     expect(threadSource).toContain('id="recovery-conversation"');
     expect(threadSource).toContain('id="transcript-heading" tabIndex={-1}');
-    expect(threadSource).toContain("window.requestAnimationFrame(() => { focusRecoveryConversationAnchor(); })");
+    expect(threadSource).toContain(
+      "window.requestAnimationFrame(() => { focusRecoveryConversationAnchor(); })",
+    );
   });
 });

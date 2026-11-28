@@ -15,12 +15,18 @@ import { InvalidRecoveryDetailQuery } from "../../../services/recoveries/detail-
 import { recordRecoveryFailure } from "../../../services/recoveries/recovery-observability.server";
 import type { DetailData, Section } from "./state";
 
-async function section<T>(read: () => Promise<T | null>, shopId: string, kind: string, recoveryId: string): Promise<Section<T>> {
+async function section<T>(
+  read: () => Promise<T | null>,
+  shopId: string,
+  kind: string,
+  recoveryId: string,
+): Promise<Section<T>> {
   try {
     const page = await read();
     return { state: page === null ? "unavailable" : "ready", page };
   } catch (error) {
-    if (!(error instanceof InvalidRecoveryDetailQuery)) recordRecoveryFailure(`read_${kind}`, shopId, error, false, recoveryId);
+    if (!(error instanceof InvalidRecoveryDetailQuery))
+      recordRecoveryFailure(`read_${kind}`, shopId, error, false, recoveryId);
     return {
       state: error instanceof InvalidRecoveryDetailQuery ? "invalid" : "error",
       page: null,
@@ -62,7 +68,13 @@ export async function loadRecoveryDetail({
     reader = await createRecoveryDetailReader(identity);
     result.detail = reader?.detail ?? null;
   } catch (error) {
-    recordRecoveryFailure("read_detail", shopId, error, false, identity.recoveryId);
+    recordRecoveryFailure(
+      "read_detail",
+      shopId,
+      error,
+      false,
+      identity.recoveryId,
+    );
     result.state = "error";
     return data(result, { status: 503 });
   }
@@ -71,18 +83,39 @@ export async function loadRecoveryDetail({
     return data(result, { status: 404 });
   }
   [result.messages, result.related] = await Promise.all([
-    section(() => reader.readMessages(), shopId, "messages", identity.recoveryId),
+    section(
+      () => reader.readMessages(),
+      shopId,
+      "messages",
+      identity.recoveryId,
+    ),
     section(() => reader.readRelated(), shopId, "related", identity.recoveryId),
   ]);
-  if (result.detail.conversation?.followUp.eligible && !result.detail.conversation.followUp.used) {
+  if (
+    result.detail.conversation?.followUp.eligible &&
+    !result.detail.conversation.followUp.used
+  ) {
     try {
-      result.templates = await readCurrentFollowUpTemplates(shopId, result.detail.conversation.languageTag, undefined, access.merchant.shop);
+      result.templates = await readCurrentFollowUpTemplates(
+        shopId,
+        result.detail.conversation.languageTag,
+        undefined,
+        access.merchant.shop,
+      );
     } catch (error) {
-      recordRecoveryFailure("read_templates", shopId, error, false, identity.recoveryId);
+      recordRecoveryFailure(
+        "read_templates",
+        shopId,
+        error,
+        false,
+        identity.recoveryId,
+      );
       result.templates = []; // History stays available; never guess a template when sender/config is unavailable.
     }
   }
-  if (result.detail.conversation) result.detail.conversation.followUp.hasApprovedTemplate = result.templates.length > 0;
+  if (result.detail.conversation)
+    result.detail.conversation.followUp.hasApprovedTemplate =
+      result.templates.length > 0;
   return data(result);
 }
 export async function loadRecoverySection(
@@ -99,8 +132,18 @@ export async function loadRecoverySection(
   };
   const result =
     kind === "messages"
-      ? await section(() => readRecoveryMessages(input), shopId, "messages", input.recoveryId)
-      : await section(() => readRelatedRecoveries(input), shopId, "related", input.recoveryId);
+      ? await section(
+          () => readRecoveryMessages(input),
+          shopId,
+          "messages",
+          input.recoveryId,
+        )
+      : await section(
+          () => readRelatedRecoveries(input),
+          shopId,
+          "related",
+          input.recoveryId,
+        );
   return data(result, {
     status:
       result.state === "unavailable"

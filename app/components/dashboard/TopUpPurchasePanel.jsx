@@ -14,7 +14,8 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
   const navigation = useNavigation();
   const purchaseSubmissionLockRef = React.useRef(false);
   const navigationObservedBusyRef = React.useRef(false);
-  const [submittingEventHandle, setSubmittingEventHandle] = React.useState(null);
+  const [submittingEventHandle, setSubmittingEventHandle] =
+    React.useState(null);
   const purchaseSubmissionInFlight = submittingEventHandle !== null;
 
   React.useEffect(() => {
@@ -41,130 +42,260 @@ export default function TopUpPurchasePanel({ merchantUi, topUpState }) {
     unresolvedPurchases.map((entry) => [entry.eventHandle, entry]),
   );
   const purchaseLabel = purchase
-    ? (purchase.label ?? offers.find((offer) => offer.eventHandle === purchase.eventHandle)?.label ?? purchase.eventHandle)
+    ? (purchase.label ??
+      offers.find((offer) => offer.eventHandle === purchase.eventHandle)
+        ?.label ??
+      purchase.eventHandle)
     : null;
   const heldForRefundAmount =
     purchase?.status === "WITHDRAWN"
       ? Math.max(purchase.currentAmount - (purchase.reservedAmount ?? 0), 0)
       : 0;
 
-  return <section className="moda-billing-panel">
-    <div className="moda-panel-heading-row">
-      <div>
-        <div className="moda-eyebrow">{i18n.t("billingCommerce.topup.eyebrow")}</div>
-        <h2>{i18n.t("billingCommerce.topup.title")}</h2>
-        <p>{i18n.t("billingCommerce.topup.description")}</p>
-      </div>
-    </div>
-    <div className="moda-credit-balance-grid">
-      {topUpState.freeLifetime ? <div className="moda-credit-summary">
-        <div className="moda-credit-icon">∞</div>
+  return (
+    <section className="moda-billing-panel">
+      <div className="moda-panel-heading-row">
         <div>
-          <strong>{i18n.formatNumber(topUpState.freeLifetime.remaining)}</strong>
-          <span>{i18n.t("billingCommerce.lifetimeFree")}</span>
-          <small>{i18n.t("billing.lifetimeFreeAllowance", { remaining: topUpState.freeLifetime.remaining, allowance: topUpState.freeLifetime.granted })}</small>
+          <div className="moda-eyebrow">
+            {i18n.t("billingCommerce.topup.eyebrow")}
+          </div>
+          <h2>{i18n.t("billingCommerce.topup.title")}</h2>
+          <p>{i18n.t("billingCommerce.topup.description")}</p>
         </div>
-      </div> : null}
-      <div className="moda-credit-summary">
-        <div className="moda-credit-icon">+</div>
-        <div><strong>{i18n.formatNumber(topUpState.purchasedCreditsAvailable)}</strong><span>{i18n.t("billingCommerce.purchasedCredits")}</span></div>
-        <p>{i18n.t("billingCommerce.topup.nonExpiring")}</p>
       </div>
-    </div>
-    <div className="moda-info-banner">
-      <div className="moda-info-banner-icon">↗</div>
-      <div><strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong><p>{i18n.t("billingCommerce.topup.billingNote")}</p></div>
-    </div>
-    {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.verificationUnavailable")}</div> : offers.length === 0 ? <div className="moda-empty-state">{i18n.t("billingCommerce.topup.none")}</div> : <div className="moda-topup-grid">{offers.map((offer) => {
-      const quote = offer.quotedPackPrice;
-      const currency = quote?.currency;
-      const amountMinor = quote?.amountMinor;
-      const currencyDigits = currency && /^[A-Z]{3}$/.test(currency)
-        ? new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions().maximumFractionDigits
-        : null;
-      const packPrice = Number.isSafeInteger(amountMinor) && amountMinor > 0 && typeof currencyDigits === "number"
-        ? i18n.formatMoney(amountMinor / (10 ** currencyDigits), currency)
-        : null;
-      const unresolvedPurchase = unresolvedByEventHandle.get(offer.eventHandle);
-      const reportState = unresolvedPurchase?.usageReportState;
-      const offerPurchaseEligible = topUpState.purchaseEligible && !unresolvedPurchase;
-      return <article className="moda-topup-card moda-topup-card-featured" key={offer.eventHandle}>
-        <div className="moda-topup-pack-label">{offer.label}</div>
-        <div className="moda-topup-credit-count"><strong>{offer.creditsGranted}</strong><span>{i18n.t("billingCommerce.recoveryConversations")}</span></div>
-        {packPrice ? <p>{packPrice}</p> : null}
-        <form method="post" onSubmit={(event) => {
-          event.preventDefault();
-
-          if (!offerPurchaseEligible || purchaseSubmissionLockRef.current) return;
-
-          purchaseSubmissionLockRef.current = true;
-          navigationObservedBusyRef.current = false;
-          setSubmittingEventHandle(offer.eventHandle);
-
-          const formData = new FormData(event.currentTarget);
-          formData.set("purchaseId", crypto.randomUUID());
-
-          try {
-            submit(formData, { method: "post" });
-          } catch (error) {
-            purchaseSubmissionLockRef.current = false;
-            navigationObservedBusyRef.current = false;
-            setSubmittingEventHandle(null);
-            throw error;
-          }
-        }}>
-          <input type="hidden" name="intent" value="BUY_RECOVERY_CREDIT_PACK" />
-          <input type="hidden" name="purchaseId" value="" />
-          <input type="hidden" name="eventHandle" value={offer.eventHandle} />
-          <button
-            className="moda-action-button moda-action-button-primary moda-topup-buy-button"
-            type="submit"
-            disabled={!offerPurchaseEligible || purchaseSubmissionInFlight}
-            aria-label={`${i18n.t("billingCommerce.buy")} ${i18n.formatNumber(offer.creditsGranted)} ${i18n.t("billingCommerce.recoveryConversations")}`}
-          >
-            {submittingEventHandle === offer.eventHandle
-              ? i18n.t("billingPurchases.submitting")
-              : i18n.t("billingCommerce.buy")}
-          </button>
-        </form>
-        {unresolvedPurchase && reportState === "RETRYABLE" ? <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p> : null}
-        {unresolvedPurchase && reportState === "NEEDS_ATTENTION" ? <p>{i18n.t("billingCommerce.topup.reportingNeedsAttention")}</p> : null}
-        {unresolvedPurchase && reportState !== "RETRYABLE" && reportState !== "NEEDS_ATTENTION" ? <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p> : null}
-      </article>;
-    })}</div>}
-    {purchase && purchase.status !== "REQUESTED" && statuses.includes(purchase.status) ? <div className="moda-latest-purchase-summary">
-      <div>
-        <span>{i18n.t("billingPurchases.purchaseLabel")}</span>
-        <strong>{purchaseLabel}</strong>
+      <div className="moda-credit-balance-grid">
+        {topUpState.freeLifetime ? (
+          <div className="moda-credit-summary">
+            <div className="moda-credit-icon">∞</div>
+            <div>
+              <strong>
+                {i18n.formatNumber(topUpState.freeLifetime.remaining)}
+              </strong>
+              <span>{i18n.t("billingCommerce.lifetimeFree")}</span>
+              <small>
+                {i18n.t("billing.lifetimeFreeAllowance", {
+                  remaining: topUpState.freeLifetime.remaining,
+                  allowance: topUpState.freeLifetime.granted,
+                })}
+              </small>
+            </div>
+          </div>
+        ) : null}
+        <div className="moda-credit-summary">
+          <div className="moda-credit-icon">+</div>
+          <div>
+            <strong>
+              {i18n.formatNumber(topUpState.purchasedCreditsAvailable)}
+            </strong>
+            <span>{i18n.t("billingCommerce.purchasedCredits")}</span>
+          </div>
+          <p>{i18n.t("billingCommerce.topup.nonExpiring")}</p>
+        </div>
       </div>
-      <div>
-        <span>{i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}</span>
-        {purchase.status === "WITHDRAWN" ? (
-          <strong>
-            {i18n.t("billingPurchases.refundSummary", {
-              current: i18n.formatNumber(purchase.currentAmount),
-              reserved: i18n.formatNumber(purchase.reservedAmount ?? 0),
-              available: i18n.formatNumber(heldForRefundAmount),
-            })}
-          </strong>
-        ) : (
-          <strong>{i18n.formatNumber(purchase.currentAmount)} {i18n.t("billingPurchases.availableCredits")}</strong>
-        )}
+      <div className="moda-info-banner">
+        <div className="moda-info-banner-icon">↗</div>
+        <div>
+          <strong>{i18n.t("billingCommerce.topup.planBenefit")}</strong>
+          <p>{i18n.t("billingCommerce.topup.billingNote")}</p>
+        </div>
       </div>
-    </div> : null}
-  </section>;
+      {topUpState.offerVerificationState === "VERIFICATION_UNAVAILABLE" ? (
+        <div className="moda-empty-state">
+          {i18n.t("billingCommerce.topup.verificationUnavailable")}
+        </div>
+      ) : offers.length === 0 ? (
+        <div className="moda-empty-state">
+          {i18n.t("billingCommerce.topup.none")}
+        </div>
+      ) : (
+        <div className="moda-topup-grid">
+          {offers.map((offer) => {
+            const quote = offer.quotedPackPrice;
+            const currency = quote?.currency;
+            const amountMinor = quote?.amountMinor;
+            const currencyDigits =
+              currency && /^[A-Z]{3}$/.test(currency)
+                ? new Intl.NumberFormat("en", {
+                    style: "currency",
+                    currency,
+                  }).resolvedOptions().maximumFractionDigits
+                : null;
+            const packPrice =
+              Number.isSafeInteger(amountMinor) &&
+              amountMinor > 0 &&
+              typeof currencyDigits === "number"
+                ? i18n.formatMoney(amountMinor / 10 ** currencyDigits, currency)
+                : null;
+            const unresolvedPurchase = unresolvedByEventHandle.get(
+              offer.eventHandle,
+            );
+            const reportState = unresolvedPurchase?.usageReportState;
+            const offerPurchaseEligible =
+              topUpState.purchaseEligible && !unresolvedPurchase;
+            return (
+              <article
+                className="moda-topup-card moda-topup-card-featured"
+                key={offer.eventHandle}
+              >
+                <div className="moda-topup-pack-label">{offer.label}</div>
+                <div className="moda-topup-credit-count">
+                  <strong>{offer.creditsGranted}</strong>
+                  <span>{i18n.t("billingCommerce.recoveryConversations")}</span>
+                </div>
+                {packPrice ? <p>{packPrice}</p> : null}
+                <form
+                  method="post"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+
+                    if (
+                      !offerPurchaseEligible ||
+                      purchaseSubmissionLockRef.current
+                    )
+                      return;
+
+                    purchaseSubmissionLockRef.current = true;
+                    navigationObservedBusyRef.current = false;
+                    setSubmittingEventHandle(offer.eventHandle);
+
+                    const formData = new FormData(event.currentTarget);
+                    formData.set("purchaseId", crypto.randomUUID());
+
+                    try {
+                      submit(formData, { method: "post" });
+                    } catch (error) {
+                      purchaseSubmissionLockRef.current = false;
+                      navigationObservedBusyRef.current = false;
+                      setSubmittingEventHandle(null);
+                      throw error;
+                    }
+                  }}
+                >
+                  <input
+                    type="hidden"
+                    name="intent"
+                    value="BUY_RECOVERY_CREDIT_PACK"
+                  />
+                  <input type="hidden" name="purchaseId" value="" />
+                  <input
+                    type="hidden"
+                    name="eventHandle"
+                    value={offer.eventHandle}
+                  />
+                  <button
+                    className="moda-action-button moda-action-button-primary moda-topup-buy-button"
+                    type="submit"
+                    disabled={
+                      !offerPurchaseEligible || purchaseSubmissionInFlight
+                    }
+                    aria-label={`${i18n.t("billingCommerce.buy")} ${i18n.formatNumber(offer.creditsGranted)} ${i18n.t("billingCommerce.recoveryConversations")}`}
+                  >
+                    {submittingEventHandle === offer.eventHandle
+                      ? i18n.t("billingPurchases.submitting")
+                      : i18n.t("billingCommerce.buy")}
+                  </button>
+                </form>
+                {unresolvedPurchase && reportState === "RETRYABLE" ? (
+                  <p>{i18n.t("billingCommerce.topup.reportingRetry")}</p>
+                ) : null}
+                {unresolvedPurchase && reportState === "NEEDS_ATTENTION" ? (
+                  <p>
+                    {i18n.t("billingCommerce.topup.reportingNeedsAttention")}
+                  </p>
+                ) : null}
+                {unresolvedPurchase &&
+                reportState !== "RETRYABLE" &&
+                reportState !== "NEEDS_ATTENTION" ? (
+                  <p>{i18n.t("billing.recoveryCreditPurchasePending")}</p>
+                ) : null}
+              </article>
+            );
+          })}
+        </div>
+      )}
+      {purchase &&
+      purchase.status !== "REQUESTED" &&
+      statuses.includes(purchase.status) ? (
+        <div className="moda-latest-purchase-summary">
+          <div>
+            <span>{i18n.t("billingPurchases.purchaseLabel")}</span>
+            <strong>{purchaseLabel}</strong>
+          </div>
+          <div>
+            <span>
+              {i18n.t(`billingCommerce.purchaseStatus.${purchase.status}`)}
+            </span>
+            {purchase.status === "WITHDRAWN" ? (
+              <strong>
+                {i18n.t("billingPurchases.refundSummary", {
+                  current: i18n.formatNumber(purchase.currentAmount),
+                  reserved: i18n.formatNumber(purchase.reservedAmount ?? 0),
+                  available: i18n.formatNumber(heldForRefundAmount),
+                })}
+              </strong>
+            ) : (
+              <strong>
+                {i18n.formatNumber(purchase.currentAmount)}{" "}
+                {i18n.t("billingPurchases.availableCredits")}
+              </strong>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 TopUpPurchasePanel.propTypes = {
-  merchantUi: PropTypes.shape({ locale: PropTypes.string, timeZone: PropTypes.string }),
+  merchantUi: PropTypes.shape({
+    locale: PropTypes.string,
+    timeZone: PropTypes.string,
+  }),
   topUpState: PropTypes.shape({
     configured: PropTypes.bool.isRequired,
     purchaseEligible: PropTypes.bool.isRequired,
-    offers: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, label: PropTypes.string.isRequired, cataloguePosition: PropTypes.number.isRequired, creditsGranted: PropTypes.number.isRequired, providerPrice: PropTypes.shape({ currency: PropTypes.string, tiers: PropTypes.arrayOf(PropTypes.shape({ amountPerUnit: PropTypes.string, amount: PropTypes.string })) }), providerUsage: PropTypes.object, quotedPackPrice: PropTypes.shape({ amountMinor: PropTypes.number.isRequired, currency: PropTypes.string.isRequired }) })),
+    offers: PropTypes.arrayOf(
+      PropTypes.shape({
+        eventHandle: PropTypes.string.isRequired,
+        label: PropTypes.string.isRequired,
+        cataloguePosition: PropTypes.number.isRequired,
+        creditsGranted: PropTypes.number.isRequired,
+        providerPrice: PropTypes.shape({
+          currency: PropTypes.string,
+          tiers: PropTypes.arrayOf(
+            PropTypes.shape({
+              amountPerUnit: PropTypes.string,
+              amount: PropTypes.string,
+            }),
+          ),
+        }),
+        providerUsage: PropTypes.object,
+        quotedPackPrice: PropTypes.shape({
+          amountMinor: PropTypes.number.isRequired,
+          currency: PropTypes.string.isRequired,
+        }),
+      }),
+    ),
     offerVerificationState: PropTypes.string.isRequired,
-    freeLifetime: PropTypes.shape({ granted: PropTypes.number.isRequired, remaining: PropTypes.number.isRequired }),
+    freeLifetime: PropTypes.shape({
+      granted: PropTypes.number.isRequired,
+      remaining: PropTypes.number.isRequired,
+    }),
     purchasedCreditsAvailable: PropTypes.number.isRequired,
-    latestPurchase: PropTypes.shape({ status: PropTypes.oneOf(statuses).isRequired, currentAmount: PropTypes.number.isRequired, reservedAmount: PropTypes.number, usageReportState: PropTypes.string, eventHandle: PropTypes.string, label: PropTypes.string }),
-    unresolvedPurchases: PropTypes.arrayOf(PropTypes.shape({ eventHandle: PropTypes.string.isRequired, creditsGranted: PropTypes.number.isRequired, usageReportState: PropTypes.string.isRequired })),
+    latestPurchase: PropTypes.shape({
+      status: PropTypes.oneOf(statuses).isRequired,
+      currentAmount: PropTypes.number.isRequired,
+      reservedAmount: PropTypes.number,
+      usageReportState: PropTypes.string,
+      eventHandle: PropTypes.string,
+      label: PropTypes.string,
+    }),
+    unresolvedPurchases: PropTypes.arrayOf(
+      PropTypes.shape({
+        eventHandle: PropTypes.string.isRequired,
+        creditsGranted: PropTypes.number.isRequired,
+        usageReportState: PropTypes.string.isRequired,
+      }),
+    ),
   }).isRequired,
 };

@@ -60,7 +60,9 @@ export function recordShopifyWebhookTelemetry(
   }
 }
 
-function buildWebhookAttributes(entry: ShopifyWebhookTelemetryEntry): Attributes {
+function buildWebhookAttributes(
+  entry: ShopifyWebhookTelemetryEntry,
+): Attributes {
   return {
     "shopify.webhook.topic": entry.topic,
     "shopify.webhook.event_type": entry.eventType ?? undefined,

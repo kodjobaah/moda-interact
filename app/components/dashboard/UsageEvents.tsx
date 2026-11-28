@@ -25,7 +25,8 @@ export default function UsageEvents({
     const params = new URLSearchParams(embed);
     if (history && !reset) {
       params.set("bill", history.usageView);
-      if (history.chargeSource) params.set("chargeSource", history.chargeSource);
+      if (history.chargeSource)
+        params.set("chargeSource", history.chargeSource);
       if (history.selection.billId !== undefined)
         params.set("billId", history.selection.billId);
       // Freeze the resolved default for usage pagination even if a new period opens.
@@ -47,9 +48,12 @@ export default function UsageEvents({
   const paging = history?.usagePagination;
   const allTime = history?.usageView === "all";
   const sourceLabels = {
-    ALL: "usageHistory.allSources", LIFETIME_FREE_CREDITS: "usageHistory.sourceFree",
-    INCLUDED_PLAN_ALLOWANCE: "usageHistory.sourceIncluded", PURCHASED_TOP_UP: "usageHistory.sourcePurchased",
-    PROMOTIONAL_CREDITS: "usageHistory.sourcePromotional", UNATTRIBUTED: "usageHistory.sourceUnattributed",
+    ALL: "usageHistory.allSources",
+    LIFETIME_FREE_CREDITS: "usageHistory.sourceFree",
+    INCLUDED_PLAN_ALLOWANCE: "usageHistory.sourceIncluded",
+    PURCHASED_TOP_UP: "usageHistory.sourcePurchased",
+    PROMOTIONAL_CREDITS: "usageHistory.sourcePromotional",
+    UNATTRIBUTED: "usageHistory.sourceUnattributed",
   } as const;
   return (
     <main className="usage-history" dir={i18n.direction} aria-busy={busy}>
@@ -76,21 +80,30 @@ export default function UsageEvents({
         <Link
           className={allTime ? "is-active" : undefined}
           aria-current={allTime ? "page" : undefined}
-          to={href({ bill: "all", chargeSource: history?.chargeSource ?? "ALL" }, true)}
+          to={href(
+            { bill: "all", chargeSource: history?.chargeSource ?? "ALL" },
+            true,
+          )}
         >
           {t("usageHistory.allTime")}
         </Link>
         <Link
           className={history?.usageView === "current" ? "is-active" : undefined}
           aria-current={history?.usageView === "current" ? "page" : undefined}
-          to={href({ bill: "current", chargeSource: history?.chargeSource ?? "ALL" }, true)}
+          to={href(
+            { bill: "current", chargeSource: history?.chargeSource ?? "ALL" },
+            true,
+          )}
         >
           {t("usage.current")}
         </Link>
         <Link
           className={history?.usageView === "past" ? "is-active" : undefined}
           aria-current={history?.usageView === "past" ? "page" : undefined}
-          to={href({ bill: "past", chargeSource: history?.chargeSource ?? "ALL" }, true)}
+          to={href(
+            { bill: "past", chargeSource: history?.chargeSource ?? "ALL" },
+            true,
+          )}
         >
           {t("usage.past")}
         </Link>
@@ -119,50 +132,61 @@ export default function UsageEvents({
         </section>
       ) : (
         <>
-          {!allTime && <details className="usage-history__periods">
-            <summary>{t("usageHistory.periods")}</summary>
-            <ul>
-              {history.periodPage.items.map((period) => (
-                <li key={period.id}>
+          {!allTime && (
+            <details className="usage-history__periods">
+              <summary>{t("usageHistory.periods")}</summary>
+              <ul>
+                {history.periodPage.items.map((period) => (
+                  <li key={period.id}>
+                    <Link
+                      aria-current={
+                        period.id === paging?.billId ? "true" : undefined
+                      }
+                      to={href({ billId: period.id, page: "1" })}
+                    >
+                      {i18n.formatDate(period.periodStart)} —{" "}
+                      {i18n.formatDate(period.periodEnd)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <nav aria-label={t("usageHistory.periods")}>
+                {history.periodPage.previousCursor ? (
                   <Link
-                    aria-current={
-                      period.id === paging?.billId ? "true" : undefined
-                    }
-                    to={href({ billId: period.id, page: "1" })}
+                    to={href({
+                      periodCursor: history.periodPage.previousCursor,
+                    })}
                   >
-                    {i18n.formatDate(period.periodStart)} —{" "}
-                    {i18n.formatDate(period.periodEnd)}
+                    {t("usage.previous")}
                   </Link>
-                </li>
-              ))}
-            </ul>
-            <nav aria-label={t("usageHistory.periods")}>
-              {history.periodPage.previousCursor ? (
-                <Link
-                  to={href({ periodCursor: history.periodPage.previousCursor })}
-                >
-                  {t("usage.previous")}
-                </Link>
-              ) : (
-                <span aria-disabled="true">{t("usage.previous")}</span>
-              )}
-              {history.periodPage.nextCursor ? (
-                <Link
-                  to={href({ periodCursor: history.periodPage.nextCursor })}
-                >
-                  {t("usage.next")}
-                </Link>
-              ) : (
-                <span aria-disabled="true">{t("usage.next")}</span>
-              )}
-            </nav>
-          </details>}
+                ) : (
+                  <span aria-disabled="true">{t("usage.previous")}</span>
+                )}
+                {history.periodPage.nextCursor ? (
+                  <Link
+                    to={href({ periodCursor: history.periodPage.nextCursor })}
+                  >
+                    {t("usage.next")}
+                  </Link>
+                ) : (
+                  <span aria-disabled="true">{t("usage.next")}</span>
+                )}
+              </nav>
+            </details>
+          )}
           <label>
             {t("usageHistory.chargedAgainst")}{" "}
-            <select value={history.chargeSource ?? "ALL"} onChange={event =>
-              navigate(href({ chargeSource: event.target.value, page: "1" }))}>
-              {Object.entries(sourceLabels).map(([value, label]) =>
-                <option value={value} key={value}>{t(label)}</option>)}
+            <select
+              value={history.chargeSource ?? "ALL"}
+              onChange={(event) =>
+                navigate(href({ chargeSource: event.target.value, page: "1" }))
+              }
+            >
+              {Object.entries(sourceLabels).map(([value, label]) => (
+                <option value={value} key={value}>
+                  {t(label)}
+                </option>
+              ))}
             </select>
           </label>
           {history.state === "unavailable" ? (
@@ -172,8 +196,14 @@ export default function UsageEvents({
           ) : (
             <section aria-labelledby="usage-period">
               <h2 id="usage-period">
-                {allTime ? t("usageHistory.allTime") :
-                  <>{i18n.formatDate(paging.periodStart)} —{" "}{i18n.formatDate(paging.periodEnd)}</>}
+                {allTime ? (
+                  t("usageHistory.allTime")
+                ) : (
+                  <>
+                    {i18n.formatDate(paging.periodStart)} —{" "}
+                    {i18n.formatDate(paging.periodEnd)}
+                  </>
+                )}
               </h2>
               <p>
                 {t("usage.recorded", {
@@ -211,7 +241,11 @@ export default function UsageEvents({
                         "recordedAt",
                       ].map((key) => (
                         <th scope="col" key={key}>
-                          {t(key === "chargedAgainst" ? "usageHistory.chargedAgainst" : `usage.${key}`)}
+                          {t(
+                            key === "chargedAgainst"
+                              ? "usageHistory.chargedAgainst"
+                              : `usage.${key}`,
+                          )}
                         </th>
                       ))}
                     </tr>
@@ -248,7 +282,13 @@ export default function UsageEvents({
                               t("chart.guest")
                             : t("usage.unlinked")}
                         </td>
-                        <td>{t(event.chargedAgainst ? sourceLabels[event.chargedAgainst] : "common.unavailable")}</td>
+                        <td>
+                          {t(
+                            event.chargedAgainst
+                              ? sourceLabels[event.chargedAgainst]
+                              : "common.unavailable",
+                          )}
+                        </td>
                         <td>{i18n.formatNumber(event.quantity)}</td>
                         <td>
                           {i18n.formatDateTime(event.occurredAt, {

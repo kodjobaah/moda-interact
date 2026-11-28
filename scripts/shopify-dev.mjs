@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { configureShopifyCheckoutReceiptOrigin, loadShopifyPlatformEnvironment } from "./shopify-dev-settings.mjs";
+import {
+  configureShopifyCheckoutReceiptOrigin,
+  loadShopifyPlatformEnvironment,
+} from "./shopify-dev-settings.mjs";
 
 loadShopifyPlatformEnvironment();
 
@@ -52,7 +55,8 @@ Start ngrok first:
 
 const ngrokUrl = await getNgrokUrl();
 
-const { origin: receiptOrigin } = configureShopifyCheckoutReceiptOrigin(ngrokUrl);
+const { origin: receiptOrigin } =
+  configureShopifyCheckoutReceiptOrigin(ngrokUrl);
 const shopifyTunnelUrl = `${ngrokUrl}:${PORT}`;
 
 console.log(`
